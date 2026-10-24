@@ -11,9 +11,9 @@ import 'package:test/test.dart';
 import '../support/fixtures.dart';
 import '../support/self_builder.dart';
 
-/// Upstream's reference unwrapper, read where the macOS project is checked out (never changed).
+/// Upstream's reference unwrapper: `ANYPS5_UNWRAP_SELF_PY`, or an AnyPS5 checkout next to this one.
 final referenceScript =
-    Platform.environment['ANYPS5_UNWRAP_SELF_PY'] ?? '/Users/dc/Desktop/Projects/anyps5/AnyPS5/tools/unwrap_self.py';
+    Platform.environment['ANYPS5_UNWRAP_SELF_PY'] ?? p.join('..', 'AnyPS5', 'tools', 'unwrap_self.py');
 
 class Header {
   Header(List<int> data, int at)

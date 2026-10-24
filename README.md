@@ -1,7 +1,11 @@
-# AnyPS5 Desktop (private)
+# AnyPS5 Desktop
 
-Private, local-only port of the AnyPS5 launcher to **Windows** and **Linux**.
-It is the owner's backup plan: it is not published anywhere and has no remote.
+The [AnyPS5-ARM](https://github.com/utkuhalis/AnyPS5-ARM) launcher, ported to **Windows** and
+**Linux** with Flutter: the same PS5-style home screen, library, unlocking, controls, trophies,
+saves and phone controller, for the PCs [AnyPS5](https://github.com/boykopovar/AnyPS5) runs on.
+
+**Status:** in development. The logic and the interface are tested headlessly (unit, widget and
+golden tests); native Windows and Linux builds and a real game run are being checked now.
 
 AnyPS5 runs PS5 game dumps on PCs: the upstream relinker turns a game's executable into a
 native Linux ELF or Windows PE, linked against AnyPS5's own implementations of the system
@@ -9,7 +13,8 @@ libraries (`libs/*.prx`). This launcher does what the macOS launcher does, for t
 systems: it finds dumps in a games folder, unwraps their SELF executables, runs the relinker
 for the host, lays out the game with the system libraries, starts it, and keeps controls,
 settings, saves and trophies per game. A phone running the AnyPS5 Remote app pairs with it and
-works as a controller (the protocol of section 12.4 of the AnyTogether platform notes).
+works as a controller (the protocol in section 12.4 of the
+[AnyTogether platform notes](https://github.com/utkuhalis/AnyPS5-ARM/blob/anytogether/docs/en/12-platforms.md)).
 
 ## Layout
 
@@ -82,3 +87,7 @@ data stay with it and move into a new install.
 
 Settings and paired phones: `~/.config/AnyPS5` (Linux), `%APPDATA%\AnyPS5` (Windows).
 Logs: `~/.local/state/AnyPS5/logs`, `%LOCALAPPDATA%\AnyPS5\Logs`.
+
+## License
+
+GPL-2.0, as the AnyPS5-ARM launcher it is ported from (see `LICENSE`).

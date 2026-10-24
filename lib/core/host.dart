@@ -27,7 +27,13 @@ enum HostSystem {
 
 /// Where the launcher keeps its own files, per system: settings, logs, caches, screenshots.
 class AppPaths {
-  AppPaths({required this.config, required this.logs, required this.cache, required this.pictures});
+  AppPaths({
+    required this.config,
+    required this.logs,
+    required this.cache,
+    required this.pictures,
+    required this.toolkits,
+  });
 
   /// The usual folders for [system], read from [environment] (Platform.environment by default).
   factory AppPaths.forSystem(HostSystem system, {Map<String, String>? environment}) {
@@ -41,6 +47,7 @@ class AppPaths {
         logs: p.windows.join(local, 'AnyPS5', 'Logs'),
         cache: p.windows.join(local, 'AnyPS5', 'Cache'),
         pictures: p.windows.join(profile, 'Pictures', 'AnyPS5'),
+        toolkits: p.windows.join(local, 'AnyPS5', 'Toolkits'),
       );
     }
     final home = env['HOME'] ?? '/tmp';
@@ -54,6 +61,7 @@ class AppPaths {
       logs: p.posix.join(xdg('XDG_STATE_HOME', '.local/state'), 'AnyPS5', 'logs'),
       cache: p.posix.join(xdg('XDG_CACHE_HOME', '.cache'), 'AnyPS5'),
       pictures: p.posix.join(home, 'Pictures', 'AnyPS5'),
+      toolkits: p.posix.join(xdg('XDG_DATA_HOME', '.local/share'), 'AnyPS5', 'Toolkits'),
     );
   }
 
@@ -66,6 +74,9 @@ class AppPaths {
 
   /// F12 screenshots.
   final String pictures;
+
+  /// The AnyPS5 engine toolkits the launcher downloaded, one folder per upstream version.
+  final String toolkits;
 
   String get preferencesFile => p.join(config, 'preferences.json');
   String get gameSettingsFolder => p.join(config, 'games');

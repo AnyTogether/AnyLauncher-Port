@@ -449,6 +449,9 @@ void main() {
       expect(linux.logs, '/home/u/.local/state/AnyPS5/logs');
       expect(linux.cache, '/home/u/.cache/AnyPS5');
       expect(linux.shaderCache('ppsa01234'), '/home/u/.cache/AnyPS5/ppsa01234/shader_cache');
+      expect(linux.toolkits, '/home/u/.local/share/AnyPS5/Toolkits');
+      final xdgData = AppPaths.forSystem(HostSystem.linux, environment: {'HOME': '/home/u', 'XDG_DATA_HOME': '/data'});
+      expect(xdgData.toolkits, '/data/AnyPS5/Toolkits');
       final windows = AppPaths.forSystem(
         HostSystem.windows,
         environment: {
@@ -460,6 +463,7 @@ void main() {
       expect(windows.config, r'C:\Users\u\AppData\Roaming\AnyPS5');
       expect(windows.logs, r'C:\Users\u\AppData\Local\AnyPS5\Logs');
       expect(windows.pictures, r'C:\Users\u\Pictures\AnyPS5');
+      expect(windows.toolkits, r'C:\Users\u\AppData\Local\AnyPS5\Toolkits');
     });
   });
 }

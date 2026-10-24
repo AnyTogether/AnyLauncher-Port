@@ -153,7 +153,7 @@ void main() {
     expect(out.cues, ['select']);
     await until(() => model.stateOf(game) is Installed);
     expect(out.cues, ['select', 'unlocked']);
-  });
+  }, skip: Platform.isWindows ? 'the fake relinker is a shell script' : false);
 
   test('the selected game\'s theme song plays while the launcher is in front and idle', () async {
     final orbit = model.games[indexOf('PPSA01001')];

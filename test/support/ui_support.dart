@@ -141,6 +141,7 @@ Fixture makeFixture({
       pickFolder: (_) async => root,
       advertise: false,
       preferredPorts: false,
+      cable: false,
     ),
   );
   model.rescan();

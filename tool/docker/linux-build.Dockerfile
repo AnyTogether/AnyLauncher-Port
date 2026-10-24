@@ -11,7 +11,12 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 ARG FLUTTER_VERSION=3.47.1
-RUN git clone --depth 1 --branch ${FLUTTER_VERSION} https://github.com/flutter/flutter.git /opt/flutter
+RUN git config --global http.version HTTP/1.1 \
+ && for attempt in 1 2 3 4 5; do \
+      git clone --depth 1 --branch ${FLUTTER_VERSION} https://github.com/flutter/flutter.git /opt/flutter && break; \
+      rm -rf /opt/flutter; sleep 10; \
+    done \
+ && test -x /opt/flutter/bin/flutter
 ENV PATH="/opt/flutter/bin:${PATH}"
 RUN flutter config --no-analytics --enable-linux-desktop \
  && flutter precache --linux --no-android --no-ios --no-web --no-macos --no-windows --no-fuchsia

@@ -11,6 +11,7 @@ import '../core/game_process.dart';
 import '../core/game_settings.dart';
 import '../core/host.dart';
 import '../core/installer.dart';
+import '../core/remote/adb_tunnel.dart';
 import '../core/remote/mdns.dart';
 import '../core/remote/paired_devices.dart';
 import '../core/remote/remote_protocol.dart';
@@ -263,7 +264,11 @@ class LauncherServices {
     this.computerName,
     this.advertise = true,
     this.preferredPorts = true,
+    this.cable = true,
   });
+
+  /// Whether Android phones on a USB cable are joined through adb (off in tests).
+  final bool cable;
 
   /// Whether the phone server is announced on the network (off in tests).
   final bool advertise;
@@ -340,6 +345,7 @@ class AppModel extends ChangeNotifier {
 
   RemoteServer? remote;
   ServiceAdvertiser? _advertiser;
+  AdbTunnel? _adb;
   PairingRequest? pairing;
   String? phoneConnecting;
   double? phoneLatency;
@@ -1523,6 +1529,10 @@ class AppModel extends ChangeNotifier {
       }
       remote = server;
       remoteError = null;
+      if (services.cable) {
+        final adb = await AdbTunnel.locate();
+        if (adb != null) _adb = AdbTunnel(adb: adb, targetPort: server.port!)..start();
+      }
       if (!services.advertise) {
         _changed();
         return;
@@ -1543,6 +1553,8 @@ class AppModel extends ChangeNotifier {
   }
 
   Future<void> stopPhoneServer() async {
+    await _adb?.stop();
+    _adb = null;
     await _advertiser?.stop();
     _advertiser = null;
     await remote?.stop();

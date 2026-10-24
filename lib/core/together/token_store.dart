@@ -225,8 +225,12 @@ class SecretServiceStore implements TokenStore {
           return;
         }
         final process = await Process.start(tool, ['store', '--label=AnyPS5 AnyTogether session', ..._attributes]);
-        process.stdin.write(jsonEncode(session.toJson()));
-        await process.stdin.close();
+        try {
+          process.stdin.write(jsonEncode(session.toJson()));
+          await process.stdin.close();
+        } on IOException {
+          // The tool ended without reading (no keyring daemon, say): its exit code tells.
+        }
         final drained = [process.stdout.drain<void>(), process.stderr.drain<void>()];
         // A keyring that asks to be unlocked waits for the user; one that never answers is given up.
         final code = await process.exitCode.timeout(
@@ -243,7 +247,7 @@ class SecretServiceStore implements TokenStore {
           return;
         }
         _usable = false;
-      } on ProcessException {
+      } on IOException {
         _usable = false;
       }
     }

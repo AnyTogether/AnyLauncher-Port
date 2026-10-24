@@ -201,7 +201,8 @@ class FakeTogether {
   final List<FutureOr<(int, Object?)?> Function(FakeCall call)> handlers = [];
 
   Future<void> close() async {
-    for (final socket in sockets) {
+    // A socket that closes removes itself from the list, so walk a copy.
+    for (final socket in [...sockets]) {
       await socket.close();
     }
     await _frameAdded.close();

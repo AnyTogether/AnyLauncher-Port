@@ -32,11 +32,7 @@ String makeDump(
   final localized = <String, Object>{
     for (final entry in names.entries) entry.key: {'titleName': entry.value},
   };
-  final parameters = <String, Object>{
-    'titleId': titleId,
-    'contentVersion': version,
-    'localizedParameters': localized,
-  };
+  final parameters = <String, Object>{'titleId': titleId, 'contentVersion': version, 'localizedParameters': localized};
   if (defaultLanguage != null) {
     if (defaultLanguageAtTop) {
       parameters['defaultLanguage'] = defaultLanguage;

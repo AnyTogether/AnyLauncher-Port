@@ -34,12 +34,7 @@ void main() {
   });
 
   test('the default language picks the name, inside localizedParameters or at the top', () {
-    final inside = makeDump(
-      root.path,
-      'A',
-      names: {'en-US': 'English', 'ja-JP': 'Japanese'},
-      defaultLanguage: 'ja-JP',
-    );
+    final inside = makeDump(root.path, 'A', names: {'en-US': 'English', 'ja-JP': 'Japanese'}, defaultLanguage: 'ja-JP');
     final top = makeDump(
       root.path,
       'B',
@@ -54,9 +49,7 @@ void main() {
   });
 
   test('nameFor follows the launcher language, by tag or by language prefix', () {
-    final game = GameLibrary.inspect(
-      makeDump(root.path, 'G', names: {'en-US': 'Hello', 'tr-TR': 'Merhaba'}),
-    )!;
+    final game = GameLibrary.inspect(makeDump(root.path, 'G', names: {'en-US': 'Hello', 'tr-TR': 'Merhaba'}))!;
     expect(game.nameFor(['tr-TR']), 'Merhaba');
     expect(game.nameFor(['tr']), 'Merhaba');
     expect(game.nameFor(['de-DE', 'tr-TR']), 'Merhaba');

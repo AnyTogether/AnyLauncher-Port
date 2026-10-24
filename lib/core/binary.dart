@@ -5,8 +5,7 @@ import 'dart:typed_data';
 abstract final class Binary {
   static int u16(List<int> data, int at) => data[at] | data[at + 1] << 8;
 
-  static int u32(List<int> data, int at) =>
-      data[at] | data[at + 1] << 8 | data[at + 2] << 16 | data[at + 3] << 24;
+  static int u32(List<int> data, int at) => data[at] | data[at + 1] << 8 | data[at + 2] << 16 | data[at + 3] << 24;
 
   /// A 64-bit value; Dart's int is 64-bit two's complement, so values at or above 2^63 read as
   /// negative and compare with [ult] and friends.

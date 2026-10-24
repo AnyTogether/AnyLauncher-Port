@@ -138,8 +138,7 @@ abstract final class GameLibrary {
     final localized = parameters['localizedParameters'] is Map<String, dynamic>
         ? parameters['localizedParameters'] as Map<String, dynamic>
         : <String, dynamic>{};
-    final language =
-        _string(localized['defaultLanguage']) ?? _string(parameters['defaultLanguage']) ?? 'en-US';
+    final language = _string(localized['defaultLanguage']) ?? _string(parameters['defaultLanguage']) ?? 'en-US';
     final names = <String, String>{};
     for (final entry in localized.entries) {
       final value = entry.value;

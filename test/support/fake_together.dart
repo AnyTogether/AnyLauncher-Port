@@ -57,6 +57,33 @@ class FakeTogether {
   int heartbeatSeconds = 25;
   int _sessions = 0;
 
+  /// People on the server by handle (their name cards), friends with their presence, and
+  /// requests both ways.
+  final Map<String, Map<String, dynamic>> people = {};
+  final List<Map<String, dynamic>> friends = [];
+  final List<Map<String, dynamic>> incoming = [];
+  final List<Map<String, dynamic>> outgoing = [];
+
+  /// A person card as the API sends it.
+  static Map<String, dynamic> card(String id, String handle, String name) => {
+    'userId': id,
+    'handle': handle,
+    'displayName': name,
+    'avatar': null,
+  };
+
+  /// Someone the server knows, and so can be asked by handle.
+  Map<String, dynamic> person(String id, String handle, String name) => people[handle] = card(id, handle, name);
+
+  /// A friend with a presence (null is offline).
+  void friend(String id, String handle, String name, {Map<String, dynamic>? presence}) {
+    person(id, handle, name);
+    friends.add({
+      ...card(id, handle, name),
+      'presence': presence ?? {'state': 'offline'},
+    });
+  }
+
   /// Handlers a test adds for its own paths: return null to fall through.
   final List<FutureOr<(int, Object?)?> Function(FakeCall call)> handlers = [];
 
@@ -222,6 +249,41 @@ class FakeTogether {
             'profile': me,
           },
         );
+      case ('GET', 'me/friends'):
+        return (200, {'friends': friends});
+      case ('GET', 'me/friends/requests'):
+        return (200, {'incoming': incoming, 'outgoing': outgoing});
+      case ('POST', 'me/friends/requests'):
+        final someone = people[call.body['handle']];
+        if (someone == null) return problem(404, 'not_found', 'No such user');
+        if (incoming.any((person) => person['userId'] == someone['userId'])) {
+          incoming.removeWhere((person) => person['userId'] == someone['userId']);
+          friends.add({
+            ...someone,
+            'presence': {'state': 'online'},
+          });
+          return (200, {'state': 'accepted'});
+        }
+        outgoing.add(someone);
+        return (201, {'state': 'pending'});
+    }
+    final reply = RegExp(r'^me/friends/requests/([^/]+)/(accept|decline)$').firstMatch(call.path);
+    if (call.method == 'POST' && reply != null) {
+      final asking = incoming.where((person) => person['userId'] == reply.group(1)).firstOrNull;
+      if (asking == null) return problem(404, 'not_found');
+      incoming.remove(asking);
+      if (reply.group(2) == 'accept') {
+        friends.add({
+          ...asking,
+          'presence': {'state': 'online'},
+        });
+      }
+      return (204, null);
+    }
+    final unfriend = RegExp(r'^me/friends/([^/]+)$').firstMatch(call.path);
+    if (call.method == 'DELETE' && unfriend != null) {
+      friends.removeWhere((friend) => friend['userId'] == unfriend.group(1));
+      return (204, null);
     }
     return problem(404, 'not_found', 'No route for ${call.method} ${call.path}');
   }

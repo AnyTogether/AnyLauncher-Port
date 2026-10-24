@@ -1,0 +1,105 @@
+/// Someone on AnyTogether as the API's name cards show them.
+class Person {
+  const Person({required this.id, required this.handle, required this.displayName, this.avatar});
+
+  factory Person.fromJson(Map<String, dynamic> json) => Person(
+    id: json['userId'] as String,
+    handle: json['handle'] as String,
+    displayName: json['displayName'] as String,
+    avatar: json['avatar'] as String?,
+  );
+
+  final String id;
+  final String handle;
+  final String displayName;
+
+  /// The picture's full address, or null for none.
+  final String? avatar;
+
+  Map<String, Object?> toJson() => {'userId': id, 'handle': handle, 'displayName': displayName, 'avatar': avatar};
+}
+
+enum PresenceState { inGame, online, away, offline }
+
+/// The party a friend is in: its size, and whether friends may walk in.
+class PresenceParty {
+  const PresenceParty({required this.id, required this.size, required this.max, required this.open});
+
+  final String id;
+  final int size;
+  final int max;
+  final bool open;
+}
+
+/// The game session a friend hosts: open to friends and not full when joinable.
+class PresenceGame {
+  const PresenceGame({
+    required this.sessionId,
+    required this.titleId,
+    required this.joinable,
+    required this.players,
+    required this.capacity,
+  });
+
+  final String sessionId;
+  final String titleId;
+  final bool joinable;
+  final int players;
+  final int capacity;
+}
+
+/// What a friend shows: in a game (which, since when), online, away or offline, the party they
+/// are in and the game session they host.
+class Presence {
+  const Presence({this.state = PresenceState.offline, this.titleId, this.since, this.party, this.game});
+
+  factory Presence.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return const Presence();
+    final party = json['party'];
+    final game = json['game'];
+    return Presence(
+      state: switch (json['state']) {
+        'in_game' => PresenceState.inGame,
+        'online' => PresenceState.online,
+        'away' => PresenceState.away,
+        _ => PresenceState.offline,
+      },
+      titleId: json['titleId'] as String?,
+      since: DateTime.tryParse(json['since'] as String? ?? ''),
+      party: party is Map<String, dynamic> && party['id'] is String
+          ? PresenceParty(
+              id: party['id'] as String,
+              size: (party['size'] as num? ?? 1).toInt(),
+              max: (party['max'] as num? ?? 8).toInt(),
+              open: party['open'] == true,
+            )
+          : null,
+      game: game is Map<String, dynamic> && game['sessionId'] is String
+          ? PresenceGame(
+              sessionId: game['sessionId'] as String,
+              titleId: game['titleId'] as String? ?? '',
+              joinable: game['joinable'] == true,
+              players: (game['players'] as num? ?? 1).toInt(),
+              capacity: (game['capacity'] as num? ?? 1).toInt(),
+            )
+          : null,
+    );
+  }
+
+  final PresenceState state;
+  final String? titleId;
+  final DateTime? since;
+  final PresenceParty? party;
+  final PresenceGame? game;
+
+  bool get playing => state == PresenceState.inGame;
+  bool get online => state != PresenceState.offline;
+}
+
+/// A friend and what they are doing.
+class Friend {
+  const Friend(this.person, this.presence);
+
+  final Person person;
+  final Presence presence;
+}

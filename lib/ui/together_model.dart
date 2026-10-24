@@ -4,7 +4,11 @@ import 'dart:io';
 import '../core/host.dart';
 import '../core/remote/remote_protocol.dart';
 import '../core/together/account.dart';
+import '../core/together/friends.dart';
+import '../core/together/hub.dart';
+import '../core/together/people.dart';
 import '../core/together/server.dart';
+import '../core/together/socket.dart';
 import '../core/together/token_store.dart';
 import 'app_model.dart';
 import 'strings.dart';
@@ -23,12 +27,23 @@ class TogetherModel {
       clientName: clientName(app.system),
       pollEvery: app.services.togetherPollEvery,
     );
+    hub = TogetherHub(account: account);
+    hub.addListener(app.refresh);
+    hub.friends.onRequest = (person) => app.show(T.format('friendsAsked', [person.displayName]));
+    hub.friends.onAccepted = (person) => app.show(T.format('friendsNowFriends', [person.displayName]));
     account.addListener(_accountChanged);
   }
 
   final AppModel app;
   final Map<String, String> environment;
   late final TogetherAccount account;
+
+  /// The live side: the gateway socket and the lists it keeps current.
+  late final TogetherHub hub;
+
+  /// A handle typed in the friends panel, and the friend whose options are open.
+  String friendHandle = '';
+  Friend? chosen;
 
   /// What is typed in the sign-in rows, until it is sent.
   String email = '';
@@ -71,7 +86,28 @@ class TogetherModel {
   /// Signed in or out: what depends on it starts or stops.
   void signedInChanged() {
     app.remote?.togetherServer = account.base.toString();
+    if (!signedIn) {
+      friendHandle = '';
+      chosen = null;
+      if (const {Layer.friends, Layer.friendOptions}.contains(app.overlay)) app.closeOverlay();
+    }
+    _followGame();
   }
+
+  // Presence.
+
+  /// A game started or stopped: friends see it.
+  void gameChanged() => _followGame();
+
+  void _followGame() {
+    final running = app.running;
+    final since = running == null ? null : DateTime.tryParse(app.preferences.lastPlayed[running.$1.id] ?? '');
+    hub.socket.presence = running == null
+        ? const PresenceOnline()
+        : PresenceInGame(running.$1.titleId, since ?? DateTime.now());
+  }
+
+  bool get connected => hub.socket.status == SocketStatus.ready;
 
   // Signing in.
 
@@ -194,13 +230,189 @@ class TogetherModel {
     app.show(T.format('togetherServerNow', [url.host]));
   }
 
+  // Friends.
+
+  Future<void> askFriend() async {
+    final handle = Friends.clean(friendHandle);
+    if (handle.isEmpty) return;
+    try {
+      final now = await hub.friends.add(handle);
+      friendHandle = '';
+      app.show(T.format(now ? 'friendsNowFriends' : 'friendsRequestSent', [handle]));
+    } on TogetherProblem catch (problem) {
+      app.show(problem.status == 404 ? T.format('friendsNoOne', [handle]) : message(problem));
+    } on Object catch (error) {
+      app.show(message(error));
+    }
+  }
+
+  Future<void> answerFriend(Person person, {required bool accept}) async {
+    try {
+      await hub.friends.answer(person.id, accept: accept);
+      if (accept) app.show(T.format('friendsNowFriends', [person.displayName]));
+    } on Object catch (error) {
+      app.show(message(error));
+    }
+  }
+
+  Future<void> removeFriend(Friend friend) async {
+    try {
+      await hub.friends.remove(friend.person.id);
+      app.show(T.format('friendsRemoved', [friend.person.displayName]));
+      if (app.overlay == Layer.friendOptions) app.open(Layer.friends);
+    } on Object catch (error) {
+      app.show(message(error));
+    }
+  }
+
+  /// Opens the settings at the AnyTogether rows.
+  void openSettings() {
+    app.open(Layer.settings);
+    final index = app.panelCategories().indexWhere((category) => category.id == 'together');
+    if (index >= 0) app.selectCategory(index);
+  }
+
+  void openFriend(Friend friend) {
+    chosen = friend;
+    app.open(Layer.friendOptions);
+  }
+
+  /// A game's name in this library, else its title ID.
+  String gameName(String titleId) =>
+      app.games.where((game) => game.titleId == titleId).firstOrNull?.nameFor([T.language.code]) ?? titleId;
+
+  /// "Playing Neon Alley · 25 min", "Online", "Offline", with the party they are in.
+  String presenceText(Presence presence, {DateTime? now}) {
+    if (!presence.online) return T.text('friendsOffline');
+    final titleId = presence.titleId;
+    var text = switch (presence.state) {
+      PresenceState.inGame when titleId != null =>
+        presence.since == null
+            ? T.format('friendsPlaying', [gameName(titleId)])
+            : T.format('friendsPlayingFor', [
+                gameName(titleId),
+                ((now ?? DateTime.now()).difference(presence.since!).inMinutes).clamp(1, 1 << 30),
+              ]),
+      PresenceState.away => T.text('friendsAway'),
+      _ => T.text('friendsOnline'),
+    };
+    if (presence.game?.joinable == true) text += ' · ${T.text('gameJoinable')}';
+    final party = presence.party;
+    if (party != null) text += ' · ${T.format('friendsInParty', [party.size, party.max])}';
+    return text;
+  }
+
+  static PersonStatus status(Presence presence) => switch (presence.state) {
+    PresenceState.inGame => PersonStatus.playing,
+    PresenceState.online => PersonStatus.online,
+    PresenceState.away => PersonStatus.away,
+    PresenceState.offline => PersonStatus.offline,
+  };
+
+  static PanelPerson card(Person person, {PersonStatus? status, bool speaking = false}) =>
+      PanelPerson(name: person.displayName, avatar: person.avatar, status: status, speaking: speaking);
+
+  /// The friends panel: requests to answer, adding someone by handle, the friends by what they
+  /// do, the requests waiting for an answer.
+  List<PanelRow> friendRows() {
+    final me = user;
+    if (me == null) {
+      return [
+        PanelRow(id: 'friends-out', title: T.text('friendsSignIn'), kind: InfoRow(T.text('togetherIntroDetail'))),
+        PanelRow(id: 'friends-signin', title: T.text('togetherSignIn'), kind: ActionRow(openSettings)),
+      ];
+    }
+    final friends = hub.friends;
+    return [
+      for (final person in friends.incoming) ...[
+        PanelRow(
+          id: 'accept-${person.id}',
+          title: T.format('friendsAccept', [person.displayName]),
+          detail: '@${person.handle} · ${T.text('friendsWantsToBe')}',
+          person: card(person),
+          kind: ActionRow(() => unawaited(answerFriend(person, accept: true))),
+        ),
+        PanelRow(
+          id: 'decline-${person.id}',
+          title: T.format('friendsDecline', [person.displayName]),
+          kind: ActionRow(() => unawaited(answerFriend(person, accept: false)), destructive: true),
+        ),
+      ],
+      PanelRow(
+        id: 'friends-handle',
+        title: T.text('friendsAddByHandle'),
+        kind: TextRow(
+          friendHandle,
+          (text) => friendHandle = text,
+          submit: () => unawaited(askFriend()),
+          hint: '@handle',
+        ),
+      ),
+      PanelRow(id: 'friends-ask', title: T.text('friendsSendRequest'), kind: ActionRow(() => unawaited(askFriend()))),
+      if (friends.loaded && friends.friends.isEmpty)
+        PanelRow(
+          id: 'friends-none',
+          title: T.text('friendsNone'),
+          kind: InfoRow(T.format('friendsYourHandle', [me.handle])),
+        ),
+      for (final friend in friends.friends)
+        PanelRow(
+          id: 'friend-${friend.person.id}',
+          title: friend.person.displayName,
+          detail: '@${friend.person.handle} · ${presenceText(friend.presence)}',
+          person: card(friend.person, status: status(friend.presence)),
+          kind: ActionRow(() => openFriend(friend)),
+        ),
+      for (final person in friends.outgoing)
+        PanelRow(
+          id: 'waiting-${person.id}',
+          title: person.displayName,
+          detail: '@${person.handle} · ${T.text('friendsWaiting')}',
+          person: card(person),
+          kind: const InfoRow(''),
+        ),
+    ];
+  }
+
+  /// What can be done with the chosen friend.
+  List<PanelRow> friendOptionRows() {
+    final friend = chosen == null ? null : hub.friends.byId(chosen!.person.id) ?? chosen;
+    if (friend == null) return const [];
+    return [
+      PanelRow(
+        id: 'friend-card',
+        title: friend.person.displayName,
+        detail: '@${friend.person.handle} · ${presenceText(friend.presence)}',
+        person: card(friend.person, status: status(friend.presence)),
+        kind: const InfoRow(''),
+      ),
+      PanelRow(
+        id: 'friend-remove',
+        title: T.text('friendsRemove'),
+        kind: ActionRow(() => unawaited(removeFriend(friend)), destructive: true),
+      ),
+      PanelRow(id: 'friend-back', title: T.text('back'), kind: ActionRow(() => app.open(Layer.friends))),
+    ];
+  }
+
   // Rows.
 
   List<PanelRow> settingsRows() {
     final me = user;
     if (me != null) {
       return [
-        PanelRow(id: 'together-user', title: '@${me.handle}', detail: me.displayName, kind: const InfoRow('')),
+        PanelRow(
+          id: 'together-user',
+          title: '@${me.handle}',
+          detail: me.displayName,
+          person: PanelPerson(name: me.displayName, avatar: me.avatar),
+          kind: const InfoRow(''),
+        ),
+        PanelRow(
+          id: 'together-online',
+          title: T.text('togetherOnline'),
+          kind: InfoRow(connected ? T.text('togetherConnected') : T.text('togetherConnecting')),
+        ),
         PanelRow(
           id: 'together-signout',
           title: T.text('togetherSignOut'),
@@ -333,6 +545,7 @@ class TogetherModel {
 
   void dispose() {
     account.removeListener(_accountChanged);
+    hub.dispose();
     account.close();
   }
 }

@@ -140,9 +140,10 @@ class PanelView extends StatelessWidget {
     final categories = model.panelCategories();
     if (categories.isEmpty) return const SizedBox.shrink();
     final category = categories[model.panelCategory.clamp(0, categories.length - 1)];
-    final compact = model.overlay == Layer.confirmUninstall || model.overlay == Layer.updateChoice;
+    final compact = const {Layer.confirmUninstall, Layer.updateChoice, Layer.friendOptions}.contains(model.overlay);
     final heading = switch (model.overlay) {
       Layer.settings => T.text('settings'),
+      Layer.friends => T.text('friendsTitle'),
       Layer.controls => T.text('controls'),
       Layer.gameSettings => T.text('gameSettings'),
       _ => category.title,
@@ -164,7 +165,7 @@ class PanelView extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(heading, style: AppText.display(34 * scale, weight: FontWeight.w300)),
-                    if (model.overlay != Layer.settings && !compact) ...[
+                    if (model.overlay != Layer.settings && model.overlay != Layer.friends && !compact) ...[
                       SizedBox(width: 14 * scale),
                       Flexible(
                         child: Padding(

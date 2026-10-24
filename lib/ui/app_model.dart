@@ -202,7 +202,20 @@ class HomeFocus {
   int get hashCode => Object.hash(area, index);
 }
 
-enum Layer { library, settings, gameSettings, controls, confirmUninstall, updateChoice, log, trophies }
+enum Layer {
+  library,
+  settings,
+  gameSettings,
+  controls,
+  confirmUninstall,
+  updateChoice,
+  log,
+  trophies,
+
+  /// AnyTogether: friends and requests, and what can be done with one friend.
+  friends,
+  friendOptions,
+}
 
 /// A settings row the panels draw and the keyboard moves through.
 class PanelRow {
@@ -781,11 +794,13 @@ class AppModel extends ChangeNotifier {
       starting = null;
       running = (game, run);
       _watchTrophies(game);
+      together.gameChanged();
       _changed();
       final code = await run.exitCode;
       _trophyWatch?.cancel();
       _loadTrophies(game);
       if (running?.$1 == game) running = null;
+      together.gameChanged();
       if (code != 0) show('${T.text('gameEnded')} ($code)');
       _changed();
     } on Object catch (error) {
@@ -962,7 +977,15 @@ class AppModel extends ChangeNotifier {
         }
         _panelCommand(command);
         return;
-      case Layer.settings || Layer.gameSettings || Layer.confirmUninstall || Layer.updateChoice:
+      case Layer.friendOptions when command == Command.back || command == Command.options:
+        open(Layer.friends);
+        return;
+      case Layer.settings ||
+          Layer.gameSettings ||
+          Layer.confirmUninstall ||
+          Layer.updateChoice ||
+          Layer.friends ||
+          Layer.friendOptions:
         _panelCommand(command);
         return;
       case null:
@@ -985,13 +1008,13 @@ class AppModel extends ChangeNotifier {
       case ('tiles', Command.select):
         primaryAction(game);
       case ('top', Command.left):
-        _moveFocus(HomeFocus.top((focus.index - 1).clamp(0, 1)));
+        _moveFocus(HomeFocus.top((focus.index - 1).clamp(0, topButtons - 1)));
       case ('top', Command.right):
-        _moveFocus(HomeFocus.top((focus.index + 1).clamp(0, 1)));
+        _moveFocus(HomeFocus.top((focus.index + 1).clamp(0, topButtons - 1)));
       case ('top', Command.down) || ('top', Command.back):
         _moveFocus(HomeFocus.tiles);
       case ('top', Command.select):
-        open(focus.index == 0 ? Layer.library : Layer.settings);
+        open(topLayers[focus.index.clamp(0, topButtons - 1)]);
       case ('actions', Command.left):
         _moveFocus(HomeFocus.actions((focus.index - 1).clamp(0, actionCount - 1)));
       case ('actions', Command.right):
@@ -1014,6 +1037,10 @@ class AppModel extends ChangeNotifier {
   }
 
   static const libraryColumns = 6;
+
+  /// The top bar's buttons, left to right.
+  static const topLayers = [Layer.library, Layer.settings, Layer.friends];
+  static int get topButtons => topLayers.length;
 
   void _moveLibrary(int delta) {
     final next = (libraryIndex + delta).clamp(0, games.isEmpty ? 0 : games.length - 1);
@@ -1056,6 +1083,16 @@ class AppModel extends ChangeNotifier {
               ),
               PanelRow(id: 'cancel', title: T.text('cancel'), kind: ActionRow(closeOverlay)),
             ],
+          ),
+        ];
+      case Layer.friends:
+        return [PanelCategory(id: 'friends', title: T.text('friendsTitle'), rows: together.friendRows())];
+      case Layer.friendOptions:
+        return [
+          PanelCategory(
+            id: 'friend',
+            title: together.chosen?.person.displayName ?? T.text('friendsTitle'),
+            rows: together.friendOptionRows(),
           ),
         ];
       case Layer.updateChoice when game != null:

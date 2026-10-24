@@ -182,6 +182,8 @@ const togetherEnglish = <String, String>{
   'friendsNoOne': 'No one is called %@',
   'friendsAsked': '%@ wants to be friends',
   'friendsOnlineCount': '%d online',
+  'friendsRemove': 'Remove from friends',
+  'friendsRemoved': '%@ is no longer a friend',
 };
 
 const togetherTurkish = <String, String>{
@@ -363,4 +365,6 @@ const togetherTurkish = <String, String>{
   'friendsNoOne': '%@ diye biri yok',
   'friendsAsked': '%@ arkadaş olmak istiyor',
   'friendsOnlineCount': '%d çevrimiçi',
+  'friendsRemove': 'Arkadaşlıktan çıkar',
+  'friendsRemoved': '%@ artık arkadaşın değil',
 };

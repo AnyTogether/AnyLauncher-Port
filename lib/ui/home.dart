@@ -108,8 +108,9 @@ class TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
     final accent = model.accentChoice.color;
-    final name = model.preferences.profileName;
-    Widget iconButton(IconData icon, int index, VoidCallback action) {
+    final together = model.together;
+    final name = together.user?.displayName ?? model.preferences.profileName;
+    Widget iconButton(IconData icon, int index, VoidCallback action, {int badge = 0}) {
       final focused = model.focus == HomeFocus.top(index) && model.overlay == null;
       return GestureDetector(
         onTap: action,
@@ -117,21 +118,50 @@ class TopBar extends StatelessWidget {
           scale: focused ? 1.1 : 1,
           duration: Motion.focus,
           curve: Motion.settle,
-          child: AnimatedContainer(
-            duration: Motion.focus,
-            width: 44 * scale,
-            height: 44 * scale,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: focused ? Colors.white : Colors.white.withValues(alpha: 0.1),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.white.withValues(alpha: focused ? 0.4 : 0),
-                  blurRadius: 10 * scale,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              AnimatedContainer(
+                duration: Motion.focus,
+                width: 44 * scale,
+                height: 44 * scale,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: focused ? Colors.white : Colors.white.withValues(alpha: 0.1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.white.withValues(alpha: focused ? 0.4 : 0),
+                      blurRadius: 10 * scale,
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: Icon(icon, size: 20 * scale, color: focused ? Colors.black : Colors.white.withValues(alpha: 0.9)),
+                child: Icon(
+                  icon,
+                  size: 20 * scale,
+                  color: focused ? Colors.black : Colors.white.withValues(alpha: 0.9),
+                ),
+              ),
+              if (badge > 0)
+                Positioned(
+                  right: -4 * scale,
+                  top: -4 * scale,
+                  child: Container(
+                    constraints: BoxConstraints(minWidth: 20 * scale),
+                    height: 20 * scale,
+                    padding: EdgeInsets.symmetric(horizontal: 5 * scale),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: accent,
+                      borderRadius: BorderRadius.circular(10 * scale),
+                      border: Border.all(color: Colors.black.withValues(alpha: 0.5), width: 1.5 * scale),
+                    ),
+                    child: Text(
+                      badge > 9 ? '9+' : '$badge',
+                      style: AppText.display(11 * scale, weight: FontWeight.w700, color: Colors.black),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       );
@@ -152,6 +182,8 @@ class TopBar extends StatelessWidget {
         iconButton(Icons.grid_view_rounded, 0, () => model.open(Layer.library)),
         SizedBox(width: 22 * scale),
         iconButton(Icons.settings_rounded, 1, () => model.open(Layer.settings)),
+        SizedBox(width: 22 * scale),
+        iconButton(Icons.people_alt_rounded, 2, () => model.open(Layer.friends), badge: together.hub.badge),
         SizedBox(width: 22 * scale),
         PhoneIndicator(model: model),
         SizedBox(width: 22 * scale),

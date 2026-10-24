@@ -1,9 +1,13 @@
+import 'dart:io';
+
+import 'package:anyps5_desktop/core/installer.dart';
 import 'package:anyps5_desktop/core/together/account.dart';
 import 'package:anyps5_desktop/core/together/token_store.dart';
 import 'package:anyps5_desktop/ui/app_model.dart' hide Command, GameState;
 import 'package:anyps5_desktop/ui/app_model.dart' as launcher show Command;
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 
 import '../support/fake_together.dart';
 import '../support/phone/fake_phone.dart';
@@ -65,7 +69,13 @@ void main() {
       code.set('123 456');
       await until(() => together.signedIn);
       expect(model.toast, 'Signed in as Utku');
-      expect(rowIds(), ['together-user', 'together-signout', 'together-server', 'together-server-use']);
+      expect(rowIds(), [
+        'together-user',
+        'together-online',
+        'together-signout',
+        'together-server',
+        'together-server-use',
+      ]);
 
       await together.signOut();
       expect(together.signedIn, isFalse);
@@ -184,6 +194,106 @@ void main() {
       expect(again.model.together.user?.handle, 'utku');
       again.model.dispose();
       again.dispose();
+    });
+  });
+
+  group('friends and presence', () {
+    setUp(() async {
+      server = await FakeTogether.start();
+      server
+        ..friend('u-ana', 'ana', 'Ana', presence: {'state': 'online'})
+        ..friend('u-bora', 'bora', 'Bora', presence: {'state': 'in_game', 'titleId': 'PPSA02002'})
+        ..person('u-deniz', 'deniz', 'Deniz');
+      server.incoming.add(FakeTogether.card('u-cem', 'cem', 'Cem'));
+      fixture = makeFixture(together: server.base);
+      model = fixture.model;
+      model.together.email = 'utku@example.com';
+      await model.together.sendCode();
+      model.together.code = '123456';
+      await model.together.verify();
+      await until(() => model.together.hub.friends.loaded);
+    });
+
+    tearDown(() async {
+      model.dispose();
+      await server.close();
+      T.language = Language.english;
+      fixture.dispose();
+    });
+
+    test('the friends panel: requests, adding by handle, friends by what they do', () async {
+      model.open(Layer.friends);
+      expect(rowIds(), [
+        'accept-u-cem',
+        'decline-u-cem',
+        'friends-handle',
+        'friends-ask',
+        'friend-u-bora',
+        'friend-u-ana',
+      ]);
+      final rows = model.panelCategories().single.rows;
+      expect(rows[4].detail, '@bora · Playing Neon Alley');
+      expect(rows[4].person?.status, PersonStatus.playing);
+      expect(model.together.hub.badge, 1);
+
+      (rows[0].kind as ActionRow).run();
+      await until(() => model.together.hub.friends.byId('u-cem') != null);
+      expect(model.toast, 'You and Cem are friends');
+
+      model.together.friendHandle = '@deniz';
+      await model.together.askFriend();
+      expect(model.toast, 'Request sent to deniz');
+      expect(rowIds().last, 'waiting-u-deniz');
+      model.together.friendHandle = 'nobody';
+      await model.together.askFriend();
+      expect(model.toast, 'No one is called nobody');
+    });
+
+    test('a friend opens their options; removing them takes them off', () async {
+      model.open(Layer.friends);
+      final ana = model.panelCategories().single.rows.firstWhere((row) => row.id == 'friend-u-ana');
+      (ana.kind as ActionRow).run();
+      expect(model.overlay, Layer.friendOptions);
+      expect(rowIds(), ['friend-card', 'friend-remove', 'friend-back']);
+      model.handle(launcher.Command.back);
+      expect(model.overlay, Layer.friends);
+      (ana.kind as ActionRow).run();
+      final remove = model.panelCategories().single.rows[1];
+      (remove.kind as ActionRow).run();
+      await until(() => model.together.hub.friends.byId('u-ana') == null);
+      expect(model.overlay, Layer.friends);
+      expect(server.callsTo('me/friends/u-ana', method: 'DELETE'), hasLength(1));
+    });
+
+    test('a request on the socket shows and comes into the list', () async {
+      server.incoming.add(FakeTogether.card('u-eda', 'eda', 'Eda'));
+      server.push('friend.request', FakeTogether.card('u-eda', 'eda', 'Eda'));
+      await until(() => model.together.hub.badge == 2);
+      expect(model.toast, 'Eda wants to be friends');
+    });
+
+    test('friends see the game played, then the launcher online again', () async {
+      await server.nextFrame('heartbeat', test: (frame) => (frame['presence'] as Map)['state'] == 'online');
+      final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
+      final installed = Installer.installedFolder(orbit, model.root!);
+      File(p.join(installed, 'app.elf')).writeAsStringSync('#!/bin/sh\nsleep 0.4\n');
+      Process.runSync('chmod', ['755', p.join(installed, 'app.elf')]);
+      final playing = model.play(orbit);
+      final inGame = await server.nextFrame(
+        'heartbeat',
+        test: (frame) => (frame['presence'] as Map)['state'] == 'in_game',
+      );
+      expect((inGame['presence'] as Map)['titleId'], 'PPSA01001');
+      expect(DateTime.parse((inGame['presence'] as Map)['since'] as String).isBefore(DateTime.now()), isTrue);
+      await playing;
+      await server.nextFrame('heartbeat', test: (frame) => (frame['presence'] as Map)['state'] == 'online');
+    });
+
+    test('signed out on another device: signed out here too', () async {
+      await until(() => model.together.connected);
+      await server.dropSockets(4003);
+      await until(() => !model.together.signedIn);
+      expect(model.together.hub.friends.friends, isEmpty);
     });
   });
 }

@@ -1,4 +1,5 @@
 import 'package:anyps5_desktop/core/together/account.dart';
+import 'package:anyps5_desktop/core/together/people.dart';
 import 'package:anyps5_desktop/ui/app_model.dart' hide Command, GameState;
 import 'package:anyps5_desktop/ui/app_model.dart' as launcher show Command;
 import 'package:anyps5_desktop/ui/launcher.dart';
@@ -69,5 +70,49 @@ void main() {
       await press(tester, LogicalKeyboardKey.escape);
       expect(model.overlay, isNull);
     });
+
+    testWidgets('golden: friends, with a request, one playing, one online, one offline', (tester) async {
+      fixture = makeFixture();
+      model = fixture.model;
+      signedInPreview(model);
+      model.open(Layer.friends);
+      await pumpLauncher(tester, model);
+      expect(find.text('@bora · Playing Neon Alley · 25 min · joinable · in a party 2/8'), findsOneWidget);
+      await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_friends.png'));
+    });
+
+    testWidgets('golden: home with the friends button and its badge, in Turkish', (tester) async {
+      fixture = makeFixture(language: Language.turkish);
+      model = fixture.model;
+      signedInPreview(model);
+      model.handle(launcher.Command.up);
+      model.handle(launcher.Command.right);
+      await pumpLauncher(tester, model);
+      await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_home_tr.png'));
+    });
   });
+}
+
+/// Signed in as Utku with three friends and a request, without a server: for the screens.
+void signedInPreview(AppModel model) {
+  final together = model.together;
+  together.account.user = const TogetherUser(id: 'u-me', handle: 'utku', displayName: 'Utku Halis');
+  const cem = Person(id: 'u-cem', handle: 'cem', displayName: 'Cem Yılmaz');
+  together.hub.friends
+    ..incoming = [const Person(id: 'u-eda', handle: 'eda', displayName: 'Eda')]
+    ..friends = [
+      Friend(
+        const Person(id: 'u-bora', handle: 'bora', displayName: 'Bora'),
+        Presence(
+          state: PresenceState.inGame,
+          titleId: 'PPSA02002',
+          since: DateTime.now().subtract(const Duration(minutes: 25, seconds: 20)),
+          party: const PresenceParty(id: 'p1', size: 2, max: 8, open: true),
+          game: const PresenceGame(sessionId: 's1', titleId: 'PPSA02002', joinable: true, players: 1, capacity: 4),
+        ),
+      ),
+      const Friend(Person(id: 'u-ana', handle: 'ana', displayName: 'Ana'), Presence(state: PresenceState.online)),
+      const Friend(cem, Presence()),
+    ]
+    ..loaded = true;
 }

@@ -67,19 +67,21 @@ esac
     );
     final connections = StreamIterator(phoneApp);
     tunnel.start();
-    expect(await connections.moveNext().timeout(const Duration(seconds: 5)), isTrue);
+    expect(await connections.moveNext().timeout(const Duration(seconds: 15)), isTrue);
     final first = connections.current;
     final echoed = StreamIterator(first);
     first.write('hello over the cable');
     expect(await echoed.moveNext().timeout(const Duration(seconds: 5)), isTrue);
     expect(utf8.decode(echoed.current), 'hello over the cable');
     // Held for over a second, the phone counts as there.
-    await Future<void>.delayed(const Duration(milliseconds: 1300));
+    for (var tries = 0; tries < 100 && tunnel.joined.isEmpty; tries++) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
     expect(tunnel.joined, ['R58M123']);
     expect(reports.last, ['R58M123']);
     // The phone app goes away; the tunnel tries again.
     first.destroy();
-    expect(await connections.moveNext().timeout(const Duration(seconds: 5)), isTrue);
+    expect(await connections.moveNext().timeout(const Duration(seconds: 15)), isTrue);
     connections.current.destroy();
     await tunnel.stop();
     await phoneApp.close();

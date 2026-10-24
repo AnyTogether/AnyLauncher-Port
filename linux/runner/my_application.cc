@@ -52,6 +52,8 @@ static void my_application_activate(GApplication* application) {
     gtk_window_set_title(window, "AnyPS5");
   }
 
+  // The icon the .deb and the AppImage install into the icon theme.
+  gtk_window_set_icon_name(window, "anyps5-desktop");
   gtk_window_set_default_size(window, 1600, 900);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();

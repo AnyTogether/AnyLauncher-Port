@@ -140,6 +140,17 @@ data stay with it and move into a new install.
 Settings and paired phones: `~/.config/AnyPS5` (Linux), `%APPDATA%\AnyPS5` (Windows).
 Logs: `~/.local/state/AnyPS5/logs`, `%LOCALAPPDATA%\AnyPS5\Logs`.
 
+## Packages
+
+- Windows: `packaging/windows/build-installer.ps1` builds the release and an Inno Setup 6
+  installer, `build/installer/AnyPS5-Desktop-Setup-<version>-x64.exe`: a per-user install in
+  `%LOCALAPPDATA%\Programs\AnyPS5 Desktop` by default (all users on request), Start menu and
+  optional desktop shortcuts, an uninstaller; a running launcher is closed before an upgrade.
+- Linux: `packaging/linux/build-appimage.sh` and `packaging/linux/build-deb.sh` write
+  `build/packages/AnyPS5-Desktop-<version>-x86_64.AppImage` and
+  `anyps5-desktop_<version>_amd64.deb` (`/opt/anyps5-desktop`, `/usr/bin/anyps5-desktop`).
+  Build them on Ubuntu 22.04 so they run on glibc 2.34 and newer; GTK 3 comes from the system.
+
 ## License
 
 GPL-2.0, as the AnyPS5-ARM launcher it is ported from (see `LICENSE`).

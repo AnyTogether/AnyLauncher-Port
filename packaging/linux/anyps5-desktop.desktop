@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=AnyPS5 Desktop
+GenericName=PS5 game launcher
+Comment=Run PS5 game dumps with AnyPS5
+Comment[tr]=PS5 oyun dökümlerini AnyPS5 ile çalıştır
+Exec=anyps5-desktop %U
+Icon=anyps5-desktop
+Terminal=false
+Categories=Game;Emulator;
+Keywords=PS5;PlayStation;AnyPS5;games;
+StartupWMClass=anyps5_desktop

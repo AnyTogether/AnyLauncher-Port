@@ -136,7 +136,12 @@ Fixture makeFixture({
     preferences: preferences,
     system: HostSystem.linux,
     persist: false,
-    services: LauncherServices(computerName: 'Desk', pickFolder: (_) async => root),
+    services: LauncherServices(
+      computerName: 'Desk',
+      pickFolder: (_) async => root,
+      advertise: false,
+      preferredPorts: false,
+    ),
   );
   model.rescan();
   // The first game is installed: a record beside a stand-in executable.

@@ -60,6 +60,22 @@ class FakePhone {
     return message as T;
   }
 
+  /// The first message of type [T] that passes [test], received already or waited for.
+  Future<T> nextWhere<T extends Message>(
+    bool Function(T message) test, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    for (final message in List.of(received)) {
+      if (message is T && test(message)) {
+        received.remove(message);
+        return message;
+      }
+    }
+    final message = await messages.stream.firstWhere((message) => message is T && test(message)).timeout(timeout);
+    received.remove(message);
+    return message as T;
+  }
+
   Uint8List input(BigInt session, {int sequence = 1, int buttons = PadButton.cross}) =>
       encodeInput(sequence: sequence, sentMicros: 123456, session: session, state: PadState()..buttons = buttons);
 

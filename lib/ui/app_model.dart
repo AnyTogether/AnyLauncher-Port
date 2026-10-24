@@ -257,7 +257,19 @@ class PanelCategory {
 
 /// What the launcher needs from the system, replaceable in tests.
 class LauncherServices {
-  const LauncherServices({this.pickFolder, this.openFolder, this.computerName});
+  const LauncherServices({
+    this.pickFolder,
+    this.openFolder,
+    this.computerName,
+    this.advertise = true,
+    this.preferredPorts = true,
+  });
+
+  /// Whether the phone server is announced on the network (off in tests).
+  final bool advertise;
+
+  /// Whether the phone server tries its usual ports first (off in tests: any free port).
+  final bool preferredPorts;
 
   /// Asks the user for a folder; null when they cancelled.
   final Future<String?> Function(String title)? pickFolder;
@@ -1476,37 +1488,45 @@ class AppModel extends ChangeNotifier {
     if (remote != null || !preferences.phoneServer) return;
     final name = services.computerName ?? Platform.localHostname;
     try {
-      final server = await RemoteServer.startPreferred(
-        name: name,
-        devices: PairedDevices(paths.pairedDevicesFile),
-        events: RemoteEvents(
-          pairing: (request) {
-            pairing = request;
-            _changed();
-          },
-          connecting: (device) {
-            phoneConnecting = device;
-            if (device == null) pairing = null;
-            _changed();
-          },
-          connected: (device) {
-            phoneConnecting = null;
-            pairing = null;
-            show(T.format('phoneConnected', [device]));
-            _toldLibrary = null;
-            _changed();
-            _publishLook();
-          },
-          disconnected: _changed,
-          latency: (milliseconds) {
-            phoneLatency = milliseconds;
-            notifyListeners();
-          },
-          request: _phoneRequest,
-        ),
+      final events = RemoteEvents(
+        pairing: (request) {
+          pairing = request;
+          _changed();
+        },
+        connecting: (device) {
+          phoneConnecting = device;
+          if (device == null) pairing = null;
+          _changed();
+        },
+        connected: (device) {
+          phoneConnecting = null;
+          pairing = null;
+          show(T.format('phoneConnected', [device]));
+          _toldLibrary = null;
+          _changed();
+          _publishLook();
+        },
+        disconnected: _changed,
+        latency: (milliseconds) {
+          phoneLatency = milliseconds;
+          notifyListeners();
+        },
+        request: _phoneRequest,
       );
+      final devices = PairedDevices(paths.pairedDevicesFile);
+      final RemoteServer server;
+      if (services.preferredPorts) {
+        server = await RemoteServer.startPreferred(name: name, devices: devices, events: events);
+      } else {
+        server = RemoteServer(name: name, devices: devices, events: events);
+        await server.start();
+      }
       remote = server;
       remoteError = null;
+      if (!services.advertise) {
+        _changed();
+        return;
+      }
       final advertiser = await AvahiAdvertiser.available()
           ? AvahiAdvertiser(instance: name, serviceType: RemoteServer.serviceType, port: server.port!)
           : MdnsResponder(instance: name, serviceType: RemoteServer.serviceType, port: server.port!);
@@ -1605,6 +1625,10 @@ class AppModel extends ChangeNotifier {
               Starting() => RemoteGameState.starting,
               Running() => RemoteGameState.running,
               Unreadable() => RemoteGameState.unavailable,
+            },
+            trophies: switch (trophies[game.id]) {
+              final TrophySet set => '${set.unlockedCount}/${set.trophies.length}',
+              null => null,
             },
             art:
                 '${game.icon != null ? _stamp(game.icon!) : 0}-${game.background != null ? _stamp(game.background!) : 0}',

@@ -1701,8 +1701,18 @@ class AppModel extends ChangeNotifier {
     }
   }
 
+  bool _disposed = false;
+
+  /// Work that ends after the launcher closed (an install, a game, the phone server stopping)
+  /// tells no one.
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
+
   @override
   void dispose() {
+    _disposed = true;
     _trophyWatch?.cancel();
     _toastTimer?.cancel();
     _installer?.cancel();

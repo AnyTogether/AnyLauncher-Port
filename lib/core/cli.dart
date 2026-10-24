@@ -14,10 +14,14 @@ import 'remote/remote_protocol.dart';
 import 'remote/remote_server.dart';
 import 'self_unwrap.dart';
 import 'toolkit.dart';
+import 'toolkit_download.dart';
 
 const usage = '''usage: anyps5_tool <command>
   unwrap <self> <elf>                      a decrypted SELF container as a clean ELF
   scan <games folder>                      the dumps found, one per line
+  engine [<version>] [--folder <dir>]      download upstream's toolkit for this system (the latest
+                                           release unless a version is given) into the launcher's
+                                           toolkits folder, or <dir>; prints the toolkit's folder
   install <game folder> <games folder>     unwrap, relink and lay out (ANYPS5_TOOLKIT names the toolkit)
   play <game folder> <games folder>        start an installed game with its saved settings
   remote [--allow-all] [--hidden] [--port <port>] [--devices <file>] [--games <folder>]
@@ -63,6 +67,8 @@ Future<int> runCli(
         );
       }
       return 0;
+    case 'engine':
+      return _engine(arguments.skip(1).toList(), output, errors, env, host);
     case 'install' when arguments.length == 3:
       final toolkit = Toolkit.locate(const [], system: host, environment: env);
       if (toolkit == null) return fail('no toolkit: set ANYPS5_TOOLKIT');
@@ -121,6 +127,74 @@ Future<int> runCli(
       return _remote(arguments.skip(1).toList(), output, errors, env, host, until);
     default:
       return fail(usage);
+  }
+}
+
+/// The engine download the first start and Settings make, on the command line.
+Future<int> _engine(
+  List<String> options,
+  StringSink output,
+  StringSink errors,
+  Map<String, String> env,
+  HostSystem host,
+) async {
+  final at = options.indexOf('--folder');
+  final folder = at >= 0 && at + 1 < options.length
+      ? options[at + 1]
+      : AppPaths.forSystem(host, environment: env).toolkits;
+  final rest = [
+    for (var i = 0; i < options.length; i++)
+      if (i != at && i != at + 1) options[i],
+  ];
+  if (rest.length > 1) {
+    errors.writeln(usage);
+    return 2;
+  }
+  try {
+    final github = GitHubReleases();
+    final wanted = rest.isEmpty ? null : (rest.first.startsWith('v') ? rest.first.substring(1) : rest.first);
+    final release = wanted == null
+        ? await github.latest()
+        : (await github.all()).where((release) => release.version == wanted).firstOrNull;
+    if (release == null) {
+      errors.writeln('no upstream release $wanted');
+      return 2;
+    }
+    final package = release.packageFor(host);
+    if (package == null) {
+      errors.writeln('upstream ${release.tag} has nothing for ${host.name}');
+      return 2;
+    }
+    output.writeln(
+      'upstream ${release.tag}: ${package.relinker.name} + ${package.libraries.name}, '
+      '${(package.size / 1048576).toStringAsFixed(1)} MB, ${package.verified ? 'sha256 from GitHub' : 'no checksum'}',
+    );
+    var shown = -1;
+    final started = DateTime.now();
+    final toolkit = await ToolkitStore(folder, system: host).install(
+      package,
+      onProgress: (progress) {
+        final percent = (progress.fraction * 100).floor();
+        if (progress.phase == ToolkitPhase.download && percent ~/ 10 != shown ~/ 10) {
+          shown = percent;
+          output.writeln('[download ${percent.toString().padLeft(3)}%]');
+        } else if (progress.phase != ToolkitPhase.download) {
+          output.writeln('[${progress.phase.name}]');
+        }
+      },
+    );
+    final seconds = DateTime.now().difference(started).inMilliseconds / 1000;
+    output.writeln(
+      'toolkit ${toolkit.version}: ${toolkit.libraryFiles.length} libraries in ${seconds.toStringAsFixed(1)} s',
+    );
+    output.writeln(toolkit.root);
+    return 0;
+  } on ToolkitFailure catch (error) {
+    errors.writeln('FAIL: ${error.message}');
+    return 2;
+  } on IOException catch (error) {
+    errors.writeln('FAIL: $error');
+    return 2;
   }
 }
 

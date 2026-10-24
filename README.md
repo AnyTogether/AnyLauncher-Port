@@ -51,6 +51,7 @@ flutter test --update-goldens        # re-render the golden images in test/ui/go
 flutter build linux                  # on a Linux host (or the Docker check below)
 flutter build windows                # on a Windows host
 dart run tool/anyps5_tool.dart unwrap eboot.bin eboot.elf
+dart run tool/anyps5_tool.dart engine --folder ~/toolkits   # upstream's latest toolkit for this system
 ANYPS5_TOOLKIT=~/toolkit dart run tool/anyps5_tool.dart install ~/Games/PPSA01234 ~/Games
 dart run tool/anyps5_tool.dart remote --allow-all   # a phone server until Ctrl-C
 ```

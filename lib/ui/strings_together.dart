@@ -184,6 +184,18 @@ const togetherEnglish = <String, String>{
   'friendsOnlineCount': '%d online',
   'friendsRemove': 'Remove from friends',
   'friendsRemoved': '%@ is no longer a friend',
+  'friendsMessage': 'Send a message',
+  'partyKick': 'Remove %@ from the party',
+  'voiceTalkKey': 'Talk key',
+  'voiceTalkKeyDetail': 'Choose it, then press the key you want',
+  'voiceTalkKeyHere': 'Works while AnyPS5 is in front: this desktop does not let apps read keys from other windows',
+  'voiceTalkKeySet': 'Talk key: %@',
+  'voiceMuted': 'muted',
+  'voiceMicOff': 'Microphone off',
+  'voiceMicOn': 'Microphone on',
+  'messagesTyping': '%@ is typing…',
+  'messagesRetry': 'Not sent · Enter tries again',
+  'messagesLinkBlocked': 'That link can\'t be sent',
 };
 
 const togetherTurkish = <String, String>{
@@ -367,4 +379,17 @@ const togetherTurkish = <String, String>{
   'friendsOnlineCount': '%d çevrimiçi',
   'friendsRemove': 'Arkadaşlıktan çıkar',
   'friendsRemoved': '%@ artık arkadaşın değil',
+  'friendsMessage': 'Mesaj gönder',
+  'partyKick': '%@ partiden çıkarılsın',
+  'voiceTalkKey': 'Konuşma tuşu',
+  'voiceTalkKeyDetail': 'Seç, sonra istediğin tuşa bas',
+  'voiceTalkKeyHere':
+      'AnyPS5 öndeyken çalışır: bu masaüstü uygulamaların başka pencerelerden tuş okumasına izin vermiyor',
+  'voiceTalkKeySet': 'Konuşma tuşu: %@',
+  'voiceMuted': 'sessiz',
+  'voiceMicOff': 'Mikrofon kapalı',
+  'voiceMicOn': 'Mikrofon açık',
+  'messagesTyping': '%@ yazıyor…',
+  'messagesRetry': 'Gönderilmedi · Enter yeniden dener',
+  'messagesLinkBlocked': 'Bu bağlantı gönderilemez',
 };

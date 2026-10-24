@@ -11,13 +11,22 @@ import '../core/together/hub.dart';
 import '../core/together/people.dart';
 import '../core/together/server.dart';
 import '../core/together/socket.dart';
+import '../core/together/messages.dart';
+import '../core/together/parties.dart';
 import '../core/together/sync.dart';
+import '../core/together/talk_key.dart';
+import '../core/together/voice.dart';
+import '../core/controls.dart';
 import '../core/together/token_store.dart';
 import '../core/trophies.dart';
 import '../core/game_library.dart';
 import '../core/game_settings.dart';
 import 'app_model.dart';
 import 'strings.dart';
+import 'voice_webrtc.dart';
+
+part 'together_messages.dart';
+part 'together_party.dart';
 
 /// The launcher's version, as AnyTogether hears it.
 const launcherVersion = '0.1.0';
@@ -33,7 +42,7 @@ class TogetherModel {
       clientName: clientName(app.system),
       pollEvery: app.services.togetherPollEvery,
     );
-    hub = TogetherHub(account: account);
+    hub = TogetherHub(account: account, voiceEngine: app.services.voiceEngine ?? WebRtcVoice.new);
     hub.addListener(app.refresh);
     hub.friends.onRequest = (person) => app.show(T.format('friendsAsked', [person.displayName]));
     hub.friends.onAccepted = (person) => app.show(T.format('friendsNowFriends', [person.displayName]));
@@ -44,10 +53,16 @@ class TogetherModel {
       platform: app.system.name,
       model: machineModel(app.system),
     );
-    _ready = hub.socket.events.listen((event) {
-      // Back online: whatever waited goes up.
-      if (event.type == 'live.ready') flushSoon();
-    });
+    _ready = hub.socket.events.listen(_event);
+    hub.messages.onSendFailed = (error) => sendFailed(error);
+    hub.voice
+      ..pushToTalk = app.preferences.pushToTalk
+      ..addListener(_voiceChanged);
+    final reader = app.services.talkKeys != null ? app.services.talkKeys!() : KeyStateReader.system();
+    if (reader != null) {
+      talkWatch = TalkKeyWatch(reader: reader, onChange: hub.voice.talkKey, ignore: () => app.editingRow != null)
+        ..usage = talkKey;
+    }
     account.addListener(_accountChanged);
   }
 
@@ -62,6 +77,24 @@ class TogetherModel {
 
   /// The live side: the gateway socket and the lists it keeps current.
   late final TogetherHub hub;
+
+  /// The talk key read anywhere on the desktop; null where it is read only in the launcher.
+  TalkKeyWatch? talkWatch;
+
+  /// Waiting for the key to become the talk key.
+  bool capturingTalkKey = false;
+
+  int get talkKey => app.preferences.talkKey ?? TalkKeys.standard;
+
+  /// Party: whether a party started now is open to friends.
+  bool partyStartsOpen = false;
+
+  /// Messages: the conversation or friend chosen on the left, whether the keys are in the thread,
+  /// which quick reply (or the field, the last) is focused there, and what is typed.
+  int messagesIndex = 0;
+  bool messagesInThread = false;
+  int messageFocus = 0;
+  String draft = '';
 
   /// A handle typed in the friends panel, and the friend whose options are open.
   String friendHandle = '';
@@ -111,7 +144,10 @@ class TogetherModel {
     if (!signedIn) {
       friendHandle = '';
       chosen = null;
-      if (const {Layer.friends, Layer.friendOptions}.contains(app.overlay)) app.closeOverlay();
+      draft = '';
+      messagesIndex = 0;
+      messagesInThread = false;
+      if (const {Layer.friendOptions, Layer.messages}.contains(app.overlay)) app.closeOverlay();
     } else {
       // Every game's trophies go up once, the earned ones with their dates.
       for (final game in app.games) {
@@ -480,6 +516,17 @@ class TogetherModel {
         kind: const InfoRow(''),
       ),
       PanelRow(
+        id: 'friend-message',
+        title: T.text('friendsMessage'),
+        kind: ActionRow(() => unawaited(messageFriend(friend.person))),
+      ),
+      if (hub.parties.party case final Party party when !party.has(friend.person.id) && !party.full)
+        PanelRow(
+          id: 'friend-party',
+          title: T.format('partyInvite', [friend.person.displayName]),
+          kind: ActionRow(() => unawaited(inviteToParty(friend.person))),
+        ),
+      PanelRow(
         id: 'friend-remove',
         title: T.text('friendsRemove'),
         kind: ActionRow(() => unawaited(removeFriend(friend)), destructive: true),
@@ -636,7 +683,51 @@ class TogetherModel {
     return T.text('togetherUnreachable');
   }
 
+  /// Gateway events worth a word on screen, and the outbox's chance after a reconnect.
+  void _event(TogetherEvent event) {
+    final data = event.json;
+    switch (event.type) {
+      case 'live.ready':
+        // Back online: whatever waited goes up.
+        flushSoon();
+      case 'message.created':
+        _messageArrived(data);
+      case 'party.invite':
+        final from = data['from'];
+        app.show(
+          T.format('partyInvitedYou', [from is Map<String, dynamic> ? (from['displayName'] as String?) ?? '' : '']),
+        );
+      case 'party.member_joined' when data['partyId'] == hub.parties.party?.id:
+        final member = data['member'];
+        if (member is Map<String, dynamic> && member['userId'] != user?.id) {
+          app.show(T.format('partyJoined', [(member['displayName'] as String?) ?? '']));
+        }
+      case 'party.member_left':
+        if (data['userId'] == user?.id) {
+          if (data['reason'] == 'kicked') app.show(T.text('partyKicked'));
+        } else {
+          final name = hub.parties.party?.members.where((person) => person.id == data['userId']).firstOrNull;
+          if (name != null) app.show(T.format('partyLeft', [name.displayName]));
+        }
+      case 'party.ended' when data['partyId'] == hub.parties.party?.id:
+        app.show(T.text('partyEnded'));
+    }
+  }
+
+  void _voiceChanged() {
+    final watch = talkWatch;
+    if (watch == null) return;
+    if (hub.voice.active) {
+      watch.start();
+    } else {
+      watch.stop();
+    }
+  }
+
   void dispose() {
+    talkWatch?.stop();
+    talkWatch?.reader.close();
+    hub.voice.removeListener(_voiceChanged);
     _flush?.cancel();
     unawaited(_ready.cancel());
     account.removeListener(_accountChanged);

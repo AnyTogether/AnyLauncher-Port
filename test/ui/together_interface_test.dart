@@ -1,4 +1,6 @@
 import 'package:anyps5_desktop/core/together/account.dart';
+import 'package:anyps5_desktop/core/together/messages.dart';
+import 'package:anyps5_desktop/core/together/parties.dart';
 import 'package:anyps5_desktop/core/together/people.dart';
 import 'package:anyps5_desktop/ui/app_model.dart' hide Command, GameState;
 import 'package:anyps5_desktop/ui/app_model.dart' as launcher show Command;
@@ -89,6 +91,90 @@ void main() {
       model.handle(launcher.Command.right);
       await pumpLauncher(tester, model);
       await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_home_tr.png'));
+    });
+
+    testWidgets('golden: messages, a conversation open with a quick reply focused', (tester) async {
+      fixture = makeFixture();
+      model = fixture.model;
+      signedInPreview(model);
+      const ana = Person(id: 'u-ana', handle: 'ana', displayName: 'Ana');
+      const me = Person(id: 'u-me', handle: 'utku', displayName: 'Utku Halis');
+      ChatMessage message(int seq, String author, String text, {bool failed = false}) => ChatMessage(
+        id: 'm$seq',
+        conversationId: 'c-ana',
+        seq: seq,
+        authorId: author,
+        text: text,
+        createdAt: DateTime.utc(2026, 10, 24, 20, seq),
+        failed: failed,
+      );
+      final thread = [
+        message(1, 'u-ana', 'Hi! Are you playing Neon Alley tonight?'),
+        message(2, 'u-me', 'Yes, after dinner'),
+        message(3, 'u-ana', 'Great, I will start a party'),
+        message(4, 'u-me', 'look at this blocked link', failed: true),
+      ];
+      model.together.hub.messages
+        ..conversations = [
+          Conversation(
+            id: 'c-ana',
+            group: false,
+            title: null,
+            members: const [me, ana],
+            lastSeq: 4,
+            readSeq: 4,
+            lastMessage: thread[2],
+            updatedAt: DateTime.utc(2026, 10, 24),
+          ),
+          Conversation(
+            id: 'c-group',
+            group: true,
+            title: 'Friday night',
+            members: const [
+              me,
+              ana,
+              Person(id: 'u-cem', handle: 'cem', displayName: 'Cem Yılmaz'),
+            ],
+            lastSeq: 9,
+            readSeq: 6,
+            lastMessage: message(9, 'u-cem', 'Who brings snacks?'),
+            updatedAt: DateTime.utc(2026, 10, 23),
+          ),
+        ]
+        ..unread = 3
+        ..loaded = true
+        ..openId = 'c-ana'
+        ..thread = thread;
+      model.open(Layer.messages);
+      model.together
+        ..messagesInThread = true
+        ..messageFocus = 1;
+      await pumpLauncher(tester, model);
+      expect(find.text('Who brings snacks?'), findsNothing);
+      expect(find.text('Cem Yılmaz: Who brings snacks?'), findsOneWidget);
+      await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_messages.png'));
+    });
+
+    testWidgets('golden: a party, in Turkish, led by Utku with Ana muted in voice', (tester) async {
+      fixture = makeFixture(language: Language.turkish);
+      model = fixture.model;
+      signedInPreview(model);
+      model.together.hub.parties.party = const Party(
+        id: 'p1',
+        leaderId: 'u-me',
+        open: true,
+        members: [
+          Person(id: 'u-me', handle: 'utku', displayName: 'Utku Halis'),
+          Person(id: 'u-ana', handle: 'ana', displayName: 'Ana'),
+        ],
+        invited: [Person(id: 'u-bora', handle: 'bora', displayName: 'Bora')],
+        callId: 'call-1',
+        inCall: {'u-ana'},
+        muted: {'u-ana'},
+      );
+      model.open(Layer.party);
+      await pumpLauncher(tester, model);
+      await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_party_tr.png'));
     });
   });
 }

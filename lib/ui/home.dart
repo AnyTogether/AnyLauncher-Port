@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/game_library.dart';
@@ -6,6 +8,7 @@ import 'background.dart';
 import 'components.dart';
 import 'strings.dart';
 import 'theme.dart';
+import 'together_model.dart';
 
 /// The theme animation and the selected game's artwork over it.
 class Backdrop extends StatelessWidget {
@@ -184,6 +187,17 @@ class TopBar extends StatelessWidget {
         iconButton(Icons.settings_rounded, 1, () => model.open(Layer.settings)),
         SizedBox(width: 22 * scale),
         iconButton(Icons.people_alt_rounded, 2, () => model.open(Layer.friends), badge: together.hub.badge),
+        SizedBox(width: 22 * scale),
+        iconButton(Icons.chat_bubble_rounded, 3, () => unawaited(together.openMessages()), badge: together.unread),
+        SizedBox(width: 22 * scale),
+        iconButton(
+          together.hub.voice.active
+              ? (together.hub.voice.sending ? Icons.mic_rounded : Icons.mic_off_rounded)
+              : (together.hub.parties.party == null ? Icons.groups_outlined : Icons.groups_rounded),
+          4,
+          () => model.open(Layer.party),
+          badge: together.partyBadge,
+        ),
         SizedBox(width: 22 * scale),
         PhoneIndicator(model: model),
         SizedBox(width: 22 * scale),

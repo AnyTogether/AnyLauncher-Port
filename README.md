@@ -94,6 +94,18 @@ then the game's name, its trophy set (keyed by a hash of its trophies and grades
 being the package's service label × 1000 plus its number), the sessions (more than 5 s), the
 earned trophies.
 
+The top bar's friends, messages and party buttons open the friends panel (requests, adding by
+handle, what each friend plays), the messages (conversations and friends on the left, the thread
+on the right with quick replies a controller can send and a field to type in, typing shown both
+ways) and the party (start one, invite, walk into a friend's open party, its voice). Voice is the
+website's protocol: the call from `/calls` with its relays, offers and candidates through the
+gateway, a mesh of peer connections with Opus tuned for voice, through `flutter_webrtc` (its
+Windows and Linux builds fetch Google's prebuilt libwebrtc at build time). The talk key (V by
+default, chosen in the party panel) turns the microphone on and off, or with push-to-talk is
+held to talk; it is read from the whole desktop, a game in front included: `GetAsyncKeyState` on
+Windows, `XQueryKeymap` on X11 (on Wayland only while an X11 window such as the game is in
+front, else only while the launcher has the keyboard).
+
 The session (an access token and a refresh token) is kept per system:
 
 - **Windows**: `%APPDATA%\AnyPS5\Together\session.bin`, sealed with DPAPI

@@ -4,7 +4,9 @@ import 'dart:typed_data';
 
 import 'package:anyps5_desktop/core/host.dart';
 import 'package:anyps5_desktop/core/installer.dart';
+import 'package:anyps5_desktop/core/together/talk_key.dart';
 import 'package:anyps5_desktop/core/together/token_store.dart';
+import 'package:anyps5_desktop/core/together/voice_mesh.dart';
 import 'package:anyps5_desktop/main.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/background.dart';
@@ -15,6 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
 import 'fake_toolkit.dart';
+import 'fake_voice.dart';
 import 'fixtures.dart';
 import 'trophy_fixture.dart';
 
@@ -109,6 +112,8 @@ Fixture makeFixture({
   bool withToolkit = true,
   Uri? together,
   TokenStore? togetherStore,
+  VoiceEngine Function()? voice,
+  KeyStateReader? keys,
 }) {
   final opened = <Uri>[];
   final temp = temporaryFolder('ui');
@@ -154,6 +159,8 @@ Fixture makeFixture({
       togetherStore: togetherStore ?? MemoryTokenStore(),
       togetherServer: together,
       togetherPollEvery: const Duration(milliseconds: 10),
+      voiceEngine: voice ?? FakeVoiceEngine.new,
+      talkKeys: () => keys,
     ),
   );
   model.rescan();

@@ -6,6 +6,7 @@ import 'package:anyps5_desktop/core/together/token_store.dart';
 import 'package:anyps5_desktop/ui/app_model.dart' hide Command, GameState;
 import 'package:anyps5_desktop/ui/app_model.dart' as launcher show Command;
 import 'package:anyps5_desktop/ui/strings.dart';
+import 'package:anyps5_desktop/ui/together_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
@@ -254,11 +255,11 @@ void main() {
       final ana = model.panelCategories().single.rows.firstWhere((row) => row.id == 'friend-u-ana');
       (ana.kind as ActionRow).run();
       expect(model.overlay, Layer.friendOptions);
-      expect(rowIds(), ['friend-card', 'friend-remove', 'friend-back']);
+      expect(rowIds(), ['friend-card', 'friend-message', 'friend-remove', 'friend-back']);
       model.handle(launcher.Command.back);
       expect(model.overlay, Layer.friends);
       (ana.kind as ActionRow).run();
-      final remove = model.panelCategories().single.rows[1];
+      final remove = model.panelCategories().single.rows.firstWhere((row) => row.id == 'friend-remove');
       (remove.kind as ActionRow).run();
       await until(() => model.together.hub.friends.byId('u-ana') == null);
       expect(model.overlay, Layer.friends);
@@ -340,6 +341,170 @@ void main() {
       expect(server.playSessions.values.single['titleId'], 'PPSA01001');
       expect(server.playSessions.values.single['exit'], 'killed');
       expect(model.together.sync.isEmpty, isTrue);
+    });
+  });
+
+  group('messages and the party', () {
+    setUp(() async {
+      server = await FakeTogether.start();
+      server
+        ..friend('u-ana', 'ana', 'Ana', presence: {'state': 'online'})
+        ..friend('u-bora', 'bora', 'Bora');
+      server.conversation(
+        'c-ana',
+        [FakeTogether.card('u-ana', 'ana', 'Ana')],
+        texts: [('u-ana', 'Hi!'), ('u-ana', 'Playing tonight?')],
+      );
+      fixture = makeFixture(together: server.base);
+      model = fixture.model;
+      model.together.email = 'utku@example.com';
+      await model.together.sendCode();
+      model.together.code = '123456';
+      await model.together.verify();
+      await until(() => model.together.hub.friends.loaded && model.together.hub.messages.loaded);
+    });
+
+    tearDown(() async {
+      model.dispose();
+      await server.close();
+      T.language = Language.english;
+      fixture.dispose();
+    });
+
+    test('the conversations, then friends to start one with; opening reads it; quick replies and typing', () async {
+      final together = model.together;
+      await until(() => together.unread == 2);
+      await together.openMessages();
+      expect(model.overlay, Layer.messages);
+      final targets = together.messageTargets;
+      expect(targets.first, isA<ConversationTarget>());
+      expect((targets.last as FriendTarget).friend.person.handle, 'bora');
+      await until(() => together.hub.messages.thread.length == 2);
+      await until(() => server.callsTo('conversations/c-ana/read').isNotEmpty);
+      expect(together.unread, 0);
+
+      // Into the thread: the field first, a quick reply to its left.
+      model.handle(launcher.Command.right);
+      expect(together.messagesInThread, isTrue);
+      model.handle(launcher.Command.left);
+      model.handle(launcher.Command.select);
+      await until(() => server.threads['c-ana']!.length == 3);
+      expect(server.threads['c-ana']!.last['text'], 'One sec');
+
+      // Typing: the others are told, Enter sends.
+      model.handle(launcher.Command.right);
+      model.handle(launcher.Command.select);
+      expect(model.editingRow, 'message-draft');
+      final field = together.draftField.kind as TextRow;
+      field.set('See you at nine');
+      final typing = await server.nextFrame('typing');
+      expect(typing['conversation'], 'c-ana');
+      field.submit!();
+      await until(() => server.threads['c-ana']!.length == 4);
+      expect(together.draft, isEmpty);
+
+      // Someone typing, then their message.
+      server.push('typing', {'conversationId': 'c-ana', 'userId': 'u-ana'});
+      await until(() => together.hub.messages.typingIn('c-ana').isNotEmpty);
+      server.receive('c-ana', 'u-ana', 'Great');
+      await until(() => together.hub.messages.thread.length == 5);
+      expect(together.hub.messages.typingIn('c-ana'), isEmpty);
+
+      model.handle(launcher.Command.back);
+      model.handle(launcher.Command.back);
+      expect(model.overlay, isNull);
+      server.receive('c-ana', 'u-ana', 'Are you there?');
+      await until(() => model.toast == 'Ana: Are you there?');
+    });
+
+    test('a link the server blocks is said so; a friend without a conversation gets one', () async {
+      final together = model.together;
+      await together.openMessages();
+      await until(() => together.hub.messages.openId == 'c-ana');
+      await together.sendMessage('look https://blocked.example/x');
+      expect(model.toast, "That link can't be sent");
+      expect(together.hub.messages.thread.last.failed, isTrue);
+
+      model.handle(launcher.Command.down);
+      model.handle(launcher.Command.select);
+      await until(() => server.callsTo('conversations', method: 'POST').isNotEmpty);
+      expect(server.callsTo('conversations', method: 'POST').single.body, {
+        'members': ['u-bora'],
+      });
+      await until(() => together.hub.messages.openId != 'c-ana' && together.hub.messages.openId != null);
+      expect(together.messagesInThread, isTrue);
+    });
+
+    test('a party: start it, invite from a friend\'s options, join its voice, choose the talk key', () async {
+      final together = model.together;
+      model.open(Layer.party);
+      expect(rowIds(), ['party-start', 'party-open']);
+      await together.startParty();
+      expect(rowIds(), [
+        'voice-join',
+        'party-members',
+        'party-member-u-me',
+        'party-privacy',
+        'party-invite-title',
+        'party-invite-u-ana',
+        'party-invite-u-bora',
+        'party-leave',
+      ]);
+
+      model.open(Layer.friends);
+      (model.panelCategories().single.rows.firstWhere((row) => row.id == 'friend-u-ana').kind as ActionRow).run();
+      expect(rowIds(), contains('friend-party'));
+      (model.panelCategories().single.rows.firstWhere((row) => row.id == 'friend-party').kind as ActionRow).run();
+      await until(() => server.callsTo('parties/${together.hub.parties.party!.id}/invites').isNotEmpty);
+      expect(model.toast, 'Ana is invited');
+
+      model.open(Layer.party);
+      await together.joinVoice();
+      expect(model.toast, "You're in voice");
+      expect(rowIds().take(4), ['voice-mic', 'voice-ptt', 'voice-key', 'voice-leave']);
+      final mic = model.panelCategories().single.rows.first;
+      expect(mic.detail, 'V turns the microphone on and off, in a game too');
+
+      together.captureTalkKey();
+      expect(together.capturingTalkKey, isTrue);
+      expect(together.chooseTalkKey(0x4F), isFalse, reason: 'an arrow is not a talk key');
+      together.captureTalkKey();
+      expect(together.chooseTalkKey(0x0A), isTrue);
+      expect(model.preferences.talkKey, 0x0A);
+      expect(model.toast, 'Talk key: G');
+
+      together.setPushToTalk(true);
+      expect(model.preferences.pushToTalk, isTrue);
+      expect(rowIds().take(3), ['voice-ptt', 'voice-key', 'voice-leave']);
+      expect(model.panelCategories().single.rows.first.detail, 'Hold G to talk, in a game too');
+      // Without a desktop key reader, the launcher's own keys hold it.
+      expect(together.talkKeyInWindow(0x0A, down: true), isTrue);
+      expect(together.hub.voice.sending, isTrue);
+      expect(together.talkKeyInWindow(0x0A, down: false), isTrue);
+      expect(together.hub.voice.sending, isFalse);
+
+      await together.leaveParty();
+      expect(together.hub.voice.active, isFalse);
+      expect(together.hub.parties.party, isNull);
+    });
+
+    test('an invite shows, can be accepted; a full party says so', () async {
+      final together = model.together;
+      final invite = {'partyId': 'p-ana', 'from': FakeTogether.card('u-ana', 'ana', 'Ana'), 'size': 2};
+      server.partyInvites.add(invite);
+      server.push('party.invite', invite);
+      await until(() => together.partyBadge == 1);
+      expect(model.toast, 'Ana invites you to a party');
+      model.open(Layer.party);
+      expect(rowIds().take(2), ['party-accept-p-ana', 'party-decline-p-ana']);
+      expect(model.panelCategories().single.rows.first.detail, '2 of 8 in it');
+      (model.panelCategories().single.rows.first.kind as ActionRow).run();
+      await until(() => together.hub.parties.party?.id == 'p-ana');
+      expect(rowIds(), contains('party-member-u-ana'));
+
+      server.partyInvites.add({...invite, 'partyId': 'p-full', 'full': true});
+      await together.joinParty('p-full');
+      expect(model.toast, 'The party is full');
     });
   });
 }

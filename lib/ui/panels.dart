@@ -144,6 +144,7 @@ class PanelView extends StatelessWidget {
     final heading = switch (model.overlay) {
       Layer.settings => T.text('settings'),
       Layer.friends => T.text('friendsTitle'),
+      Layer.party => T.text('partyTitle'),
       Layer.controls => T.text('controls'),
       Layer.gameSettings => T.text('gameSettings'),
       _ => category.title,
@@ -165,7 +166,7 @@ class PanelView extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(heading, style: AppText.display(34 * scale, weight: FontWeight.w300)),
-                    if (model.overlay != Layer.settings && model.overlay != Layer.friends && !compact) ...[
+                    if (!const {Layer.settings, Layer.friends, Layer.party}.contains(model.overlay) && !compact) ...[
                       SizedBox(width: 14 * scale),
                       Flexible(
                         child: Padding(
@@ -384,7 +385,7 @@ class _RowView extends StatelessWidget {
       }
     }
 
-    final info = kind is InfoRow ? kind.text : null;
+    final info = kind is InfoRow && kind.text.isNotEmpty ? kind.text : null;
     return GestureDetector(
       onTap: row.focusable ? onTap : null,
       child: AnimatedContainer(

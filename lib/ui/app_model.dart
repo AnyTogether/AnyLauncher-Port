@@ -18,7 +18,9 @@ import '../core/remote/remote_protocol.dart';
 import '../core/remote/remote_server.dart';
 import '../core/save_backup.dart';
 import '../core/toolkit.dart';
+import '../core/together/talk_key.dart';
 import '../core/together/token_store.dart';
+import '../core/together/voice_mesh.dart';
 import '../core/trophies.dart';
 import 'strings.dart';
 import 'theme.dart';
@@ -212,9 +214,12 @@ enum Layer {
   log,
   trophies,
 
-  /// AnyTogether: friends and requests, and what can be done with one friend.
+  /// AnyTogether: friends and requests, what can be done with one friend, the messages, the
+  /// party and its voice.
   friends,
   friendOptions,
+  messages,
+  party,
 }
 
 /// A settings row the panels draw and the keyboard moves through.
@@ -337,7 +342,15 @@ class LauncherServices {
     this.togetherStore,
     this.togetherServer,
     this.togetherPollEvery,
+    this.voiceEngine,
+    this.talkKeys,
   });
+
+  /// Party voice's microphone and connections; flutter_webrtc by default.
+  final VoiceEngine Function()? voiceEngine;
+
+  /// Reads the talk key anywhere on the desktop; the system's reader by default, none in tests.
+  final KeyStateReader? Function()? talkKeys;
 
   /// Opens a web page in the browser.
   final void Function(Uri url)? openUrl;
@@ -985,6 +998,9 @@ class AppModel extends ChangeNotifier {
         }
         _panelCommand(command);
         return;
+      case Layer.messages:
+        together.messagesCommand(command);
+        return;
       case Layer.friendOptions when command == Command.back || command == Command.options:
         open(Layer.friends);
         return;
@@ -993,7 +1009,8 @@ class AppModel extends ChangeNotifier {
           Layer.confirmUninstall ||
           Layer.updateChoice ||
           Layer.friends ||
-          Layer.friendOptions:
+          Layer.friendOptions ||
+          Layer.party:
         _panelCommand(command);
         return;
       case null:
@@ -1022,7 +1039,8 @@ class AppModel extends ChangeNotifier {
       case ('top', Command.down) || ('top', Command.back):
         _moveFocus(HomeFocus.tiles);
       case ('top', Command.select):
-        open(topLayers[focus.index.clamp(0, topButtons - 1)]);
+        final layer = topLayers[focus.index.clamp(0, topButtons - 1)];
+        layer == Layer.messages ? unawaited(together.openMessages()) : open(layer);
       case ('actions', Command.left):
         _moveFocus(HomeFocus.actions((focus.index - 1).clamp(0, actionCount - 1)));
       case ('actions', Command.right):
@@ -1047,7 +1065,7 @@ class AppModel extends ChangeNotifier {
   static const libraryColumns = 6;
 
   /// The top bar's buttons, left to right.
-  static const topLayers = [Layer.library, Layer.settings, Layer.friends];
+  static const topLayers = [Layer.library, Layer.settings, Layer.friends, Layer.messages, Layer.party];
   static int get topButtons => topLayers.length;
 
   void _moveLibrary(int delta) {
@@ -1095,6 +1113,8 @@ class AppModel extends ChangeNotifier {
         ];
       case Layer.friends:
         return [PanelCategory(id: 'friends', title: T.text('friendsTitle'), rows: together.friendRows())];
+      case Layer.party:
+        return [PanelCategory(id: 'party', title: T.text('partyTitle'), rows: together.partyRows())];
       case Layer.friendOptions:
         return [
           PanelCategory(

@@ -92,6 +92,72 @@ class FakeTogether {
   final Map<String, Map<String, dynamic>> playSessions = {};
   final Map<String, Map<String, dynamic>> earned = {};
 
+  /// Conversations by id with their messages, the party the user is in and the invites, the
+  /// party's call (who is in it, by user, with their device).
+  final Map<String, Map<String, dynamic>> conversations = {};
+  final Map<String, List<Map<String, dynamic>>> threads = {};
+  Map<String, dynamic>? party;
+  final List<Map<String, dynamic>> partyInvites = [];
+  final Map<String, String> callPeers = {};
+  int _ids = 0;
+
+  /// A conversation with [others] (cards), and its messages as [texts] by author id.
+  Map<String, dynamic> conversation(
+    String id,
+    List<Map<String, dynamic>> others, {
+    List<(String, String)> texts = const [],
+    int readSeq = 0,
+  }) {
+    final members = [card(me['id'] as String, me['handle'] as String, me['displayName'] as String), ...others];
+    final messages = threads[id] = [
+      for (var index = 0; index < texts.length; index++) _message(id, index + 1, texts[index].$1, texts[index].$2),
+    ];
+    return conversations[id] = {
+      'id': id,
+      'kind': others.length > 1 ? 'group' : 'direct',
+      'title': null,
+      'members': members,
+      'lastSeq': messages.length,
+      'readSeq': readSeq,
+      'lastMessage': messages.isEmpty ? null : messages.last,
+      'updatedAt': '2026-10-24T20:00:00Z',
+    };
+  }
+
+  Map<String, dynamic> _message(String conversation, int seq, String author, String text, {String? id}) => {
+    'id': id ?? 'm-$conversation-$seq',
+    'conversationId': conversation,
+    'seq': seq,
+    'authorId': author,
+    'text': text,
+    'createdAt': '2026-10-24T20:${seq.toString().padLeft(2, '0')}:00Z',
+  };
+
+  /// A message from someone else, as the gateway brings it.
+  void receive(String conversation, String author, String text) {
+    final thread = threads[conversation]!;
+    final message = _message(conversation, thread.length + 1, author, text);
+    thread.add(message);
+    conversations[conversation]!['lastSeq'] = thread.length;
+    conversations[conversation]!['lastMessage'] = message;
+    push('message.created', message);
+  }
+
+  Map<String, dynamic> _party(List<Map<String, dynamic>> members, {String? leader}) => party = {
+    'id': 'party-${++_ids}',
+    'leaderId': leader ?? me['id'],
+    'privacy': 'invite',
+    'members': members,
+    'invited': <Map<String, dynamic>>[],
+    'call': null,
+  };
+
+  /// The user is in a party with [others].
+  Map<String, dynamic> inParty(List<Map<String, dynamic>> others, {String? leader}) => _party([
+    card(me['id'] as String, me['handle'] as String, me['displayName'] as String),
+    ...others,
+  ], leader: leader);
+
   /// Handlers a test adds for its own paths: return null to fall through.
   final List<FutureOr<(int, Object?)?> Function(FakeCall call)> handlers = [];
 
@@ -319,6 +385,120 @@ class FakeTogether {
           },
         );
     }
+    switch ((call.method, call.path)) {
+      case ('GET', 'me/conversations'):
+        return (200, {'conversations': conversations.values.toList()});
+      case ('GET', 'me/conversations/unread'):
+        var unread = 0;
+        for (final conversation in conversations.values) {
+          unread += (conversation['lastSeq'] as int) - (conversation['readSeq'] as int);
+        }
+        return (200, {'messages': unread});
+      case ('POST', 'conversations'):
+        final other = (call.body['members'] as List<dynamic>).single as String;
+        final existing = conversations.values.where(
+          (conversation) =>
+              conversation['kind'] == 'direct' &&
+              (conversation['members'] as List<dynamic>).any((member) => (member as Map)['userId'] == other),
+        );
+        if (existing.isNotEmpty) return (200, existing.first);
+        final person = people.values.firstWhere((person) => person['userId'] == other);
+        return (201, conversation('c-${++_ids}', [person]));
+      case ('GET', 'me/party'):
+        return (200, {'party': party, 'invites': partyInvites});
+      case ('POST', 'parties'):
+        final created = inParty(const []);
+        created['privacy'] = call.body['privacy'] ?? 'invite';
+        return (201, created);
+      case ('POST', 'calls'):
+        final current = party;
+        if (current == null || current['id'] != call.body['partyId']) return problem(404, 'not_found');
+        final id = (current['call'] as Map<String, dynamic>?)?['id'] as String? ?? 'call-${++_ids}';
+        current['call'] = {
+          'id': id,
+          'in': [...callPeers.keys, me['id']],
+          'muted': <String>[],
+        };
+        return (
+          201,
+          {
+            'call': {
+              'id': id,
+              'kind': 'party',
+              'partyId': current['id'],
+              'in': [
+                for (final peer in callPeers.entries) {'userId': peer.key, 'device': peer.value, 'muted': false},
+              ],
+            },
+            'iceServers': [
+              {
+                'urls': ['stun:stun.example.org:3478'],
+              },
+            ],
+            'expiresAt': DateTime.now().add(const Duration(hours: 12)).toUtc().toIso8601String(),
+          },
+        );
+      case ('GET', 'ice-servers'):
+        return (200, {'iceServers': <Object>[], 'expiresAt': null});
+    }
+    final thread = RegExp(r'^conversations/([^/]+)/messages(\?.*)?$').firstMatch(call.path);
+    if (thread != null) {
+      final id = thread.group(1)!;
+      final messages = threads[id];
+      if (messages == null) return problem(404, 'not_found');
+      if (call.method == 'GET') return (200, {'messages': messages, 'more': false});
+      final text = call.body['text'] as String;
+      if (text.contains('blocked.example')) return problem(400, 'link_blocked', 'That link is blocked');
+      final message = _message(id, messages.length + 1, me['id'] as String, text, id: call.body['clientId'] as String?);
+      messages.add(message);
+      conversations[id]!
+        ..['lastSeq'] = messages.length
+        ..['readSeq'] = messages.length
+        ..['lastMessage'] = message;
+      return (201, message);
+    }
+    final read = RegExp(r'^conversations/([^/]+)/read$').firstMatch(call.path);
+    if (call.method == 'POST' && read != null) {
+      conversations[read.group(1)]?['readSeq'] = call.body['upToSeq'];
+      return (204, null);
+    }
+    final partyCall = RegExp(r'^parties/([^/]+)(/[a-z]+)?$').firstMatch(call.path);
+    if (partyCall != null) {
+      final id = partyCall.group(1)!;
+      switch ((call.method, partyCall.group(2))) {
+        case ('POST', '/invites'):
+          final invited = party!['invited'] as List<Map<String, dynamic>>;
+          for (final userId in call.body['userIds'] as List<dynamic>) {
+            invited.add(people.values.firstWhere((person) => person['userId'] == userId));
+          }
+          return (200, party);
+        case ('POST', '/join'):
+          final invite = partyInvites.where((invite) => invite['partyId'] == id).firstOrNull;
+          if (invite == null) return problem(404, 'not_found');
+          if (invite['full'] == true) return problem(409, 'full', 'The party is full');
+          partyInvites.remove(invite);
+          final from = invite['from'] as Map<String, dynamic>;
+          final joined = inParty([from], leader: from['userId'] as String);
+          joined['id'] = id;
+          return (200, joined);
+        case ('POST', '/decline'):
+          partyInvites.removeWhere((invite) => invite['partyId'] == id);
+          return (204, null);
+        case ('POST', '/leave'):
+          party = null;
+          return (204, null);
+        case ('POST', '/kick'):
+          (party!['members'] as List<Map<String, dynamic>>).removeWhere(
+            (member) => member['userId'] == call.body['userId'],
+          );
+          return (204, null);
+        case ('PATCH', null):
+          party!['privacy'] = call.body['privacy'];
+          return (200, party);
+      }
+    }
+    final callAction = RegExp(r'^calls/([^/]+)/(leave|mute)$').firstMatch(call.path);
+    if (call.method == 'POST' && callAction != null) return (204, null);
     final teach = RegExp(r'^games/([A-Z]{4}[0-9]{5})$').firstMatch(call.path);
     if (call.method == 'PUT' && teach != null) {
       games[teach.group(1)!] = call.body;

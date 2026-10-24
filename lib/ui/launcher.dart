@@ -6,10 +6,12 @@ import 'package:flutter/services.dart';
 import 'app_model.dart';
 import 'components.dart';
 import 'home.dart';
+import 'messages_view.dart';
 import 'onboarding.dart';
 import 'panels.dart';
 import 'strings.dart';
 import 'theme.dart';
+import 'together_model.dart';
 
 /// The launcher's whole screen: the backdrop, the home screen or the first-start steps, and the
 /// layers over them. Keys move through it as a pad would.
@@ -70,7 +72,22 @@ class _LauncherShellState extends State<LauncherShell> {
       }
       return KeyEventResult.ignored;
     }
+    final together = model.together;
+    // The talk key, where the desktop cannot be read: only while the launcher has the keyboard.
+    if (event is! KeyRepeatEvent &&
+        together.talkKeyInWindow(event.physicalKey.usbHidUsage, down: event is KeyDownEvent)) {
+      return KeyEventResult.handled;
+    }
     if (event is KeyUpEvent) return KeyEventResult.ignored;
+    if (together.capturingTalkKey && event is KeyDownEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.escape) {
+        together.capturingTalkKey = false;
+        model.refresh();
+      } else {
+        together.chooseTalkKey(event.physicalKey.usbHidUsage);
+      }
+      return KeyEventResult.handled;
+    }
     if (model.capturing != null && event is KeyDownEvent) {
       if (event.logicalKey == LogicalKeyboardKey.escape) {
         model.handle(Command.back);
@@ -145,6 +162,7 @@ class _LauncherShellState extends State<LauncherShell> {
                           Layer.library => LibraryGrid(model: model),
                           Layer.log => LogView(model: model),
                           Layer.trophies => TrophyView(model: model),
+                          Layer.messages => MessagesView(model: model),
                           null => const SizedBox.shrink(),
                           _ => PanelView(model: model),
                         },

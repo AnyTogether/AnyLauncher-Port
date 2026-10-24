@@ -220,6 +220,7 @@ enum Layer {
   friendOptions,
   messages,
   party,
+  profile,
 }
 
 /// A settings row the panels draw and the keyboard moves through.
@@ -794,6 +795,8 @@ class AppModel extends ChangeNotifier {
         shaderCacheFolder: paths.shaderCache(game.slug),
       ),
       ...?remote?.bridgeEnvironment,
+      // The engine's online bridge reads the AnyTogether game session there.
+      if (together.signedIn) 'ANYPS5_TOGETHER_SESSION': together.hub.games.bridgeFile,
     };
     starting = game;
     preferences.lastPlayed[game.id] = DateTime.now().toIso8601String();
@@ -1000,6 +1003,9 @@ class AppModel extends ChangeNotifier {
         return;
       case Layer.messages:
         together.messagesCommand(command);
+        return;
+      case Layer.profile:
+        together.profileCommand(command);
         return;
       case Layer.friendOptions when command == Command.back || command == Command.options:
         open(Layer.friends);

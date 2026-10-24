@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:anyps5_desktop/core/installer.dart';
 import 'package:anyps5_desktop/core/together/account.dart';
+import 'package:anyps5_desktop/core/together/people.dart';
+import 'package:anyps5_desktop/core/together/profiles.dart';
 import 'package:anyps5_desktop/core/together/token_store.dart';
 import 'package:anyps5_desktop/ui/app_model.dart' hide Command, GameState;
 import 'package:anyps5_desktop/ui/app_model.dart' as launcher show Command;
@@ -73,6 +76,8 @@ void main() {
       expect(rowIds(), [
         'together-user',
         'together-online',
+        'together-profile',
+        'together-join',
         'together-signout',
         'together-server',
         'together-server-use',
@@ -225,6 +230,7 @@ void main() {
     test('the friends panel: requests, adding by handle, friends by what they do', () async {
       model.open(Layer.friends);
       expect(rowIds(), [
+        'friends-me',
         'accept-u-cem',
         'decline-u-cem',
         'friends-handle',
@@ -232,7 +238,7 @@ void main() {
         'friend-u-bora',
         'friend-u-ana',
       ]);
-      final rows = model.panelCategories().single.rows;
+      final rows = model.panelCategories().single.rows.skip(1).toList();
       expect(rows[4].detail, '@bora · Playing Neon Alley');
       expect(rows[4].person?.status, PersonStatus.playing);
       expect(model.together.hub.badge, 1);
@@ -255,7 +261,7 @@ void main() {
       final ana = model.panelCategories().single.rows.firstWhere((row) => row.id == 'friend-u-ana');
       (ana.kind as ActionRow).run();
       expect(model.overlay, Layer.friendOptions);
-      expect(rowIds(), ['friend-card', 'friend-message', 'friend-remove', 'friend-back']);
+      expect(rowIds(), ['friend-card', 'friend-profile', 'friend-message', 'friend-remove', 'friend-back']);
       model.handle(launcher.Command.back);
       expect(model.overlay, Layer.friends);
       (ana.kind as ActionRow).run();
@@ -505,6 +511,208 @@ void main() {
       server.partyInvites.add({...invite, 'partyId': 'p-full', 'full': true});
       await together.joinParty('p-full');
       expect(model.toast, 'The party is full');
+    });
+  });
+
+  group('profiles and playing together', () {
+    late Map<String, dynamic> ana;
+
+    setUp(() async {
+      server = await FakeTogether.start();
+      server.friend('u-ana', 'ana', 'Ana', presence: {'state': 'online'});
+      ana = FakeTogether.card('u-ana', 'ana', 'Ana');
+      server.profiles['utku'] = {
+        'userId': 'u-me',
+        'handle': 'utku',
+        'displayName': 'Utku',
+        'bio': 'Plays at night',
+        'country': 'TR',
+        'friendship': 'me',
+      };
+      server.libraries['utku'] = [
+        {
+          'titleId': 'PPSA01001',
+          'names': {'en': 'Orbit Runner'},
+          'lastPlayedAt': '2026-10-24T21:00:00Z',
+          'secondsPlayed': 12000,
+          'trophiesEarned': 2,
+          'trophiesTotal': 5,
+          'progress': 40,
+          'points': 45,
+        },
+        {
+          'titleId': 'PPSA09999',
+          'names': {'en': 'Elsewhere', 'tr': 'Başka Yerde'},
+          'secondsPlayed': 600,
+          'trophiesEarned': null,
+          'trophiesTotal': null,
+          'progress': null,
+          'points': null,
+        },
+      ];
+      server.trophyLists['utku'] = [
+        {
+          'titleId': 'PPSA01001',
+          'gameNames': {'en': 'Orbit Runner'},
+          'trophyId': 2,
+          'grade': 'gold',
+          'hidden': false,
+          'texts': {
+            'en': {'name': 'Far Side'},
+          },
+          'earnedAt': '2026-10-24T21:00:00Z',
+          'rarity': 0.04,
+          'rarityLabel': 'very_rare',
+        },
+      ];
+      server.profiles['ana'] = {'userId': 'u-ana', 'handle': 'ana', 'displayName': 'Ana', 'friendship': 'friends'};
+      fixture = makeFixture(together: server.base);
+      model = fixture.model;
+      model.together.email = 'utku@example.com';
+      await model.together.sendCode();
+      model.together.code = '123456';
+      await model.together.verify();
+      await until(() => model.together.hub.friends.loaded);
+    });
+
+    tearDown(() async {
+      model.dispose();
+      await server.close();
+      T.language = Language.english;
+      fixture.dispose();
+    });
+
+    test('my profile: games, play time, trophies and totals; back to where it was opened', () async {
+      model.open(Layer.friends);
+      final mine = model.panelCategories().single.rows.first;
+      expect(mine.id, 'friends-me');
+      (mine.kind as ActionRow).run();
+      expect(model.overlay, Layer.profile);
+      await until(() => model.together.profile != null);
+      final page = model.together.profile!;
+      expect(page.profile.isMe, isTrue);
+      expect(page.totals, (games: 2, seconds: 12600, trophies: 2, points: 45));
+      expect(page.library.value!.last.name('tr'), 'Başka Yerde');
+      expect(page.trophies.value!.single.name('en'), 'Far Side');
+      expect(TogetherProfiles.playTime(12000), '3 h 20 min');
+      expect(TogetherProfiles.playTime(7200), '2 h');
+      expect(TogetherProfiles.playTime(600), '10 min');
+      model.handle(launcher.Command.down);
+      model.handle(launcher.Command.down);
+      expect(model.together.profileIndex, 2);
+      model.handle(launcher.Command.back);
+      expect(model.overlay, Layer.friends);
+    });
+
+    test("a friend's profile keeps what they keep private; details fall back to their card", () async {
+      server.privateParts['ana'] = {'profile', 'library'};
+      await model.together.openProfile(
+        'ana',
+        card: const Person(id: 'u-ana', handle: 'ana', displayName: 'Ana'),
+      );
+      final page = model.together.profile!;
+      expect(page.detailsPrivate, isTrue);
+      expect(page.profile.displayName, 'Ana');
+      expect(page.library, isA<SectionPrivate<List<PlayedGame>>>());
+      expect(page.trophies, isA<SectionShown<List<EarnedTrophy>>>());
+      expect(page.totals, isNull);
+    });
+
+    test('while a game runs, friends see a session they can join; it ends with the game', () async {
+      final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
+      final installed = Installer.installedFolder(orbit, model.root!);
+      File(p.join(installed, 'app.elf')).writeAsStringSync('#!/bin/sh\nenv | grep ^ANYPS5_TOGETHER\nsleep 0.6\n');
+      Process.runSync('chmod', ['755', p.join(installed, 'app.elf')]);
+      final playing = model.play(orbit);
+      await until(() => model.together.hub.games.session != null);
+      expect(server.callsTo('game-sessions', method: 'POST').single.body, {
+        'titleId': 'PPSA01001',
+        'gameVersion': '01.000.000',
+        'engineBuild': 'toolkit-1',
+        'capacity': 4,
+        'joinable': true,
+      });
+      final bridge = File(model.together.hub.games.bridgeFile);
+      final written = jsonDecode(bridge.readAsStringSync()) as Map<String, dynamic>;
+      expect(written['role'], 'host');
+      expect(written['userId'], 'u-me');
+
+      // Friends join only when it is let.
+      await model.together.setFriendsJoin(false);
+      expect(server.callsTo('game-sessions/${written['session']['id']}', method: 'PATCH').single.body, {
+        'joinable': false,
+      });
+      await playing;
+      await until(() => model.together.hub.games.session == null);
+      await until(() => server.callsTo('game-sessions/${written['session']['id']}', method: 'DELETE').isNotEmpty);
+      expect(bridge.existsSync(), isFalse);
+      expect(
+        File(model.paths.logFile('PPSA01001')).readAsStringSync(),
+        contains('ANYPS5_TOGETHER_SESSION=${bridge.path}'),
+      );
+    });
+
+    test("joining a friend's game: the same version and engine, then the game starts", () async {
+      server.hostSession('gs-ana', ana);
+      final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
+      final installed = Installer.installedFolder(orbit, model.root!);
+      File(p.join(installed, 'app.elf')).writeAsStringSync('#!/bin/sh\nsleep 0.4\n');
+      Process.runSync('chmod', ['755', p.join(installed, 'app.elf')]);
+      await model.together.joinFriendGame('gs-ana', titleId: 'PPSA01001', host: 'Ana');
+      expect(model.toast, 'Starting Orbit Runner with Ana');
+      expect(server.callsTo('game-sessions/gs-ana/join').single.body, {
+        'gameVersion': '01.000.000',
+        'engineBuild': 'toolkit-1',
+      });
+      final written = jsonDecode(File(model.together.hub.games.bridgeFile).readAsStringSync()) as Map<String, dynamic>;
+      expect(written['role'], 'guest');
+      final session = written['session'] as Map<String, dynamic>;
+      expect(session['properties'], {'mode': 'coop'});
+      expect(((session['members'] as List).first as Map)['properties'], {'address': 'relay:1'});
+      await until(() => model.running != null);
+      await until(() => model.running == null);
+      await until(() => server.callsTo('game-sessions/gs-ana/leave').isNotEmpty);
+      expect(server.callsTo('game-sessions', method: 'POST'), isEmpty, reason: 'a guest opens no session of its own');
+    });
+
+    test('the version guard, a game not here or locked, a full game', () async {
+      server.hostSession('gs-v', ana, gameVersion: '01.001.000');
+      await model.together.joinFriendGame('gs-v', titleId: 'PPSA01001', host: 'Ana');
+      expect(model.toast, 'Ana plays version 01.001.000 of the game; yours is 01.000.000');
+      server.hostSession('gs-e', ana, engineBuild: '0.2.13-a1b2c3d4e5f6');
+      await model.together.joinFriendGame('gs-e', titleId: 'PPSA01001', host: 'Ana');
+      expect(model.toast, 'Ana plays on AnyPS5 0.2.13 (a1b2c3), you on toolkit (1): update to the same one');
+      expect(server.calls.where((call) => call.path.endsWith('/join')), isEmpty);
+
+      await model.together.joinFriendGame('gs-x', titleId: 'PPSA09999', host: 'Ana');
+      expect(model.toast, 'PPSA09999 is not in your library');
+      await model.together.joinFriendGame('gs-x', titleId: 'PPSA02002', host: 'Ana');
+      expect(model.toast, 'Unlock Neon Alley first');
+
+      final full = server.hostSession('gs-full', ana);
+      full['capacity'] = 1;
+      await model.together.joinFriendGame('gs-full', titleId: 'PPSA01001', host: 'Ana');
+      expect(model.toast, 'This game is full');
+    });
+
+    test("an invite to a friend's game shows in the friends panel and can be declined", () async {
+      final invite = {
+        'sessionId': 'gs-ana',
+        'from': ana,
+        'titleId': 'PPSA01001',
+        'gameVersion': '01.000.000',
+        'engineBuild': 'toolkit-1',
+      };
+      server.gameInvites.add(invite);
+      server.push('game_session.invite', invite);
+      await until(() => model.together.hub.games.invites.isNotEmpty);
+      expect(model.toast, 'Ana invites you to Orbit Runner');
+      expect(model.together.hub.badge, 1);
+      model.open(Layer.friends);
+      expect(rowIds().skip(1).take(2), ['game-accept-gs-ana', 'game-decline-gs-ana']);
+      (model.panelCategories().single.rows[2].kind as ActionRow).run();
+      await until(() => server.callsTo('game-sessions/gs-ana/decline').isNotEmpty);
+      expect(model.together.hub.badge, 0);
     });
   });
 }

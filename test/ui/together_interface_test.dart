@@ -2,6 +2,7 @@ import 'package:anyps5_desktop/core/together/account.dart';
 import 'package:anyps5_desktop/core/together/messages.dart';
 import 'package:anyps5_desktop/core/together/parties.dart';
 import 'package:anyps5_desktop/core/together/people.dart';
+import 'package:anyps5_desktop/core/together/profiles.dart';
 import 'package:anyps5_desktop/ui/app_model.dart' hide Command, GameState;
 import 'package:anyps5_desktop/ui/app_model.dart' as launcher show Command;
 import 'package:anyps5_desktop/ui/launcher.dart';
@@ -175,6 +176,78 @@ void main() {
       model.open(Layer.party);
       await pumpLauncher(tester, model);
       await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_party_tr.png'));
+    });
+
+    testWidgets("golden: a friend's profile with games, play time and rare trophies", (tester) async {
+      fixture = makeFixture();
+      model = fixture.model;
+      signedInPreview(model);
+      model.open(Layer.friends);
+      model.open(Layer.profile);
+      model.together
+        ..profileReturn = Layer.friends
+        ..profileIndex = 1
+        ..profile = ProfilePage(
+          profile: const TogetherProfile(
+            userId: 'u-bora',
+            handle: 'bora',
+            displayName: 'Bora',
+            bio: 'Co-op nights, mostly. Say hi before you join.',
+            country: 'TR',
+            friendship: 'friends',
+          ),
+          library: SectionShown([
+            PlayedGame(
+              titleId: 'PPSA02002',
+              names: const {'en': 'Neon Alley'},
+              lastPlayedAt: DateTime(2026, 10, 24, 21),
+              secondsPlayed: 152 * 60 + 3600 * 40,
+              trophiesEarned: 18,
+              trophiesTotal: 42,
+              progress: 43,
+              points: 690,
+            ),
+            PlayedGame(
+              titleId: 'PPSA01001',
+              names: const {'en': 'Orbit Runner'},
+              lastPlayedAt: DateTime(2026, 10, 2),
+              secondsPlayed: 3 * 3600,
+              trophiesEarned: 5,
+              trophiesTotal: 5,
+              progress: 100,
+              points: 435,
+            ),
+            const PlayedGame(titleId: 'PPSA07007', names: {'en': 'Harbor Lights'}, secondsPlayed: 25 * 60),
+          ]),
+          trophies: SectionShown([
+            EarnedTrophy(
+              titleId: 'PPSA01001',
+              gameNames: const {'en': 'Orbit Runner'},
+              trophyId: 0,
+              grade: 'platinum',
+              hidden: false,
+              names: const {'en': 'Grand Tour'},
+              earnedAt: DateTime(2026, 10, 2),
+              rarity: 0.031,
+              rarityLabel: 'ultra_rare',
+            ),
+            EarnedTrophy(
+              titleId: 'PPSA02002',
+              gameNames: const {'en': 'Neon Alley'},
+              trophyId: 7,
+              grade: 'silver',
+              hidden: true,
+              names: const {},
+              earnedAt: DateTime(2026, 10, 24),
+              rarity: 0.42,
+              rarityLabel: 'common',
+            ),
+          ]),
+        );
+      await pumpLauncher(tester, model);
+      expect(find.text('2 h 32 min'), findsNothing);
+      expect(find.text('42 h 32 min · last played 2026-10-24'), findsOneWidget);
+      await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_profile.png'));
     });
   });
 }

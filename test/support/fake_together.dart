@@ -158,6 +158,45 @@ class FakeTogether {
     ...others,
   ], leader: leader);
 
+  /// Profiles by handle, with their library and trophies; a handle in [privateParts] keeps
+  /// those parts (profile, library, trophies) from the user.
+  final Map<String, Map<String, dynamic>> profiles = {};
+  final Map<String, List<Map<String, dynamic>>> libraries = {};
+  final Map<String, List<Map<String, dynamic>>> trophyLists = {};
+  final Map<String, Set<String>> privateParts = {};
+
+  /// Game sessions by id, and the invites to the user.
+  final Map<String, Map<String, dynamic>> gameSessions = {};
+  final List<Map<String, dynamic>> gameInvites = [];
+
+  /// A game session [host] runs.
+  Map<String, dynamic> hostSession(
+    String id,
+    Map<String, dynamic> host, {
+    String titleId = 'PPSA01001',
+    String gameVersion = '01.000.000',
+    String engineBuild = 'toolkit-1',
+  }) => gameSessions[id] = {
+    'id': id,
+    'host': host,
+    'titleId': titleId,
+    'gameVersion': gameVersion,
+    'engineBuild': engineBuild,
+    'capacity': 4,
+    'joinable': true,
+    'players': [host],
+    'members': [
+      {
+        'userId': host['userId'],
+        'device': 'device-host',
+        'properties': {'address': 'relay:1'},
+        'joinedAt': '2026-10-24T20:00:00Z',
+        'updatedAt': null,
+      },
+    ],
+    'properties': {'mode': 'coop'},
+  };
+
   /// Handlers a test adds for its own paths: return null to fall through.
   final List<FutureOr<(int, Object?)?> Function(FakeCall call)> handlers = [];
 
@@ -440,6 +479,82 @@ class FakeTogether {
         );
       case ('GET', 'ice-servers'):
         return (200, {'iceServers': <Object>[], 'expiresAt': null});
+    }
+    final user = RegExp(r'^users/([^/?]+)(/library|/trophies)?$').firstMatch(call.path);
+    if (call.method == 'GET' && user != null) {
+      final handle = Uri.decodeComponent(user.group(1)!);
+      final part = user.group(2)?.substring(1) ?? 'profile';
+      if (privateParts[handle]?.contains(part) == true) return problem(403, 'private', 'Private');
+      final profile = profiles[handle];
+      if (profile == null) return problem(404, 'not_found');
+      return switch (part) {
+        'library' => (200, {'games': libraries[handle] ?? const []}),
+        'trophies' => (200, {'trophies': trophyLists[handle] ?? const []}),
+        _ => (200, profile),
+      };
+    }
+    final me_ = card(me['id'] as String, me['handle'] as String, me['displayName'] as String);
+    switch ((call.method, call.path)) {
+      case ('GET', 'me/game-session'):
+        final mine = gameSessions.values
+            .where(
+              (session) => (session['players'] as List<dynamic>).any((player) => (player as Map)['userId'] == me['id']),
+            )
+            .firstOrNull;
+        return (200, {'session': mine, 'invites': gameInvites});
+      case ('POST', 'game-sessions'):
+        final id = 'gs-${++_ids}';
+        return (
+          201,
+          gameSessions[id] = {
+            ...call.body,
+            'id': id,
+            'host': me_,
+            'players': [me_],
+            'members': [
+              {
+                'userId': me['id'],
+                'device': null,
+                'properties': <String, Object>{},
+                'joinedAt': '2026-10-24T20:00:00Z',
+                'updatedAt': null,
+              },
+            ],
+            'properties': <String, Object>{},
+          },
+        );
+    }
+    final gameSession = RegExp(r'^game-sessions/([^/]+)(/[a-z]+)?$').firstMatch(call.path);
+    if (gameSession != null) {
+      final id = gameSession.group(1)!;
+      final session = gameSessions[id];
+      if (session == null) return problem(404, 'not_found');
+      switch ((call.method, gameSession.group(2))) {
+        case ('GET', null):
+          return (200, session);
+        case ('PATCH', null):
+          session.addAll(call.body);
+          return (200, session);
+        case ('DELETE', null):
+          gameSessions.remove(id);
+          return (204, null);
+        case ('POST', '/join'):
+          if (call.body['gameVersion'] != session['gameVersion'] ||
+              call.body['engineBuild'] != session['engineBuild']) {
+            return problem(409, 'version_mismatch', 'Not the same version');
+          }
+          final players = session['players'] as List<dynamic>;
+          if (players.length >= (session['capacity'] as int)) return problem(409, 'full', 'Full');
+          players.add(me_);
+          gameInvites.removeWhere((invite) => invite['sessionId'] == id);
+          return (200, session);
+        case ('POST', '/leave'):
+          (session['players'] as List<dynamic>).removeWhere((player) => (player as Map)['userId'] == me['id']);
+          return (204, null);
+        case ('POST', '/invites' || '/decline'):
+          gameInvites.removeWhere((invite) => invite['sessionId'] == id);
+          return (204, null);
+      }
     }
     final thread = RegExp(r'^conversations/([^/]+)/messages(\?.*)?$').firstMatch(call.path);
     if (thread != null) {

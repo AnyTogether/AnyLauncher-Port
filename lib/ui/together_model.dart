@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../core/game_library.dart';
 import '../core/host.dart';
 import '../core/remote/remote_protocol.dart';
 import '../core/together/account.dart';
@@ -11,7 +12,9 @@ import '../core/together/hub.dart';
 import '../core/together/people.dart';
 import '../core/together/server.dart';
 import '../core/together/socket.dart';
+import '../core/together/game_sessions.dart';
 import '../core/together/messages.dart';
+import '../core/together/profiles.dart';
 import '../core/together/parties.dart';
 import '../core/together/sync.dart';
 import '../core/together/talk_key.dart';
@@ -19,7 +22,6 @@ import '../core/together/voice.dart';
 import '../core/controls.dart';
 import '../core/together/token_store.dart';
 import '../core/trophies.dart';
-import '../core/game_library.dart';
 import '../core/game_settings.dart';
 import 'app_model.dart';
 import 'strings.dart';
@@ -27,6 +29,7 @@ import 'voice_webrtc.dart';
 
 part 'together_messages.dart';
 part 'together_party.dart';
+part 'together_profile.dart';
 
 /// The launcher's version, as AnyTogether hears it.
 const launcherVersion = '0.1.0';
@@ -42,7 +45,14 @@ class TogetherModel {
       clientName: clientName(app.system),
       pollEvery: app.services.togetherPollEvery,
     );
-    hub = TogetherHub(account: account, voiceEngine: app.services.voiceEngine ?? WebRtcVoice.new);
+    hub = TogetherHub(
+      account: account,
+      voiceEngine: app.services.voiceEngine ?? WebRtcVoice.new,
+      bridgeFile: GameSessions.defaultBridgeFile(app.paths.config),
+    );
+    hub.games.onInvite = (invite) =>
+        app.show(T.format('gameInvitedYou', [invite.from?.displayName ?? '', gameName(invite.titleId)]));
+    hub.games.onEnded = (host) => app.show(T.format('sessionEnded', [host?.displayName ?? '']));
     hub.addListener(app.refresh);
     hub.friends.onRequest = (person) => app.show(T.format('friendsAsked', [person.displayName]));
     hub.friends.onAccepted = (person) => app.show(T.format('friendsNowFriends', [person.displayName]));
@@ -96,6 +106,17 @@ class TogetherModel {
   int messageFocus = 0;
   String draft = '';
 
+  /// The profile shown: the page once read, the card it was opened with, whether reading failed,
+  /// the row the keys are on, and the layer it goes back to.
+  ProfilePage? profile;
+  Person? profileCard;
+  bool profileFailed = false;
+  int profileIndex = 0;
+  Layer? profileReturn;
+
+  /// A game session being opened for the game that just started.
+  bool openingSession = false;
+
   /// A handle typed in the friends panel, and the friend whose options are open.
   String friendHandle = '';
   Friend? chosen;
@@ -147,7 +168,8 @@ class TogetherModel {
       draft = '';
       messagesIndex = 0;
       messagesInThread = false;
-      if (const {Layer.friendOptions, Layer.messages}.contains(app.overlay)) app.closeOverlay();
+      profile = null;
+      if (const {Layer.friendOptions, Layer.messages, Layer.profile}.contains(app.overlay)) app.closeOverlay();
     } else {
       // Every game's trophies go up once, the earned ones with their dates.
       for (final game in app.games) {
@@ -229,6 +251,7 @@ class TogetherModel {
   void gameChanged() => _followGame();
 
   void _followGame() {
+    followGameSession();
     final running = app.running;
     final since = running == null ? null : DateTime.tryParse(app.preferences.lastPlayed[running.$1.id] ?? '');
     hub.socket.presence = running == null
@@ -453,6 +476,14 @@ class TogetherModel {
     }
     final friends = hub.friends;
     return [
+      PanelRow(
+        id: 'friends-me',
+        title: T.text('profileMine'),
+        detail: T.text('profileMineDetail'),
+        person: PanelPerson(name: me.displayName, avatar: me.avatar),
+        kind: ActionRow(() => unawaited(openMyProfile())),
+      ),
+      ...gameRows(),
       for (final person in friends.incoming) ...[
         PanelRow(
           id: 'accept-${person.id}',
@@ -516,6 +547,21 @@ class TogetherModel {
         kind: const InfoRow(''),
       ),
       PanelRow(
+        id: 'friend-profile',
+        title: T.text('profileTitle'),
+        detail: T.text('profileMineDetail'),
+        kind: ActionRow(() => unawaited(openProfile(friend.person.handle, card: friend.person))),
+      ),
+      if (friend.presence.game case final PresenceGame game when game.joinable)
+        PanelRow(
+          id: 'friend-game',
+          title: T.format('gameJoin', [friend.person.displayName, gameName(game.titleId)]),
+          detail: T.format('gamePlayers', [game.players, game.capacity]),
+          kind: ActionRow(
+            () => unawaited(joinFriendGame(game.sessionId, titleId: game.titleId, host: friend.person.displayName)),
+          ),
+        ),
+      PanelRow(
         id: 'friend-message',
         title: T.text('friendsMessage'),
         kind: ActionRow(() => unawaited(messageFriend(friend.person))),
@@ -552,6 +598,18 @@ class TogetherModel {
           id: 'together-online',
           title: T.text('togetherOnline'),
           kind: InfoRow(connected ? T.text('togetherConnected') : T.text('togetherConnecting')),
+        ),
+        PanelRow(
+          id: 'together-profile',
+          title: T.text('profileMine'),
+          detail: T.text('profileMineDetail'),
+          kind: ActionRow(() => unawaited(openMyProfile())),
+        ),
+        PanelRow(
+          id: 'together-join',
+          title: T.text('togetherFriendsJoin'),
+          detail: T.text('togetherFriendsJoinDetail'),
+          kind: ToggleRow(app.preferences.friendsJoin, (value) => unawaited(setFriendsJoin(value))),
         ),
         PanelRow(
           id: 'together-signout',

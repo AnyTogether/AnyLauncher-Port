@@ -7,6 +7,7 @@ import 'app_model.dart';
 import 'components.dart';
 import 'home.dart';
 import 'messages_view.dart';
+import 'profile_view.dart';
 import 'onboarding.dart';
 import 'panels.dart';
 import 'strings.dart';
@@ -163,6 +164,7 @@ class _LauncherShellState extends State<LauncherShell> {
                           Layer.log => LogView(model: model),
                           Layer.trophies => TrophyView(model: model),
                           Layer.messages => MessagesView(model: model),
+                          Layer.profile => ProfileView(model: model),
                           null => const SizedBox.shrink(),
                           _ => PanelView(model: model),
                         },

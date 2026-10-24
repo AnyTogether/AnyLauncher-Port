@@ -106,6 +106,16 @@ held to talk; it is read from the whole desktop, a game in front included: `GetA
 Windows, `XQueryKeymap` on X11 (on Wayland only while an X11 window such as the game is in
 front, else only while the launcher has the keyboard).
 
+Profiles (the user's own from Settings or the friends panel, a friend's from their options) show
+the games with play time and trophy progress and the recent trophies with their rarity, each part
+as private as its owner keeps it. While a game runs, the launcher opens an AnyTogether game
+session for it (unless "Let friends join my game" is off), so friends see it as joinable; a
+friend's Join (from their presence or an invite) checks the game is here and unlocked, that the
+game version and the engine build (the toolkit the game was installed with) match the host's,
+joins and starts it. The session, with the players' own properties, is written for the engine's
+online bridge at `Together/game-session.json` in the config folder (`ANYPS5_TOGETHER_SESSION`
+points at it), which does the playing together.
+
 The session (an access token and a refresh token) is kept per system:
 
 - **Windows**: `%APPDATA%\AnyPS5\Together\session.bin`, sealed with DPAPI

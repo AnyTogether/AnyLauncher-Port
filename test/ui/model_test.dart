@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
 import '../support/fake_toolkit.dart';
+import '../support/fixtures.dart';
 import '../support/self_builder.dart';
 import '../support/ui_support.dart';
 
@@ -117,6 +118,14 @@ void main() {
     (restore.kind as ActionRow).run();
     expect(File(p.join(installed, '_sd', 'save.dat')).readAsStringSync(), 'one');
     expect(model.toast, T.text('savesRestored'));
+  });
+
+  test('a dump copied into the games folder shows up on its own', () async {
+    model.watchGamesFolder();
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    makeDump(model.root!, 'late', titleId: 'PPSA09009', names: {'en-US': 'Late Arrival'});
+    await until(() => model.games.any((game) => game.titleId == 'PPSA09009'));
+    expect(model.games, hasLength(5));
   });
 
   test('uninstalling removes the installed game and keeps the dump', () {

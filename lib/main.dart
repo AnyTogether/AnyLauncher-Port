@@ -19,6 +19,7 @@ void main() {
     ),
   );
   if (model.preferences.onboarded) model.rescan();
+  model.watchGamesFolder();
   unawaited(model.startPhoneServer());
   runApp(AnyPS5App(model: model));
 }

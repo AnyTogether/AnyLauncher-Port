@@ -416,6 +416,32 @@ class AppModel extends ChangeNotifier {
     }
   }
 
+  StreamSubscription<FileSystemEvent>? _watch;
+  Timer? _rescanSoon;
+  String? _watched;
+
+  /// Watches the games folder: a dump copied in or removed shows up on its own, a moment after
+  /// the folder settles. (Linux watches the folder itself, Windows and macOS the whole tree.)
+  void watchGamesFolder() {
+    final folder = root;
+    if (folder == _watched) return;
+    unawaited(_watch?.cancel());
+    _watch = null;
+    _watched = folder;
+    if (folder == null || !Directory(folder).existsSync()) return;
+    try {
+      _watch = Directory(folder).watch(recursive: !Platform.isLinux).listen((event) {
+        if (event.path.contains(GameLibrary.storeName)) return;
+        _rescanSoon?.cancel();
+        _rescanSoon = Timer(const Duration(seconds: 2), () {
+          if (_installer == null) rescan();
+        });
+      }, onError: (Object _) {});
+    } on FileSystemException {
+      // No watching: the rescan in Settings still works.
+    }
+  }
+
   /// The size of the selected game, measured once.
   void measureSelected() {
     final game = selectedGame;
@@ -458,6 +484,7 @@ class AppModel extends ChangeNotifier {
     preferences.gamesFolder = folder;
     savePreferences();
     rescan();
+    watchGamesFolder();
   }
 
   Future<void> chooseToolkit() async {
@@ -1722,6 +1749,8 @@ class AppModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    unawaited(_watch?.cancel());
+    _rescanSoon?.cancel();
     _trophyWatch?.cancel();
     _toastTimer?.cancel();
     _installer?.cancel();

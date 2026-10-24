@@ -1,0 +1,53 @@
+import 'dart:io';
+
+import 'package:anyps5_desktop/ui/strings.dart';
+import 'package:anyps5_desktop/ui/strings_table.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  tearDown(() => T.language = Language.english);
+
+  test('every text the interface asks for exists in both languages', () {
+    final keys = <String>{};
+    final pattern = RegExp(r"""T\.(?:text|format)\(\s*'([A-Za-z0-9]+)'""");
+    final inSwitch = RegExp(r"""=> '([a-z][A-Za-z0-9]+)'""");
+    for (final file in Directory('lib/ui').listSync().whereType<File>()) {
+      final source = file.readAsStringSync();
+      keys.addAll(pattern.allMatches(source).map((match) => match.group(1)!));
+      // Keys chosen in a switch and passed to T.text afterwards.
+      if (source.contains('T.text(switch')) keys.addAll(inSwitch.allMatches(source).map((match) => match.group(1)!));
+    }
+    expect(keys.length, greaterThan(80));
+    final missing = <String>[];
+    for (final key in keys) {
+      for (final language in Language.values) {
+        T.language = language;
+        if (T.text(key) == key) missing.add('$key (${language.code})');
+      }
+    }
+    expect(missing, isEmpty);
+  });
+
+  test('the Mac is not named where the PC is meant', () {
+    for (final language in Language.values) {
+      T.language = language;
+      for (final key in ['welcomeSubtitle', 'startingText', 'stepRelink', 'aboutText', 'showInFinder', 'themesOnMac']) {
+        expect(T.text(key), isNot(contains('Mac')), reason: '$key in ${language.code}');
+        expect(T.text(key), isNot(contains('Finder')), reason: '$key in ${language.code}');
+      }
+    }
+  });
+
+  test('format fills %@ and %d in order and keeps %%', () {
+    T.language = Language.english;
+    expect(T.format('gamesFound', [4]), '4 games found');
+    expect(T.format('lastBackup', ['today']), 'Last backup: today');
+    T.language = Language.turkish;
+    expect(T.format('gamesFound', [4]), '4 oyun bulundu');
+    expect(T.format('updateDownloading', [42]), 'İndiriliyor… %42');
+  });
+
+  test('the tables cover the same keys', () {
+    expect(englishTable.keys.toSet(), turkishTable.keys.toSet());
+  });
+}

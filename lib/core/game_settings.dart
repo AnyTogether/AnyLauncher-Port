@@ -1,0 +1,309 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:path/path.dart' as p;
+
+import 'controls.dart';
+
+/// Where the performance overlay sits.
+enum OverlayCorner {
+  off(null),
+  topLeft('tl'),
+  topRight('tr'),
+  bottomLeft('bl'),
+  bottomRight('br');
+
+  const OverlayCorner(this.position);
+
+  /// ANYPS5_OVERLAY_POS, null when off.
+  final String? position;
+}
+
+/// How the performance overlay looks: one line of figures, or the panel with its graph.
+enum OverlayStyle { minimal, detailed }
+
+/// The per-game choices the launcher passes to a started game as environment variables. Stored
+/// as JSON with the macOS launcher's keys, so a settings file reads the same on every system.
+class GameSettings {
+  const GameSettings({
+    this.resolution,
+    this.fullscreen = false,
+    this.windowSize = 75,
+    this.vsync = true,
+    this.overlay = OverlayCorner.off,
+    this.overlayStyle,
+    this.frameGeneration,
+    this.language,
+    this.controls,
+    this.tuning,
+    this.shaderCache,
+    this.phoneLayout,
+  });
+
+  factory GameSettings.fromJson(Map<String, dynamic> json) {
+    T? named<T extends Enum>(List<T> values, Object? name) {
+      for (final value in values) {
+        if (value.name == name) return value;
+      }
+      return null;
+    }
+
+    final controls = json['controls'];
+    final tuning = json['tuning'];
+    return GameSettings(
+      resolution: json['resolution'] as String?,
+      fullscreen: json['fullscreen'] as bool? ?? false,
+      windowSize: (json['windowSize'] as num?)?.toInt() ?? 75,
+      vsync: json['vsync'] as bool? ?? true,
+      overlay: named(OverlayCorner.values, json['overlay']) ?? OverlayCorner.off,
+      overlayStyle: named(OverlayStyle.values, json['overlayStyle']),
+      frameGeneration: json['frameGeneration'] as bool?,
+      language: (json['language'] as num?)?.toInt(),
+      controls: controls is Map<String, dynamic>
+          ? {
+              for (final entry in controls.entries)
+                if (entry.value is List<dynamic>)
+                  entry.key: (entry.value as List<dynamic>).whereType<String>().toList(),
+            }
+          : null,
+      tuning: tuning is Map<String, dynamic> ? InputTuning.fromJson(tuning) : null,
+      shaderCache: json['shaderCache'] as bool?,
+      phoneLayout: json['phoneLayout'] as String?,
+    );
+  }
+
+  /// A WIDTHxHEIGHT the title's patch file can set (see [ResolutionPatch]), null for the title's
+  /// own. Taking effect needs the game installed again, as the value is written at relink time.
+  final String? resolution;
+  final bool fullscreen;
+
+  /// The share of the display the window takes, in percent.
+  final int windowSize;
+  final bool vsync;
+  final OverlayCorner overlay;
+
+  /// null is minimal.
+  final OverlayStyle? overlayStyle;
+  OverlayStyle get style => overlayStyle ?? OverlayStyle.minimal;
+
+  /// A generated frame between each two of the game's (ANYPS5_FRAME_GEN), with vertical sync.
+  final bool? frameGeneration;
+
+  /// The console language number (ANYPS5_LANGUAGE), null to follow the launcher's language.
+  final int? language;
+
+  /// Keys moved from the launcher's layout (Controls), by pad action.
+  final Map<String, List<String>>? controls;
+
+  /// Stick, mouse and keyboard stick settings, null for the engine's defaults.
+  final InputTuning? tuning;
+
+  /// False turns off the shader and pipeline caches (ANYPS5_NO_SHADER_CACHE).
+  final bool? shaderCache;
+
+  /// The phone's pad layout for this game, as the phone sent it (its JSON); null for the default.
+  final String? phoneLayout;
+
+  Map<String, Object?> toJson() => {
+    'fullscreen': fullscreen,
+    'windowSize': windowSize,
+    'vsync': vsync,
+    'overlay': overlay.name,
+    if (resolution != null) 'resolution': resolution,
+    if (overlayStyle != null) 'overlayStyle': overlayStyle!.name,
+    if (frameGeneration != null) 'frameGeneration': frameGeneration,
+    if (language != null) 'language': language,
+    if (controls != null) 'controls': controls,
+    if (tuning != null) 'tuning': tuning!.toJson(),
+    if (shaderCache != null) 'shaderCache': shaderCache,
+    if (phoneLayout != null) 'phoneLayout': phoneLayout,
+  };
+
+  static const _keep = Object();
+
+  /// A copy with some choices changed; pass null explicitly to clear an optional one.
+  GameSettings copyWith({
+    Object? resolution = _keep,
+    bool? fullscreen,
+    int? windowSize,
+    bool? vsync,
+    OverlayCorner? overlay,
+    Object? overlayStyle = _keep,
+    Object? frameGeneration = _keep,
+    Object? language = _keep,
+    Object? controls = _keep,
+    Object? tuning = _keep,
+    Object? shaderCache = _keep,
+    Object? phoneLayout = _keep,
+  }) => GameSettings(
+    resolution: identical(resolution, _keep) ? this.resolution : resolution as String?,
+    fullscreen: fullscreen ?? this.fullscreen,
+    windowSize: windowSize ?? this.windowSize,
+    vsync: vsync ?? this.vsync,
+    overlay: overlay ?? this.overlay,
+    overlayStyle: identical(overlayStyle, _keep) ? this.overlayStyle : overlayStyle as OverlayStyle?,
+    frameGeneration: identical(frameGeneration, _keep) ? this.frameGeneration : frameGeneration as bool?,
+    language: identical(language, _keep) ? this.language : language as int?,
+    controls: identical(controls, _keep) ? this.controls : controls as Map<String, List<String>>?,
+    tuning: identical(tuning, _keep) ? this.tuning : tuning as InputTuning?,
+    shaderCache: identical(shaderCache, _keep) ? this.shaderCache : shaderCache as bool?,
+    phoneLayout: identical(phoneLayout, _keep) ? this.phoneLayout : phoneLayout as String?,
+  );
+
+  /// The environment a game starts with. [inputFile] is the anyps5-input.ini written for it,
+  /// [screenshots] and [fonts] the launcher's folders for F12 screenshots and system fonts,
+  /// [shaderCacheFolder] where its shader and pipeline caches go.
+  Map<String, String> environment({
+    required int launcherLanguage,
+    String? inputFile,
+    String? screenshots,
+    String? fonts,
+    String? shaderCacheFolder,
+  }) {
+    final environment = <String, String>{
+      'ANYPS5_FULLSCREEN': fullscreen ? '1' : '0',
+      'ANYPS5_WINDOW_SIZE': '${windowSize.clamp(30, 100)}',
+      'ANYPS5_PRESENT_MODE': vsync || frameGeneration == true ? 'fifo' : 'immediate',
+      'ANYPS5_LANGUAGE': '${language ?? launcherLanguage}',
+    };
+    final position = overlay.position;
+    if (position != null) {
+      environment['ANYPS5_OVERLAY'] = '1';
+      environment['ANYPS5_OVERLAY_POS'] = position;
+      environment['ANYPS5_OVERLAY_STYLE'] = style.name;
+    }
+    if (inputFile != null) environment['ANYPS5_INPUT_CONFIG'] = inputFile;
+    if (screenshots != null) environment['ANYPS5_SCREENSHOTS'] = screenshots;
+    if (fonts != null) environment['ANYPS5_SYSTEM_FONTS'] = fonts;
+    if (shaderCache == false) {
+      environment['ANYPS5_NO_SHADER_CACHE'] = '1';
+    } else if (shaderCacheFolder != null) {
+      environment['ANYPS5_SHADER_CACHE_DIR'] = shaderCacheFolder;
+    }
+    if (frameGeneration == true) environment['ANYPS5_FRAME_GEN'] = '1';
+    return environment;
+  }
+
+  /// Writes the game's keyboard and mouse layout to [path] for ANYPS5_INPUT_CONFIG.
+  void writeInputFile(String path) => Controls.write(path, controls ?? const {}, tuning: tuning ?? const InputTuning());
+
+  @override
+  bool operator ==(Object other) => other is GameSettings && jsonEncode(toJson()) == jsonEncode(other.toJson());
+
+  @override
+  int get hashCode => jsonEncode(toJson()).hashCode;
+}
+
+/// Each game's settings, one JSON file per game in a folder, named after its title ID.
+class GameSettingsStore {
+  GameSettingsStore(this.folder);
+
+  final String folder;
+
+  String _file(String slug) => p.join(folder, '$slug.json');
+
+  GameSettings load(String slug) {
+    try {
+      final json = jsonDecode(File(_file(slug)).readAsStringSync());
+      return json is Map<String, dynamic> ? GameSettings.fromJson(json) : const GameSettings();
+    } on Object {
+      return const GameSettings();
+    }
+  }
+
+  void save(String slug, GameSettings settings) {
+    Directory(folder).createSync(recursive: true);
+    final file = File(_file(slug));
+    final temporary = File('${file.path}.tmp');
+    temporary.writeAsStringSync(const JsonEncoder.withIndent('  ').convert(settings.toJson()), flush: true);
+    temporary.renameSync(file.path);
+  }
+}
+
+/// Console language numbers (sceSystemServiceParamGetInt) a game can be started with.
+abstract final class ConsoleLanguage {
+  static const all = <(int, String)>[
+    (19, 'Türkçe'),
+    (1, 'English (US)'),
+    (18, 'English (UK)'),
+    (4, 'Deutsch'),
+    (2, 'Français'),
+    (3, 'Español'),
+    (20, 'Español (Latinoamérica)'),
+    (5, 'Italiano'),
+    (17, 'Português (Brasil)'),
+    (7, 'Português'),
+    (8, 'Русский'),
+    (16, 'Polski'),
+    (6, 'Nederlands'),
+    (0, '日本語'),
+    (9, '한국어'),
+    (11, '简体中文'),
+    (10, '繁體中文'),
+    (21, 'العربية'),
+  ];
+
+  static const _tags = [
+    'ja-JP', 'en-US', 'fr-FR', 'es-ES', 'de-DE', 'it-IT', 'nl-NL', 'pt-PT', 'ru-RU', 'ko-KR', 'zh-Hant', //
+    'zh-Hans', 'fi-FI', 'sv-SE', 'da-DK', 'no-NO', 'pl-PL', 'pt-BR', 'en-GB', 'tr-TR', 'es-419', 'ar-AE',
+  ];
+
+  /// The locale tag of a console language number, as the engine's trophy library maps them.
+  static String? tag(int number) => number >= 0 && number < _tags.length ? _tags[number] : null;
+}
+
+/// A title's resolution patch: the title's patch file in the toolkit (patches/<TITLE ID>.toml,
+/// upstream's relinker-patches format) with typed entries named `width` and `height`. The
+/// launcher writes a copy with the chosen values and hands it to the relinker with --patches.
+abstract final class ResolutionPatch {
+  static const choices = ['1280x720', '1600x900', '1920x1080', '2560x1440', '3840x2160'];
+
+  /// (width, height) of a WIDTHxHEIGHT text, null when it is not one.
+  static (int, int)? parse(String text) {
+    final parts = text.toLowerCase().split('x');
+    if (parts.length != 2) return null;
+    final width = int.tryParse(parts[0]);
+    final height = int.tryParse(parts[1]);
+    if (width == null || height == null || width <= 0 || height <= 0) return null;
+    return (width, height);
+  }
+
+  /// Whether the patch file has the entries a resolution needs.
+  static bool supports(String toml) => _entryNamed(toml, 'width') != null && _entryNamed(toml, 'height') != null;
+
+  /// The patch file with the width and height entries' `value` set to [resolution]; the file as
+  /// it is when it has no such entries or the text is not a resolution.
+  static String apply(String toml, String resolution) {
+    final size = parse(resolution);
+    if (size == null || !supports(toml)) return toml;
+    var lines = toml.split('\n');
+    for (final (name, value) in [('width', size.$1), ('height', size.$2)]) {
+      final range = _entryNamed(lines.join('\n'), name)!;
+      lines = [
+        for (var index = 0; index < lines.length; index++)
+          if (index >= range.$1 && index < range.$2 && RegExp(r'^\s*value\s*=').hasMatch(lines[index]))
+            lines[index].replaceFirst(RegExp(r'=\s*[^#]*'), '= $value ')
+          else
+            lines[index],
+      ];
+    }
+    return lines.join('\n');
+  }
+
+  /// The line range [start, end) of the [[patch]] entry with `name = "<name>"`.
+  static (int, int)? _entryNamed(String toml, String name) {
+    final lines = toml.split('\n');
+    var start = -1;
+    for (var index = 0; index <= lines.length; index++) {
+      final atEnd = index == lines.length;
+      if (atEnd || lines[index].trim() == '[[patch]]') {
+        if (start >= 0) {
+          final entry = lines.sublist(start, index);
+          if (entry.any((line) => RegExp('^\\s*name\\s*=\\s*"$name"').hasMatch(line))) return (start, index);
+        }
+        start = index;
+      }
+    }
+    return null;
+  }
+}

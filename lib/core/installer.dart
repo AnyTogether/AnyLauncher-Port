@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'binary.dart';
 import 'file_links.dart';
 import 'game_library.dart';
+import 'game_settings.dart';
 import 'host.dart';
 import 'self_unwrap.dart';
 import 'toolkit.dart';
@@ -20,6 +21,7 @@ class InstallRecord {
     required this.toolkit,
     required this.system,
     required this.date,
+    this.resolution,
   });
 
   factory InstallRecord.fromJson(Map<String, dynamic> json) => InstallRecord(
@@ -28,6 +30,7 @@ class InstallRecord {
     toolkit: json['toolkit'] as String,
     system: json['system'] as String? ?? 'linux',
     date: DateTime.parse(json['date'] as String),
+    resolution: json['resolution'] as String?,
   );
 
   final String source;
@@ -36,7 +39,11 @@ class InstallRecord {
   final String system;
   final DateTime date;
 
+  /// The resolution written into the executable by the title's patch file, if any.
+  final String? resolution;
+
   Map<String, Object> toJson() => {
+    'resolution': ?resolution,
     'date': date.toUtc().toIso8601String(),
     'source': source,
     'system': system,
@@ -83,6 +90,7 @@ class Installer {
     this.onProgress,
     this.onLog,
     this.linkMode,
+    this.resolution,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
@@ -96,6 +104,9 @@ class Installer {
 
   /// How the game's files reach app0; probed on the first file when null.
   final LinkMode? linkMode;
+
+  /// The WIDTHxHEIGHT to write through the title's resolution patch, null for the title's own.
+  final String? resolution;
   final DateTime Function() _clock;
 
   bool _cancelled = false;
@@ -190,10 +201,29 @@ class Installer {
       Directory(relinked).createSync(recursive: true);
       final executable = p.join(relinked, system.executableName);
       final estimate = RelinkProgress();
+      final patches = toolkit.patchFile(game.titleId);
+      String? appliedResolution;
+      final patchOptions = <String>[];
+      if (patches != null) {
+        var text = File(patches).readAsStringSync();
+        final chosen = resolution;
+        if (chosen != null && ResolutionPatch.supports(text) && ResolutionPatch.parse(chosen) != null) {
+          text = ResolutionPatch.apply(text, chosen);
+          appliedResolution = chosen;
+        }
+        final copy = p.join(work, 'relinker-patches.toml');
+        File(copy).writeAsStringSync(text);
+        patchOptions.addAll(['--patches', copy]);
+        _log(
+          '${game.titleId}: patches from ${p.basename(patches)}'
+          '${appliedResolution == null ? '' : ', resolution $appliedResolution'}',
+        );
+      }
       await _runTool(
         toolkit.relinker,
         [
           ...system.relinkerOptions,
+          ...patchOptions,
           for (final directory in moduleDirectories(found)) ...['--module-dir', directory],
           'eboot.bin',
           executable,
@@ -246,6 +276,7 @@ class Installer {
         toolkit: toolkit.version,
         system: system.name,
         date: _clock(),
+        resolution: appliedResolution,
       );
       File(p.join(partial, recordName)).writeAsStringSync(const JsonEncoder.withIndent('  ').convert(record.toJson()));
       _progress(InstallStep.layout, 1);

@@ -12,6 +12,7 @@ import 'host.dart';
 ///     relinker | relinker.exe
 ///     libs/*.prx          (and the mingw runtime DLLs on Windows)
 ///     version.txt         changes when the relinker or libraries change
+///     patches/<TITLE>.toml  per-title byte patches (optional)
 /// ```
 class Toolkit {
   Toolkit(this.root, {this.system = HostSystem.linux, this.relinkerOverride});
@@ -30,12 +31,22 @@ class Toolkit {
 
   final String root;
   final HostSystem system;
+
   /// A relinker set apart from the toolkit (a setting), null for the toolkit's own.
   final String? relinkerOverride;
 
   /// The relinker: the toolkit's own unless another was set.
   String get relinker => relinkerOverride ?? p.join(root, system.relinkerName);
   String get libraries => p.join(root, 'libs');
+
+  /// Per-title patch files for the relinker, patches/<TITLE ID>.toml.
+  String get patches => p.join(root, 'patches');
+
+  /// The title's patch file, null when the toolkit has none.
+  String? patchFile(String titleId) {
+    final file = p.join(patches, '$titleId.toml');
+    return File(file).existsSync() ? file : null;
+  }
 
   /// Changes whenever the relinker or the libraries change: a game installed with another toolkit
   /// can be installed again.

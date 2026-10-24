@@ -24,6 +24,8 @@ works as a controller (the protocol in section 12.4 of the
   - `self_unwrap.dart` SELF/fSELF to ELF, byte-identical to upstream `tools/unwrap_self.py`
   - `installer.dart`, `toolkit.dart`, `file_links.dart`, `host.dart` unwrap, relink, lay out
     (hard links through FFI: `link(2)` / `CreateHardLinkW`), carry saves over, start
+  - `toolkit_download.dart` the AnyPS5 engine from upstream's GitHub releases: resumable,
+    checksum-checked downloads, safe unpacking, one toolkit folder per version
   - `game_settings.dart`, `controls.dart` per-game choices, the game environment and
     `anyps5-input.ini`
   - `remote/` the phone server (WebSocket 47700, pairing, UDP pad relay, cable frames), an
@@ -58,8 +60,33 @@ containers when `python3` and the script are present (`ANYPS5_UNWRAP_SELF_PY` po
 
 ## The toolkit
 
-The launcher needs an AnyPS5 toolkit built for the host, chosen at the first start or in
-Settings (or given with `ANYPS5_TOOLKIT`):
+The launcher needs an AnyPS5 toolkit (the "AnyPS5 engine") built for the host. **It downloads
+itself on first start:** the onboarding's last step offers *Download the AnyPS5 engine*, which
+reads [boykopovar/AnyPS5](https://github.com/boykopovar/AnyPS5/releases)'s latest release from
+GitHub's API and takes the two files for this system:
+
+| System  | Relinker              | System libraries                                   |
+| ------- | --------------------- | -------------------------------------------------- |
+| Windows | `relinker-v<ver>.exe` | `prx-windows-v<ver>.zip` (the `.tar.gz` if missing) |
+| Linux   | `relinker-v<ver>`     | `prx-linux-v<ver>.tar.gz` (the `.zip` if missing)   |
+
+Downloads go into `.part` files that carry on after a dropped connection or a restart; each
+file's size and the sha256 digest GitHub publishes for it are checked (a file without a digest
+is only used after the user agrees). The archive is unpacked without letting any name or link
+leave its folder, the folder holding the `.prx` files becomes `libs/` (0.1.0 had them at the
+archive's top, later releases in `libs/`), the relinker is renamed and made executable, and
+`version.txt` says `upstream-v<ver>`. Toolkits live in `%LOCALAPPDATA%\AnyPS5\Toolkits\<ver>`
+(Windows) or `$XDG_DATA_HOME/AnyPS5/Toolkits/<ver>` (`~/.local/share/...`, Linux).
+
+Settings → AnyPS5 Engine shows the engine in use, checks for updates, lists the versions
+GitHub has and the downloaded ones (switch to one, or download an older one), deletes the
+others, or takes a folder of your own. The launcher keeps the engine in use, the two newest
+and the ones installed games were made with, and deletes the rest after a download. At start
+it looks for a newer engine; when one is out, installed games show the usual update offer, and
+*Update and Play* downloads the engine first, then unlocks the game again.
+
+A toolkit of your own (a fork's build, say) is chosen with *I have my own folder* in the
+onboarding or *Use my own folder* in Settings, or given with `ANYPS5_TOOLKIT`:
 
 ```text
 toolkit/
@@ -139,6 +166,7 @@ data stay with it and move into a new install.
 
 Settings and paired phones: `~/.config/AnyPS5` (Linux), `%APPDATA%\AnyPS5` (Windows).
 Logs: `~/.local/state/AnyPS5/logs`, `%LOCALAPPDATA%\AnyPS5\Logs`.
+Downloaded engines: `~/.local/share/AnyPS5/Toolkits`, `%LOCALAPPDATA%\AnyPS5\Toolkits`.
 
 ## Packages
 

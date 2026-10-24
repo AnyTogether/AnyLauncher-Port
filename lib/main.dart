@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
+import 'core/audio/soloud_audio.dart';
 import 'core/host.dart';
 import 'core/toolkit_download.dart';
 import 'ui/app_model.dart';
@@ -23,8 +24,10 @@ void main() {
             : Process.run('xdg-open', [url.toString()]),
       ),
       engineReleases: GitHubReleases(),
+      audio: SoloudAudio.new,
     ),
   );
+  unawaited(model.startAudio());
   if (model.preferences.onboarded) model.rescan();
   model.watchGamesFolder();
   unawaited(model.startPhoneServer());

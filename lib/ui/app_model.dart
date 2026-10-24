@@ -5,6 +5,11 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
+import '../core/audio/atrac9.dart';
+import '../core/audio/audio_out.dart';
+import '../core/audio/interface_sounds.dart';
+import '../core/audio/theme_music.dart';
+import '../core/audio/tones.dart';
 import '../core/controls.dart';
 import '../core/game_library.dart';
 import '../core/game_process.dart';
@@ -48,6 +53,9 @@ class Preferences {
     ..friendsJoin = json['friendsJoin'] as bool? ?? true
     ..pushToTalk = json['pushToTalk'] as bool? ?? false
     ..talkKey = (json['talkKey'] as num?)?.toInt()
+    ..sounds = json['sounds'] as bool? ?? true
+    ..soundVolume = (json['soundVolume'] as num?)?.toInt()
+    ..musicVolume = (json['musicVolume'] as num?)?.toInt()
     ..lastPlayed = {
       for (final entry in (json['lastPlayed'] as Map<String, dynamic>? ?? const {}).entries)
         entry.key: entry.value as String,
@@ -74,6 +82,12 @@ class Preferences {
   /// which key it is (a USB HID usage; null for the default).
   bool pushToTalk = false;
   int? talkKey;
+
+  /// Interface sounds, and their volume and the selected game's theme song's in percent; null
+  /// keeps the default.
+  bool sounds = true;
+  int? soundVolume;
+  int? musicVolume;
   Map<String, String> lastPlayed = {};
 
   Map<String, Object?> toJson() => {
@@ -91,6 +105,9 @@ class Preferences {
     'friendsJoin': friendsJoin,
     'pushToTalk': pushToTalk,
     'talkKey': talkKey,
+    'sounds': sounds,
+    'soundVolume': soundVolume,
+    'musicVolume': musicVolume,
     'lastPlayed': lastPlayed,
   };
 
@@ -350,7 +367,15 @@ class LauncherServices {
     this.talkKeys,
     this.engineReleases,
     this.hostGlibc,
+    this.audio,
+    this.decodeSong,
   });
+
+  /// The sound card for the interface sounds and theme songs; none (silence) when not given.
+  final AudioOut Function()? audio;
+
+  /// Reads a game's theme song; LibAtrac9 away from the interface by default.
+  final Future<PlayableSong?> Function(String path)? decodeSong;
 
   /// This system's glibc version, checked against what a Linux engine needs; the system's own
   /// by default (null: unknown, nothing is said).
@@ -411,6 +436,48 @@ class AppModel extends ChangeNotifier {
     T.language = Language.byCode(this.preferences.language);
     Motion.reduced = this.preferences.reducedMotion;
     together = TogetherModel(this);
+    _applySound();
+  }
+
+  late final AudioOut _audio = services.audio?.call() ?? const SilentAudio();
+
+  /// The interface's soft sounds (moving, selecting, going back, something finished).
+  late final InterfaceSounds sounds = InterfaceSounds(_audio);
+
+  /// The selected game's theme song.
+  late final ThemeMusic music = ThemeMusic(_audio, decode: services.decodeSong);
+
+  /// Whether the launcher's window is in front: the theme song plays only then.
+  bool active = true;
+
+  /// Opens the sound card and makes the interface sounds.
+  Future<void> startAudio() => sounds.start();
+
+  static const defaultMusicVolume = 50;
+
+  int get musicVolume => preferences.musicVolume ?? defaultMusicVolume;
+
+  void _applySound() {
+    sounds
+      ..enabled = preferences.sounds
+      ..volume = (preferences.soundVolume ?? 100) / 100;
+    music.volume = musicVolume / 100;
+  }
+
+  void setActive(bool value) {
+    if (active == value) return;
+    active = value;
+    notifyListeners();
+  }
+
+  /// The selected game's song while the launcher is in front and idle, silence otherwise (the
+  /// first start, a game starting or playing, the volume at 0); the interface sounds are quiet
+  /// while a game is in front.
+  void _updateMusic() {
+    final quiet = !preferences.onboarded || !active || running != null || starting != null || musicVolume == 0;
+    music.play(quiet ? null : selectedGame);
+    // With the game in front, the launcher says nothing.
+    sounds.muted = running != null && !active;
   }
 
   /// AnyTogether: the account, friends, messages, parties.
@@ -655,7 +722,10 @@ class AppModel extends ChangeNotifier {
     // Unlocked all the same (another glibc may be at hand), but said first.
     if (engine.glibcWarning(kit) case final String warning) show(warning);
     failures.remove(game.id);
-    if (!queue.contains(game.id) && !progress.containsKey(game.id)) queue.add(game.id);
+    if (!queue.contains(game.id) && !progress.containsKey(game.id)) {
+      queue.add(game.id);
+      sounds.play(Cue.select);
+    }
     _changed();
     _startNext();
   }
@@ -682,6 +752,7 @@ class AppModel extends ChangeNotifier {
     if (_playAfterInstall == game.id) _playAfterInstall = null;
     if (queue.remove(game.id)) return _changed();
     if (progress.containsKey(game.id)) _installer?.cancel();
+    sounds.play(Cue.back);
   }
 
   void _startNext() {
@@ -711,6 +782,7 @@ class AppModel extends ChangeNotifier {
         final installed = await installer.run();
         final record = Installer.record(installed, system: system);
         if (record != null) records[id] = record;
+        sounds.play(Cue.unlocked);
         show('${game.name} · ${T.text('ready')}');
         if (_playAfterInstall == id) {
           _playAfterInstall = null;
@@ -830,6 +902,7 @@ class AppModel extends ChangeNotifier {
       // The engine's online bridge reads the AnyTogether game session there.
       if (together.signedIn) 'ANYPS5_TOGETHER_SESSION': together.hub.games.bridgeFile,
     };
+    sounds.play(Cue.select);
     starting = game;
     preferences.lastPlayed[game.id] = DateTime.now().toIso8601String();
     savePreferences();
@@ -875,6 +948,7 @@ class AppModel extends ChangeNotifier {
       _earned = now;
       if (fresh.isEmpty) return;
       _loadTrophies(game);
+      sounds.play(Cue.unlocked);
       for (final id in fresh) {
         final trophy = trophies[game.id]?.trophies.where((trophy) => trophy.id == id).firstOrNull;
         if (trophy == null) continue;
@@ -914,7 +988,9 @@ class AppModel extends ChangeNotifier {
 
   // Navigation.
 
-  void open(Layer next) {
+  /// Opens a layer with the select sound, or [cue] (going back to the panel before).
+  void open(Layer next, {Cue cue = Cue.select}) {
+    sounds.play(cue);
     overlay = next;
     panelRow = 0;
     panelCategory = 0;
@@ -928,6 +1004,7 @@ class AppModel extends ChangeNotifier {
   void closeOverlay() {
     overlay = null;
     capturing = null;
+    sounds.play(Cue.back);
     _changed();
   }
 
@@ -949,6 +1026,7 @@ class AppModel extends ChangeNotifier {
     final next = (selected + delta).clamp(0, games.isEmpty ? 0 : games.length - 1);
     if (next == selected) return;
     selected = next;
+    sounds.play(Cue.move);
     if (focus.isActions && focus.index >= actionCount) focus = HomeFocus.actions(actionCount - 1);
     if (overlay == Layer.trophies) {
       trophyIndex = 0;
@@ -1007,11 +1085,10 @@ class AppModel extends ChangeNotifier {
       case Layer.trophies:
         final count = trophies[selectedGame?.id]?.trophies.length ?? 0;
         switch (command) {
-          case Command.up:
-            trophyIndex = (trophyIndex - 1).clamp(0, count == 0 ? 0 : count - 1);
-            _changed();
-          case Command.down:
-            trophyIndex = (trophyIndex + 1).clamp(0, count == 0 ? 0 : count - 1);
+          case Command.up || Command.down:
+            final next = (trophyIndex + (command == Command.down ? 1 : -1)).clamp(0, count == 0 ? 0 : count - 1);
+            if (next != trophyIndex) sounds.play(Cue.move);
+            trophyIndex = next;
             _changed();
           case Command.back || Command.options:
             closeOverlay();
@@ -1023,12 +1100,13 @@ class AppModel extends ChangeNotifier {
         if (capturing != null) {
           if (command == Command.back) {
             capturing = null;
+            sounds.play(Cue.back);
             _changed();
           }
           return;
         }
         if (command == Command.back || command == Command.options) {
-          open(Layer.gameSettings);
+          open(Layer.gameSettings, cue: Cue.back);
           return;
         }
         _panelCommand(command);
@@ -1040,7 +1118,7 @@ class AppModel extends ChangeNotifier {
         together.profileCommand(command);
         return;
       case Layer.friendOptions when command == Command.back || command == Command.options:
-        open(Layer.friends);
+        open(Layer.friends, cue: Cue.back);
         return;
       case Layer.settings ||
           Layer.gameSettings ||
@@ -1110,12 +1188,14 @@ class AppModel extends ChangeNotifier {
     final next = (libraryIndex + delta).clamp(0, games.isEmpty ? 0 : games.length - 1);
     if (next == libraryIndex) return;
     libraryIndex = next;
+    sounds.play(Cue.move);
     _changed();
   }
 
   void _moveFocus(HomeFocus next) {
     if (next == focus) return;
     focus = next;
+    sounds.play(Cue.move);
     _changed();
   }
 
@@ -1294,7 +1374,7 @@ class AppModel extends ChangeNotifier {
       ),
       PanelCategory(
         id: 'general',
-        title: T.text('language'),
+        title: T.text('behaviour'),
         rows: [
           PanelRow(
             id: 'language',
@@ -1306,6 +1386,40 @@ class AppModel extends ChangeNotifier {
             }),
           ),
           PanelRow(id: 'profile', title: T.text('profileName'), kind: InfoRow(preferences.profileName)),
+          PanelRow(
+            id: 'sounds',
+            title: T.text('sounds'),
+            kind: StepperRow(
+              value: preferences.sounds ? preferences.soundVolume ?? 100 : 0,
+              min: 0,
+              max: 100,
+              step: 10,
+              format: _percent,
+              set: (value) {
+                preferences.sounds = value > 0;
+                if (value > 0) preferences.soundVolume = value;
+                _applySound();
+                savePreferences();
+              },
+            ),
+          ),
+          PanelRow(
+            id: 'music',
+            title: T.text('gameMusic'),
+            detail: T.text('gameMusicDetail'),
+            kind: StepperRow(
+              value: musicVolume,
+              min: 0,
+              max: 100,
+              step: 10,
+              format: _percent,
+              set: (value) {
+                preferences.musicVolume = value;
+                _applySound();
+                savePreferences();
+              },
+            ),
+          ),
         ],
       ),
       PanelCategory(
@@ -1322,6 +1436,8 @@ class AppModel extends ChangeNotifier {
       ),
     ];
   }
+
+  static String _percent(int value) => value == 0 ? T.text('off') : '$value%';
 
   List<PanelRow> _gameRows(Game game) {
     final settings = currentSettings(game);
@@ -1478,6 +1594,7 @@ class AppModel extends ChangeNotifier {
             capturing: capturing == action,
             capture: () {
               capturing = action;
+              sounds.play(Cue.select);
               _changed();
             },
           ),
@@ -1499,6 +1616,7 @@ class AppModel extends ChangeNotifier {
     if (name == null) return true;
     final settings = currentSettings(game);
     capturing = null;
+    sounds.play(Cue.move);
     saveSettings(
       game,
       settings.copyWith(controls: Controls.assign('KEY:$name', action, settings.controls ?? const {})),
@@ -1561,24 +1679,32 @@ class AppModel extends ChangeNotifier {
 
     final row = panelRow < rows.length ? rows[panelRow] : null;
     switch (command) {
-      case Command.up:
-        panelRow = nextFocusable(panelRow, -1);
-        _changed();
-      case Command.down:
-        panelRow = nextFocusable(panelRow, 1);
+      case Command.up || Command.down:
+        final next = nextFocusable(panelRow, command == Command.down ? 1 : -1);
+        if (next != panelRow) sounds.play(Cue.move);
+        panelRow = next;
         _changed();
       case Command.left || Command.right:
         final delta = command == Command.right ? 1 : -1;
         switch (row?.kind) {
           case ChoiceRow(:final options, selected: final current, :final set):
-            set((current + delta) % options.length);
+            final next = (current + delta) % options.length;
+            set(next);
+            if (next != current) sounds.play(Cue.move);
           case StepperRow(:final value, :final min, :final max, :final step, :final set):
-            set((value + delta * step).clamp(min, max));
+            final next = (value + delta * step).clamp(min, max);
+            if (next != value) {
+              set(next);
+              sounds.play(Cue.move);
+            }
           case ToggleRow(:final value, :final set):
             set(!value);
+            sounds.play(Cue.move);
           default:
             if (overlay == Layer.settings && categories.length > 1) {
-              panelCategory = (panelCategory + delta).clamp(0, categories.length - 1);
+              final next = (panelCategory + delta).clamp(0, categories.length - 1);
+              if (next != panelCategory) sounds.play(Cue.move);
+              panelCategory = next;
               panelRow = 0;
               _skipToFocusable();
               _changed();
@@ -1588,9 +1714,12 @@ class AppModel extends ChangeNotifier {
         switch (row?.kind) {
           case ChoiceRow(:final options, selected: final current, :final set):
             set((current + 1) % options.length);
+            sounds.play(Cue.move);
           case ToggleRow(:final value, :final set):
             set(!value);
+            sounds.play(Cue.move);
           case ActionRow(:final run):
+            sounds.play(Cue.select);
             run();
           case KeysRow(:final capture):
             capture();
@@ -1607,6 +1736,7 @@ class AppModel extends ChangeNotifier {
   }
 
   void selectCategory(int index) {
+    if (index != panelCategory) sounds.play(Cue.move);
     panelCategory = index;
     panelRow = 0;
     _skipToFocusable();
@@ -1624,7 +1754,9 @@ class AppModel extends ChangeNotifier {
   void moveCategory(int delta) {
     final categories = panelCategories();
     if (categories.length < 2) return;
-    panelCategory = (panelCategory + delta).clamp(0, categories.length - 1);
+    final next = (panelCategory + delta).clamp(0, categories.length - 1);
+    if (next != panelCategory) sounds.play(Cue.move);
+    panelCategory = next;
     panelRow = 0;
     _skipToFocusable();
     _changed();
@@ -1764,6 +1896,7 @@ class AppModel extends ChangeNotifier {
       final events = RemoteEvents(
         pairing: (request) {
           pairing = request;
+          sounds.play(Cue.select);
           _changed();
         },
         connecting: (device) {
@@ -1836,6 +1969,7 @@ class AppModel extends ChangeNotifier {
     final request = pairing;
     if (request == null) return;
     remote?.respond(request.id, allow: allow);
+    sounds.play(allow ? Cue.select : Cue.back);
     pairing = null;
     _changed();
   }
@@ -1844,7 +1978,9 @@ class AppModel extends ChangeNotifier {
     switch (message) {
       case RemoteSelect(:final id):
         final index = games.indexWhere((game) => game.id == id);
-        if (index >= 0) select(index);
+        if (index < 0) return;
+        if (index != selected) sounds.play(Cue.move);
+        select(index);
       case RemoteLaunch(:final id):
         final game = games.where((game) => game.id == id).firstOrNull;
         if (game == null) return;
@@ -1977,7 +2113,9 @@ class AppModel extends ChangeNotifier {
   /// tells no one.
   @override
   void notifyListeners() {
-    if (!_disposed) super.notifyListeners();
+    if (_disposed) return;
+    super.notifyListeners();
+    _updateMusic();
   }
 
   @override
@@ -1990,6 +2128,7 @@ class AppModel extends ChangeNotifier {
     _installer?.cancel();
     engine.cancel();
     together.dispose();
+    music.dispose();
     unawaited(stopPhoneServer());
     super.dispose();
   }

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../core/audio/tones.dart';
 import '../core/game_library.dart';
 import 'app_model.dart';
 import 'background.dart';
@@ -328,7 +329,10 @@ class TileRow extends StatelessWidget {
                     duration: Motion.layout,
                     opacity: offset < 0 ? 0 : 1,
                     child: GestureDetector(
-                      onTap: () => model.select(index),
+                      onTap: () {
+                        if (model.selected != index) model.sounds.play(Cue.move);
+                        model.select(index);
+                      },
                       onDoubleTap: () {
                         model.select(index);
                         model.primaryAction(game);

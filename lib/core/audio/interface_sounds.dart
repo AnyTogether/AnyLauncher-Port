@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'audio_out.dart';
 import 'tones.dart';
 
@@ -14,11 +16,15 @@ class InterfaceSounds {
 
   bool enabled = true;
 
+  /// Quiet for now, the choice kept (a game in front).
+  bool muted = false;
+
   /// 0 to 1.
   double volume = 1;
 
   final Map<Cue, Object> _sounds = {};
   final List<Object?> _playing = List.filled(voices, null);
+  final Set<Cue> _thisTurn = {};
   int _next = 0;
   Future<void>? _loading;
 
@@ -31,10 +37,12 @@ class InterfaceSounds {
     }
   }();
 
+  /// Plays [cue]; the same cue asked twice in one step (a row that opens a panel) plays once.
   void play(Cue cue) {
-    if (!enabled || volume <= 0) return;
+    if (!enabled || muted || volume <= 0) return;
     final sound = _sounds[cue];
-    if (sound == null) return;
+    if (sound == null || !_thisTurn.add(cue)) return;
+    if (_thisTurn.length == 1) scheduleMicrotask(_thisTurn.clear);
     final previous = _playing[_next];
     if (previous != null) _out.stop(previous);
     _playing[_next] = _out.play(sound, volume: level * volume);

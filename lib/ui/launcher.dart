@@ -32,10 +32,16 @@ class LauncherShell extends StatefulWidget {
 class _LauncherShellState extends State<LauncherShell> {
   final FocusNode _focus = FocusNode(debugLabel: 'launcher');
 
+  /// The window in front or behind another: the theme song plays only in front.
+  late final AppLifecycleListener _lifecycle;
+
   @override
   void initState() {
     super.initState();
     widget.model.addListener(_modelChanged);
+    _lifecycle = AppLifecycleListener(
+      onStateChange: (state) => widget.model.setActive(state == AppLifecycleState.resumed),
+    );
   }
 
   @override
@@ -59,6 +65,7 @@ class _LauncherShellState extends State<LauncherShell> {
   @override
   void dispose() {
     widget.model.removeListener(_modelChanged);
+    _lifecycle.dispose();
     _focus.dispose();
     super.dispose();
   }

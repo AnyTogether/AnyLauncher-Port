@@ -2,6 +2,8 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:anyps5_desktop/core/audio/atrac9.dart';
+import 'package:anyps5_desktop/core/audio/audio_out.dart';
 import 'package:anyps5_desktop/core/host.dart';
 import 'package:anyps5_desktop/core/installer.dart';
 import 'package:anyps5_desktop/core/toolkit_download.dart';
@@ -117,6 +119,8 @@ Fixture makeFixture({
   KeyStateReader? keys,
   Uri? engine,
   String? glibc,
+  AudioOut? audio,
+  Future<PlayableSong?> Function(String path)? decodeSong,
 }) {
   final opened = <Uri>[];
   final temp = temporaryFolder('ui');
@@ -166,6 +170,8 @@ Fixture makeFixture({
       talkKeys: () => keys,
       engineReleases: engine == null ? null : GitHubReleases(api: engine),
       hostGlibc: () => glibc,
+      audio: audio == null ? null : () => audio,
+      decodeSong: decodeSong,
     ),
   );
   model.rescan();

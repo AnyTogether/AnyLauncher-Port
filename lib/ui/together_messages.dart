@@ -101,12 +101,14 @@ extension TogetherMessages on TogetherModel {
     if (target == null) return;
     messagesInThread = true;
     messageFocus = composer;
+    app.sounds.play(Cue.select);
     app.refresh();
     if (target is FriendTarget) await messageFriend(target.friend.person);
   }
 
   Future<void> sendMessage(String text) async {
     if (text.trim().isEmpty) return;
+    app.sounds.play(Cue.select);
     if (hub.messages.openId == null) {
       final target = selectedTarget;
       if (target is! FriendTarget) return;
@@ -126,6 +128,7 @@ extension TogetherMessages on TogetherModel {
           );
           if (next == messagesIndex) return;
           messagesIndex = next;
+          app.sounds.play(Cue.move);
           app.refresh();
           unawaited(_showSelected().catchError((Object _) {}));
         case Command.right || Command.select:
@@ -142,12 +145,16 @@ extension TogetherMessages on TogetherModel {
       case Command.left:
         if (messageFocus == 0) {
           messagesInThread = false;
+          app.sounds.play(Cue.back);
         } else {
           messageFocus--;
+          app.sounds.play(Cue.move);
         }
         app.refresh();
       case Command.right:
-        messageFocus = (messageFocus + 1).clamp(0, composer);
+        final next = (messageFocus + 1).clamp(0, composer);
+        if (next != messageFocus) app.sounds.play(Cue.move);
+        messageFocus = next;
         app.refresh();
       case Command.up:
         unawaited(hub.messages.older().catchError((Object _) {}));
@@ -164,6 +171,7 @@ extension TogetherMessages on TogetherModel {
         }
       case Command.back:
         messagesInThread = false;
+        app.sounds.play(Cue.back);
         app.refresh();
       default:
         break;
@@ -205,6 +213,8 @@ extension TogetherMessages on TogetherModel {
         hub.messages.byId(conversation as String?)?.author(author as String?)?.displayName ??
         hub.friends.byId(author as String)?.person.displayName ??
         '';
+    app.sounds.play(Cue.move);
+    _noticeSound();
     app.show(T.format('messagesFrom', [name, text.length > 80 ? '${text.substring(0, 80)}…' : text]));
   }
 

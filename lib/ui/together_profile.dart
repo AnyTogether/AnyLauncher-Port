@@ -41,7 +41,7 @@ extension TogetherProfiles on TogetherModel {
     if (back == null) {
       app.closeOverlay();
     } else {
-      app.open(back);
+      app.open(back, cue: Cue.back);
     }
   }
 
@@ -50,11 +50,13 @@ extension TogetherProfiles on TogetherModel {
 
   void profileCommand(Command command) {
     switch (command) {
-      case Command.up:
-        profileIndex = (profileIndex - 1).clamp(0, profileItems == 0 ? 0 : profileItems - 1);
-        app.refresh();
-      case Command.down:
-        profileIndex = (profileIndex + 1).clamp(0, profileItems == 0 ? 0 : profileItems - 1);
+      case Command.up || Command.down:
+        final next = (profileIndex + (command == Command.down ? 1 : -1)).clamp(
+          0,
+          profileItems == 0 ? 0 : profileItems - 1,
+        );
+        if (next != profileIndex) app.sounds.play(Cue.move);
+        profileIndex = next;
         app.refresh();
       case Command.back || Command.options:
         closeProfile();

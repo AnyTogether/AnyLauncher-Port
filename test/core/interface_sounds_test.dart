@@ -104,6 +104,7 @@ void main() {
       expect(out.cues, ['select']);
       expect(out.voices.single.volume, closeTo(0.32, 1e-9));
       sounds.volume = 0.5;
+      await Future<void>.value();
       sounds.play(Cue.back);
       expect(out.voices.last.volume, closeTo(0.16, 1e-9));
       sounds.enabled = false;
@@ -117,8 +118,28 @@ void main() {
       await sounds.start();
       for (var index = 0; index < 5; index++) {
         sounds.play(Cue.move);
+        await Future<void>.value();
       }
       expect(out.voices.map((voice) => voice.stopped), [true, false, false, false, false]);
+    });
+
+    test('the same cue twice in one step plays once; muted, none plays', () async {
+      final out = FakeAudio();
+      final sounds = InterfaceSounds(out);
+      await sounds.start();
+      sounds
+        ..play(Cue.select)
+        ..play(Cue.select)
+        ..play(Cue.back);
+      expect(out.cues, ['select', 'back']);
+      await Future<void>.value();
+      sounds.play(Cue.select);
+      expect(out.cues, ['select', 'back', 'select']);
+      await Future<void>.value();
+      sounds
+        ..muted = true
+        ..play(Cue.move);
+      expect(out.cues, hasLength(3));
     });
 
     test('without an output it stays quiet', () async {

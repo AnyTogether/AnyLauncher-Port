@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../core/audio/tones.dart';
 import '../core/game_library.dart';
 import '../core/host.dart';
 import '../core/remote/remote_protocol.dart';
@@ -50,11 +51,16 @@ class TogetherModel {
       voiceEngine: app.services.voiceEngine ?? WebRtcVoice.new,
       bridgeFile: GameSessions.defaultBridgeFile(app.paths.config),
     );
-    hub.games.onInvite = (invite) =>
-        app.show(T.format('gameInvitedYou', [invite.from?.displayName ?? '', gameName(invite.titleId)]));
+    hub.games.onInvite = (invite) {
+      _noticeSound();
+      app.show(T.format('gameInvitedYou', [invite.from?.displayName ?? '', gameName(invite.titleId)]));
+    };
     hub.games.onEnded = (host) => app.show(T.format('sessionEnded', [host?.displayName ?? '']));
     hub.addListener(app.refresh);
-    hub.friends.onRequest = (person) => app.show(T.format('friendsAsked', [person.displayName]));
+    hub.friends.onRequest = (person) {
+      _noticeSound();
+      app.show(T.format('friendsAsked', [person.displayName]));
+    };
     hub.friends.onAccepted = (person) => app.show(T.format('friendsNowFriends', [person.displayName]));
     sync = TogetherSync(
       account: account,
@@ -323,8 +329,15 @@ class TogetherModel {
 
   void cancel() => account.cancel();
 
+  /// Something a friend did while the launcher is behind another window: the sound of a notice
+  /// (the Mac shows it over the other window with the same sound).
+  void _noticeSound() {
+    if (!app.active) app.sounds.play(Cue.unlocked);
+  }
+
   void _welcome(TogetherUser user) {
     code = '';
+    app.sounds.play(Cue.select);
     app.show(T.format('togetherWelcome', [user.displayName]));
   }
 
@@ -752,6 +765,7 @@ class TogetherModel {
         _messageArrived(data);
       case 'party.invite':
         final from = data['from'];
+        _noticeSound();
         app.show(
           T.format('partyInvitedYou', [from is Map<String, dynamic> ? (from['displayName'] as String?) ?? '' : '']),
         );

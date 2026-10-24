@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:path/path.dart' as p;
 
+import '../core/audio/tones.dart';
 import '../core/glibc.dart';
 import '../core/host.dart';
 import '../core/toolkit.dart';
@@ -169,6 +170,7 @@ class EngineModel {
       app.preferences.toolkitFolder = kit.root;
       app.savePreferences();
       removeUnused();
+      app.sounds.play(Cue.unlocked);
       app.show(glibcWarning(kit) ?? T.format('engineReady', [label(kit)]));
       return true;
     } on ToolkitFailure catch (failure) {

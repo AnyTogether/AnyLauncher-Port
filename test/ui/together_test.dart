@@ -284,7 +284,7 @@ void main() {
       final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
       final installed = Installer.installedFolder(orbit, model.root!);
       File(p.join(installed, 'app.elf')).writeAsStringSync('#!/bin/sh\nsleep 0.4\n');
-      Process.runSync('chmod', ['755', p.join(installed, 'app.elf')]);
+      if (!Platform.isWindows) Process.runSync('chmod', ['755', p.join(installed, 'app.elf')]);
       final playing = model.play(orbit);
       final inGame = await server.nextFrame(
         'heartbeat',
@@ -622,7 +622,7 @@ void main() {
       final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
       final installed = Installer.installedFolder(orbit, model.root!);
       File(p.join(installed, 'app.elf')).writeAsStringSync('#!/bin/sh\nenv | grep ^ANYPS5_TOGETHER\nsleep 0.6\n');
-      Process.runSync('chmod', ['755', p.join(installed, 'app.elf')]);
+      if (!Platform.isWindows) Process.runSync('chmod', ['755', p.join(installed, 'app.elf')]);
       final playing = model.play(orbit);
       await until(() => model.together.hub.games.session != null);
       expect(server.callsTo('game-sessions', method: 'POST').single.body, {
@@ -657,7 +657,7 @@ void main() {
       final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
       final installed = Installer.installedFolder(orbit, model.root!);
       File(p.join(installed, 'app.elf')).writeAsStringSync('#!/bin/sh\nsleep 0.4\n');
-      Process.runSync('chmod', ['755', p.join(installed, 'app.elf')]);
+      if (!Platform.isWindows) Process.runSync('chmod', ['755', p.join(installed, 'app.elf')]);
       await model.together.joinFriendGame('gs-ana', titleId: 'PPSA01001', host: 'Ana');
       expect(model.toast, 'Starting Orbit Runner with Ana');
       expect(server.callsTo('game-sessions/gs-ana/join').single.body, {

@@ -85,7 +85,7 @@ void main() {
     final orbit = model.games[indexOf('PPSA01001')];
     final installed = Installer.installedFolder(orbit, model.root!);
     File(p.join(installed, 'app.elf')).writeAsStringSync('#!/bin/sh\nenv | grep ^ANYPS5_ | sort\nsleep 0.3\n');
-    Process.runSync('chmod', ['755', p.join(installed, 'app.elf')]);
+    if (!Platform.isWindows) Process.runSync('chmod', ['755', p.join(installed, 'app.elf')]);
     final playing = model.play(orbit);
     expect(model.stateOf(orbit), isA<Starting>());
     await until(() => model.stateOf(orbit) is Running);

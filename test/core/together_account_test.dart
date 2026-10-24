@@ -206,7 +206,7 @@ case "\$1" in
   clear) rm -f "$keyring" ;;
 esac
 ''');
-      Process.runSync('chmod', ['+x', tool]);
+      if (!Platform.isWindows) Process.runSync('chmod', ['+x', tool]);
       final fallback = FileTokenStore(p.join(temp.path, 'session.json'));
       final store = SecretServiceStore(fallback: fallback, tool: tool);
       await store.save(session);
@@ -219,7 +219,7 @@ esac
 
       final broken = p.join(temp.path, 'broken-tool');
       File(broken).writeAsStringSync('#!/bin/sh\nexit 1\n');
-      Process.runSync('chmod', ['+x', broken]);
+      if (!Platform.isWindows) Process.runSync('chmod', ['+x', broken]);
       final failing = SecretServiceStore(fallback: fallback, tool: broken);
       await failing.save(session);
       expect(failing.kind, 'file');

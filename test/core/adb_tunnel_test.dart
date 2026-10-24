@@ -28,7 +28,7 @@ case "\$*" in
   *) exit 1 ;;
 esac
 ''');
-    Process.runSync('chmod', ['755', script]);
+    if (!Platform.isWindows) Process.runSync('chmod', ['755', script]);
     return script;
   }
 

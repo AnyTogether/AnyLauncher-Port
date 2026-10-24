@@ -41,10 +41,10 @@ echo "Guest module: app0/sce_module/libgame.prx"
 ''';
   final relinker = p.join(folder, 'relinker');
   File(relinker).writeAsStringSync(script);
-  Process.runSync('chmod', ['755', relinker]);
+  if (!Platform.isWindows) Process.runSync('chmod', ['755', relinker]);
   // The same script under the Windows name, for tests of the Windows layout on a POSIX host.
   File(p.join(folder, 'relinker.exe')).writeAsStringSync(script);
-  Process.runSync('chmod', ['755', p.join(folder, 'relinker.exe')]);
+  if (!Platform.isWindows) Process.runSync('chmod', ['755', p.join(folder, 'relinker.exe')]);
   return folder;
 }
 

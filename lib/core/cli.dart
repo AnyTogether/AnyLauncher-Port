@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'game_library.dart';
+import 'glibc.dart';
 import 'game_process.dart';
 import 'game_settings.dart';
 import 'host.dart';
@@ -72,6 +73,7 @@ Future<int> runCli(
     case 'install' when arguments.length == 3:
       final toolkit = Toolkit.locate(const [], system: host, environment: env);
       if (toolkit == null) return fail('no toolkit: set ANYPS5_TOOLKIT');
+      _glibcWarning(toolkit, host, env, output);
       final game = GameLibrary.inspect(arguments[1]);
       if (game == null) return fail('not a game folder: ${arguments[1]}');
       final paths = AppPaths.forSystem(host, environment: env);
@@ -128,6 +130,18 @@ Future<int> runCli(
     default:
       return fail(usage);
   }
+}
+
+/// Says when a Linux toolkit's libraries need a newer glibc than this system has (ANYPS5_HOST_GLIBC
+/// stands in for the system's version).
+void _glibcWarning(Toolkit toolkit, HostSystem host, Map<String, String> env, StringSink output) {
+  if (host != HostSystem.linux) return;
+  final missing = Glibc.shortfall(toolkit.libraryFiles, host: env['ANYPS5_HOST_GLIBC'] ?? Glibc.host());
+  if (missing == null) return;
+  output.writeln(
+    'warning: games need glibc ${missing.needed} or newer; this system has ${missing.host} '
+    '(the engine was built for a newer Linux): they will not start here',
+  );
 }
 
 /// The engine download the first start and Settings make, on the command line.
@@ -187,6 +201,7 @@ Future<int> _engine(
     output.writeln(
       'toolkit ${toolkit.version}: ${toolkit.libraryFiles.length} libraries in ${seconds.toStringAsFixed(1)} s',
     );
+    _glibcWarning(toolkit, host, env, output);
     output.writeln(toolkit.root);
     return 0;
   } on ToolkitFailure catch (error) {

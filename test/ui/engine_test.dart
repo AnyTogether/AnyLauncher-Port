@@ -6,6 +6,7 @@ import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
+import '../support/fake_elf.dart';
 import '../support/fake_github.dart';
 import '../support/ui_support.dart';
 
@@ -177,6 +178,45 @@ void main() {
         model.panelCategories().expand((category) => category.rows).map((row) => row.id),
         isNot(contains('engineDownload')),
       );
+    });
+  });
+
+  group('glibc', () {
+    PanelRow? row(AppModel model, String id) {
+      model.open(Layer.settings);
+      return model.panelCategories().expand((category) => category.rows).where((row) => row.id == id).firstOrNull;
+    }
+
+    test('an engine needing a newer glibc is said in Settings and before a game is unlocked', () {
+      final fixture = makeFixture(glibc: '2.35');
+      addTearDown(fixture.dispose);
+      final model = fixture.model;
+      addTearDown(model.dispose);
+      File(p.join(fixture.toolkit, 'libs', 'libkernel.prx')).writeAsBytesSync(elfNeeding(['GLIBC_2.38']));
+      final warning = row(model, 'engineGlibc');
+      expect(warning?.title, 'Games need glibc 2.38 or newer; this system has 2.35');
+      expect(warning?.detail, contains('Ubuntu 24.04'));
+      final locked = model.games.firstWhere((game) => game.titleId == 'PPSA03003');
+      model.unlock(locked);
+      expect(model.toast, 'Games need glibc 2.38 or newer; this system has 2.35');
+      expect(
+        model.queue.contains(locked.id) || model.progress.containsKey(locked.id),
+        isTrue,
+        reason: 'it is unlocked all the same',
+      );
+      model.cancelUnlock(locked);
+      T.language = Language.turkish;
+      expect(row(model, 'engineGlibc')?.title, 'Oyunlar glibc 2.38 veya daha yenisini istiyor; bu sistemde 2.35 var');
+    });
+
+    test('nothing is said when the system has enough, or its glibc is unknown', () {
+      for (final glibc in ['2.39', null]) {
+        final fixture = makeFixture(glibc: glibc);
+        File(p.join(fixture.toolkit, 'libs', 'libkernel.prx')).writeAsBytesSync(elfNeeding(['GLIBC_2.38']));
+        expect(row(fixture.model, 'engineGlibc'), isNull);
+        fixture.model.dispose();
+        fixture.dispose();
+      }
     });
   });
 }

@@ -81,6 +81,9 @@ abstract final class T {
     'engineDeleted': 'Other engine versions deleted',
     'engineUpdateAndPlayDetail':
         'Downloads AnyPS5 engine %@ (%@), then unlocks the game again; saves and trophies stay',
+    'engineGlibc': 'Games need glibc %@ or newer; this system has %@',
+    'engineGlibcDetail':
+        'This engine was built for newer Linux systems (such as Ubuntu 24.04): its games will not start here',
     'resolutionReinstall': 'Takes effect when the game is installed again',
     'linkModeHard': 'Game files are linked to the dump and take no extra space',
     'phoneServer': 'Phone controller',
@@ -149,6 +152,9 @@ abstract final class T {
     'engineDeleted': 'Diğer motor sürümleri silindi',
     'engineUpdateAndPlayDetail':
         'AnyPS5 motoru %@ (%@) indirilir, sonra oyunun kilidi yeniden açılır; kayıtlar ve kupalar korunur',
+    'engineGlibc': 'Oyunlar glibc %@ veya daha yenisini istiyor; bu sistemde %@ var',
+    'engineGlibcDetail':
+        'Bu motor daha yeni Linux sistemleri (Ubuntu 24.04 gibi) için derlenmiş: oyunları burada açılmaz',
     'resolutionReinstall': 'Oyun yeniden kurulunca geçerli olur',
     'linkModeHard': 'Oyun dosyaları dump\'a bağlanır, fazladan yer kaplamaz',
     'phoneServer': 'Telefon kumandası',

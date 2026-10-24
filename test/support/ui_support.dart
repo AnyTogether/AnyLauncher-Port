@@ -116,6 +116,7 @@ Fixture makeFixture({
   VoiceEngine Function()? voice,
   KeyStateReader? keys,
   Uri? engine,
+  String? glibc,
 }) {
   final opened = <Uri>[];
   final temp = temporaryFolder('ui');
@@ -164,6 +165,7 @@ Fixture makeFixture({
       voiceEngine: voice ?? FakeVoiceEngine.new,
       talkKeys: () => keys,
       engineReleases: engine == null ? null : GitHubReleases(api: engine),
+      hostGlibc: () => glibc,
     ),
   );
   model.rescan();

@@ -105,6 +105,12 @@ Some environment variables the launcher passes exist only in the fork's engine
 the fork's `ANYPS5_REMOTE_PAD` bridge, which is POSIX-only today (Linux works, Windows needs a
 Winsock port of `RemotePad.cpp`).
 
+On Linux the launcher reads the glibc version the engine's libraries ask for (their ELF version
+needs) and compares it with the system's: upstream v0.1.3's Linux libraries need glibc 2.38
+(Ubuntu 24.04, Debian 13), so on Ubuntu 22.04 (2.35) Settings › AnyPS5 Engine, the download and
+every unlock say "Games need glibc 2.38 or newer; this system has 2.35". Games are still
+unlocked; they would not start there.
+
 ## AnyTogether
 
 The launcher signs in to [AnyTogether](https://github.com/utkuhalis/AnyTogether), the AnyPS5

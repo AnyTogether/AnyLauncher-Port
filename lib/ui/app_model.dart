@@ -349,7 +349,12 @@ class LauncherServices {
     this.voiceEngine,
     this.talkKeys,
     this.engineReleases,
+    this.hostGlibc,
   });
+
+  /// This system's glibc version, checked against what a Linux engine needs; the system's own
+  /// by default (null: unknown, nothing is said).
+  final String? Function()? hostGlibc;
 
   /// Where the AnyPS5 engine's releases are read from (GitHub); none in tests without a fake.
   final GitHubReleases? engineReleases;
@@ -645,7 +650,10 @@ class AppModel extends ChangeNotifier {
 
   void unlock(Game game) {
     if (root == null) return;
-    if (toolkit == null) return show(T.text('noToolkit'));
+    final kit = toolkit;
+    if (kit == null) return show(T.text('noToolkit'));
+    // Unlocked all the same (another glibc may be at hand), but said first.
+    if (engine.glibcWarning(kit) case final String warning) show(warning);
     failures.remove(game.id);
     if (!queue.contains(game.id) && !progress.containsKey(game.id)) queue.add(game.id);
     _changed();

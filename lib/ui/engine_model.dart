@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:path/path.dart' as p;
 
+import '../core/glibc.dart';
+import '../core/host.dart';
 import '../core/toolkit.dart';
 import '../core/toolkit_download.dart';
 import 'app_model.dart';
@@ -73,6 +75,22 @@ class EngineModel {
   }
 
   bool isDownloaded(Toolkit kit) => p.equals(p.dirname(kit.root), store.root);
+
+  /// This system's glibc, read once.
+  late final String? hostGlibc = app.system == HostSystem.linux ? (app.services.hostGlibc ?? Glibc.host)() : null;
+
+  /// What a Linux engine's libraries need of glibc and this system lacks, null when it has
+  /// enough (or on Windows, or when either is unknown).
+  ({String needed, String host})? glibcShortfall(Toolkit kit) {
+    if (app.system != HostSystem.linux) return null;
+    return Glibc.shortfall(kit.libraryFiles, host: hostGlibc, key: '${kit.root}\u0000${kit.version}');
+  }
+
+  /// "Games need glibc 2.38 or newer; this system has 2.35", null when nothing is missing.
+  String? glibcWarning(Toolkit kit) {
+    final missing = glibcShortfall(kit);
+    return missing == null ? null : T.format('engineGlibc', [missing.needed, missing.host]);
+  }
 
   /// Asks GitHub for the latest release and the recent ones. Without [quiet], says what came
   /// of it.
@@ -151,7 +169,7 @@ class EngineModel {
       app.preferences.toolkitFolder = kit.root;
       app.savePreferences();
       removeUnused();
-      app.show(T.format('engineReady', [label(kit)]));
+      app.show(glibcWarning(kit) ?? T.format('engineReady', [label(kit)]));
       return true;
     } on ToolkitFailure catch (failure) {
       switch (failure.kind) {
@@ -180,7 +198,7 @@ class EngineModel {
   void use(Toolkit kit) {
     app.preferences.toolkitFolder = kit.root;
     app.savePreferences();
-    app.show(T.format('engineSwitched', [label(kit)]));
+    app.show(glibcWarning(kit) ?? T.format('engineSwitched', [label(kit)]));
   }
 
   /// Keeps the toolkit in use, the newest two and those installed games were made with.
@@ -215,6 +233,13 @@ class EngineModel {
         detail: current?.root ?? T.text('toolkitDetail'),
         kind: InfoRow(current == null ? T.text('toolkitMissing') : label(current)),
       ),
+      if (current != null && glibcWarning(current) != null)
+        PanelRow(
+          id: 'engineGlibc',
+          title: glibcWarning(current)!,
+          detail: T.text('engineGlibcDetail'),
+          kind: const InfoRow(''),
+        ),
       if (package != null)
         PanelRow(
           id: 'engineDownload',

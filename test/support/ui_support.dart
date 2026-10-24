@@ -1,0 +1,185 @@
+import 'dart:io';
+import 'dart:math' as math;
+import 'dart:typed_data';
+
+import 'package:anyps5_desktop/core/host.dart';
+import 'package:anyps5_desktop/core/installer.dart';
+import 'package:anyps5_desktop/main.dart';
+import 'package:anyps5_desktop/ui/app_model.dart';
+import 'package:anyps5_desktop/ui/background.dart';
+import 'package:anyps5_desktop/ui/strings.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
+
+import 'fake_toolkit.dart';
+import 'fixtures.dart';
+
+bool _fontsLoaded = false;
+
+/// The app's font and the Material icons, so golden images show real text instead of boxes.
+Future<void> loadFonts() async {
+  if (_fontsLoaded) return;
+  _fontsLoaded = true;
+  final figtree = FontLoader('Figtree')..addFont(rootBundle.load('assets/fonts/Figtree.ttf'));
+  final icons = FontLoader('MaterialIcons')..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+  await Future.wait([figtree.load(), icons.load()]);
+}
+
+/// A PNG written in Dart: [color] gives each pixel's RGBA.
+Uint8List png(int width, int height, int Function(int x, int y) color) {
+  final raw = BytesBuilder();
+  for (var y = 0; y < height; y++) {
+    raw.addByte(0);
+    for (var x = 0; x < width; x++) {
+      final value = color(x, y);
+      raw.add([value >> 24 & 0xFF, value >> 16 & 0xFF, value >> 8 & 0xFF, value & 0xFF]);
+    }
+  }
+  final out = BytesBuilder()..add([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+  void chunk(String type, List<int> data) {
+    final body = [...type.codeUnits, ...data];
+    out
+      ..add(_u32(data.length))
+      ..add(body)
+      ..add(_u32(_crc(body)));
+  }
+
+  chunk('IHDR', [..._u32(width), ..._u32(height), 8, 6, 0, 0, 0]);
+  chunk('IDAT', ZLibEncoder().convert(raw.toBytes()));
+  chunk('IEND', const []);
+  return out.toBytes();
+}
+
+List<int> _u32(int value) => [value >> 24 & 0xFF, value >> 16 & 0xFF, value >> 8 & 0xFF, value & 0xFF];
+
+int _crc(List<int> bytes) {
+  var crc = 0xFFFFFFFF;
+  for (final byte in bytes) {
+    crc ^= byte;
+    for (var bit = 0; bit < 8; bit++) {
+      crc = crc & 1 != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1;
+    }
+  }
+  return crc ^ 0xFFFFFFFF;
+}
+
+/// A made-up game icon: a diagonal gradient between two colors with a soft disc.
+Uint8List iconArt(int from, int to, {int size = 96}) => png(size, size, (x, y) {
+  final t = (x + y) / (2 * size);
+  final disc = math.max(0.0, 1 - math.sqrt(math.pow(x - size * 0.62, 2) + math.pow(y - size * 0.4, 2)) / (size * 0.3));
+  int mix(int shift) {
+    final a = from >> shift & 0xFF;
+    final b = to >> shift & 0xFF;
+    return (a + (b - a) * t + 255 * disc * 0.35).round().clamp(0, 255);
+  }
+
+  return mix(16) << 24 | mix(8) << 16 | mix(0) << 8 | 0xFF;
+});
+
+/// A made-up wide background: dark horizon bands.
+Uint8List backgroundArt(int tint) => png(160, 90, (x, y) {
+  final t = y / 90;
+  int channel(int shift) => ((tint >> shift & 0xFF) * (0.25 + 0.55 * (1 - (t - 0.55).abs() * 1.6).clamp(0, 1))).round();
+  return channel(16) << 24 | channel(8) << 16 | channel(0) << 8 | 0xFF;
+});
+
+class Fixture {
+  Fixture(this.temp, this.model, this.toolkit);
+  final Directory temp;
+  final AppModel model;
+  final String toolkit;
+
+  void dispose() => temp.deleteSync(recursive: true);
+}
+
+/// A launcher on a games folder of four made-up dumps: one installed with pictures, one locked,
+/// one being installed and one that cannot be read; a fake toolkit; nothing written to the
+/// user's folders.
+Fixture makeFixture({
+  bool onboarded = true,
+  int theme = 0,
+  Language language = Language.english,
+  bool withToolkit = true,
+}) {
+  final temp = temporaryFolder('ui');
+  final root = p.join(temp.path, 'Games');
+  final toolkit = makeFakeToolkit(p.join(temp.path, 'toolkit'));
+  void pictures(String folder, int from, int to) {
+    File(p.join(folder, 'sce_sys', 'icon0.png')).writeAsBytesSync(iconArt(from, to));
+    File(p.join(folder, 'sce_sys', 'pic0.png')).writeAsBytesSync(backgroundArt(to));
+  }
+
+  final astro = makeDump(
+    root,
+    'astro',
+    titleId: 'PPSA01001',
+    names: {'en-US': 'Orbit Runner', 'tr-TR': 'Yörünge Koşucusu'},
+  );
+  pictures(astro, 0x3A6BFF, 0x0B1E5C);
+  final stray = makeDump(root, 'stray', titleId: 'PPSA02002', names: {'en-US': 'Neon Alley'}, eboot: selfHead);
+  pictures(stray, 0xFF8A3D, 0x5C1B0B);
+  final forest = makeDump(root, 'forest', titleId: 'PPSA03003', names: {'en-US': 'Quiet Forest'}, eboot: selfHead);
+  pictures(forest, 0x42D392, 0x0B3D2A);
+  makeDump(root, 'broken', titleId: 'PPSA04004', names: {'en-US': 'Sealed Archive'}, eboot: const [1, 2, 3, 4]);
+  final preferences = Preferences()
+    ..onboarded = onboarded
+    ..gamesFolder = root
+    ..theme = theme
+    ..language = language.code
+    ..profileName = 'Utku'
+    ..toolkitFolder = withToolkit ? toolkit : null;
+  final model = AppModel(
+    paths: AppPaths.forSystem(HostSystem.linux, environment: {'HOME': p.join(temp.path, 'home')}),
+    preferences: preferences,
+    system: HostSystem.linux,
+    persist: false,
+    services: LauncherServices(computerName: 'Desk', pickFolder: (_) async => root),
+  );
+  model.rescan();
+  // The first game is installed: a record beside a stand-in executable.
+  final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
+  final installed = Installer.installedFolder(orbit, root);
+  Directory(installed).createSync(recursive: true);
+  File(p.join(installed, 'app.elf')).writeAsStringSync('#!/bin/sh\n');
+  File(p.join(installed, Installer.recordName)).writeAsStringSync(
+    '{"date":"2026-10-24T12:00:00Z","source":"${orbit.folder}","system":"linux","titleID":"PPSA01001","toolkit":"toolkit-1"}',
+  );
+  model.rescan();
+  model.sizes[orbit.id] = 48200000000;
+  return Fixture(temp, model, toolkit);
+}
+
+/// Renders the launcher at 1600x900 with the background and clock held still.
+Future<void> pumpLauncher(WidgetTester tester, AppModel model, {Size size = const Size(1600, 900)}) async {
+  await tester.runAsync(() async {
+    await loadFonts();
+    await ThemeBackground.preload();
+  });
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(AnyPS5App(model: model, time: 120, now: DateTime(2026, 10, 24, 21, 30)));
+  await settle(tester);
+}
+
+/// Lets images decode (real file reads) and animations finish.
+Future<void> settle(WidgetTester tester) async {
+  await tester.runAsync(() async {
+    for (final element in find.byType(Image).evaluate()) {
+      final image = element.widget as Image;
+      await precacheImage(image.image, element);
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+  });
+  for (var frame = 0; frame < 8; frame++) {
+    await tester.pump(const Duration(milliseconds: 150));
+  }
+}
+
+/// Presses a key as the keyboard would.
+Future<void> press(WidgetTester tester, LogicalKeyboardKey key) async {
+  await tester.sendKeyEvent(key);
+  await settle(tester);
+}

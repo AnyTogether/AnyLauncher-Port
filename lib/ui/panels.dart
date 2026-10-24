@@ -1,0 +1,556 @@
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+
+import '../core/controls.dart';
+import 'app_model.dart';
+import 'components.dart';
+import 'home.dart';
+import 'strings.dart';
+import 'theme.dart';
+
+/// Every game as a grid, opened from the library button.
+class LibraryGrid extends StatelessWidget {
+  const LibraryGrid({super.key, required this.model});
+
+  final AppModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final size = 196 * scale;
+    return _Scrim(
+      opacity: 0.74,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 80 * scale, vertical: 60 * scale),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(T.text('library'), style: AppText.display(40 * scale, weight: FontWeight.w300)),
+                SizedBox(width: 14 * scale),
+                Padding(
+                  padding: EdgeInsets.only(bottom: 6 * scale),
+                  child: Text(
+                    '${model.games.length}',
+                    style: AppText.display(
+                      22 * scale,
+                      weight: FontWeight.w500,
+                      color: Colors.white.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                const HintBar(options: false),
+              ],
+            ),
+            SizedBox(height: 26 * scale),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.all(14 * scale),
+                child: Wrap(
+                  spacing: 26 * scale,
+                  runSpacing: 30 * scale,
+                  children: [
+                    for (var index = 0; index < model.games.length; index++)
+                      GestureDetector(
+                        onTap: () {
+                          model.select(index);
+                          model.closeOverlay();
+                        },
+                        child: SizedBox(
+                          width: size,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox.square(
+                                dimension: size,
+                                child: GameTile(
+                                  model: model,
+                                  game: model.games[index],
+                                  size: size,
+                                  focused: index == model.libraryIndex,
+                                ),
+                              ),
+                              SizedBox(height: 10 * scale),
+                              Text(
+                                model.games[index].nameFor([T.language.code]),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppText.display(
+                                  15 * scale,
+                                  weight: index == model.libraryIndex ? FontWeight.w600 : FontWeight.w400,
+                                  color: Colors.white.withValues(alpha: index == model.libraryIndex ? 1 : 0.75),
+                                ),
+                              ),
+                              SizedBox(height: 4 * scale),
+                              StateLabel(model: model, state: model.stateOf(model.games[index]), size: 12),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A darkened, blurred layer over the home screen.
+class _Scrim extends StatelessWidget {
+  const _Scrim({required this.child, this.opacity = 0.65});
+
+  final Widget child;
+  final double opacity;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        child: ColoredBox(
+          color: Colors.black.withValues(alpha: opacity),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// The settings, a game's settings, its controls and the confirmations: categories on the left
+/// (when there are several), the rows of the chosen one on the right.
+class PanelView extends StatelessWidget {
+  const PanelView({super.key, required this.model});
+
+  final AppModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final categories = model.panelCategories();
+    if (categories.isEmpty) return const SizedBox.shrink();
+    final category = categories[model.panelCategory.clamp(0, categories.length - 1)];
+    final compact = model.overlay == Layer.confirmUninstall || model.overlay == Layer.updateChoice;
+    final heading = switch (model.overlay) {
+      Layer.settings => T.text('settings'),
+      Layer.controls => T.text('controls'),
+      Layer.gameSettings => T.text('gameSettings'),
+      _ => category.title,
+    };
+    return _Scrim(
+      opacity: 0.55,
+      child: Center(
+        child: SizedBox(
+          width: (compact ? 760 : 1180) * scale,
+          height: (compact ? 420 : 720) * scale,
+          child: Glass(
+            radius: 28 * scale,
+            opacity: 0.5,
+            padding: EdgeInsets.all(36 * scale),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(heading, style: AppText.display(34 * scale, weight: FontWeight.w300)),
+                    if (model.overlay != Layer.settings && !compact) ...[
+                      SizedBox(width: 14 * scale),
+                      Flexible(
+                        child: Padding(
+                          padding: EdgeInsets.only(bottom: 5 * scale),
+                          child: Text(
+                            category.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.display(18 * scale, color: Colors.white.withValues(alpha: 0.55)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                SizedBox(height: 24 * scale),
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (categories.length > 1) ...[
+                        SizedBox(
+                          width: 250 * scale,
+                          child: Column(
+                            children: [
+                              for (var index = 0; index < categories.length; index++)
+                                _CategoryTab(
+                                  title: categories[index].title,
+                                  selected: index == model.panelCategory,
+                                  onTap: () => model.selectCategory(index),
+                                ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: 28 * scale),
+                      ],
+                      Expanded(
+                        child: _Rows(model: model, rows: category.rows),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CategoryTab extends StatelessWidget {
+  const _CategoryTab({required this.title, required this.selected, required this.onTap});
+
+  final String title;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: Motion.focus,
+        curve: Motion.settle,
+        width: double.infinity,
+        margin: EdgeInsets.only(bottom: 6 * scale),
+        padding: EdgeInsets.symmetric(horizontal: 18 * scale, vertical: 14 * scale),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: selected ? 0.14 : 0),
+          borderRadius: BorderRadius.circular(12 * scale),
+        ),
+        child: Text(
+          title,
+          style: AppText.display(
+            17 * scale,
+            weight: selected ? FontWeight.w600 : FontWeight.w400,
+            color: Colors.white.withValues(alpha: selected ? 1 : 0.6),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Rows extends StatelessWidget {
+  const _Rows({required this.model, required this.rows});
+
+  final AppModel model;
+  final List<PanelRow> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    return ListView.builder(
+      itemCount: rows.length,
+      padding: EdgeInsets.symmetric(horizontal: 6 * scale, vertical: 6 * scale),
+      itemBuilder: (context, index) => _RowView(
+        model: model,
+        row: rows[index],
+        focused: index == model.panelRow,
+        onTap: () {
+          model.panelRow = index;
+          model.handle(Command.select);
+        },
+      ),
+    );
+  }
+}
+
+class _RowView extends StatelessWidget {
+  const _RowView({required this.model, required this.row, required this.focused, required this.onTap});
+
+  final AppModel model;
+  final PanelRow row;
+  final bool focused;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final kind = row.kind;
+    final destructive = kind is ActionRow && kind.destructive;
+    final titleColor = focused ? Colors.black : (destructive ? Palette.danger : Colors.white);
+    final detailColor = focused ? Colors.black.withValues(alpha: 0.6) : Colors.white.withValues(alpha: 0.55);
+    final accent = model.accentChoice.color;
+    Widget value() {
+      final style = AppText.display(16 * scale, weight: FontWeight.w600, color: titleColor);
+      switch (kind) {
+        case ChoiceRow(:final options, :final selected):
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.chevron_left_rounded, size: 20 * scale, color: detailColor),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: 280 * scale),
+                child: Text(
+                  options[selected.clamp(0, options.length - 1)],
+                  style: style,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, size: 20 * scale, color: detailColor),
+            ],
+          );
+        case ToggleRow(:final value):
+          return AnimatedContainer(
+            duration: Motion.focus,
+            curve: Motion.settle,
+            width: 46 * scale,
+            height: 26 * scale,
+            padding: EdgeInsets.all(3 * scale),
+            alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20 * scale),
+              color: value
+                  ? accent
+                  : (focused ? Colors.black.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.18)),
+            ),
+            child: Container(
+              width: 20 * scale,
+              height: 20 * scale,
+              decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+            ),
+          );
+        case StepperRow(:final value, :final format):
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.remove_rounded, size: 18 * scale, color: detailColor),
+              SizedBox(width: 10 * scale),
+              Text(format(value), style: style),
+              SizedBox(width: 10 * scale),
+              Icon(Icons.add_rounded, size: 18 * scale, color: detailColor),
+            ],
+          );
+        case KeysRow(:final sources, :final capturing):
+          if (capturing) {
+            return Text(T.text('pressKey'), style: style.copyWith(color: focused ? Colors.black : accent));
+          }
+          return Wrap(
+            spacing: 6 * scale,
+            children: [
+              if (sources.isEmpty) Text(T.text('noKey'), style: style.copyWith(color: detailColor)),
+              for (final source in sources)
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 9 * scale, vertical: 4 * scale),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(7 * scale),
+                    color: focused ? Colors.black.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.12),
+                  ),
+                  child: Text(
+                    Controls.label(source, turkish: T.language == Language.turkish),
+                    style: AppText.display(13 * scale, weight: FontWeight.w600, color: titleColor),
+                  ),
+                ),
+            ],
+          );
+        case ActionRow():
+          return Icon(Icons.chevron_right_rounded, size: 22 * scale, color: detailColor);
+        case InfoRow():
+          return const SizedBox.shrink();
+      }
+    }
+
+    final info = kind is InfoRow ? kind.text : null;
+    return GestureDetector(
+      onTap: row.focusable ? onTap : null,
+      child: AnimatedContainer(
+        duration: Motion.focus,
+        curve: Motion.settle,
+        margin: EdgeInsets.only(bottom: 6 * scale),
+        padding: EdgeInsets.symmetric(horizontal: 20 * scale, vertical: 14 * scale),
+        decoration: BoxDecoration(
+          color: focused ? Colors.white : Colors.white.withValues(alpha: row.focusable ? 0.06 : 0),
+          borderRadius: BorderRadius.circular(14 * scale),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.white.withValues(alpha: focused ? 0.22 : 0),
+              blurRadius: 16 * scale,
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    row.title,
+                    style: AppText.display(17 * scale, weight: FontWeight.w500, color: titleColor),
+                  ),
+                  if (row.detail != null || info != null) ...[
+                    SizedBox(height: 4 * scale),
+                    Text(
+                      info ?? row.detail!,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.display(13 * scale, color: detailColor),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            SizedBox(width: 18 * scale),
+            value(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The game's log, newest at the bottom.
+class LogView extends StatelessWidget {
+  const LogView({super.key, required this.model});
+
+  final AppModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final game = model.selectedGame;
+    final text = game == null ? '' : model.logText(game);
+    return _Scrim(
+      opacity: 0.65,
+      child: Padding(
+        padding: EdgeInsets.all(70 * scale),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  '${T.text('logTitle')}${game == null ? '' : ' · ${game.name}'}',
+                  style: AppText.display(30 * scale, weight: FontWeight.w300),
+                ),
+                const Spacer(),
+                ConsoleButton(
+                  title: T.text('close'),
+                  icon: Icons.close_rounded,
+                  focused: true,
+                  onPressed: model.closeOverlay,
+                ),
+              ],
+            ),
+            SizedBox(height: 18 * scale),
+            Expanded(
+              child: Glass(
+                radius: 14 * scale,
+                opacity: 0.55,
+                child: SingleChildScrollView(
+                  reverse: true,
+                  padding: EdgeInsets.all(18 * scale),
+                  child: SelectableText(
+                    text.isEmpty ? '—' : text,
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12 * scale,
+                      color: Colors.white.withValues(alpha: 0.85),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A phone asking to pair: its name and the code both screens show.
+class PairingCard extends StatelessWidget {
+  const PairingCard({super.key, required this.model});
+
+  final AppModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final request = model.pairing;
+    if (request == null) return const SizedBox.shrink();
+    return _Scrim(
+      opacity: 0.5,
+      child: Center(
+        child: SizedBox(
+          width: 620 * scale,
+          child: Glass(
+            radius: 28 * scale,
+            opacity: 0.55,
+            padding: EdgeInsets.all(40 * scale),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.phone_iphone_rounded, size: 44 * scale, color: Colors.white),
+                SizedBox(height: 16 * scale),
+                Text(T.text('phonePairingTitle'), style: AppText.display(28 * scale, weight: FontWeight.w300)),
+                SizedBox(height: 10 * scale),
+                Text(request.deviceName, style: AppText.display(18 * scale, weight: FontWeight.w600)),
+                SizedBox(height: 6 * scale),
+                Text(
+                  T.text('phonePairingText'),
+                  textAlign: TextAlign.center,
+                  style: AppText.display(16 * scale, color: Colors.white.withValues(alpha: 0.7)),
+                ),
+                SizedBox(height: 26 * scale),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final digit in request.code.split(''))
+                      Container(
+                        width: 64 * scale,
+                        height: 82 * scale,
+                        margin: EdgeInsets.symmetric(horizontal: 6 * scale),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(14 * scale),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+                        ),
+                        child: Text(digit, style: AppText.display(44 * scale, weight: FontWeight.w300)),
+                      ),
+                  ],
+                ),
+                SizedBox(height: 30 * scale),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ConsoleButton(
+                      title: T.text('phoneAllow'),
+                      icon: Icons.check_rounded,
+                      focused: true,
+                      onPressed: () => model.answerPairing(true),
+                    ),
+                    SizedBox(width: 16 * scale),
+                    ConsoleButton(
+                      title: T.text('phoneDeny'),
+                      focused: false,
+                      onPressed: () => model.answerPairing(false),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

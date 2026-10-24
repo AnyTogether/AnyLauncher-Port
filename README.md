@@ -31,9 +31,14 @@ works as a controller (the protocol in section 12.4 of the
   - `remote/` the phone server (WebSocket 47700, pairing, UDP pad relay, cable frames), an
     mDNS responder for `_anyps5-remote._tcp`, the adb cable tunnel
   - `trophies.dart`, `save_backup.dart`
+  - `audio/` the interface sounds (the macOS launcher's tones, synthesized sample for sample),
+    a game's theme song (`snd0.at9` decoded with LibAtrac9 through FFI) and the music's fades
+- `native/atrac9/` LibAtrac9 (MIT), built by `hook/build.dart` into a small shared library
+  beside the launcher (MSVC on Windows, the system compiler on Linux and for `flutter test`)
 - `lib/ui/` the PS5-style interface: home row, hero, library grid, settings panels, controls,
   trophies, onboarding, pairing card; `shaders/background.frag` is the macOS launcher's Metal
-  background shader in GLSL (cosmic, aurora, sunset).
+  background shader in GLSL (cosmic, aurora, sunset); `soloud_audio.dart` plays the sounds
+  through `flutter_soloud` (miniaudio: WASAPI on Windows, PulseAudio or ALSA on Linux).
 - `test/` unit, widget and golden tests; `test/support/` synthetic fixtures (made-up dumps,
   SELF containers, PNGs, trophy packages, a fake relinker and adb, and the phone app's own
   protocol code as the fake phone). No real game files.
@@ -188,4 +193,5 @@ Downloaded engines: `~/.local/share/AnyPS5/Toolkits`, `%LOCALAPPDATA%\AnyPS5\Too
 
 ## License
 
-GPL-2.0, as the AnyPS5-ARM launcher it is ported from (see `LICENSE`).
+GPL-2.0, as the AnyPS5-ARM launcher it is ported from (see `LICENSE`). LibAtrac9 in
+`native/atrac9` is MIT (`native/atrac9/LICENSE`), as is `flutter_soloud`.

@@ -5,6 +5,20 @@ release when it is made.
 
 ## Next release
 
+### Sounds
+
+The launcher was silent; it now sounds like the macOS launcher.
+
+- **Interface sounds:** soft ticks for moving between games, buttons, the top bar, rows and
+  tabs, a rising pair for selecting and opening, a falling one for going back, and a brighter
+  three-note sound when a game finishes unlocking, the engine finishes downloading or a trophy
+  pops. They are the Mac launcher's own tones, made on the spot.
+- **Game music:** rest on a game and, after a moment, its theme song (the dump's
+  `sce_sys/snd0.at9`) fades in and repeats from its loop point, as on the PS5. It fades out
+  when you move on, switch to another window, or start a game.
+- **Settings → Behaviour:** **Interface Sounds** and **Game Music** volumes (Off at 0).
+- While a game is in front, the launcher stays quiet.
+
 ### The toolkit downloads itself on first start
 
 No more downloading upstream files by hand, renaming the relinker and arranging `libs/`. The

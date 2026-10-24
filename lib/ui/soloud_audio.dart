@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_soloud/flutter_soloud.dart';
 
-import 'audio_out.dart';
+import '../core/audio/audio_out.dart';
 
 /// The sound card through SoLoud (miniaudio: WASAPI on Windows, PulseAudio or ALSA on Linux).
 /// Every call is guarded: a launcher without sound still works.

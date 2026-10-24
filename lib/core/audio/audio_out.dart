@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 /// The sound card, as the launcher uses it: sounds loaded once, voices started, faded and
-/// stopped. SoLoud in the app (soloud_audio.dart), silence or a recording fake in tests.
+/// stopped. SoLoud in the app (lib/ui/soloud_audio.dart), silence or a recording fake in tests.
 abstract class AudioOut {
   /// Opens the output; false when there is none (no device, no library), and every call after
   /// does nothing.

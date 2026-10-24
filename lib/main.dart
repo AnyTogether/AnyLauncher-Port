@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
-import 'core/audio/soloud_audio.dart';
+import 'ui/soloud_audio.dart';
 import 'core/host.dart';
 import 'core/toolkit_download.dart';
 import 'ui/app_model.dart';

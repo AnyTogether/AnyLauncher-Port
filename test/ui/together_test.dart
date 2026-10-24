@@ -296,4 +296,50 @@ void main() {
       expect(model.together.hub.friends.friends, isEmpty);
     });
   });
+
+  group('play and trophies', () {
+    setUp(() async {
+      server = await FakeTogether.start();
+      fixture = makeFixture(together: server.base);
+      model = fixture.model;
+    });
+
+    tearDown(() async {
+      model.dispose();
+      await server.close();
+      fixture.dispose();
+    });
+
+    test('signing in sends every game\'s trophies; a session played goes up', () async {
+      // Signed out, nothing is kept for AnyTogether.
+      final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
+      model.together.recordPlay(orbit, DateTime.now().subtract(const Duration(hours: 1)), DateTime.now());
+      expect(model.together.sync.sessions, isEmpty);
+
+      model.together.email = 'utku@example.com';
+      await model.together.sendCode();
+      model.together.code = '123456';
+      await model.together.verify();
+      await until(() => server.earned.length == 2);
+      expect(server.devices.values.single['platform'], 'linux');
+      expect(server.devices.values.single['name'], 'Desk');
+      expect(server.games['PPSA01001'], {
+        'names': {'en': 'Orbit Runner'},
+      });
+      final set = server.trophySets.keys.single;
+      expect(set, startsWith('PPSA01001/'));
+      expect(server.earned.keys.toSet(), {'PPSA01001/1', 'PPSA01001/2'});
+
+      model.together.recordPlay(
+        orbit,
+        DateTime.now().subtract(const Duration(minutes: 40)),
+        DateTime.now(),
+        exit: 'killed',
+      );
+      await until(() => server.playSessions.isNotEmpty);
+      expect(server.playSessions.values.single['titleId'], 'PPSA01001');
+      expect(server.playSessions.values.single['exit'], 'killed');
+      expect(model.together.sync.isEmpty, isTrue);
+    });
+  });
 }

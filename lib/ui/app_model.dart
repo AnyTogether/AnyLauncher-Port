@@ -519,6 +519,7 @@ class AppModel extends ChangeNotifier {
       trophies.remove(game.id);
     } else {
       trophies[game.id] = set;
+      together.recordTrophies(game, set);
     }
   }
 
@@ -793,10 +794,13 @@ class AppModel extends ChangeNotifier {
       );
       starting = null;
       running = (game, run);
+      _stopped = false;
+      final began = DateTime.now();
       _watchTrophies(game);
       together.gameChanged();
       _changed();
       final code = await run.exitCode;
+      together.recordPlay(game, began, DateTime.now(), exit: _stopped ? 'killed' : (code == 0 ? 'normal' : 'crashed'));
       _trophyWatch?.cancel();
       _loadTrophies(game);
       if (running?.$1 == game) running = null;
@@ -840,7 +844,11 @@ class AppModel extends ChangeNotifier {
     });
   }
 
+  /// Whether the user (or the phone) closed the game playing.
+  bool _stopped = false;
+
   void stopGame() {
+    if (running != null) _stopped = true;
     running?.$2.stop();
   }
 

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
+
 import '../core/host.dart';
 import '../core/remote/remote_protocol.dart';
 import '../core/together/account.dart';
@@ -9,7 +11,11 @@ import '../core/together/hub.dart';
 import '../core/together/people.dart';
 import '../core/together/server.dart';
 import '../core/together/socket.dart';
+import '../core/together/sync.dart';
 import '../core/together/token_store.dart';
+import '../core/trophies.dart';
+import '../core/game_library.dart';
+import '../core/game_settings.dart';
 import 'app_model.dart';
 import 'strings.dart';
 
@@ -31,8 +37,24 @@ class TogetherModel {
     hub.addListener(app.refresh);
     hub.friends.onRequest = (person) => app.show(T.format('friendsAsked', [person.displayName]));
     hub.friends.onAccepted = (person) => app.show(T.format('friendsNowFriends', [person.displayName]));
+    sync = TogetherSync(
+      account: account,
+      file: p.join(app.paths.config, 'Together', 'outbox.json'),
+      deviceName: deviceName,
+      platform: app.system.name,
+      model: machineModel(app.system),
+    );
+    _ready = hub.socket.events.listen((event) {
+      // Back online: whatever waited goes up.
+      if (event.type == 'live.ready') flushSoon();
+    });
     account.addListener(_accountChanged);
   }
+
+  /// Play sessions and trophies on their way to the server.
+  late final TogetherSync sync;
+  late final StreamSubscription<TogetherEvent> _ready;
+  Timer? _flush;
 
   final AppModel app;
   final Map<String, String> environment;
@@ -90,8 +112,79 @@ class TogetherModel {
       friendHandle = '';
       chosen = null;
       if (const {Layer.friends, Layer.friendOptions}.contains(app.overlay)) app.closeOverlay();
+    } else {
+      // Every game's trophies go up once, the earned ones with their dates.
+      for (final game in app.games) {
+        final set = app.trophies[game.id];
+        if (set != null) recordTrophies(game, set, flush: false);
+      }
+      flushSoon();
     }
     _followGame();
+  }
+
+  // Play and trophies.
+
+  /// The computer's model for the devices list: the firmware's product name.
+  static String? machineModel(HostSystem system) {
+    try {
+      if (system == HostSystem.linux) {
+        final name = File('/sys/devices/virtual/dmi/id/product_name').readAsStringSync().trim();
+        return name.isEmpty ? null : name;
+      }
+      if (!Platform.isWindows) return null;
+      final result = Process.runSync('reg', [
+        'query',
+        r'HKLM\HARDWARE\DESCRIPTION\System\BIOS',
+        '/v',
+        'SystemProductName',
+      ]);
+      final match = RegExp(r'SystemProductName\s+REG_SZ\s+(.+)').firstMatch(result.stdout as String);
+      final name = match?.group(1)?.trim();
+      return name == null || name.isEmpty ? null : (name.length > 120 ? name.substring(0, 120) : name);
+    } on Object {
+      return null;
+    }
+  }
+
+  /// A game played for a while: the session goes to AnyTogether, or waits until it can.
+  void recordPlay(Game game, DateTime start, DateTime end, {String exit = 'normal'}) {
+    if (!signedIn) return;
+    sync.recordSession(titleId: game.titleId, gameName: game.name, startedAt: start, endedAt: end, exit: exit);
+    flushSoon();
+  }
+
+  /// The game's trophy set as read now: the earned ones not sent yet go to AnyTogether.
+  void recordTrophies(Game game, TrophySet set, {bool flush = true}) {
+    if (!signedIn || set.trophies.isEmpty) return;
+    final tag = ConsoleLanguage.tag(T.language.consoleLanguage);
+    sync.recordTrophies(
+      SyncTrophySet(
+        titleId: game.titleId,
+        gameName: game.name,
+        language: tag?.split('-').first.toLowerCase() ?? 'en',
+        trophies: [
+          for (final trophy in set.trophies)
+            SyncTrophy(
+              id: SyncTrophy.idFor(trophy.serviceLabel, trophy.number),
+              grade: trophy.grade.name,
+              hidden: trophy.hidden,
+              name: trophy.name,
+              detail: trophy.detail,
+              earnedAt: trophy.unlocked,
+            ),
+        ],
+      ),
+    );
+    if (flush) flushSoon();
+  }
+
+  /// Sends what waits, a moment later, so a burst of changes goes up together.
+  void flushSoon() {
+    _flush?.cancel();
+    _flush = Timer(app.services.togetherPollEvery ?? const Duration(seconds: 2), () {
+      if (signedIn) unawaited(sync.flush().catchError((Object _) {}));
+    });
   }
 
   // Presence.
@@ -544,6 +637,8 @@ class TogetherModel {
   }
 
   void dispose() {
+    _flush?.cancel();
+    unawaited(_ready.cancel());
     account.removeListener(_accountChanged);
     hub.dispose();
     account.close();

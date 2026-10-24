@@ -86,6 +86,14 @@ the paired phone, which approves the launcher with one tap when it is signed in 
 protocol's `togetherHandoff` / `togetherHandoffAnswer`, both ways). Another server can be chosen
 there; `ANYTOGETHER_URL` overrides the choice. Code: `lib/core/together/`.
 
+Signed in, the launcher is online for friends (in a game, with its title ID, while one runs),
+and each play session and every trophy earned goes to AnyTogether through an outbox on disk
+(`Together/outbox.json` in the config folder): playing offline loses nothing and nothing counts
+twice. Rules as the macOS launcher's: this computer is registered first (`windows`/`linux`),
+then the game's name, its trophy set (keyed by a hash of its trophies and grades, a trophy's ID
+being the package's service label × 1000 plus its number), the sessions (more than 5 s), the
+earned trophies.
+
 The session (an access token and a refresh token) is kept per system:
 
 - **Windows**: `%APPDATA%\AnyPS5\Together\session.bin`, sealed with DPAPI

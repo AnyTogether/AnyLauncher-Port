@@ -84,6 +84,14 @@ class FakeTogether {
     });
   }
 
+  /// What the launcher's outbox sent: this computer, the games' names, the trophy sets, the
+  /// sessions and the earned trophies (by "titleId/trophyId").
+  final Map<String, Map<String, dynamic>> devices = {};
+  final Map<String, Map<String, dynamic>> games = {};
+  final Map<String, Map<String, dynamic>> trophySets = {};
+  final Map<String, Map<String, dynamic>> playSessions = {};
+  final Map<String, Map<String, dynamic>> earned = {};
+
   /// Handlers a test adds for its own paths: return null to fall through.
   final List<FutureOr<(int, Object?)?> Function(FakeCall call)> handlers = [];
 
@@ -266,6 +274,60 @@ class FakeTogether {
         }
         outgoing.add(someone);
         return (201, {'state': 'pending'});
+    }
+    switch ((call.method, call.path)) {
+      case ('POST', 'me/devices'):
+        devices[call.body['id'] as String] = call.body;
+        return (201, call.body);
+      case ('POST', 'me/sessions'):
+        final items = call.body['sessions'] as List<dynamic>;
+        return (
+          200,
+          {
+            'results': [
+              for (var index = 0; index < items.length; index++)
+                () {
+                  final item = items[index] as Map<String, dynamic>;
+                  if (!devices.containsKey(item['deviceId'])) {
+                    return {'index': index, 'status': 'rejected', 'code': 'unknown_device'};
+                  }
+                  final duplicate = playSessions.containsKey(item['id']);
+                  playSessions[item['id'] as String] = item;
+                  return {'index': index, 'status': duplicate ? 'duplicate' : 'stored'};
+                }(),
+            ],
+          },
+        );
+      case ('POST', 'me/trophies'):
+        final items = call.body['trophies'] as List<dynamic>;
+        return (
+          200,
+          {
+            'results': [
+              for (var index = 0; index < items.length; index++)
+                () {
+                  final item = items[index] as Map<String, dynamic>;
+                  if (!trophySets.containsKey('${item['titleId']}/${item['setHash']}')) {
+                    return {'index': index, 'status': 'rejected', 'code': 'unknown_trophy'};
+                  }
+                  final key = '${item['titleId']}/${item['trophyId']}';
+                  final duplicate = earned.containsKey(key);
+                  earned[key] = item;
+                  return {'index': index, 'status': duplicate ? 'duplicate' : 'stored'};
+                }(),
+            ],
+          },
+        );
+    }
+    final teach = RegExp(r'^games/([A-Z]{4}[0-9]{5})$').firstMatch(call.path);
+    if (call.method == 'PUT' && teach != null) {
+      games[teach.group(1)!] = call.body;
+      return (200, {'titleId': teach.group(1)});
+    }
+    final set = RegExp(r'^trophy-sets/([A-Z]{4}[0-9]{5})/([A-Za-z0-9._-]+)$').firstMatch(call.path);
+    if (call.method == 'PUT' && set != null) {
+      trophySets['${set.group(1)}/${set.group(2)}'] = call.body;
+      return (200, {'stored': true});
     }
     final reply = RegExp(r'^me/friends/requests/([^/]+)/(accept|decline)$').firstMatch(call.path);
     if (call.method == 'POST' && reply != null) {

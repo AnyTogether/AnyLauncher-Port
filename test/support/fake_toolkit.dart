@@ -1,0 +1,52 @@
+import 'dart:io';
+
+import 'package:path/path.dart' as p;
+
+/// A toolkit whose relinker is a shell script that behaves like the real one on the outside:
+/// it reads its arguments, prints a progress display rewritten with carriage returns, checks that
+/// its input is an ELF and writes the output executable and a relinked guest module under app0/.
+///
+/// [mode] picks a behaviour: `ok`, `fail` (exits 3 after a message), `slow` (sleeps, to be
+/// cancelled), `silent` (exits 0 but writes nothing).
+String makeFakeToolkit(String folder, {String mode = 'ok', String version = 'toolkit-1', bool windowsDlls = false}) {
+  Directory(p.join(folder, 'libs')).createSync(recursive: true);
+  File(p.join(folder, 'libs', 'libkernel.prx')).writeAsStringSync('kernel library');
+  File(p.join(folder, 'libs', 'libSceVideoOut.prx')).writeAsStringSync('video library');
+  File(p.join(folder, 'libs', 'README.txt')).writeAsStringSync('not a library');
+  if (windowsDlls) File(p.join(folder, 'libs', 'libwinpthread-1.dll')).writeAsStringSync('dll');
+  File(p.join(folder, 'version.txt')).writeAsStringSync('$version\n');
+  final argumentsFile = p.join(folder, 'arguments.txt');
+  final script =
+      '''
+#!/bin/sh
+printf '%s\\n' "\$PWD" > "$argumentsFile"
+for argument in "\$@"; do printf '%s\\n' "\$argument" >> "$argumentsFile"; done
+for last; do :; done
+output="\$last"
+mode="$mode"
+if [ "\$mode" = slow ]; then sleep 30; fi
+if [ "\$mode" = silent ]; then exit 0; fi
+head=\$(head -c 4 eboot.bin | od -An -tx1 | tr -d ' \\n')
+if [ "\$head" != 7f454c46 ]; then echo "eboot.bin is not an ELF" >&2; exit 4; fi
+printf 'Instruction scan | eboot.bin | 10%%\\rInstruction scan | eboot.bin | 100%%\\n'
+printf 'Instruction conversion | eboot.bin | 50%%\\n'
+printf 'PRX conversion | libgame.prx | 100%% (1/2)\\r'
+printf 'PRX conversion | libgame.prx | 100%% (2/2)\\n'
+if [ "\$mode" = fail ]; then echo "relink: unsupported relocation" >&2; exit 3; fi
+printf 'Write output | eboot.bin | 100%%\\n'
+mkdir -p "\$(dirname "\$output")/app0/sce_module"
+printf '#!/bin/sh\\necho relinked game "\$@"\\nenv | grep ^ANYPS5_ | sort\\npwd\\n' > "\$output"
+printf 'relinked module' > "\$(dirname "\$output")/app0/sce_module/libgame.prx"
+echo "Guest module: app0/sce_module/libgame.prx"
+''';
+  final relinker = p.join(folder, 'relinker');
+  File(relinker).writeAsStringSync(script);
+  Process.runSync('chmod', ['755', relinker]);
+  // The same script under the Windows name, for tests of the Windows layout on a POSIX host.
+  File(p.join(folder, 'relinker.exe')).writeAsStringSync(script);
+  Process.runSync('chmod', ['755', p.join(folder, 'relinker.exe')]);
+  return folder;
+}
+
+/// The relinker's working directory and arguments from its last run.
+List<String> fakeRelinkerArguments(String toolkit) => File(p.join(toolkit, 'arguments.txt')).readAsLinesSync();

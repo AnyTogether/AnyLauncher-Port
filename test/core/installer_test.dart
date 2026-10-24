@@ -1,0 +1,465 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:anyps5_desktop/core/file_links.dart';
+import 'package:anyps5_desktop/core/game_library.dart';
+import 'package:anyps5_desktop/core/game_process.dart';
+import 'package:anyps5_desktop/core/host.dart';
+import 'package:anyps5_desktop/core/installer.dart';
+import 'package:anyps5_desktop/core/toolkit.dart';
+import 'package:path/path.dart' as p;
+import 'package:test/test.dart';
+
+import '../support/fake_toolkit.dart';
+import '../support/fixtures.dart';
+import '../support/self_builder.dart';
+
+void main() {
+  late Directory temp;
+  late String root;
+  late String toolkitFolder;
+
+  setUp(() {
+    temp = temporaryFolder('install');
+    root = p.join(temp.path, 'Games');
+    toolkitFolder = makeFakeToolkit(p.join(temp.path, 'toolkit'));
+  });
+  tearDown(() => temp.deleteSync(recursive: true));
+
+  /// A dump with a SELF eboot, a SELF module in sce_module and an ELF plugin elsewhere.
+  Game makeGame({List<int>? eboot}) {
+    final folder = makeDump(
+      root,
+      'Astro',
+      titleId: 'PPSA01234',
+      names: {'en-US': 'Astro Bot'},
+      eboot: eboot ?? const [0],
+      files: {'data/level1.bin': 'level data', 'sce_sys/trophy2/trophy00.ucp': 'trophies'},
+    );
+    if (eboot == null) File(p.join(folder, 'eboot.bin')).writeAsBytesSync(typicalSelf());
+    Directory(p.join(folder, 'sce_module')).createSync();
+    File(p.join(folder, 'sce_module', 'libgame.sprx')).writeAsBytesSync(typicalSelf(seed: 2));
+    Directory(p.join(folder, 'Media', 'Plugins')).createSync(recursive: true);
+    File(p.join(folder, 'Media', 'Plugins', 'plugin.prx')).writeAsBytesSync([...elfHead, 1, 2, 3]);
+    return GameLibrary.inspect(folder)!;
+  }
+
+  group('install', () {
+    test('unwraps, relinks and lays the game out as upstream runtime layout says', () async {
+      final game = makeGame();
+      final steps = <InstallStep>[];
+      final relinkFractions = <double>[];
+      final lines = <String>[];
+      final installer = Installer(
+        game: game,
+        toolkit: Toolkit(toolkitFolder),
+        root: root,
+        clock: () => DateTime.utc(2026, 10, 24, 12),
+        onProgress: (step, fraction) {
+          if (steps.isEmpty || steps.last != step) steps.add(step);
+          if (step == InstallStep.relink) relinkFractions.add(fraction);
+        },
+        onLog: lines.add,
+      );
+      final installed = await installer.run();
+      expect(installed, Installer.installedFolder(game, root));
+      expect(p.basename(installed), startsWith('PPSA01234-'));
+      expect(steps, InstallStep.values);
+      expect(relinkFractions.first, 0);
+      expect(relinkFractions.last, 1);
+      for (var index = 1; index < relinkFractions.length; index++) {
+        expect(relinkFractions[index], greaterThanOrEqualTo(relinkFractions[index - 1]));
+      }
+      expect(relinkFractions, contains(closeTo(0.85, 1e-9)), reason: 'PRX conversion 2/2');
+
+      // The relinker ran in the unwrapped source with every module folder.
+      final arguments = fakeRelinkerArguments(toolkitFolder);
+      expect(p.basename(arguments[0]), 'source');
+      expect(arguments.sublist(1, arguments.length - 1), [
+        '--module-dir',
+        '.',
+        '--module-dir',
+        'Media/Plugins',
+        'eboot.bin',
+      ]);
+      expect(p.basename(arguments.last), 'app.elf');
+      expect(lines.where((line) => RegExp(r'^eboot\.bin: unwrapped, \d+ bytes$').hasMatch(line)), hasLength(1));
+      expect(lines, contains('Guest module: app0/sce_module/libgame.prx'));
+
+      // The layout.
+      expect(File(p.join(installed, 'app.elf')).existsSync(), isTrue);
+      expect(File(p.join(installed, 'app.elf')).statSync().modeString(), startsWith('rwx'));
+      expect(File(p.join(installed, 'libs', 'libkernel.prx')).readAsStringSync(), 'kernel library');
+      expect(File(p.join(installed, 'libs', 'libSceVideoOut.prx')).existsSync(), isTrue);
+      expect(File(p.join(installed, 'libs', 'README.txt')).existsSync(), isFalse);
+      // app0 holds the game's own files, the original eboot.bin among them.
+      expect(File(p.join(installed, 'app0', 'eboot.bin')).readAsBytesSync(), typicalSelf());
+      expect(File(p.join(installed, 'app0', 'data', 'level1.bin')).readAsStringSync(), 'level data');
+      expect(File(p.join(installed, 'app0', 'sce_sys', 'param.json')).existsSync(), isTrue);
+      // The relinked module replaced the link, and the dump's own file is untouched.
+      expect(File(p.join(installed, 'app0', 'sce_module', 'libgame.prx')).readAsStringSync(), 'relinked module');
+      expect(File(p.join(game.folder, 'sce_module', 'libgame.sprx')).readAsBytesSync(), typicalSelf(seed: 2));
+      expect(File(p.join(game.folder, 'sce_module', 'libgame.prx')).existsSync(), isFalse);
+      // The record and the launch script.
+      final record = Installer.record(installed, system: HostSystem.linux)!;
+      expect(record.titleId, 'PPSA01234');
+      expect(record.toolkit, 'toolkit-1');
+      expect(record.system, 'linux');
+      expect(record.source, game.folder);
+      expect(record.date, DateTime.utc(2026, 10, 24, 12));
+      final script = File(p.join(installed, 'launch.sh')).readAsStringSync();
+      expect(script, startsWith('#!/bin/sh\n'));
+      expect(script, contains('exec ./app.elf "\$@"'));
+      // Nothing is left in the store but the game.
+      expect(Directory(p.join(root, GameLibrary.storeName, 'Work')).listSync(), isEmpty);
+      expect(Directory('$installed.partial').existsSync(), isFalse);
+      // The store is not a game.
+      expect(GameLibrary.scan(root).map((game) => game.titleId), ['PPSA01234']);
+    });
+
+    test('game files are hard links on the same volume, so they take no space', () async {
+      final game = makeGame();
+      final installed = await Installer(game: game, toolkit: Toolkit(toolkitFolder), root: root).run();
+      final original = File(p.join(game.folder, 'data', 'level1.bin'));
+      final linked = File(p.join(installed, 'app0', 'data', 'level1.bin'));
+      expect(FileSystemEntity.typeSync(linked.path, followLinks: false), FileSystemEntityType.file);
+      expect(linked.statSync().modified, original.statSync().modified);
+      // Same inode: a hard link (stat -f %i on macOS, stat -c %i on Linux).
+      String inode(String path) {
+        final result = Process.runSync('stat', Platform.isMacOS ? ['-f', '%i', path] : ['-c', '%i', path]);
+        return (result.stdout as String).trim();
+      }
+
+      expect(inode(linked.path), inode(original.path));
+    });
+
+    test('symbolic links and copies work as well', () async {
+      for (final mode in [LinkMode.symbolic, LinkMode.copy]) {
+        final game = makeGame();
+        final installed = await Installer(
+          game: game,
+          toolkit: Toolkit(toolkitFolder),
+          root: root,
+          linkMode: mode,
+        ).run();
+        final linked = p.join(installed, 'app0', 'data', 'level1.bin');
+        expect(
+          FileSystemEntity.typeSync(linked, followLinks: false),
+          mode == LinkMode.symbolic ? FileSystemEntityType.link : FileSystemEntityType.file,
+        );
+        expect(File(linked).readAsStringSync(), 'level data');
+        expect(File(p.join(installed, 'app0', 'sce_module', 'libgame.prx')).readAsStringSync(), 'relinked module');
+        expect(File(p.join(game.folder, 'sce_module', 'libgame.sprx')).readAsBytesSync(), typicalSelf(seed: 2));
+        Directory(game.folder).deleteSync(recursive: true);
+      }
+    });
+
+    test('installing again keeps what the game wrote: saves, trophies, data', () async {
+      final game = makeGame();
+      final installed = await Installer(game: game, toolkit: Toolkit(toolkitFolder), root: root).run();
+      File(p.join(installed, '_sd', 'slot0', 'save.dat')).createSync(recursive: true);
+      File(p.join(installed, '_sd', 'slot0', 'save.dat')).writeAsStringSync('progress');
+      File(p.join(installed, '_trophy', '1_0.txt')).createSync(recursive: true);
+      File(p.join(installed, 'app.elf')).writeAsStringSync('old executable');
+      Link(p.join(installed, 'stray-link')).createSync(temp.path);
+      makeFakeToolkit(toolkitFolder, version: 'toolkit-2');
+      final again = await Installer(game: game, toolkit: Toolkit(toolkitFolder), root: root).run();
+      expect(again, installed);
+      expect(File(p.join(installed, '_sd', 'slot0', 'save.dat')).readAsStringSync(), 'progress');
+      expect(File(p.join(installed, '_trophy', '1_0.txt')).existsSync(), isTrue);
+      expect(File(p.join(installed, 'app.elf')).readAsStringSync(), isNot('old executable'));
+      expect(
+        FileSystemEntity.typeSync(p.join(installed, 'stray-link'), followLinks: false),
+        FileSystemEntityType.notFound,
+      );
+      expect(Installer.record(installed, system: HostSystem.linux)!.toolkit, 'toolkit-2');
+    });
+
+    test('the Windows layout: app.exe from relinker.exe with --windows --windows-gui, DLLs, launch.cmd', () async {
+      makeFakeToolkit(toolkitFolder, windowsDlls: true);
+      final game = makeGame();
+      final toolkit = Toolkit(toolkitFolder, system: HostSystem.windows);
+      final installed = await Installer(game: game, toolkit: toolkit, root: root).run();
+      final arguments = fakeRelinkerArguments(toolkitFolder);
+      expect(arguments.sublist(1, 3), ['--windows', '--windows-gui']);
+      expect(p.basename(arguments.last), 'app.exe');
+      expect(File(p.join(installed, 'app.exe')).existsSync(), isTrue);
+      expect(File(p.join(installed, 'libs', 'libwinpthread-1.dll')).existsSync(), isTrue);
+      final script = File(p.join(installed, 'launch.cmd')).readAsStringSync();
+      expect(script, startsWith('@echo off\r\n'));
+      expect(script, contains('"%~dp0app.exe" %*\r\n'));
+      expect(Installer.record(installed, system: HostSystem.windows)!.system, 'windows');
+      expect(Installer.record(installed, system: HostSystem.linux), isNull, reason: 'no app.elf');
+    });
+
+    test('a failing relinker: the error carries its last line, nothing is left behind', () async {
+      makeFakeToolkit(toolkitFolder, mode: 'fail');
+      final game = makeGame();
+      final lines = <String>[];
+      await expectLater(
+        Installer(game: game, toolkit: Toolkit(toolkitFolder), root: root, onLog: lines.add).run(),
+        throwsA(
+          predicate((e) => e is InstallError && e.message == 'relinker failed (3): relink: unsupported relocation'),
+        ),
+      );
+      expect(lines, contains('PRX conversion | libgame.prx | 100% (2/2)'));
+      expect(lines.where((line) => line.contains('(1/2)')), isEmpty, reason: 'only the last state of a rewritten line');
+      expect(Directory(p.join(root, GameLibrary.storeName, 'Work')).listSync(), isEmpty);
+      expect(Directory(Installer.installedFolder(game, root)).existsSync(), isFalse);
+    });
+
+    test('a relinker that writes nothing', () async {
+      makeFakeToolkit(toolkitFolder, mode: 'silent');
+      await expectLater(
+        Installer(game: makeGame(), toolkit: Toolkit(toolkitFolder), root: root).run(),
+        throwsA(predicate((e) => e is InstallError && e.message == 'relinker wrote no executable')),
+      );
+    });
+
+    test('an encrypted dump is refused before the relinker runs', () async {
+      final game = makeGame(eboot: [9, 9, 9, 9]);
+      await expectLater(
+        Installer(game: game, toolkit: Toolkit(toolkitFolder), root: root).run(),
+        throwsA(
+          predicate(
+            (e) =>
+                e is InstallError &&
+                e.message ==
+                    'eboot.bin is neither an ELF nor a decrypted SELF container (an encrypted dump cannot be used)',
+          ),
+        ),
+      );
+      expect(File(p.join(toolkitFolder, 'arguments.txt')).existsSync(), isFalse);
+    });
+
+    test('a re-signed dump is read from eboot.bin.esbak', () async {
+      final game = makeGame(eboot: [1, 2, 3, 4]);
+      File(p.join(game.folder, 'eboot.bin.esbak')).writeAsBytesSync([...elfHead, 0, 0]);
+      final lines = <String>[];
+      await Installer(game: game, toolkit: Toolkit(toolkitFolder), root: root, onLog: lines.add).run();
+      expect(lines, contains('eboot.bin: from .esbak'));
+    });
+
+    test('cancelling stops the relinker and cleans up', () async {
+      makeFakeToolkit(toolkitFolder, mode: 'slow');
+      final game = makeGame();
+      late Installer installer;
+      installer = Installer(
+        game: game,
+        toolkit: Toolkit(toolkitFolder),
+        root: root,
+        onProgress: (step, fraction) {
+          if (step == InstallStep.relink) Future<void>.delayed(const Duration(milliseconds: 300), installer.cancel);
+        },
+      );
+      final watch = Stopwatch()..start();
+      await expectLater(installer.run(), throwsA(isA<InstallCancelled>()));
+      expect(watch.elapsed, lessThan(const Duration(seconds: 10)));
+      expect(Directory(p.join(root, GameLibrary.storeName, 'Work')).listSync(), isEmpty);
+    });
+
+    test('a toolkit without a relinker or libraries is refused', () async {
+      final empty = p.join(temp.path, 'empty');
+      Directory(empty).createSync();
+      await expectLater(
+        Installer(game: makeGame(), toolkit: Toolkit(empty), root: root).run(),
+        throwsA(predicate((e) => e is InstallError && e.message.startsWith('the toolkit has no relinker'))),
+      );
+    });
+
+    test('removeLeftovers clears work folders and half-made games, uninstall removes the game', () async {
+      final game = makeGame();
+      final installed = await Installer(game: game, toolkit: Toolkit(toolkitFolder), root: root).run();
+      Directory(p.join(root, GameLibrary.storeName, 'Work', 'x')).createSync(recursive: true);
+      Directory('$installed-other.partial').createSync();
+      Installer.removeLeftovers(root);
+      expect(Directory(p.join(root, GameLibrary.storeName, 'Work')).existsSync(), isFalse);
+      expect(Directory('$installed-other.partial').existsSync(), isFalse);
+      expect(Directory(installed).existsSync(), isTrue);
+      Installer.uninstall(game, root);
+      expect(Directory(installed).existsSync(), isFalse);
+      expect(
+        File(p.join(game.folder, 'data', 'level1.bin')).readAsStringSync(),
+        'level data',
+        reason: 'the dump stays',
+      );
+    });
+  });
+
+  group('starting', () {
+    test('the game starts in its folder with the environment, its output appended to the log', () async {
+      final game = makeGame();
+      final installed = await Installer(game: game, toolkit: Toolkit(toolkitFolder), root: root).run();
+      final log = p.join(temp.path, 'logs', 'PPSA01234.log');
+      for (var run = 0; run < 2; run++) {
+        final running = await GameProcess.start(
+          installed: installed,
+          system: HostSystem.linux,
+          environment: {'ANYPS5_LANGUAGE': '19', 'ANYPS5_OVERLAY': '1'},
+          logFile: log,
+          arguments: ['--test'],
+        );
+        expect(await running.exitCode, 0);
+      }
+      final text = File(log).readAsStringSync();
+      expect(RegExp('relinked game --test').allMatches(text), hasLength(2));
+      expect(text, contains('ANYPS5_LANGUAGE=19'));
+      expect(text, contains('ANYPS5_OVERLAY=1'));
+      expect(text, contains(p.basename(installed)));
+      expect(text, contains('--- exit 0'));
+    });
+
+    test('a game that is not installed does not start', () async {
+      expect(
+        () => GameProcess.start(
+          installed: p.join(temp.path, 'none'),
+          environment: const {},
+          logFile: p.join(temp.path, 'l'),
+        ),
+        throwsA(isA<ProcessException>()),
+      );
+    });
+  });
+
+  group('parts', () {
+    test('modules: .prx and .sprx outside sce_sys, three levels at most', () {
+      final folder = makeDump(
+        root,
+        'M',
+        files: {
+          'sce_module/libc.prx': '',
+          'sce_module/libSceFios2.sprx': '',
+          'sce_sys/about/right.sprx': '',
+          'Media/Plugins/a.prx': '',
+          'Media/Plugins/deeper/b.prx': '',
+          'top.PRX': '',
+          'notes.txt': '',
+          '.hidden/c.prx': '',
+        },
+      );
+      expect(Installer.modules(folder), [
+        'Media/Plugins/a.prx',
+        'sce_module/libSceFios2.sprx',
+        'sce_module/libc.prx',
+        'top.PRX',
+      ]);
+    });
+
+    test('module directories: the parent, then folders other than the standard ones and fakelib', () {
+      expect(
+        Installer.moduleDirectories([
+          'Media/Modules/x.prx',
+          'Media/Plugins/a.prx',
+          'Media/Plugins/b.prx',
+          'fakelib/libc.prx',
+          'prx/y.prx',
+          'sce_module/libc.prx',
+          'sce_modules/z.prx',
+          'Media/Other/x.sprx',
+          'top.prx',
+        ]),
+        ['.', 'Media/Modules', 'Media/Plugins'],
+      );
+    });
+
+    test('relink progress rises through the phases and never goes back', () {
+      final progress = RelinkProgress();
+      expect(progress.read('Instruction scan | eboot.bin | 50%'), closeTo(0.1, 1e-9));
+      expect(progress.read('Instruction scan | libc.prx | 90%'), isNull);
+      expect(progress.read('Instruction conversion | eboot.bin | 100%'), closeTo(0.45, 1e-9));
+      expect(progress.read('Instruction scan | eboot.bin | 100%'), isNull, reason: 'lower than reached');
+      expect(progress.read('Syscall scan | eboot.bin | 100%'), closeTo(0.55, 1e-9));
+      expect(progress.read('PRX conversion | x.prx | 100% (3/6)'), closeTo(0.7, 1e-9));
+      expect(progress.read('Output image | eboot.bin | 100%'), closeTo(0.95, 1e-9));
+      expect(progress.read('Write output | eboot.bin | 100%'), closeTo(1, 1e-9));
+      expect(progress.read('Some line without fields'), isNull);
+    });
+
+    test('output collector: lines, carriage-return rewrites, a last line without newline', () {
+      final logged = <String>[];
+      final statuses = <String>[];
+      final collector = OutputCollector(log: logged.add, status: statuses.add);
+      collector.add(utf8.encode('first\nprogress 1\rprogress 2\rprog'));
+      collector.add(utf8.encode('ress 3\nlast'));
+      collector.flush();
+      expect(logged, ['first', 'progress 3', 'last']);
+      expect(statuses, ['first', 'progress 1', 'progress 2', 'progress 3']);
+      expect(collector.lines, ['first', 'progress 3', 'last']);
+    });
+
+    test('placing over a hard link never writes through to the dump', () {
+      final dump = File(p.join(temp.path, 'dump.bin'))..writeAsStringSync('original');
+      final linked = p.join(temp.path, 'linked.bin');
+      expect(FileLinks.hardLink(dump.path, linked), isTrue);
+      final relinked = File(p.join(temp.path, 'relinked.bin'))..writeAsStringSync('relinked');
+      FileLinks.place(relinked.path, linked, LinkMode.copy);
+      expect(File(linked).readAsStringSync(), 'relinked');
+      expect(dump.readAsStringSync(), 'original');
+      expect(FileLinks.hardLink(p.join(temp.path, 'missing'), p.join(temp.path, 'x')), isFalse);
+    });
+
+    test('the installed folder name: title ID letters and digits, and a hash of the dump path', () {
+      final a = Game(
+        folder: '/games/A',
+        titleId: 'PPSA-01234',
+        name: 'A',
+        names: const {},
+        defaultLanguage: 'en-US',
+        version: '1',
+        executable: ExecutableKind.elf,
+      );
+      final b = Game(
+        folder: '/games/B',
+        titleId: 'PPSA-01234',
+        name: 'B',
+        names: const {},
+        defaultLanguage: 'en-US',
+        version: '1',
+        executable: ExecutableKind.elf,
+      );
+      final first = Installer.installedFolder(a, '/games');
+      expect(first, startsWith(p.join('/games', '.AnyPS5', 'Games', 'PPSA01234-')));
+      expect(Installer.installedFolder(a, '/games'), first, reason: 'stable');
+      expect(Installer.installedFolder(b, '/games'), isNot(first));
+      // The same FNV-1a as the macOS launcher: 64-bit, low 24 bits in hex.
+      var hash = 0xCBF29CE484222325;
+      for (final byte in utf8.encode('/games/A')) {
+        hash = (hash ^ byte) * 0x100000001B3;
+      }
+      expect(p.basename(first), 'PPSA01234-${(hash & 0xFFFFFF).toRadixString(16)}');
+    });
+  });
+
+  group('toolkit and paths', () {
+    test('locate takes ANYPS5_TOOLKIT first, then the first usable candidate', () {
+      final empty = p.join(temp.path, 'empty');
+      Directory(empty).createSync();
+      expect(Toolkit.locate([empty, toolkitFolder], environment: const {})!.root, toolkitFolder);
+      expect(Toolkit.locate([empty], environment: {'ANYPS5_TOOLKIT': toolkitFolder})!.root, toolkitFolder);
+      expect(Toolkit.locate([empty], environment: const {}), isNull);
+      expect(Toolkit(empty).problem, ToolkitProblem.noRelinker);
+      expect(Toolkit(toolkitFolder).version, 'toolkit-1');
+      expect(Toolkit(empty).version, 'unknown');
+      expect(Toolkit(toolkitFolder).libraryFiles.map(p.basename), ['libSceVideoOut.prx', 'libkernel.prx']);
+    });
+
+    test('app paths follow XDG on Linux and APPDATA on Windows', () {
+      final linux = AppPaths.forSystem(HostSystem.linux, environment: {'HOME': '/home/u', 'XDG_CONFIG_HOME': '/cfg'});
+      expect(linux.config, '/cfg/AnyPS5');
+      expect(linux.logs, '/home/u/.local/state/AnyPS5/logs');
+      expect(linux.cache, '/home/u/.cache/AnyPS5');
+      expect(linux.shaderCache('ppsa01234'), '/home/u/.cache/AnyPS5/ppsa01234/shader_cache');
+      final windows = AppPaths.forSystem(
+        HostSystem.windows,
+        environment: {
+          'USERPROFILE': r'C:\Users\u',
+          'APPDATA': r'C:\Users\u\AppData\Roaming',
+          'LOCALAPPDATA': r'C:\Users\u\AppData\Local',
+        },
+      );
+      expect(windows.config, r'C:\Users\u\AppData\Roaming\AnyPS5');
+      expect(windows.logs, r'C:\Users\u\AppData\Local\AnyPS5\Logs');
+      expect(windows.pictures, r'C:\Users\u\Pictures\AnyPS5');
+    });
+  });
+}

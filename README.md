@@ -30,7 +30,8 @@ works as a controller (the protocol of section 12.4 of the AnyTogether platform 
 - `test/` unit, widget and golden tests; `test/support/` synthetic fixtures (made-up dumps,
   SELF containers, PNGs, trophy packages, a fake relinker and adb, and the phone app's own
   protocol code as the fake phone). No real game files.
-- `tool/unwrap_self.dart` the unwrapper on the command line;
+- `tool/anyps5_tool.dart` the pipeline on the command line (unwrap, scan, install, play, a
+  headless phone server) for checks on a Windows or Linux machine without the interface;
   `tool/docker/linux-build.Dockerfile` a headless Linux build check.
 
 ## Working on it
@@ -42,7 +43,9 @@ flutter test                         # everything, headless (about 35 s)
 flutter test --update-goldens        # re-render the golden images in test/ui/goldens
 flutter build linux                  # on a Linux host (or the Docker check below)
 flutter build windows                # on a Windows host
-dart run tool/unwrap_self.dart eboot.bin eboot.elf
+dart run tool/anyps5_tool.dart unwrap eboot.bin eboot.elf
+ANYPS5_TOOLKIT=~/toolkit dart run tool/anyps5_tool.dart install ~/Games/PPSA01234 ~/Games
+dart run tool/anyps5_tool.dart remote --allow-all   # a phone server until Ctrl-C
 ```
 
 The SELF test compares the Dart unwrapper with upstream's Python script on 300 random

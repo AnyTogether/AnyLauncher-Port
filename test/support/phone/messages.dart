@@ -25,6 +25,7 @@ sealed class Message {
           udpPort: json['udpPort'] as int,
           macName: json['macName'] as String,
           key: json['key'] as String,
+          togetherServer: json['togetherServer'] as String?,
         ),
         'rejected' => Rejected(json['reason'] as String),
         'latency' => Latency((json['milliseconds'] as num).toDouble()),
@@ -54,6 +55,8 @@ sealed class Message {
           icon: json['icon'] as String?,
           background: json['background'] as String?,
         ),
+        'togetherHandoff' => TogetherHandoff(id: json['id'] as String, deviceName: json['deviceName'] as String),
+        'togetherHandoffAnswer' => TogetherHandoffAnswer(id: json['id'] as String, approved: json['approved'] as bool),
         _ => null,
       };
     } on Object {
@@ -84,12 +87,21 @@ class Pairing extends Message {
 }
 
 class Welcome extends Message {
-  const Welcome({required this.session, required this.udpPort, required this.macName, required this.key});
+  const Welcome({
+    required this.session,
+    required this.udpPort,
+    required this.macName,
+    required this.key,
+    this.togetherServer,
+  });
 
   final BigInt session;
   final int udpPort;
   final String macName;
   final String key;
+
+  /// The AnyTogether server the launcher uses, when it says.
+  final String? togetherServer;
 
   @override
   String toJson() => jsonEncode({
@@ -98,6 +110,7 @@ class Welcome extends Message {
     'udpPort': udpPort,
     'macName': macName,
     'key': key,
+    'togetherServer': ?togetherServer,
   });
 }
 
@@ -365,4 +378,27 @@ class ActivityUpdate extends Message {
 
   @override
   String toJson() => jsonEncode({'type': 'activity', 'activity': activity?.toJson()});
+}
+
+/// AnyTogether: either side asks the other, already signed in, to sign it in. The id is the
+/// hand-off the asker started with the server; [deviceName] is shown before approving.
+class TogetherHandoff extends Message {
+  const TogetherHandoff({required this.id, required this.deviceName});
+
+  final String id;
+  final String deviceName;
+
+  @override
+  String toJson() => jsonEncode({'type': 'togetherHandoff', 'id': id, 'deviceName': deviceName});
+}
+
+/// The answer: approved on the server, or turned down.
+class TogetherHandoffAnswer extends Message {
+  const TogetherHandoffAnswer({required this.id, required this.approved});
+
+  final String id;
+  final bool approved;
+
+  @override
+  String toJson() => jsonEncode({'type': 'togetherHandoffAnswer', 'id': id, 'approved': approved});
 }

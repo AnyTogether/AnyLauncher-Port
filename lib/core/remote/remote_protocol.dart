@@ -150,6 +150,7 @@ sealed class RemoteMessage {
       udpPort: (json['udpPort'] as num).toInt(),
       macName: json['macName'] as String,
       key: json['key'] as String,
+      togetherServer: json['togetherServer'] as String?,
     ),
     'rejected' => RemoteRejected(json['reason'] as String),
     'latency' => RemoteLatency((json['milliseconds'] as num).toDouble()),
@@ -192,6 +193,11 @@ sealed class RemoteMessage {
     ),
     'keyFrame' => const RemoteKeyFrame(),
     'streaming' => RemoteStreaming(json['state'] as String),
+    'togetherHandoff' => RemoteTogetherHandoff(id: json['id'] as String, deviceName: json['deviceName'] as String),
+    'togetherHandoffAnswer' => RemoteTogetherHandoffAnswer(
+      id: json['id'] as String,
+      approved: json['approved'] as bool,
+    ),
     _ => null,
   };
 
@@ -230,13 +236,22 @@ class RemotePairing extends RemoteMessage {
 
 /// The phone may send pad packets with [session] to [udpPort]; [key] lets it in next time.
 class RemoteWelcome extends RemoteMessage {
-  const RemoteWelcome({required this.session, required this.udpPort, required this.macName, required this.key});
+  const RemoteWelcome({
+    required this.session,
+    required this.udpPort,
+    required this.macName,
+    required this.key,
+    this.togetherServer,
+  });
   final BigInt session;
   final int udpPort;
 
   /// The computer's name (the field keeps the macOS launcher's name).
   final String macName;
   final String key;
+
+  /// The AnyTogether server the launcher uses, so the phone can say when it uses another.
+  final String? togetherServer;
   @override
   String get type => 'welcome';
   @override
@@ -245,6 +260,7 @@ class RemoteWelcome extends RemoteMessage {
     'udpPort': udpPort,
     'macName': macName,
     'key': key,
+    'togetherServer': ?togetherServer,
   };
 }
 
@@ -432,6 +448,30 @@ class RemoteStreaming extends RemoteMessage {
   String get type => 'streaming';
   @override
   Map<String, Object?> get fields => {'state': state};
+}
+
+/// A sign-in to AnyTogether for the other side to approve, both ways: the launcher asks its
+/// phone, signed in, to approve the launcher's hand-off [id]; or the phone asks the launcher to
+/// approve the phone's. [deviceName] is who asks.
+class RemoteTogetherHandoff extends RemoteMessage {
+  const RemoteTogetherHandoff({required this.id, required this.deviceName});
+  final String id;
+  final String deviceName;
+  @override
+  String get type => 'togetherHandoff';
+  @override
+  Map<String, Object?> get fields => {'id': id, 'deviceName': deviceName};
+}
+
+/// The answer to a [RemoteTogetherHandoff]: approved on the server, or turned down.
+class RemoteTogetherHandoffAnswer extends RemoteMessage {
+  const RemoteTogetherHandoffAnswer({required this.id, required this.approved});
+  final String id;
+  final bool approved;
+  @override
+  String get type => 'togetherHandoffAnswer';
+  @override
+  Map<String, Object?> get fields => {'id': id, 'approved': approved};
 }
 
 /// The pad datagrams the launcher relays between the phone and the game, the engine's RemotePad

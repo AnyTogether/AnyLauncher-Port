@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:anyps5_desktop/core/host.dart';
 import 'package:anyps5_desktop/core/installer.dart';
+import 'package:anyps5_desktop/core/together/token_store.dart';
 import 'package:anyps5_desktop/main.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/background.dart';
@@ -87,10 +88,13 @@ Uint8List backgroundArt(int tint) => png(160, 90, (x, y) {
 });
 
 class Fixture {
-  Fixture(this.temp, this.model, this.toolkit);
+  Fixture(this.temp, this.model, this.toolkit, this.opened);
   final Directory temp;
   final AppModel model;
   final String toolkit;
+
+  /// Web pages the launcher opened in the browser.
+  final List<Uri> opened;
 
   void dispose() => temp.deleteSync(recursive: true);
 }
@@ -103,7 +107,10 @@ Fixture makeFixture({
   int theme = 0,
   Language language = Language.english,
   bool withToolkit = true,
+  Uri? together,
+  TokenStore? togetherStore,
 }) {
+  final opened = <Uri>[];
   final temp = temporaryFolder('ui');
   final root = p.join(temp.path, 'Games');
   final toolkit = makeFakeToolkit(p.join(temp.path, 'toolkit'));
@@ -142,6 +149,11 @@ Fixture makeFixture({
       advertise: false,
       preferredPorts: false,
       cable: false,
+      openUrl: opened.add,
+      environment: const {},
+      togetherStore: togetherStore ?? MemoryTokenStore(),
+      togetherServer: together,
+      togetherPollEvery: const Duration(milliseconds: 10),
     ),
   );
   model.rescan();
@@ -156,7 +168,7 @@ Fixture makeFixture({
   writeTrophies(orbit.folder, installed: installed, earned: [1, 2]);
   model.rescan();
   model.sizes[orbit.id] = 48200000000;
-  return Fixture(temp, model, toolkit);
+  return Fixture(temp, model, toolkit, opened);
 }
 
 /// Renders the launcher at 1600x900 with the background and clock held still.

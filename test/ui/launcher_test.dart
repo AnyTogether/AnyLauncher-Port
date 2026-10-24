@@ -164,6 +164,8 @@ void main() {
       expect(model.look, LookStyle.aurora);
       await press(tester, LogicalKeyboardKey.keyE);
       expect(model.panelCategory, 1);
+      // Library, AnyTogether and the phones, then the language.
+      await press(tester, LogicalKeyboardKey.keyE);
       await press(tester, LogicalKeyboardKey.keyE);
       await press(tester, LogicalKeyboardKey.keyE);
       expect(model.panelCategories()[model.panelCategory].id, 'general');

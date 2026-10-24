@@ -16,11 +16,17 @@ void main() {
     services: LauncherServices(
       pickFolder: (title) => getDirectoryPath(confirmButtonText: title),
       openFolder: (folder) => unawaited(Process.run(Platform.isWindows ? 'explorer' : 'xdg-open', [folder])),
+      openUrl: (url) => unawaited(
+        Platform.isWindows
+            ? Process.run('rundll32', ['url.dll,FileProtocolHandler', url.toString()])
+            : Process.run('xdg-open', [url.toString()]),
+      ),
     ),
   );
   if (model.preferences.onboarded) model.rescan();
   model.watchGamesFolder();
   unawaited(model.startPhoneServer());
+  unawaited(model.together.start());
   runApp(AnyPS5App(model: model));
 }
 

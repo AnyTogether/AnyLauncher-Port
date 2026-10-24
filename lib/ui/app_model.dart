@@ -18,9 +18,11 @@ import '../core/remote/remote_protocol.dart';
 import '../core/remote/remote_server.dart';
 import '../core/save_backup.dart';
 import '../core/toolkit.dart';
+import '../core/together/token_store.dart';
 import '../core/trophies.dart';
 import 'strings.dart';
 import 'theme.dart';
+import 'together_model.dart';
 
 /// The launcher's own choices, kept as JSON in the config folder.
 class Preferences {
@@ -37,6 +39,10 @@ class Preferences {
     ..gameArtwork = json['gameArtwork'] as bool? ?? true
     ..reducedMotion = json['reducedMotion'] as bool? ?? false
     ..phoneServer = json['phoneServer'] as bool? ?? true
+    ..togetherServer = json['togetherServer'] as String?
+    ..friendsJoin = json['friendsJoin'] as bool? ?? true
+    ..pushToTalk = json['pushToTalk'] as bool? ?? false
+    ..talkKey = (json['talkKey'] as num?)?.toInt()
     ..lastPlayed = {
       for (final entry in (json['lastPlayed'] as Map<String, dynamic>? ?? const {}).entries)
         entry.key: entry.value as String,
@@ -52,6 +58,17 @@ class Preferences {
   bool gameArtwork = true;
   bool reducedMotion = false;
   bool phoneServer = true;
+
+  /// Another AnyTogether server than AnyTogether's own; null for that one.
+  String? togetherServer;
+
+  /// While a game runs, friends see it and can join (an AnyTogether game session).
+  bool friendsJoin = true;
+
+  /// In party voice: the talk key held to talk (else it turns the microphone on and off), and
+  /// which key it is (a USB HID usage; null for the default).
+  bool pushToTalk = false;
+  int? talkKey;
   Map<String, String> lastPlayed = {};
 
   Map<String, Object?> toJson() => {
@@ -65,6 +82,10 @@ class Preferences {
     'gameArtwork': gameArtwork,
     'reducedMotion': reducedMotion,
     'phoneServer': phoneServer,
+    'togetherServer': togetherServer,
+    'friendsJoin': friendsJoin,
+    'pushToTalk': pushToTalk,
+    'talkKey': talkKey,
     'lastPlayed': lastPlayed,
   };
 
@@ -185,7 +206,7 @@ enum Layer { library, settings, gameSettings, controls, confirmUninstall, update
 
 /// A settings row the panels draw and the keyboard moves through.
 class PanelRow {
-  const PanelRow({required this.id, required this.title, required this.kind, this.detail, this.glyph});
+  const PanelRow({required this.id, required this.title, required this.kind, this.detail, this.glyph, this.person});
 
   final String id;
   final String title;
@@ -194,6 +215,9 @@ class PanelRow {
   /// A face button drawn after the title.
   final PadGlyph? glyph;
   final RowKind kind;
+
+  /// Someone on AnyTogether the row is about, drawn as their picture before the title.
+  final PanelPerson? person;
 
   bool get focusable => kind is! InfoRow;
 }
@@ -243,6 +267,34 @@ class InfoRow extends RowKind {
   final String text;
 }
 
+/// A field to type in: choosing the row puts the cursor in it; Enter sends [submit].
+class TextRow extends RowKind {
+  const TextRow(this.value, this.set, {this.submit, this.hint});
+  final String value;
+  final void Function(String) set;
+  final void Function()? submit;
+  final String? hint;
+}
+
+/// How a person shows in a row: their initials or picture, a dot for what they are doing, a
+/// ring while they speak in party voice.
+class PanelPerson {
+  const PanelPerson({required this.name, this.avatar, this.status, this.speaking = false});
+  final String name;
+  final String? avatar;
+  final PersonStatus? status;
+  final bool speaking;
+
+  /// One or two letters for a person with no picture.
+  String get initials {
+    final words = name.trim().split(RegExp(r'\s+')).where((word) => word.isNotEmpty).take(2);
+    final letters = words.map((word) => String.fromCharCode(word.runes.first).toUpperCase()).join();
+    return letters.isEmpty ? '?' : letters;
+  }
+}
+
+enum PersonStatus { playing, online, away, offline }
+
 /// A pad action's keys and mouse buttons; choosing it waits for a key.
 class KeysRow extends RowKind {
   const KeysRow(this.sources, {required this.capturing, required this.capture});
@@ -267,7 +319,27 @@ class LauncherServices {
     this.advertise = true,
     this.preferredPorts = true,
     this.cable = true,
+    this.openUrl,
+    this.environment,
+    this.togetherStore,
+    this.togetherServer,
+    this.togetherPollEvery,
   });
+
+  /// Opens a web page in the browser.
+  final void Function(Uri url)? openUrl;
+
+  /// The environment the launcher reads (ANYTOGETHER_URL); the process's by default.
+  final Map<String, String>? environment;
+
+  /// Where the AnyTogether session is kept; the system's own store by default.
+  final TokenStore? togetherStore;
+
+  /// An AnyTogether server that wins over every choice (tests).
+  final Uri? togetherServer;
+
+  /// How often an AnyTogether sign-in asks whether it was approved (tests go faster).
+  final Duration? togetherPollEvery;
 
   /// Whether Android phones on a USB cable are joined through adb (off in tests).
   final bool cable;
@@ -299,7 +371,28 @@ class AppModel extends ChangeNotifier {
        settingsStore = GameSettingsStore(paths.gameSettingsFolder) {
     T.language = Language.byCode(this.preferences.language);
     Motion.reduced = this.preferences.reducedMotion;
+    together = TogetherModel(this);
   }
+
+  /// AnyTogether: the account, friends, messages, parties.
+  late final TogetherModel together;
+
+  /// The text row the cursor is in, by id; null while the keys move through the launcher.
+  String? editingRow;
+
+  void startEditing(String id) {
+    editingRow = id;
+    notifyListeners();
+  }
+
+  void stopEditing() {
+    if (editingRow == null) return;
+    editingRow = null;
+    notifyListeners();
+  }
+
+  /// Something outside the model changed what the screen shows.
+  void refresh() => _changed();
 
   final AppPaths paths;
   final Preferences preferences;
@@ -1062,6 +1155,7 @@ class AppModel extends ChangeNotifier {
           ),
         ],
       ),
+      PanelCategory(id: 'together', title: 'AnyTogether', rows: together.settingsRows()),
       PanelCategory(
         id: 'phone',
         title: T.text('phones'),
@@ -1392,6 +1486,8 @@ class AppModel extends ChangeNotifier {
             run();
           case KeysRow(:final capture):
             capture();
+          case TextRow():
+            if (row != null) startEditing(row.id);
           default:
             break;
         }
@@ -1564,6 +1660,7 @@ class AppModel extends ChangeNotifier {
         await server.start();
       }
       remote = server;
+      server.togetherServer = together.account.base.toString();
       remoteError = null;
       if (services.cable) {
         final adb = await AdbTunnel.locate();
@@ -1652,6 +1749,8 @@ class AppModel extends ChangeNotifier {
       case RemoteSaveLayout(:final id, :final layout):
         final game = games.where((game) => game.id == id).firstOrNull;
         if (game != null) saveSettings(game, currentSettings(game).copyWith(phoneLayout: layout));
+      case RemoteTogetherHandoff() || RemoteTogetherHandoffAnswer():
+        together.phoneMessage(message, deviceId);
       default:
         break;
     }
@@ -1754,6 +1853,7 @@ class AppModel extends ChangeNotifier {
     _trophyWatch?.cancel();
     _toastTimer?.cancel();
     _installer?.cancel();
+    together.dispose();
     unawaited(stopPhoneServer());
     super.dispose();
   }

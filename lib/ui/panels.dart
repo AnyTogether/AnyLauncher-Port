@@ -375,6 +375,11 @@ class _RowView extends StatelessWidget {
           return Icon(Icons.chevron_right_rounded, size: 22 * scale, color: detailColor);
         case InfoRow():
           return const SizedBox.shrink();
+        case TextRow():
+          return SizedBox(
+            width: 420 * scale,
+            child: RowTextField(model: model, row: row, kind: kind, focused: focused),
+          );
       }
     }
 
@@ -398,6 +403,10 @@ class _RowView extends StatelessWidget {
         ),
         child: Row(
           children: [
+            if (row.person != null) ...[
+              PersonAvatar(person: row.person!, size: 44 * scale, focused: focused),
+              SizedBox(width: 16 * scale),
+            ],
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -757,6 +766,182 @@ class TrophyView extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// A text row's field: the cursor goes in when the row is chosen (or clicked), Enter sends it,
+/// Esc gives the keys back to the launcher.
+class RowTextField extends StatefulWidget {
+  const RowTextField({super.key, required this.model, required this.row, required this.kind, required this.focused});
+
+  final AppModel model;
+  final PanelRow row;
+  final TextRow kind;
+  final bool focused;
+
+  @override
+  State<RowTextField> createState() => _RowTextFieldState();
+}
+
+class _RowTextFieldState extends State<RowTextField> {
+  late final TextEditingController _controller = TextEditingController(text: widget.kind.value);
+  final FocusNode _node = FocusNode(debugLabel: 'row text');
+
+  @override
+  void initState() {
+    super.initState();
+    _node.addListener(_focusChanged);
+    _follow();
+  }
+
+  @override
+  void didUpdateWidget(RowTextField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_node.hasFocus && _controller.text != widget.kind.value) _controller.text = widget.kind.value;
+    _follow();
+  }
+
+  /// The model says where the cursor is.
+  void _follow() {
+    final editing = widget.model.editingRow == widget.row.id;
+    if (editing && !_node.hasFocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.model.editingRow == widget.row.id) _node.requestFocus();
+      });
+    } else if (!editing && _node.hasFocus) {
+      _node.unfocus();
+    }
+  }
+
+  void _focusChanged() {
+    if (_node.hasFocus) {
+      if (widget.model.editingRow != widget.row.id) widget.model.startEditing(widget.row.id);
+    } else if (widget.model.editingRow == widget.row.id) {
+      widget.model.stopEditing();
+    }
+  }
+
+  @override
+  void dispose() {
+    _node.removeListener(_focusChanged);
+    _node.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final color = widget.focused ? Colors.black : Colors.white;
+    final editing = widget.model.editingRow == widget.row.id;
+    return AnimatedContainer(
+      duration: Motion.focus,
+      curve: Motion.settle,
+      padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 8 * scale),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: editing ? 0.12 : 0.07),
+        borderRadius: BorderRadius.circular(10 * scale),
+        border: Border.all(
+          color: editing ? widget.model.accentChoice.color : color.withValues(alpha: 0.14),
+          width: 1.5 * scale,
+        ),
+      ),
+      child: TextField(
+        controller: _controller,
+        focusNode: _node,
+        onChanged: widget.kind.set,
+        onSubmitted: (_) {
+          widget.kind.submit?.call();
+          widget.model.stopEditing();
+        },
+        cursorColor: widget.focused ? Colors.black : widget.model.accentChoice.color,
+        style: AppText.display(16 * scale, weight: FontWeight.w500, color: color),
+        decoration: InputDecoration.collapsed(
+          hintText: widget.kind.hint,
+          hintStyle: AppText.display(16 * scale, color: color.withValues(alpha: 0.35)),
+        ),
+      ),
+    );
+  }
+}
+
+/// Someone's picture, or their initials on the accent, with a dot for what they do and a ring
+/// while they speak.
+class PersonAvatar extends StatelessWidget {
+  const PersonAvatar({super.key, required this.person, required this.size, this.focused = false});
+
+  final PanelPerson person;
+  final double size;
+  final bool focused;
+
+  static Color statusColor(PersonStatus status) => switch (status) {
+    PersonStatus.playing => const Color(0xFF6FA8FF),
+    PersonStatus.online => Palette.success,
+    PersonStatus.away => Palette.warning,
+    PersonStatus.offline => const Color(0xFF8A8F98),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final initials = Container(
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [const Color(0xFF5B6B8C), const Color(0xFF2B3346).withValues(alpha: 0.9)],
+        ),
+      ),
+      child: Text(person.initials, style: AppText.display(size * 0.38, weight: FontWeight.w700)),
+    );
+    final avatar = person.avatar;
+    return SizedBox.square(
+      dimension: size,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          AnimatedContainer(
+            duration: Motion.focus,
+            curve: Motion.settle,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Palette.success.withValues(alpha: person.speaking ? 0.9 : 0),
+                  spreadRadius: size * 0.06,
+                ),
+              ],
+            ),
+            child: ClipOval(
+              child: avatar == null
+                  ? initials
+                  : Image.network(
+                      avatar,
+                      width: size,
+                      height: size,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => initials,
+                    ),
+            ),
+          ),
+          if (person.status != null)
+            Positioned(
+              right: -size * 0.02,
+              bottom: -size * 0.02,
+              child: Container(
+                width: size * 0.3,
+                height: size * 0.3,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: statusColor(person.status!),
+                  border: Border.all(color: focused ? Colors.white : Colors.black, width: size * 0.06),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

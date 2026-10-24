@@ -1,4 +1,5 @@
 import 'strings_table.dart';
+import 'strings_together.dart';
 
 /// The launcher's two languages.
 enum Language {
@@ -88,16 +89,28 @@ abstract final class T {
   /// The text for [key] in the current language, English when the language has none.
   static String text(String key) {
     final turkish = language == Language.turkish;
-    return (turkish ? _turkish[key] ?? turkishTable[key] : null) ?? _english[key] ?? englishTable[key] ?? key;
+    return (turkish ? _turkish[key] ?? togetherTurkish[key] ?? turkishTable[key] : null) ??
+        _english[key] ??
+        togetherEnglish[key] ??
+        englishTable[key] ??
+        key;
   }
 
-  /// [text] with its %@ and %d placeholders filled in order; %% is a percent sign.
+  /// [text] with its %@ and %d placeholders filled in order (%1\$@ names its argument);
+  /// %% is a percent sign.
   static String format(String key, List<Object> arguments) {
     final template = text(key);
     final out = StringBuffer();
     var next = 0;
     for (var index = 0; index < template.length; index++) {
       final char = template[index];
+      final positional = RegExp(r'%(\d)\$([@d])').matchAsPrefix(template, index);
+      if (positional != null) {
+        final at = int.parse(positional.group(1)!) - 1;
+        out.write(at >= 0 && at < arguments.length ? arguments[at] : '');
+        index += positional.group(0)!.length - 1;
+        continue;
+      }
       if (char == '%' && index + 1 < template.length) {
         final kind = template[index + 1];
         if (kind == '%') {

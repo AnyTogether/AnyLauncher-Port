@@ -96,6 +96,9 @@ class RemoteServer {
 
   /// The computer's name the phone shows.
   final String name;
+
+  /// The AnyTogether server the launcher uses, told to each phone it welcomes.
+  String? togetherServer;
   final PairedDevices devices;
   final RemoteEvents events;
 
@@ -318,7 +321,9 @@ class RemoteServer {
           RemoteClose() ||
           RemoteHome() ||
           RemoteSaveLayout() ||
-          RemoteKeyFrame():
+          RemoteKeyFrame() ||
+          RemoteTogetherHandoff() ||
+          RemoteTogetherHandoffAnswer():
         if (_phones.contains(client)) events.request?.call(message, client.deviceId ?? '');
       case RemoteStream(:final on, :final width, :final height):
         if (!_phones.contains(client)) return;
@@ -350,7 +355,13 @@ class RemoteServer {
       ..add(client)
       ..sort((a, b) => (a.slot ?? 0).compareTo(b.slot ?? 0));
     _send(
-      RemoteWelcome(session: BigInt.from(session).toUnsigned(64), udpPort: udpPort ?? 0, macName: name, key: key),
+      RemoteWelcome(
+        session: BigInt.from(session).toUnsigned(64),
+        udpPort: udpPort ?? 0,
+        macName: name,
+        key: key,
+        togetherServer: togetherServer,
+      ),
       client,
     );
     final phoneName = client.name;

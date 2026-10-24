@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:anyps5_desktop/ui/strings_table.dart';
+import 'package:anyps5_desktop/ui/strings_together.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -49,5 +50,20 @@ void main() {
 
   test('the tables cover the same keys', () {
     expect(englishTable.keys.toSet(), turkishTable.keys.toSet());
+  });
+
+  test('the AnyTogether tables cover the same keys, with the PC named where the Mac was', () {
+    expect(togetherEnglish.keys.toSet(), togetherTurkish.keys.toSet());
+    for (final text in [...togetherEnglish.values, ...togetherTurkish.values]) {
+      expect(text, isNot(contains('Mac')));
+      expect(text, isNot(contains('⌥')));
+    }
+  });
+
+  test('positional placeholders take the argument they name', () {
+    T.language = Language.english;
+    expect(T.format('gameJoined', ['Utku', 'Orbit Runner']), 'Starting Orbit Runner with Utku');
+    T.language = Language.turkish;
+    expect(T.format('gameJoined', ['Utku', 'Orbit Runner']), 'Utku ile Orbit Runner başlıyor');
   });
 }

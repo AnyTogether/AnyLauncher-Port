@@ -30,14 +30,47 @@ class _LauncherShellState extends State<LauncherShell> {
   final FocusNode _focus = FocusNode(debugLabel: 'launcher');
 
   @override
+  void initState() {
+    super.initState();
+    widget.model.addListener(_modelChanged);
+  }
+
+  @override
+  void didUpdateWidget(LauncherShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.model != widget.model) {
+      oldWidget.model.removeListener(_modelChanged);
+      widget.model.addListener(_modelChanged);
+    }
+  }
+
+  /// Out of a text field: the keys come back to the launcher.
+  void _modelChanged() {
+    if (widget.model.editingRow == null && !_focus.hasPrimaryFocus && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.model.editingRow == null && !_focus.hasPrimaryFocus) _focus.requestFocus();
+      });
+    }
+  }
+
+  @override
   void dispose() {
+    widget.model.removeListener(_modelChanged);
     _focus.dispose();
     super.dispose();
   }
 
   KeyEventResult _key(FocusNode node, KeyEvent event) {
-    if (event is KeyUpEvent) return KeyEventResult.ignored;
     final model = widget.model;
+    // Typing in a field: the keys are the field's, Esc gives them back.
+    if (model.editingRow != null) {
+      if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
+        model.stopEditing();
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+    if (event is KeyUpEvent) return KeyEventResult.ignored;
     if (model.capturing != null && event is KeyDownEvent) {
       if (event.logicalKey == LogicalKeyboardKey.escape) {
         model.handle(Command.back);

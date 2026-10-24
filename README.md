@@ -77,6 +77,28 @@ Some environment variables the launcher passes exist only in the fork's engine
 the fork's `ANYPS5_REMOTE_PAD` bridge, which is POSIX-only today (Linux works, Windows needs a
 Winsock port of `RemotePad.cpp`).
 
+## AnyTogether
+
+The launcher signs in to [AnyTogether](https://github.com/utkuhalis/AnyTogether), the AnyPS5
+online layer (Settings → AnyTogether): with a code sent by email, with a code approved on the
+website (it opens in the browser; passkeys and the website's other sign-ins work there), or with
+the paired phone, which approves the launcher with one tap when it is signed in (the phone
+protocol's `togetherHandoff` / `togetherHandoffAnswer`, both ways). Another server can be chosen
+there; `ANYTOGETHER_URL` overrides the choice. Code: `lib/core/together/`.
+
+The session (an access token and a refresh token) is kept per system:
+
+- **Windows**: `%APPDATA%\AnyPS5\Together\session.bin`, sealed with DPAPI
+  (`CryptProtectData`, for the current Windows user, with the launcher's own entropy): another
+  account or another computer cannot open it.
+- **Linux**: the Secret Service (GNOME Keyring, KWallet) through `secret-tool` when it is
+  installed (`libsecret-tools` / `libsecret`) and a keyring answers. Without one (no
+  `secret-tool`, a headless session, a desktop with no keyring) it is
+  `~/.config/AnyPS5/Together/session.json` with mode 0600 in a 0700 folder, as the macOS
+  launcher keeps it: readable only by this user, which is what an unlocked keyring gives too.
+  Calling libsecret through FFI would tie the launcher to GLib and D-Bus at start; the command
+  keeps it optional.
+
 ## Installed games
 
 `<games folder>/.AnyPS5/Games/<TITLE>-<hash>/` holds `app.elf`/`app.exe`, `libs/`, `app0/`

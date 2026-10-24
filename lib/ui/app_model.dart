@@ -15,7 +15,9 @@ import '../core/remote/mdns.dart';
 import '../core/remote/paired_devices.dart';
 import '../core/remote/remote_protocol.dart';
 import '../core/remote/remote_server.dart';
+import '../core/save_backup.dart';
 import '../core/toolkit.dart';
+import '../core/trophies.dart';
 import 'strings.dart';
 import 'theme.dart';
 
@@ -178,7 +180,7 @@ class HomeFocus {
   int get hashCode => Object.hash(area, index);
 }
 
-enum Layer { library, settings, gameSettings, controls, confirmUninstall, updateChoice, log }
+enum Layer { library, settings, gameSettings, controls, confirmUninstall, updateChoice, log, trophies }
 
 /// A settings row the panels draw and the keyboard moves through.
 class PanelRow {
@@ -308,6 +310,12 @@ class AppModel extends ChangeNotifier {
   final List<String> queue = [];
   final Map<String, String> failures = {};
   final Map<String, int> sizes = {};
+
+  /// Each game's trophies, read at the scan; a game without trophy packages has none.
+  final Map<String, TrophySet> trophies = {};
+  int trophyIndex = 0;
+  Timer? _trophyWatch;
+  Set<String> _earned = {};
   Installer? _installer;
   String? _playAfterInstall;
 
@@ -363,13 +371,29 @@ class AppModel extends ChangeNotifier {
     final previous = selectedGame?.id;
     games = GameLibrary.scan(folder);
     records.clear();
+    trophies.clear();
     for (final game in games) {
-      final record = Installer.record(Installer.installedFolder(game, folder), system: system);
+      final installed = Installer.installedFolder(game, folder);
+      final record = Installer.record(installed, system: system);
       if (record != null) records[game.id] = record;
+      _loadTrophies(game);
     }
     final index = games.indexWhere((game) => game.id == previous);
     selected = index >= 0 ? index : 0;
     _changed();
+  }
+
+  void _loadTrophies(Game game) {
+    final folder = root;
+    if (folder == null) return;
+    final installed = Installer.installedFolder(game, folder);
+    final language = ConsoleLanguage.tag(T.language.consoleLanguage);
+    final set = Trophies.load(game, installed: installed, languages: [?language]);
+    if (set == null) {
+      trophies.remove(game.id);
+    } else {
+      trophies[game.id] = set;
+    }
   }
 
   /// The size of the selected game, measured once.
@@ -522,6 +546,41 @@ class AppModel extends ChangeNotifier {
     show(T.text('cacheCleared'));
   }
 
+  String backupFolder(Game game) => SaveBackup.folderFor(paths.backupsFolder, game.name, game.titleId);
+
+  String? _lastBackupText(Game game) {
+    final latest = SaveBackup.backups(backupFolder(game)).firstOrNull;
+    if (latest == null) return null;
+    return T.format('lastBackup', [p.basenameWithoutExtension(latest)]);
+  }
+
+  void backUpSaves(Game game) {
+    final folder = root;
+    if (folder == null) return;
+    try {
+      SaveBackup.backUp(Installer.installedFolder(game, folder), backupFolder(game), DateTime.now());
+      show(T.text('savesBackedUp'));
+    } on Object catch (error) {
+      show('${T.text('backupFailed')}: $error');
+    }
+    _changed();
+  }
+
+  void restoreLatestSaves(Game game) {
+    final folder = root;
+    final latest = SaveBackup.backups(backupFolder(game)).firstOrNull;
+    if (folder == null || latest == null) return;
+    if (running?.$1 == game) return show(T.text('closeGameFirst'));
+    try {
+      SaveBackup.restore(latest, Installer.installedFolder(game, folder), backupFolder(game), DateTime.now());
+      _loadTrophies(game);
+      show(T.text('savesRestored'));
+    } on Object catch (error) {
+      show('${T.text('backupFailed')}: $error');
+    }
+    _changed();
+  }
+
   void _appendLog(Game game, String line) {
     try {
       final file = File(paths.logFile(game.titleId));
@@ -581,8 +640,11 @@ class AppModel extends ChangeNotifier {
       );
       starting = null;
       running = (game, run);
+      _watchTrophies(game);
       _changed();
       final code = await run.exitCode;
+      _trophyWatch?.cancel();
+      _loadTrophies(game);
       if (running?.$1 == game) running = null;
       if (code != 0) show('${T.text('gameEnded')} ($code)');
       _changed();
@@ -591,6 +653,36 @@ class AppModel extends ChangeNotifier {
       show('${T.text('startFailed')}: $error');
       _changed();
     }
+  }
+
+  /// While a game runs, a trophy it earns shows and goes to the phones.
+  void _watchTrophies(Game game) {
+    final folder = root;
+    if (folder == null) return;
+    final installed = Installer.installedFolder(game, folder);
+    _earned = Trophies.earned(installed);
+    _trophyWatch?.cancel();
+    _trophyWatch = Timer.periodic(const Duration(seconds: 2), (_) {
+      final now = Trophies.earned(installed);
+      final fresh = now.difference(_earned);
+      _earned = now;
+      if (fresh.isEmpty) return;
+      _loadTrophies(game);
+      for (final id in fresh) {
+        final trophy = trophies[game.id]?.trophies.where((trophy) => trophy.id == id).firstOrNull;
+        if (trophy == null) continue;
+        show('${T.text('trophyEarned')} · ${trophy.name}');
+        remote?.publish(
+          RemoteTrophy(
+            name: trophy.name,
+            detail: trophy.detail,
+            grade: trophy.grade.name,
+            icon: trophy.icon == null ? null : base64.encode(trophy.icon!),
+          ),
+        );
+      }
+      _changed();
+    });
   }
 
   void stopGame() {
@@ -617,6 +709,7 @@ class AppModel extends ChangeNotifier {
     panelCategory = 0;
     capturing = null;
     if (next == Layer.library) libraryIndex = selected;
+    if (next == Layer.trophies) trophyIndex = 0;
     _skipToFocusable();
     _changed();
   }
@@ -635,13 +728,21 @@ class AppModel extends ChangeNotifier {
     _changed();
   }
 
-  /// Play, the settings.
-  int get actionCount => 2;
+  /// Play, the trophies when the game has any, and the settings.
+  int get actionCount => selectedGame != null && trophies.containsKey(selectedGame!.id) ? 3 : 2;
+
+  /// Which of the buttons under the title opens the settings.
+  int get settingsAction => actionCount - 1;
 
   void moveSelection(int delta) {
     final next = (selected + delta).clamp(0, games.isEmpty ? 0 : games.length - 1);
     if (next == selected) return;
     selected = next;
+    if (focus.isActions && focus.index >= actionCount) focus = HomeFocus.actions(actionCount - 1);
+    if (overlay == Layer.trophies) {
+      trophyIndex = 0;
+      if (!trophies.containsKey(selectedGame?.id)) overlay = null;
+    }
     measureSelected();
     _changed();
   }
@@ -659,7 +760,11 @@ class AppModel extends ChangeNotifier {
       return;
     }
     if (command == Command.previousGame || command == Command.nextGame) {
-      if (capturing == null && (overlay == null || overlay == Layer.gameSettings || overlay == Layer.controls)) {
+      if (capturing == null &&
+          (overlay == null ||
+              overlay == Layer.gameSettings ||
+              overlay == Layer.controls ||
+              overlay == Layer.trophies)) {
         moveSelection(command == Command.nextGame ? 1 : -1);
       }
       return;
@@ -687,6 +792,21 @@ class AppModel extends ChangeNotifier {
         return;
       case Layer.log:
         if (command == Command.back || command == Command.select) closeOverlay();
+        return;
+      case Layer.trophies:
+        final count = trophies[selectedGame?.id]?.trophies.length ?? 0;
+        switch (command) {
+          case Command.up:
+            trophyIndex = (trophyIndex - 1).clamp(0, count == 0 ? 0 : count - 1);
+            _changed();
+          case Command.down:
+            trophyIndex = (trophyIndex + 1).clamp(0, count == 0 ? 0 : count - 1);
+            _changed();
+          case Command.back || Command.options:
+            closeOverlay();
+          default:
+            break;
+        }
         return;
       case Layer.controls:
         if (capturing != null) {
@@ -739,7 +859,13 @@ class AppModel extends ChangeNotifier {
       case ('actions', Command.up) || ('actions', Command.back):
         _moveFocus(HomeFocus.tiles);
       case ('actions', Command.select):
-        focus.index == 0 ? primaryAction(game) : open(Layer.gameSettings);
+        if (focus.index == 0) {
+          primaryAction(game);
+        } else if (focus.index == 1 && actionCount == 3) {
+          open(Layer.trophies);
+        } else {
+          open(Layer.gameSettings);
+        }
       case (_, Command.options):
         open(Layer.gameSettings);
       default:
@@ -1060,6 +1186,19 @@ class AppModel extends ChangeNotifier {
           kind: ActionRow(() => services.openFolder?.call(Installer.installedFolder(game, root!))),
         ),
         PanelRow(id: 'cache', title: T.text('clearShaderCache'), kind: ActionRow(() => clearShaderCache(game))),
+        PanelRow(
+          id: 'backup',
+          title: T.text('backUpSaves'),
+          detail: _lastBackupText(game) ?? T.text('backUpSavesDetail'),
+          kind: ActionRow(() => backUpSaves(game)),
+        ),
+        if (SaveBackup.backups(backupFolder(game)).isNotEmpty)
+          PanelRow(
+            id: 'restore',
+            title: T.text('restoreLatest'),
+            detail: T.text('restoreSavesDetail'),
+            kind: ActionRow(() => restoreLatestSaves(game)),
+          ),
         PanelRow(
           id: 'uninstall',
           title: T.text('uninstall'),
@@ -1528,6 +1667,7 @@ class AppModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _trophyWatch?.cancel();
     _toastTimer?.cancel();
     _installer?.cancel();
     unawaited(stopPhoneServer());

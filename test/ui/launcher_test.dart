@@ -104,6 +104,16 @@ void main() {
       await expectLater(shell, matchesGoldenFile('goldens/onboarding_toolkit.png'));
     });
 
+    testWidgets('trophies', (tester) async {
+      fixture = makeFixture(theme: 1);
+      final model = fixture.model;
+      model.select(indexOf(model, 'PPSA01001'));
+      model.open(Layer.trophies);
+      model.handle(Command.down);
+      await pumpLauncher(tester, model);
+      await expectLater(shell, matchesGoldenFile('goldens/trophies.png'));
+    });
+
     testWidgets('a phone asking to pair', (tester) async {
       fixture = makeFixture();
       final model = fixture.model;
@@ -128,7 +138,9 @@ void main() {
       await press(tester, LogicalKeyboardKey.arrowDown);
       expect(model.focus, const HomeFocus.actions(0));
       await press(tester, LogicalKeyboardKey.arrowRight);
-      expect(model.focus, const HomeFocus.actions(1));
+      expect(model.focus, const HomeFocus.actions(1), reason: 'Orbit Runner has trophies');
+      await press(tester, LogicalKeyboardKey.arrowRight);
+      expect(model.focus, const HomeFocus.actions(2));
       await press(tester, LogicalKeyboardKey.enter);
       expect(model.overlay, Layer.gameSettings);
       await press(tester, LogicalKeyboardKey.escape);
@@ -248,6 +260,24 @@ void main() {
       expect(find.text(T.text('noToolkit')), findsOneWidget);
       await tester.pump(const Duration(seconds: 5));
       expect(model.toast, isNull);
+    });
+
+    testWidgets('the trophy button opens the trophies; L1 and R1 leave them on a game without', (tester) async {
+      fixture = makeFixture();
+      final model = fixture.model;
+      model.select(indexOf(model, 'PPSA01001'));
+      await pumpLauncher(tester, model);
+      expect(find.text('2/5'), findsOneWidget);
+      expect(model.actionCount, 3);
+      await press(tester, LogicalKeyboardKey.arrowDown);
+      await press(tester, LogicalKeyboardKey.arrowRight);
+      await press(tester, LogicalKeyboardKey.enter);
+      expect(model.overlay, Layer.trophies);
+      expect(find.text('Liftoff'), findsOneWidget);
+      expect(find.text(T.text('trophyHidden')), findsOneWidget);
+      await press(tester, LogicalKeyboardKey.keyE);
+      expect(model.overlay, isNull, reason: 'the next game has no trophies');
+      expect(model.focus, const HomeFocus.actions(1), reason: 'the settings button of a game without trophies');
     });
 
     testWidgets('the pairing card answers with Enter', (tester) async {

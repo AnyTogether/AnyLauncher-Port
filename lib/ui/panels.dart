@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../core/controls.dart';
+import '../core/trophies.dart';
 import 'app_model.dart';
 import 'components.dart';
 import 'home.dart';
@@ -549,6 +550,175 @@ class PairingCard extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A game's trophies: the counts by grade, then every trophy, earned ones first in their order.
+class TrophyView extends StatelessWidget {
+  const TrophyView({super.key, required this.model});
+
+  final AppModel model;
+
+  static Color gradeColor(TrophyGrade grade) => switch (grade) {
+    TrophyGrade.platinum => const Color(0xFFD9E4F2),
+    TrophyGrade.gold => const Color(0xFFF2C14E),
+    TrophyGrade.silver => const Color(0xFFC0C6CF),
+    TrophyGrade.bronze => const Color(0xFFC98A5B),
+  };
+
+  static String gradeName(TrophyGrade grade) => T.text(switch (grade) {
+    TrophyGrade.platinum => 'gradePlatinum',
+    TrophyGrade.gold => 'gradeGold',
+    TrophyGrade.silver => 'gradeSilver',
+    TrophyGrade.bronze => 'gradeBronze',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final game = model.selectedGame;
+    final set = game == null ? null : model.trophies[game.id];
+    if (set == null) return const SizedBox.shrink();
+    final accent = model.accentChoice.color;
+    return _Scrim(
+      opacity: 0.6,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 90 * scale, vertical: 64 * scale),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 360 * scale,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(T.text('trophies'), style: AppText.display(40 * scale, weight: FontWeight.w300)),
+                  SizedBox(height: 8 * scale),
+                  Text(
+                    set.title.isEmpty ? game!.name : set.title,
+                    style: AppText.display(18 * scale, color: Colors.white.withValues(alpha: 0.6)),
+                  ),
+                  SizedBox(height: 34 * scale),
+                  Text('${set.percent}%', style: AppText.display(64 * scale, weight: FontWeight.w200)),
+                  SizedBox(height: 10 * scale),
+                  ProgressLine(fraction: set.percent / 100, color: accent, height: 6 * scale),
+                  SizedBox(height: 28 * scale),
+                  for (final grade in TrophyGrade.values)
+                    if (set.count(grade).$2 > 0)
+                      Padding(
+                        padding: EdgeInsets.only(bottom: 12 * scale),
+                        child: Row(
+                          children: [
+                            Icon(Icons.emoji_events_rounded, size: 22 * scale, color: gradeColor(grade)),
+                            SizedBox(width: 12 * scale),
+                            Text(gradeName(grade), style: AppText.display(17 * scale)),
+                            const Spacer(),
+                            Text(
+                              '${set.count(grade).$1} / ${set.count(grade).$2}',
+                              style: AppText.display(17 * scale, weight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                ],
+              ),
+            ),
+            SizedBox(width: 60 * scale),
+            Expanded(
+              child: ListView.builder(
+                itemCount: set.trophies.length,
+                itemBuilder: (context, index) {
+                  final trophy = set.trophies[index];
+                  final focused = index == model.trophyIndex;
+                  final earned = trophy.unlocked != null;
+                  final secret = trophy.hidden && !earned;
+                  final color = focused ? Colors.black : Colors.white;
+                  return AnimatedContainer(
+                    duration: Motion.focus,
+                    curve: Motion.settle,
+                    margin: EdgeInsets.only(bottom: 8 * scale),
+                    padding: EdgeInsets.all(14 * scale),
+                    decoration: BoxDecoration(
+                      color: focused ? Colors.white : Colors.white.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(14 * scale),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 56 * scale,
+                          height: 56 * scale,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10 * scale),
+                            color: Colors.black.withValues(alpha: 0.3),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: trophy.icon != null && !secret
+                              ? Opacity(
+                                  opacity: earned ? 1 : 0.35,
+                                  child: Image.memory(
+                                    trophy.icon!,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, _, _) => const SizedBox(),
+                                  ),
+                                )
+                              : Icon(
+                                  secret
+                                      ? Icons.lock_rounded
+                                      : (earned ? Icons.emoji_events_rounded : Icons.emoji_events_outlined),
+                                  size: 26 * scale,
+                                  color: earned ? gradeColor(trophy.grade) : Colors.white.withValues(alpha: 0.5),
+                                ),
+                        ),
+                        SizedBox(width: 16 * scale),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                secret ? T.text('trophyHidden') : trophy.name,
+                                style: AppText.display(17 * scale, weight: FontWeight.w600, color: color),
+                              ),
+                              SizedBox(height: 4 * scale),
+                              Text(
+                                secret ? T.text('trophyHiddenDetail') : trophy.detail,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppText.display(13 * scale, color: color.withValues(alpha: 0.6)),
+                              ),
+                              if (trophy.progress case (final value, final target)) ...[
+                                SizedBox(height: 8 * scale),
+                                SizedBox(
+                                  width: 240 * scale,
+                                  child: ProgressLine(fraction: value / target, color: accent, height: 4 * scale),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: 16 * scale),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Icon(Icons.emoji_events_rounded, size: 22 * scale, color: gradeColor(trophy.grade)),
+                            SizedBox(height: 6 * scale),
+                            Text(
+                              earned
+                                  ? '${trophy.unlocked!.toLocal().year}-${trophy.unlocked!.toLocal().month.toString().padLeft(2, '0')}-${trophy.unlocked!.toLocal().day.toString().padLeft(2, '0')}'
+                                  : T.text('trophyLocked'),
+                              style: AppText.display(12 * scale, color: color.withValues(alpha: 0.6)),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );

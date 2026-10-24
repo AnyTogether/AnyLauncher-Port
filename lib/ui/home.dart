@@ -519,13 +519,25 @@ class HeroInfo extends StatelessWidget {
                 model.primaryAction(game);
               },
             ),
+            if (model.trophies[game.id] case final set?) ...[
+              SizedBox(width: 16 * scale),
+              ConsoleButton(
+                title: '${set.unlockedCount}/${set.trophies.length}',
+                icon: Icons.emoji_events_rounded,
+                focused: model.focus == const HomeFocus.actions(1) && model.overlay == null,
+                onPressed: () {
+                  model.focus = const HomeFocus.actions(1);
+                  model.open(Layer.trophies);
+                },
+              ),
+            ],
             SizedBox(width: 16 * scale),
             ConsoleButton(
               title: '',
               icon: Icons.more_horiz_rounded,
-              focused: model.focus == const HomeFocus.actions(1) && model.overlay == null,
+              focused: model.focus == HomeFocus.actions(model.settingsAction) && model.overlay == null,
               onPressed: () {
-                model.focus = const HomeFocus.actions(1);
+                model.focus = HomeFocus.actions(model.settingsAction);
                 model.open(Layer.gameSettings);
               },
             ),

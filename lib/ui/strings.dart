@@ -49,6 +49,8 @@ abstract final class T {
     'phoneServer': 'Phone controller',
     'phoneServerDetail': 'AnyPS5 Remote on the same network finds this PC',
     'phoneAddress': 'Address for the phone',
+    'backUpSavesDetail': 'Saves and trophies, into the AnyPS5 Backups folder',
+    'restoreLatest': 'Restore the latest backup',
   };
 
   static const _turkish = <String, String>{
@@ -79,6 +81,8 @@ abstract final class T {
     'phoneServer': 'Telefon kumandası',
     'phoneServerDetail': 'Aynı ağdaki AnyPS5 Remote bu bilgisayarı bulur',
     'phoneAddress': 'Telefon için adres',
+    'backUpSavesDetail': 'Kayıtlar ve kupalar, AnyPS5 Backups klasörüne',
+    'restoreLatest': 'Son yedeği geri yükle',
   };
 
   /// The text for [key] in the current language, English when the language has none.

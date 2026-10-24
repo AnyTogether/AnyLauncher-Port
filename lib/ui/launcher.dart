@@ -111,6 +111,7 @@ class _LauncherShellState extends State<LauncherShell> {
                         child: switch (model.overlay) {
                           Layer.library => LibraryGrid(model: model),
                           Layer.log => LogView(model: model),
+                          Layer.trophies => TrophyView(model: model),
                           null => const SizedBox.shrink(),
                           _ => PanelView(model: model),
                         },

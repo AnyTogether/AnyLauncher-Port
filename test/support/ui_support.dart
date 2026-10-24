@@ -15,6 +15,7 @@ import 'package:path/path.dart' as p;
 
 import 'fake_toolkit.dart';
 import 'fixtures.dart';
+import 'trophy_fixture.dart';
 
 bool _fontsLoaded = false;
 
@@ -146,6 +147,7 @@ Fixture makeFixture({
   File(p.join(installed, Installer.recordName)).writeAsStringSync(
     '{"date":"2026-10-24T12:00:00Z","source":"${orbit.folder}","system":"linux","titleID":"PPSA01001","toolkit":"toolkit-1"}',
   );
+  writeTrophies(orbit.folder, installed: installed, earned: [1, 2]);
   model.rescan();
   model.sizes[orbit.id] = 48200000000;
   return Fixture(temp, model, toolkit);

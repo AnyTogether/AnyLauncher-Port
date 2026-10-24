@@ -210,7 +210,7 @@ StickModifier = KEY:F24
     });
 
     test('JSON round trip, with the macOS launcher keys, and old files missing fields', () {
-      final settings = GameSettings(
+      const settings = GameSettings(
         resolution: '1920x1080',
         fullscreen: true,
         windowSize: 90,
@@ -218,10 +218,10 @@ StickModifier = KEY:F24
         overlayStyle: OverlayStyle.minimal,
         frameGeneration: true,
         language: 4,
-        controls: const {
+        controls: {
           'Cross': ['KEY:X', 'MOUSE:Left'],
         },
-        tuning: const InputTuning(leftDeadzone: 10),
+        tuning: InputTuning(leftDeadzone: 10),
         shaderCache: false,
         phoneLayout: '{"buttons":[]}',
       );

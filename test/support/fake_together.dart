@@ -293,6 +293,7 @@ class FakeTogether {
     socket.listen((data) {
       if (data is! String) return;
       final frame = jsonDecode(data) as Map<String, dynamic>;
+      if (_frameAdded.isClosed) return;
       if (frame['op'] == 'hello') {
         if (!validAccess.contains(frame['token'])) {
           socket.close(4001);
@@ -302,7 +303,8 @@ class FakeTogether {
         socket.add(jsonEncode({'op': 'ready', 'session': 'session-$_sessions', 'heartbeat': heartbeatSeconds}));
       }
       frames.add(frame);
-      _frameAdded.add(frame);
+      // A socket still talking while the server shuts down at the end of a test.
+      if (!_frameAdded.isClosed) _frameAdded.add(frame);
     }, onDone: () => sockets.remove(socket));
   }
 }

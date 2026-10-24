@@ -3,13 +3,16 @@ import 'dart:io';
 import 'package:anyps5_desktop/core/controls.dart';
 import 'package:anyps5_desktop/core/installer.dart';
 import 'package:anyps5_desktop/core/remote/remote_server.dart';
+import 'package:anyps5_desktop/core/toolkit_download.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/launcher.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:anyps5_desktop/ui/theme.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 
+import '../support/fake_toolkit.dart';
 import '../support/ui_support.dart';
 
 void main() {
@@ -100,8 +103,54 @@ void main() {
       await press(tester, LogicalKeyboardKey.enter);
       await expectLater(shell, matchesGoldenFile('goldens/onboarding_theme.png'));
       model.onboardingStep = 3;
-      await press(tester, LogicalKeyboardKey.arrowRight);
+      model.engine.latest = sampleRelease('0.1.3');
+      model.refresh();
+      await settle(tester);
       await expectLater(shell, matchesGoldenFile('goldens/onboarding_toolkit.png'));
+    });
+
+    testWidgets('onboarding: the engine downloading, in Turkish', (tester) async {
+      fixture = makeFixture(onboarded: false, withToolkit: false, theme: 1, language: Language.turkish);
+      final model = fixture.model;
+      model.onboardingStep = 3;
+      final release = sampleRelease('0.1.3');
+      final package = release.packageFor(model.system)!;
+      model.engine
+        ..latest = release
+        ..downloading = package
+        ..progress = ToolkitProgress(ToolkitPhase.download, (package.size * 0.42).round(), package.size);
+      await pumpLauncher(tester, model);
+      expect(find.text('AnyPS5 motorunu indir'), findsOneWidget);
+      expect(find.text('Kendi klasörüm var'), findsOneWidget);
+      expect(find.textContaining('/ 106'), findsOneWidget);
+      await expectLater(shell, matchesGoldenFile('goldens/onboarding_engine_download_tr.png'));
+      model.engine
+        ..downloading = null
+        ..progress = null;
+    });
+
+    testWidgets('settings: the AnyPS5 engine', (tester) async {
+      fixture = makeFixture(withToolkit: false);
+      final model = fixture.model;
+      // Two downloaded engines, the newer one in use.
+      for (final version in ['0.1.2', '0.1.3']) {
+        makeFakeToolkit(p.join(model.paths.toolkits, version), version: 'upstream-v$version');
+      }
+      model.engine.refresh();
+      model.engine
+        ..latest = sampleRelease('0.1.3')
+        ..releases = [sampleRelease('0.1.4-rc1', prerelease: true), sampleRelease('0.1.3'), sampleRelease('0.1.2')];
+      model.open(Layer.settings);
+      await pumpLauncher(tester, model);
+      for (var tab = 0; tab < 2; tab++) {
+        await press(tester, LogicalKeyboardKey.keyE);
+      }
+      expect(model.panelCategories()[model.panelCategory].id, 'engine');
+      expect(find.text('Check for engine updates'), findsOneWidget);
+      expect(find.text('v0.1.4-rc1 · Pre-release'), findsOneWidget);
+      expect(find.text('Downloaded · select to use'), findsOneWidget);
+      expect(find.text('Delete other versions'), findsOneWidget);
+      await expectLater(shell, matchesGoldenFile('goldens/settings_engine.png'));
     });
 
     testWidgets('trophies', (tester) async {
@@ -164,7 +213,8 @@ void main() {
       expect(model.look, LookStyle.aurora);
       await press(tester, LogicalKeyboardKey.keyE);
       expect(model.panelCategory, 1);
-      // Library, AnyTogether and the phones, then the language.
+      // Library, the AnyPS5 engine, AnyTogether and the phones, then the language.
+      await press(tester, LogicalKeyboardKey.keyE);
       await press(tester, LogicalKeyboardKey.keyE);
       await press(tester, LogicalKeyboardKey.keyE);
       await press(tester, LogicalKeyboardKey.keyE);
@@ -268,6 +318,8 @@ void main() {
       expect(model.onboardingChoice, 1);
       await press(tester, LogicalKeyboardKey.enter);
       expect(model.onboardingStep, 3);
+      expect(model.onboardingChoice, 0, reason: 'the download is the first choice');
+      await press(tester, LogicalKeyboardKey.arrowRight);
       await press(tester, LogicalKeyboardKey.arrowRight);
       await press(tester, LogicalKeyboardKey.enter);
       expect(model.preferences.onboarded, isTrue);

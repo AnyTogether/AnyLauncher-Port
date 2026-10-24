@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'app_model.dart';
 import 'background.dart';
 import 'components.dart';
+import 'engine_model.dart';
 import 'home.dart';
 import 'strings.dart';
 import 'theme.dart';
@@ -416,72 +417,160 @@ class _ToolkitStep extends StatelessWidget {
     final scale = LayoutScale.of(context);
     final toolkit = model.toolkit;
     final accent = model.accentChoice.color;
+    final engine = model.engine;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _StepTitle(title: T.text('chooseToolkit'), subtitle: T.text('chooseToolkitSubtitle')),
-        SizedBox(height: 46 * scale),
+        SizedBox(height: 40 * scale),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ConsoleButton(
-              title: T.text('toolkitChoose'),
-              icon: Icons.build_rounded,
+            _ChoiceCard(
               focused: model.onboardingChoice == 0,
-              minWidth: 220,
-              onPressed: () {
+              width: 470 * scale,
+              height: 196 * scale,
+              onTap: () {
                 model.onboardingChoice = 0;
                 model.onboardingConfirm();
               },
+              child: Builder(
+                builder: (context) {
+                  final focused = model.onboardingChoice == 0;
+                  final color = focused ? Colors.black : Colors.white;
+                  final downloading = engine.downloading;
+                  final newest = engine.latestPackage;
+                  final String detail;
+                  if (downloading != null) {
+                    detail = engine.progressText();
+                  } else if (engine.unverified != null) {
+                    detail = T.text('engineUnverified');
+                  } else if (newest != null) {
+                    detail = T.format('engineDownloadDetail', ['v${newest.version}', byteText(newest.size)]);
+                  } else if (engine.checking) {
+                    detail = T.text('engineLooking');
+                  } else if (engine.checkError != null) {
+                    detail = T.text('engineOffline');
+                  } else {
+                    detail = T.text('engineSource');
+                  }
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.download_rounded, size: 26 * scale, color: color),
+                          const Spacer(),
+                          Container(
+                            padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 4 * scale),
+                            decoration: BoxDecoration(
+                              color: focused ? Colors.black : accent.withValues(alpha: 0.22),
+                              borderRadius: BorderRadius.circular(20 * scale),
+                            ),
+                            child: Text(
+                              T.text('engineRecommended').toUpperCase(),
+                              style: AppText.display(
+                                11 * scale,
+                                weight: FontWeight.w700,
+                                color: focused ? Colors.white : accent,
+                              ).copyWith(letterSpacing: 0.8),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Spacer(),
+                      Text(
+                        T.text('engineDownload'),
+                        style: AppText.display(26 * scale, weight: FontWeight.w500, color: color),
+                      ),
+                      SizedBox(height: 8 * scale),
+                      Text(
+                        detail,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.display(15 * scale, color: color.withValues(alpha: 0.65), height: 1.35),
+                      ),
+                      if (downloading != null) ...[
+                        SizedBox(height: 12 * scale),
+                        ProgressLine(
+                          fraction: engine.progress?.fraction ?? 0,
+                          color: focused ? Colors.black : accent,
+                          height: 5 * scale,
+                        ),
+                      ],
+                    ],
+                  );
+                },
+              ),
             ),
-            SizedBox(width: 18 * scale),
-            ConsoleButton(
-              title: T.text(toolkit == null ? 'skip' : 'start'),
-              icon: Icons.arrow_forward_rounded,
+            SizedBox(width: 20 * scale),
+            _ChoiceCard(
               focused: model.onboardingChoice == 1,
-              prominent: true,
-              minWidth: 180,
-              onPressed: () {
+              width: 320 * scale,
+              height: 196 * scale,
+              onTap: () {
                 model.onboardingChoice = 1;
                 model.onboardingConfirm();
               },
+              child: Builder(
+                builder: (context) {
+                  final color = model.onboardingChoice == 1 ? Colors.black : Colors.white;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.folder_open_rounded, size: 26 * scale, color: color),
+                      const Spacer(),
+                      Text(
+                        T.text('engineOwnFolder'),
+                        style: AppText.display(26 * scale, weight: FontWeight.w500, color: color),
+                      ),
+                      SizedBox(height: 8 * scale),
+                      Text(
+                        T.text('engineOwnFolderDetail'),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.display(15 * scale, color: color.withValues(alpha: 0.65), height: 1.35),
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
           ],
         ),
-        SizedBox(height: 22 * scale),
-        SizedBox(
-          width: 640 * scale,
-          child: Glass(
-            radius: 16 * scale,
-            padding: EdgeInsets.all(20 * scale),
-            child: Row(
-              children: [
-                Icon(
-                  toolkit == null ? Icons.help_outline_rounded : Icons.check_circle_rounded,
-                  size: 24 * scale,
-                  color: toolkit == null ? Colors.white.withValues(alpha: 0.7) : accent,
-                ),
-                SizedBox(width: 14 * scale),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        toolkit == null ? T.text('toolkitMissing') : '${T.text('toolkit')} · ${toolkit.version}',
-                        style: AppText.display(18 * scale, weight: FontWeight.w500),
-                      ),
-                      SizedBox(height: 4 * scale),
-                      Text(
-                        toolkit?.root ?? T.text('toolkitDetail'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppText.display(13 * scale, color: Colors.white.withValues(alpha: 0.5)),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+        SizedBox(height: 26 * scale),
+        Row(
+          children: [
+            ConsoleButton(
+              title: T.text(toolkit == null ? 'skip' : 'start'),
+              icon: Icons.arrow_forward_rounded,
+              focused: model.onboardingChoice == 2,
+              prominent: toolkit != null,
+              minWidth: 180,
+              onPressed: () {
+                model.onboardingChoice = 2;
+                model.onboardingConfirm();
+              },
             ),
-          ),
+            SizedBox(width: 22 * scale),
+            Icon(
+              toolkit == null ? Icons.help_outline_rounded : Icons.check_circle_rounded,
+              size: 22 * scale,
+              color: toolkit == null ? Colors.white.withValues(alpha: 0.6) : accent,
+            ),
+            SizedBox(width: 10 * scale),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: 560 * scale),
+              child: Text(
+                toolkit == null
+                    ? T.text('toolkitMissing')
+                    : '${T.text('engine')} ${EngineModel.label(toolkit)} · ${toolkit.root}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.display(15 * scale, color: Colors.white.withValues(alpha: toolkit == null ? 0.55 : 0.8)),
+              ),
+            ),
+          ],
         ),
       ],
     );

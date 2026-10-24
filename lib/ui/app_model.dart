@@ -18,10 +18,13 @@ import '../core/remote/remote_protocol.dart';
 import '../core/remote/remote_server.dart';
 import '../core/save_backup.dart';
 import '../core/toolkit.dart';
+import '../core/toolkit_download.dart';
 import '../core/together/talk_key.dart';
 import '../core/together/token_store.dart';
 import '../core/together/voice_mesh.dart';
 import '../core/trophies.dart';
+import 'components.dart';
+import 'engine_model.dart';
 import 'strings.dart';
 import 'theme.dart';
 import 'together_model.dart';
@@ -345,7 +348,11 @@ class LauncherServices {
     this.togetherPollEvery,
     this.voiceEngine,
     this.talkKeys,
+    this.engineReleases,
   });
+
+  /// Where the AnyPS5 engine's releases are read from (GitHub); none in tests without a fake.
+  final GitHubReleases? engineReleases;
 
   /// Party voice's microphone and connections; flutter_webrtc by default.
   final VoiceEngine Function()? voiceEngine;
@@ -403,6 +410,9 @@ class AppModel extends ChangeNotifier {
 
   /// AnyTogether: the account, friends, messages, parties.
   late final TogetherModel together;
+
+  /// The AnyPS5 engine downloaded from upstream: versions, the download, the one in use.
+  late final EngineModel engine = EngineModel(this);
 
   /// The text row the cursor is in, by id; null while the keys move through the launcher.
   String? editingRow;
@@ -481,9 +491,10 @@ class AppModel extends ChangeNotifier {
 
   Game? get selectedGame => games.isEmpty ? null : games[selected.clamp(0, games.length - 1)];
 
+  /// The chosen toolkit; without one (or when it is gone), the newest downloaded engine.
   Toolkit? get toolkit {
     final folder = preferences.toolkitFolder;
-    return Toolkit.locate([?folder], system: system);
+    return Toolkit.locate([?folder, for (final kit in engine.downloaded) kit.root], system: system);
   }
 
   String? get root => preferences.gamesFolder;
@@ -581,7 +592,7 @@ class AppModel extends ChangeNotifier {
     final record = records[game.id];
     if (record != null) {
       final version = toolkit?.version;
-      return Installed(outdated: version != null && version != record.toolkit);
+      return Installed(outdated: (version != null && version != record.toolkit) || engine.updateAvailable);
     }
     if (game.executable == ExecutableKind.unreadable) return const Unreadable();
     return const Locked();
@@ -641,8 +652,21 @@ class AppModel extends ChangeNotifier {
     _startNext();
   }
 
+  /// Unlocks the game again and plays it; with a newer engine out, downloads that first.
   void updateAndPlay(Game game) {
     _playAfterInstall = game.id;
+    if (engine.updateAvailable) {
+      unawaited(
+        engine.download().then((done) {
+          if (done) {
+            unlock(game);
+          } else if (_playAfterInstall == game.id) {
+            _playAfterInstall = null;
+          }
+        }),
+      );
+      return;
+    }
     unlock(game);
   }
 
@@ -1138,7 +1162,13 @@ class AppModel extends ChangeNotifier {
               PanelRow(
                 id: 'update',
                 title: T.text('updateAndPlay'),
-                detail: T.text('updateAndPlayDetail'),
+                detail: switch (engine.latestPackage) {
+                  final ToolkitPackage newest when engine.updateAvailable => T.format('engineUpdateAndPlayDetail', [
+                    'v${newest.version}',
+                    byteText(newest.size),
+                  ]),
+                  _ => T.text('updateAndPlayDetail'),
+                },
                 kind: ActionRow(() {
                   closeOverlay();
                   updateAndPlay(game);
@@ -1218,14 +1248,9 @@ class AppModel extends ChangeNotifier {
             kind: ActionRow(() => unawaited(chooseGamesFolder())),
           ),
           PanelRow(id: 'rescan', title: T.text('rescan'), kind: ActionRow(rescan)),
-          PanelRow(
-            id: 'toolkit',
-            title: T.text('toolkit'),
-            detail: kit == null ? T.text('toolkitMissing') : '${kit.root} · ${kit.version}',
-            kind: ActionRow(() => unawaited(chooseToolkit())),
-          ),
         ],
       ),
+      PanelCategory(id: 'engine', title: T.text('engine'), rows: engine.settingsRows()),
       PanelCategory(id: 'together', title: 'AnyTogether', rows: together.settingsRows()),
       PanelCategory(
         id: 'phone',
@@ -1280,7 +1305,11 @@ class AppModel extends ChangeNotifier {
         title: T.text('about'),
         rows: [
           PanelRow(id: 'about', title: 'AnyPS5', kind: InfoRow(T.text('aboutText'))),
-          PanelRow(id: 'toolkitVersion', title: T.text('toolkitVersion'), kind: InfoRow(kit?.version ?? '—')),
+          PanelRow(
+            id: 'toolkitVersion',
+            title: T.text('toolkitVersion'),
+            kind: InfoRow(kit == null ? '—' : EngineModel.label(kit)),
+          ),
         ],
       ),
     ];
@@ -1606,14 +1635,14 @@ class AppModel extends ChangeNotifier {
     0 => T.language.index,
     1 => preferences.theme,
     2 => preferences.gamesFolder == null ? 0 : 1,
-    _ => toolkit == null ? 0 : 1,
+    _ => toolkit == null ? 0 : 2,
   };
 
   int get _onboardingCount => switch (onboardingStep) {
     0 => Language.values.length,
     1 => LookStyle.values.length,
     2 => preferences.gamesFolder == null ? 1 : 2,
-    _ => 2,
+    _ => 3,
   };
 
   void _onboardingCommand(Command command) {
@@ -1655,6 +1684,7 @@ class AppModel extends ChangeNotifier {
       case 2:
         if (onboardingChoice == 1 && preferences.gamesFolder != null) {
           onboardingStep++;
+          _enterToolkitStep();
         } else {
           unawaited(
             chooseGamesFolder().then((_) {
@@ -1664,18 +1694,44 @@ class AppModel extends ChangeNotifier {
           );
         }
       default:
-        if (onboardingChoice == 1) {
-          finishOnboarding();
-        } else {
-          unawaited(
-            chooseToolkit().then((_) {
-              if (toolkit != null) onboardingChoice = 1;
-              notifyListeners();
-            }),
-          );
+        switch (onboardingChoice) {
+          case 0:
+            onboardingDownload();
+          case 1:
+            unawaited(
+              chooseToolkit().then((_) {
+                if (toolkit != null && onboardingStep == 3) onboardingChoice = 2;
+                notifyListeners();
+              }),
+            );
+          default:
+            finishOnboarding();
         }
     }
     notifyListeners();
+  }
+
+  /// The toolkit step asks GitHub for the newest engine as it opens.
+  void _enterToolkitStep() {
+    if (engine.latest == null && !engine.checking) unawaited(engine.check(quiet: true));
+  }
+
+  /// The toolkit step's download card: downloads the newest engine (asked once more when
+  /// GitHub gave no checksum), or asks GitHub again when it could not be reached.
+  void onboardingDownload() {
+    if (engine.downloading != null) return;
+    final pending = engine.unverified;
+    final package = pending ?? engine.latestPackage;
+    if (package == null) {
+      unawaited(engine.check(quiet: true));
+      return;
+    }
+    unawaited(
+      engine.download(package, pending != null).then((done) {
+        if (done && onboardingStep == 3) onboardingChoice = 2;
+        notifyListeners();
+      }),
+    );
   }
 
   void onboardingBack() {
@@ -1924,6 +1980,7 @@ class AppModel extends ChangeNotifier {
     _trophyWatch?.cancel();
     _toastTimer?.cancel();
     _installer?.cancel();
+    engine.cancel();
     together.dispose();
     unawaited(stopPhoneServer());
     super.dispose();

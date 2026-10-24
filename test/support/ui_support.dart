@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:anyps5_desktop/core/host.dart';
 import 'package:anyps5_desktop/core/installer.dart';
+import 'package:anyps5_desktop/core/toolkit_download.dart';
 import 'package:anyps5_desktop/core/together/talk_key.dart';
 import 'package:anyps5_desktop/core/together/token_store.dart';
 import 'package:anyps5_desktop/core/together/voice_mesh.dart';
@@ -114,6 +115,7 @@ Fixture makeFixture({
   TokenStore? togetherStore,
   VoiceEngine Function()? voice,
   KeyStateReader? keys,
+  Uri? engine,
 }) {
   final opened = <Uri>[];
   final temp = temporaryFolder('ui');
@@ -161,6 +163,7 @@ Fixture makeFixture({
       togetherPollEvery: const Duration(milliseconds: 10),
       voiceEngine: voice ?? FakeVoiceEngine.new,
       talkKeys: () => keys,
+      engineReleases: engine == null ? null : GitHubReleases(api: engine),
     ),
   );
   model.rescan();
@@ -209,4 +212,21 @@ Future<void> settle(WidgetTester tester) async {
 Future<void> press(WidgetTester tester, LogicalKeyboardKey key) async {
   await tester.sendKeyEvent(key);
   await settle(tester);
+}
+
+/// An upstream release as GitHub's API describes it, with both systems' files and checksums,
+/// for screens that show a version and a size without downloading anything.
+UpstreamRelease sampleRelease(String version, {int librariesSize = 96653447, bool prerelease = false}) {
+  ReleaseAsset asset(String name, int size) =>
+      ReleaseAsset(name: name, size: size, url: Uri.parse('https://example.invalid/$name'), sha256: 'a' * 64);
+  return UpstreamRelease(
+    tag: 'v$version',
+    prerelease: prerelease,
+    assets: [
+      asset('relinker-v$version', 4529672),
+      asset('relinker-v$version.exe', 5424392),
+      asset('prx-linux-v$version.tar.gz', librariesSize + 5000000),
+      asset('prx-windows-v$version.zip', librariesSize),
+    ],
+  );
 }

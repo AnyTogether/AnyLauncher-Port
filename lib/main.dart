@@ -5,6 +5,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import 'core/host.dart';
+import 'core/toolkit_download.dart';
 import 'ui/app_model.dart';
 import 'ui/launcher.dart';
 import 'ui/theme.dart';
@@ -21,12 +22,14 @@ void main() {
             ? Process.run('rundll32', ['url.dll,FileProtocolHandler', url.toString()])
             : Process.run('xdg-open', [url.toString()]),
       ),
+      engineReleases: GitHubReleases(),
     ),
   );
   if (model.preferences.onboarded) model.rescan();
   model.watchGamesFolder();
   unawaited(model.startPhoneServer());
   unawaited(model.together.start());
+  unawaited(model.engine.startupCheck());
   runApp(AnyPS5App(model: model));
 }
 

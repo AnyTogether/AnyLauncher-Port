@@ -344,9 +344,7 @@ class _ClockState extends State<Clock> {
   }
 }
 
-/// The PlayStation face buttons, drawn (the font has no glyphs for them).
-enum PadGlyph { cross, circle, square, triangle }
-
+/// One of the PlayStation face buttons, drawn (the font has no glyphs for them).
 class PadGlyphIcon extends StatelessWidget {
   const PadGlyphIcon(this.glyph, {super.key, required this.size, required this.color});
 
@@ -516,4 +514,38 @@ String byteText(int? bytes) {
     unit++;
   }
   return unit == 0 ? '$bytes B' : '${value.toStringAsFixed(value >= 100 ? 0 : 1)} ${units[unit]}';
+}
+
+/// Scrolls its child into view whenever [active] turns true, so a keyboard focus that moves
+/// down a long list stays on screen.
+class KeepVisible extends StatefulWidget {
+  const KeepVisible({super.key, required this.active, required this.child});
+
+  final bool active;
+  final Widget child;
+
+  @override
+  State<KeepVisible> createState() => _KeepVisibleState();
+}
+
+class _KeepVisibleState extends State<KeepVisible> {
+  @override
+  void didUpdateWidget(KeepVisible oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Scrollable.ensureVisible(
+          context,
+          alignment: 0.5,
+          duration: Motion.focus,
+          curve: Motion.settle,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+        );
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

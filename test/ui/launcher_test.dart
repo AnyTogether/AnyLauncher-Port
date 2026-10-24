@@ -204,6 +204,28 @@ void main() {
       expect(find.text('Z'), findsOneWidget);
     });
 
+    testWidgets('a row moved to below the panel scrolls into view', (tester) async {
+      fixture = makeFixture();
+      final model = fixture.model;
+      model.open(Layer.controls);
+      await pumpLauncher(tester, model);
+      for (var row = 0; row < 22; row++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      await settle(tester);
+      expect(model.panelRow, 22);
+      final title = AppModel.padActionTitle(PadAction.values[22]);
+      final rect = tester.getRect(find.text(title));
+      expect(rect.top, greaterThan(0));
+      expect(rect.bottom, lessThan(900));
+      expect(
+        tester.getRect(find.text(AppModel.padActionTitle(PadAction.cross))).bottom,
+        lessThan(200),
+        reason: 'the first rows scrolled away',
+      );
+    });
+
     testWidgets('the library picks a game', (tester) async {
       fixture = makeFixture();
       final model = fixture.model;

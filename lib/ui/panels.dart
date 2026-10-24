@@ -56,39 +56,42 @@ class LibraryGrid extends StatelessWidget {
                   runSpacing: 30 * scale,
                   children: [
                     for (var index = 0; index < model.games.length; index++)
-                      GestureDetector(
-                        onTap: () {
-                          model.select(index);
-                          model.closeOverlay();
-                        },
-                        child: SizedBox(
-                          width: size,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SizedBox.square(
-                                dimension: size,
-                                child: GameTile(
-                                  model: model,
-                                  game: model.games[index],
-                                  size: size,
-                                  focused: index == model.libraryIndex,
+                      KeepVisible(
+                        active: index == model.libraryIndex,
+                        child: GestureDetector(
+                          onTap: () {
+                            model.select(index);
+                            model.closeOverlay();
+                          },
+                          child: SizedBox(
+                            width: size,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox.square(
+                                  dimension: size,
+                                  child: GameTile(
+                                    model: model,
+                                    game: model.games[index],
+                                    size: size,
+                                    focused: index == model.libraryIndex,
+                                  ),
                                 ),
-                              ),
-                              SizedBox(height: 10 * scale),
-                              Text(
-                                model.games[index].nameFor([T.language.code]),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: AppText.display(
-                                  15 * scale,
-                                  weight: index == model.libraryIndex ? FontWeight.w600 : FontWeight.w400,
-                                  color: Colors.white.withValues(alpha: index == model.libraryIndex ? 1 : 0.75),
+                                SizedBox(height: 10 * scale),
+                                Text(
+                                  model.games[index].nameFor([T.language.code]),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppText.display(
+                                    15 * scale,
+                                    weight: index == model.libraryIndex ? FontWeight.w600 : FontWeight.w400,
+                                    color: Colors.white.withValues(alpha: index == model.libraryIndex ? 1 : 0.75),
+                                  ),
                                 ),
-                              ),
-                              SizedBox(height: 4 * scale),
-                              StateLabel(model: model, state: model.stateOf(model.games[index]), size: 12),
-                            ],
+                                SizedBox(height: 4 * scale),
+                                StateLabel(model: model, state: model.stateOf(model.games[index]), size: 12),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -257,17 +260,24 @@ class _Rows extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
-    return ListView.builder(
-      itemCount: rows.length,
+    return SingleChildScrollView(
       padding: EdgeInsets.symmetric(horizontal: 6 * scale, vertical: 6 * scale),
-      itemBuilder: (context, index) => _RowView(
-        model: model,
-        row: rows[index],
-        focused: index == model.panelRow,
-        onTap: () {
-          model.panelRow = index;
-          model.handle(Command.select);
-        },
+      child: Column(
+        children: [
+          for (var index = 0; index < rows.length; index++)
+            KeepVisible(
+              active: index == model.panelRow,
+              child: _RowView(
+                model: model,
+                row: rows[index],
+                focused: index == model.panelRow,
+                onTap: () {
+                  model.panelRow = index;
+                  model.handle(Command.select);
+                },
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -392,9 +402,17 @@ class _RowView extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    row.title,
-                    style: AppText.display(17 * scale, weight: FontWeight.w500, color: titleColor),
+                  Row(
+                    children: [
+                      Text(
+                        row.title,
+                        style: AppText.display(17 * scale, weight: FontWeight.w500, color: titleColor),
+                      ),
+                      if (row.glyph != null) ...[
+                        SizedBox(width: 8 * scale),
+                        PadGlyphIcon(row.glyph!, size: 15 * scale, color: titleColor),
+                      ],
+                    ],
                   ),
                   if (row.detail != null || info != null) ...[
                     SizedBox(height: 4 * scale),
@@ -628,94 +646,113 @@ class TrophyView extends StatelessWidget {
             ),
             SizedBox(width: 60 * scale),
             Expanded(
-              child: ListView.builder(
-                itemCount: set.trophies.length,
-                itemBuilder: (context, index) {
-                  final trophy = set.trophies[index];
-                  final focused = index == model.trophyIndex;
-                  final earned = trophy.unlocked != null;
-                  final secret = trophy.hidden && !earned;
-                  final color = focused ? Colors.black : Colors.white;
-                  return AnimatedContainer(
-                    duration: Motion.focus,
-                    curve: Motion.settle,
-                    margin: EdgeInsets.only(bottom: 8 * scale),
-                    padding: EdgeInsets.all(14 * scale),
-                    decoration: BoxDecoration(
-                      color: focused ? Colors.white : Colors.white.withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(14 * scale),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 56 * scale,
-                          height: 56 * scale,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(10 * scale),
-                            color: Colors.black.withValues(alpha: 0.3),
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: trophy.icon != null && !secret
-                              ? Opacity(
-                                  opacity: earned ? 1 : 0.35,
-                                  child: Image.memory(
-                                    trophy.icon!,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, _, _) => const SizedBox(),
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    for (var index = 0; index < set.trophies.length; index++)
+                      KeepVisible(
+                        active: index == model.trophyIndex,
+                        child: Builder(
+                          builder: (context) {
+                            final trophy = set.trophies[index];
+                            final focused = index == model.trophyIndex;
+                            final earned = trophy.unlocked != null;
+                            final secret = trophy.hidden && !earned;
+                            final color = focused ? Colors.black : Colors.white;
+                            return AnimatedContainer(
+                              duration: Motion.focus,
+                              curve: Motion.settle,
+                              margin: EdgeInsets.only(bottom: 8 * scale),
+                              padding: EdgeInsets.all(14 * scale),
+                              decoration: BoxDecoration(
+                                color: focused ? Colors.white : Colors.white.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(14 * scale),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 56 * scale,
+                                    height: 56 * scale,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(10 * scale),
+                                      color: Colors.black.withValues(alpha: 0.3),
+                                    ),
+                                    clipBehavior: Clip.antiAlias,
+                                    child: trophy.icon != null && !secret
+                                        ? Opacity(
+                                            opacity: earned ? 1 : 0.35,
+                                            child: Image.memory(
+                                              trophy.icon!,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, _, _) => const SizedBox(),
+                                            ),
+                                          )
+                                        : Icon(
+                                            secret
+                                                ? Icons.lock_rounded
+                                                : (earned ? Icons.emoji_events_rounded : Icons.emoji_events_outlined),
+                                            size: 26 * scale,
+                                            color: earned
+                                                ? gradeColor(trophy.grade)
+                                                : Colors.white.withValues(alpha: 0.5),
+                                          ),
                                   ),
-                                )
-                              : Icon(
-                                  secret
-                                      ? Icons.lock_rounded
-                                      : (earned ? Icons.emoji_events_rounded : Icons.emoji_events_outlined),
-                                  size: 26 * scale,
-                                  color: earned ? gradeColor(trophy.grade) : Colors.white.withValues(alpha: 0.5),
-                                ),
-                        ),
-                        SizedBox(width: 16 * scale),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                secret ? T.text('trophyHidden') : trophy.name,
-                                style: AppText.display(17 * scale, weight: FontWeight.w600, color: color),
+                                  SizedBox(width: 16 * scale),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          secret ? T.text('trophyHidden') : trophy.name,
+                                          style: AppText.display(17 * scale, weight: FontWeight.w600, color: color),
+                                        ),
+                                        SizedBox(height: 4 * scale),
+                                        Text(
+                                          secret ? T.text('trophyHiddenDetail') : trophy.detail,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: AppText.display(13 * scale, color: color.withValues(alpha: 0.6)),
+                                        ),
+                                        if (trophy.progress case (final value, final target)) ...[
+                                          SizedBox(height: 8 * scale),
+                                          SizedBox(
+                                            width: 240 * scale,
+                                            child: ProgressLine(
+                                              fraction: value / target,
+                                              color: accent,
+                                              height: 4 * scale,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                  SizedBox(width: 16 * scale),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Icon(
+                                        Icons.emoji_events_rounded,
+                                        size: 22 * scale,
+                                        color: gradeColor(trophy.grade),
+                                      ),
+                                      SizedBox(height: 6 * scale),
+                                      Text(
+                                        earned
+                                            ? '${trophy.unlocked!.toLocal().year}-${trophy.unlocked!.toLocal().month.toString().padLeft(2, '0')}-${trophy.unlocked!.toLocal().day.toString().padLeft(2, '0')}'
+                                            : T.text('trophyLocked'),
+                                        style: AppText.display(12 * scale, color: color.withValues(alpha: 0.6)),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
-                              SizedBox(height: 4 * scale),
-                              Text(
-                                secret ? T.text('trophyHiddenDetail') : trophy.detail,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: AppText.display(13 * scale, color: color.withValues(alpha: 0.6)),
-                              ),
-                              if (trophy.progress case (final value, final target)) ...[
-                                SizedBox(height: 8 * scale),
-                                SizedBox(
-                                  width: 240 * scale,
-                                  child: ProgressLine(fraction: value / target, color: accent, height: 4 * scale),
-                                ),
-                              ],
-                            ],
-                          ),
+                            );
+                          },
                         ),
-                        SizedBox(width: 16 * scale),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Icon(Icons.emoji_events_rounded, size: 22 * scale, color: gradeColor(trophy.grade)),
-                            SizedBox(height: 6 * scale),
-                            Text(
-                              earned
-                                  ? '${trophy.unlocked!.toLocal().year}-${trophy.unlocked!.toLocal().month.toString().padLeft(2, '0')}-${trophy.unlocked!.toLocal().day.toString().padLeft(2, '0')}'
-                                  : T.text('trophyLocked'),
-                              style: AppText.display(12 * scale, color: color.withValues(alpha: 0.6)),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  );
-                },
+                      ),
+                  ],
+                ),
               ),
             ),
           ],

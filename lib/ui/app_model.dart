@@ -185,12 +185,14 @@ enum Layer { library, settings, gameSettings, controls, confirmUninstall, update
 
 /// A settings row the panels draw and the keyboard moves through.
 class PanelRow {
-  const PanelRow({required this.id, required this.title, required this.kind, this.detail, this.icon});
+  const PanelRow({required this.id, required this.title, required this.kind, this.detail, this.glyph});
 
   final String id;
   final String title;
   final String? detail;
-  final int? icon;
+
+  /// A face button drawn after the title.
+  final PadGlyph? glyph;
   final RowKind kind;
 
   bool get focusable => kind is! InfoRow;
@@ -1235,6 +1237,13 @@ class AppModel extends ChangeNotifier {
         PanelRow(
           id: action.key,
           title: padActionTitle(action),
+          glyph: switch (action) {
+            PadAction.cross => PadGlyph.cross,
+            PadAction.circle => PadGlyph.circle,
+            PadAction.square => PadGlyph.square,
+            PadAction.triangle => PadGlyph.triangle,
+            _ => null,
+          },
           kind: KeysRow(
             Controls.sources(action, changes),
             capturing: capturing == action,
@@ -1272,10 +1281,10 @@ class AppModel extends ChangeNotifier {
     final turkish = T.language == Language.turkish;
     String direction(String key) => T.text(key);
     return switch (action) {
-      PadAction.cross => 'Cross ✕',
-      PadAction.circle => 'Circle ○',
-      PadAction.square => 'Square □',
-      PadAction.triangle => 'Triangle △',
+      PadAction.cross => 'Cross',
+      PadAction.circle => 'Circle',
+      PadAction.square => 'Square',
+      PadAction.triangle => 'Triangle',
       PadAction.options => 'Options',
       PadAction.touchLeft => T.text('touchpadLeft'),
       PadAction.touchRight => T.text('touchpadRight'),

@@ -91,3 +91,6 @@ abstract final class Palette {
   static const success = Color.fromRGBO(77, 217, 115, 1);
   static const connecting = Color.fromRGBO(255, 158, 51, 1);
 }
+
+/// The PlayStation face buttons.
+enum PadGlyph { cross, circle, square, triangle }

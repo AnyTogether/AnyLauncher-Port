@@ -1,6 +1,7 @@
 import 'strings_controllers.dart';
 import 'strings_family.dart';
 import 'strings_fonts.dart';
+import 'strings_prepare.dart';
 import 'strings_steam.dart';
 import 'strings_table.dart';
 import 'strings_together.dart';
@@ -227,6 +228,7 @@ abstract final class T {
                   familyTurkish[key] ??
                   fontsTurkish[key] ??
                   steamTurkish[key] ??
+                  prepareTurkish[key] ??
                   turkishTable[key]
             : null) ??
         _english[key] ??
@@ -236,6 +238,7 @@ abstract final class T {
         familyEnglish[key] ??
         fontsEnglish[key] ??
         steamEnglish[key] ??
+        prepareEnglish[key] ??
         englishTable[key] ??
         key;
   }

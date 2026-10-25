@@ -11,6 +11,7 @@ import 'package:anyps5_desktop/core/desktop/window_backdrop.dart';
 import 'package:anyps5_desktop/core/font_download.dart';
 import 'package:anyps5_desktop/core/gamepad/pad_navigation.dart';
 import 'package:anyps5_desktop/core/host.dart';
+import 'package:anyps5_desktop/core/power.dart';
 import 'package:anyps5_desktop/core/release_signing.dart';
 import 'package:anyps5_desktop/core/trophies.dart';
 import 'package:anyps5_desktop/core/installer.dart';
@@ -147,6 +148,8 @@ Fixture makeFixture({
   Future<void> Function(String executable, List<String> arguments)? startDetached,
   void Function(int code)? quit,
   Map<String, String> environment = const {},
+  bool prepareNewGames = false,
+  int? Function(String folder)? freeSpace,
 }) {
   final opened = <Uri>[];
   final copied = <String>[];
@@ -176,7 +179,9 @@ Fixture makeFixture({
     ..theme = theme
     ..language = language.code
     ..profileName = 'Utku'
-    ..toolkitFolder = withToolkit ? toolkit : null;
+    ..toolkitFolder = withToolkit ? toolkit : null
+    // Off unless a test is about it: a game copied in would otherwise start unlocking.
+    ..prepareNewGames = prepareNewGames;
   final model = AppModel(
     paths: AppPaths.forSystem(HostSystem.linux, environment: {'HOME': p.join(temp.path, 'home')}),
     preferences: preferences,
@@ -217,6 +222,10 @@ Fixture makeFixture({
           const SystemInfo(os: 'Ubuntu 24.04.1 LTS, kernel 6.8.0-45-generic', cpu: 'AMD Ryzen 7 5800X', memoryGB: 32),
     ),
   );
+  // Room enough for any made-up size, and on mains power, unless a test says otherwise.
+  model
+    ..freeSpace = freeSpace ?? ((_) => 1 << 50)
+    ..power = () => PowerState.mains;
   model.rescan();
   // The first game is installed: a record beside a stand-in executable.
   final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');

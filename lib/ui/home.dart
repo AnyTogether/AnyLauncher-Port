@@ -815,6 +815,7 @@ class StateLabel extends StatelessWidget {
     final accent = model.accentChoice.color;
     final dim = Colors.white.withValues(alpha: 0.75);
     final (icon, text, tint) = switch (state) {
+      Locked(waitingToPrepare: true) => (Icons.schedule_rounded, T.text('waitingToPrepare'), dim),
       Locked() => (Icons.lock_rounded, T.text('locked'), dim),
       FamilyLocked(:final verdict) => (
         Icons.family_restroom_rounded,
@@ -823,6 +824,8 @@ class StateLabel extends StatelessWidget {
       ),
       Unreadable() => (Icons.block_rounded, T.text('unreadableDump'), Palette.danger),
       Queued() => (Icons.schedule_rounded, T.text('queued'), dim),
+      Installing(preparing: true, paused: true) => (Icons.pause_circle_rounded, T.text('preparingPaused'), dim),
+      Installing(preparing: true) => (Icons.downloading_rounded, T.text('preparing'), accent),
       Installing(:final step) => (Icons.downloading_rounded, InstallSpan.title(step), accent),
       Failed() => (Icons.warning_rounded, T.text('failed'), Palette.danger),
       Installed(outdated: true) => (Icons.sync_rounded, T.text('updateAvailable'), Palette.warning),
@@ -864,6 +867,7 @@ class HeroInfo extends StatelessWidget {
       Installed() => (T.text('play'), Icons.play_arrow_rounded),
       Locked() || Unreadable() => (T.text('unlock'), Icons.lock_open_rounded),
       Failed() => (T.text('retry'), Icons.refresh_rounded),
+      Installing(preparing: true) => (T.text('playWhenReady'), Icons.play_arrow_rounded),
       Installing() || Queued() => (T.text('cancel'), Icons.close_rounded),
       Starting() => (T.text('starting'), Icons.hourglass_top_rounded),
       Running() => (T.text('running'), Icons.play_circle_outline_rounded),
@@ -933,7 +937,11 @@ class HeroInfo extends StatelessWidget {
                       Row(
                         children: [
                           Text(
-                            InstallSpan.title(state.step),
+                            state.preparing
+                                ? (state.paused
+                                      ? T.text('preparingPaused')
+                                      : T.format('preparingStep', [InstallSpan.title(state.step)]))
+                                : InstallSpan.title(state.step),
                             style: AppText.display(
                               15 * scale,
                               weight: FontWeight.w500,

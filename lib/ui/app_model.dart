@@ -19,6 +19,7 @@ import '../core/desktop_notice.dart';
 import '../core/desktop/desktop.dart';
 import '../core/desktop/window_backdrop.dart';
 import '../core/font_download.dart';
+import '../core/free_space.dart';
 import '../core/family/family_rules.dart' show TitleVerdict;
 import '../core/gamepad/feel.dart';
 import '../core/gamepad/pad_gate.dart';
@@ -30,6 +31,8 @@ import '../core/game_settings.dart';
 import '../core/host.dart';
 import '../core/installer.dart';
 import '../core/library_watch.dart';
+import '../core/power.dart';
+import '../core/prepare_queue.dart';
 import '../core/remote/adb_tunnel.dart';
 import '../core/remote/mdns.dart';
 import '../core/remote/paired_devices.dart';
@@ -45,6 +48,7 @@ import '../core/together/talk_key.dart';
 import '../core/together/token_store.dart';
 import '../core/together/voice_mesh.dart';
 import '../core/trophies.dart';
+import '../core/unlock_space.dart';
 import 'components.dart';
 import 'controllers_model.dart';
 import 'crash_model.dart';
@@ -107,6 +111,7 @@ class Preferences {
       for (final id in json['cjkGames'] as List<dynamic>? ?? const <dynamic>[])
         if (id is String) id,
     }
+    ..prepareNewGames = json['prepareNewGames'] as bool? ?? true
     ..lastPlayed = {
       for (final entry in (json['lastPlayed'] as Map<String, dynamic>? ?? const {}).entries)
         entry.key: entry.value as String,
@@ -180,6 +185,9 @@ class Preferences {
   /// waits for those to download.
   Set<String> cjkGames = {};
 
+  /// Settings › Game Library: new games unlocked in the background like a console installing them.
+  bool prepareNewGames = true;
+
   Map<String, Object?> toJson() => {
     'language': language,
     'theme': theme,
@@ -213,6 +221,7 @@ class Preferences {
     'confirmCircle': confirmCircle,
     'stickDeadzone': stickDeadzone,
     'cjkGames': cjkGames.toList()..sort(),
+    'prepareNewGames': prepareNewGames,
   };
 
   static Preferences load(String file) {
@@ -240,7 +249,10 @@ sealed class GameState {
 }
 
 class Locked extends GameState {
-  const Locked();
+  const Locked({this.waitingToPrepare = false});
+
+  /// In line to be prepared in the background once the game playing closes.
+  final bool waitingToPrepare;
 }
 
 class Unreadable extends GameState {
@@ -252,9 +264,15 @@ class Queued extends GameState {
 }
 
 class Installing extends GameState {
-  const Installing(this.step, this.fraction);
+  const Installing(this.step, this.fraction, {this.preparing = false, this.paused = false});
   final InstallStep step;
   final double fraction;
+
+  /// Prepared in the background (a new game), not asked for by the user.
+  final bool preparing;
+
+  /// Stopped where it is while a game plays.
+  final bool paused;
 
   /// The share of the whole install done, for one bar.
   double get overall => InstallSpan.overall(step, fraction);
@@ -852,7 +870,9 @@ class AppModel extends ChangeNotifier {
     final index = categories.indexWhere((category) => category.id == 'controllers');
     if (index < 0) return;
     panelCategory = index;
-    panelRow = categories[index].rows.indexWhere((row) => row.id == 'padTest').clamp(0, categories[index].rows.length - 1);
+    panelRow = categories[index].rows
+        .indexWhere((row) => row.id == 'padTest')
+        .clamp(0, categories[index].rows.length - 1);
     _changed();
   }
 
@@ -1257,6 +1277,7 @@ class AppModel extends ChangeNotifier {
   void _changed() {
     notifyListeners();
     _publishLibrary();
+    _prepareWhenChanged();
   }
 
   void savePreferences() {
@@ -1327,7 +1348,13 @@ class AppModel extends ChangeNotifier {
   void _announceNewGames(List<Game> added) {
     if (!preferences.onboarded) return;
     final name = added.first.nameFor([T.language.code]);
-    final text = added.length == 1 ? T.format('newGame', [name]) : T.format('newGames', [added.length]);
+    final prepared = _prepareNewGames(added);
+    final text = newGameText(
+      added.length == 1 ? [name] : [for (final game in added) game.name],
+      preparing: prepared.preparing,
+      waiting: prepared.waiting,
+      skipped: prepared.skipped,
+    );
     if (overlay == null && running == null && starting == null) {
       final index = games.indexOf(added.first);
       if (index >= 0) {
@@ -1388,7 +1415,14 @@ class AppModel extends ChangeNotifier {
     if (starting == game) return const Starting();
     if (together.family.ageLock(game) case final FamilyLocked lock) return lock;
     final current = progress[game.id];
-    if (current != null) return Installing(current.$1, current.$2);
+    if (current != null) {
+      return Installing(
+        current.$1,
+        current.$2,
+        preparing: isPreparing(game),
+        paused: isPreparing(game) && prepare.paused,
+      );
+    }
     if (queue.contains(game.id)) return const Queued();
     final failure = failures[game.id];
     if (failure != null) return Failed(failure);
@@ -1398,7 +1432,7 @@ class AppModel extends ChangeNotifier {
       return Installed(outdated: (version != null && version != record.toolkit) || engine.updateAvailable);
     }
     if (game.executable == ExecutableKind.unreadable) return const Unreadable();
-    return const Locked();
+    return Locked(waitingToPrepare: prepare.pending.contains(game.id));
   }
 
   GameSettings settingsFor(Game game) => settingsStore.load(game.slug);
@@ -1437,6 +1471,8 @@ class AppModel extends ChangeNotifier {
         outdated ? open(Layer.updateChoice) : play(game);
       case Locked() || Failed():
         unlock(game);
+      case Installing(preparing: true):
+        _promotePreparation(game);
       case Installing() || Queued():
         cancelUnlock(game);
       case Unreadable():
@@ -1448,9 +1484,16 @@ class AppModel extends ChangeNotifier {
     }
   }
 
-  /// The game an unlock waits for an answer about, and the size of its files that would be
-  /// copied (see [Layer.copyWarning]).
-  ({Game game, int bytes})? copyWarning;
+  /// The game an unlock waits for an answer about, the size of its files that would be copied,
+  /// and the room it lacks on the games folder's drive (see [Layer.copyWarning]); [free] is what
+  /// the drive has, null when it does not say.
+  ({Game game, int bytes, SpaceShortage? shortage, int? needed, int? free})? copyWarning;
+
+  /// The free bytes where a folder is (FreeSpace.of); replaceable in tests.
+  int? Function(String folder) freeSpace = FreeSpace.of;
+
+  /// The power now (Power.current); replaceable in tests.
+  PowerState Function() power = Power.current;
 
   /// Copies smaller than this go ahead without asking (homebrew, demos).
   static const copyWarningFrom = 100000000;
@@ -1462,17 +1505,30 @@ class AppModel extends ChangeNotifier {
     if (folder == null) return;
     final kit = toolkit;
     if (kit == null) return show(T.text('noToolkit'));
+    // Asked for while it is being prepared: it becomes the user's own.
+    if (prepare.active == game.id) return _promotePreparation(game);
+    prepare.cancel(game.id);
     final waiting = queue.contains(game.id) || progress.containsKey(game.id);
-    if (!copy && !waiting) {
+    if (!waiting) {
       InstallPlan? plan;
       try {
-        plan = Installer.plan(game, folder, knownSize: sizes[game.id]);
+        plan = Installer.plan(
+          game,
+          folder,
+          knownSize: sizes[game.id],
+          toolkit: kit,
+          resolution: currentSettings(game).resolution,
+        );
       } on FileSystemException {
         plan = null; // The install says what is wrong.
       }
-      if (plan != null && plan.copies && plan.bytes >= copyWarningFrom) {
-        copyWarning = (game: game, bytes: plan.bytes);
-        open(Layer.copyWarning);
+      // The room first: a drive that is short says so before anything is written, copy or not.
+      final free = plan == null ? null : freeSpace(folder);
+      final shortage = plan?.space?.shortage(free: free, folder: folder);
+      if (plan != null && (shortage != null || (!copy && plan.copies && plan.bytes >= copyWarningFrom))) {
+        if (shortage != null && _playAfterInstall == game.id) _playAfterInstall = null;
+        copyWarning = (game: game, bytes: plan.bytes, shortage: shortage, needed: plan.space?.needed, free: free);
+        open(Layer.copyWarning, cue: shortage == null ? Cue.select : Cue.back);
         return;
       }
     }
@@ -1485,6 +1541,7 @@ class AppModel extends ChangeNotifier {
     }
     _changed();
     _startNext();
+    _stepPrepare();
   }
 
   /// Unlocks the game again and plays it; with a newer engine out, downloads that first.
@@ -1507,7 +1564,16 @@ class AppModel extends ChangeNotifier {
 
   void cancelUnlock(Game game) {
     if (_playAfterInstall == game.id) _playAfterInstall = null;
-    if (queue.remove(game.id)) return _changed();
+    if (prepare.contains(game.id)) {
+      if (prepare.cancel(game.id)) _preparer?.cancel();
+      sounds.play(Cue.back);
+      return _changed();
+    }
+    if (queue.remove(game.id)) {
+      _changed();
+      _stepPrepare();
+      return;
+    }
     if (progress.containsKey(game.id)) _installer?.cancel();
     sounds.play(Cue.back);
   }
@@ -1519,6 +1585,44 @@ class AppModel extends ChangeNotifier {
     final id = queue.removeAt(0);
     final game = games.where((game) => game.id == id).firstOrNull;
     if (game == null) return _startNext();
+    _installer = _runUnlock(
+      game,
+      kit,
+      folder,
+      background: false,
+      done: (error) {
+        _installer = null;
+        switch (error) {
+          case null:
+            sounds.play(Cue.unlocked);
+            show('${game.name} · ${T.text('ready')}');
+            if (_playAfterInstall == id) {
+              _playAfterInstall = null;
+              unawaited(play(game));
+            }
+          case InstallCancelled():
+            break;
+          case final SpaceShortage shortage:
+            _tellShortage(game, shortage);
+          default:
+            failures[id] = error.toString();
+            show('${T.text('unlockFailed')}: ${game.name}');
+        }
+      },
+    );
+    _changed();
+  }
+
+  /// Starts unlocking [game]: its progress and its log. [done] runs after the log and the record
+  /// are written, with the error when it failed (null when it worked); the queues go on after it.
+  Installer _runUnlock(
+    Game game,
+    Toolkit kit,
+    String folder, {
+    required bool background,
+    required void Function(Object? error) done,
+  }) {
+    final id = game.id;
     progress[id] = (InstallStep.unwrap, 0);
     final unlockLines = <String>[];
     final unlockLog = GameLog.unlockFile(paths.logs, game.titleId);
@@ -1527,6 +1631,7 @@ class AppModel extends ChangeNotifier {
       toolkit: kit,
       root: folder,
       resolution: currentSettings(game).resolution,
+      freeSpace: freeSpace,
       onProgress: (step, fraction) {
         progress[id] = (step, fraction);
         notifyListeners();
@@ -1536,35 +1641,245 @@ class AppModel extends ChangeNotifier {
         unlockLines.add(line);
         _appendLog(game, line);
       },
-    );
-    _installer = installer;
-    _changed();
+    )..background = background;
     unawaited(() async {
+      Object? failure;
       try {
         final installed = await installer.run();
         GameLog.writeUnlockLog(unlockLog, unlockLines);
         final record = Installer.record(installed, system: system);
         if (record != null) records[id] = record;
-        sounds.play(Cue.unlocked);
-        show('${game.name} · ${T.text('ready')}');
-        if (_playAfterInstall == id) {
-          _playAfterInstall = null;
-          unawaited(play(game));
-        }
-      } on InstallCancelled {
-        // Nothing to say.
+      } on InstallCancelled catch (error) {
+        failure = error;
+      } on SpaceShortage catch (error) {
+        failure = error;
       } on Object catch (error) {
         GameLog.writeUnlockLog(unlockLog, unlockLines, failure: error.toString());
-        failures[id] = error.toString();
-        show('${T.text('unlockFailed')}: ${game.name}');
-      } finally {
-        _installer = null;
-        progress.remove(id);
-        _changed();
-        _publishActivity();
-        _startNext();
+        failure = error;
       }
+      progress.remove(id);
+      if (_disposed) return;
+      done(failure);
+      _changed();
+      _publishActivity();
+      _startNext();
+      _stepPrepare();
     }());
+    return installer;
+  }
+
+  /// The unlock of [game] did not start for want of room: the copy panel says how much is needed
+  /// and free, and what to do.
+  void _tellShortage(Game game, SpaceShortage shortage) {
+    if (_playAfterInstall == game.id) _playAfterInstall = null;
+    copyWarning = (game: game, bytes: 0, shortage: shortage, needed: shortage.needed, free: shortage.free);
+    open(Layer.copyWarning, cue: Cue.back);
+  }
+
+  // Preparing new games.
+
+  /// New games prepared in the background (PrepareQueue) and the unlock doing it.
+  final PrepareQueue prepare = PrepareQueue();
+  Installer? _preparer;
+  Timer? _prepareTimer;
+  (bool, bool, bool)? _prepareSignature;
+
+  /// The game being prepared in the background, not yet asked for by the user.
+  bool isPreparing(Game game) => prepare.active == game.id && !prepare.promoted;
+
+  PrepareConditions get _prepareConditions => PrepareConditions(
+    enabled: preferences.prepareNewGames && preferences.onboarded,
+    playing: running != null || starting != null,
+    unlocking: _installer != null || queue.isNotEmpty,
+    power: power(),
+  );
+
+  /// After any change: when a game started or ended, an unlock began or finished, or the setting
+  /// changed, the queue takes its steps (soon, not in the middle of the change).
+  void _prepareWhenChanged() {
+    if (prepare.active == null && prepare.pending.isEmpty) {
+      _prepareSignature = null;
+      return;
+    }
+    final signature = (
+      preferences.prepareNewGames,
+      running != null || starting != null,
+      _installer != null || queue.isNotEmpty,
+    );
+    if (signature == _prepareSignature) return;
+    _prepareSignature = signature;
+    scheduleMicrotask(() {
+      if (!_disposed) _stepPrepare();
+    });
+  }
+
+  /// Takes the queue's steps until it has nothing more to do now; the skips are told unless
+  /// [quiet] (the caller tells them), and returned.
+  List<(String, PrepareSkip)> _stepPrepare({bool quiet = false}) {
+    final folder = root;
+    final kit = toolkit;
+    final skipped = <(String, PrepareSkip)>[];
+    if (folder == null || kit == null || _disposed) return skipped;
+    final conditions = _prepareConditions;
+    while (true) {
+      final action = prepare.step(
+        conditions,
+        shortage: (id) {
+          final game = games.where((game) => game.id == id).firstOrNull;
+          if (game == null) return null;
+          try {
+            final plan = Installer.plan(
+              game,
+              folder,
+              knownSize: sizes[game.id],
+              toolkit: kit,
+              resolution: currentSettings(game).resolution,
+            );
+            return plan.space?.shortage(free: freeSpace(folder), folder: folder);
+          } on FileSystemException {
+            return null;
+          }
+        },
+      );
+      switch (action) {
+        case PrepareNone():
+          _schedulePrepareCheck();
+          if (!quiet) {
+            for (final (id, reason) in skipped) {
+              _tellSkipped(id, reason);
+            }
+          }
+          _prepareSignature = (
+            preferences.prepareNewGames,
+            running != null || starting != null,
+            _installer != null || queue.isNotEmpty,
+          );
+          return skipped;
+        case PrepareStart(:final id):
+          _startPreparing(id, kit, folder);
+        case PreparePause():
+          _preparer?.pause();
+          notifyListeners();
+        case PrepareResume():
+          _preparer?.resume();
+          notifyListeners();
+        case PrepareSkipped(:final id, :final reason):
+          skipped.add((id, reason));
+      }
+    }
+  }
+
+  /// While games wait or one is being prepared, the power is looked at again now and then.
+  void _schedulePrepareCheck() {
+    final waiting = prepare.pending.isNotEmpty || prepare.active != null;
+    if (!waiting) {
+      _prepareTimer?.cancel();
+      _prepareTimer = null;
+      return;
+    }
+    _prepareTimer ??= Timer.periodic(const Duration(seconds: 30), (_) => _stepPrepare());
+  }
+
+  void _startPreparing(String id, Toolkit kit, String folder) {
+    final game = games.where((game) => game.id == id).firstOrNull;
+    if (game == null || stateOf(game) is! Locked) {
+      prepare.finished(id);
+      return;
+    }
+    _preparer = _runUnlock(
+      game,
+      kit,
+      folder,
+      background: true,
+      done: (error) {
+        final promoted = prepare.promoted;
+        _preparer = null;
+        prepare.finished(id);
+        switch (error) {
+          case null:
+            sounds.play(Cue.unlocked);
+            final text = T.format('readyToPlay', [game.name]);
+            show(text, icon: game.icon);
+            if (!active && running == null && starting == null) desktopNotify(text, T.text('readyToPlayDetail'));
+            if (promoted && _playAfterInstall == id) {
+              _playAfterInstall = null;
+              unawaited(play(game));
+            }
+          case InstallCancelled():
+            if (_playAfterInstall == id) _playAfterInstall = null;
+          case final SpaceShortage shortage:
+            // The room went while it waited.
+            promoted ? _tellShortage(game, shortage) : _tellSkipped(id, SpaceShort(shortage));
+          default:
+            if (_playAfterInstall == id) _playAfterInstall = null;
+            failures[id] = error.toString();
+            show('${T.text('unlockFailed')}: ${game.name}');
+        }
+      },
+    );
+    notifyListeners();
+  }
+
+  /// Play on a game being prepared: it no longer waits for the user's other unlocks, runs at
+  /// normal priority where the system lets it, and starts when it is ready.
+  void _promotePreparation(Game game) {
+    prepare.promote(game.id);
+    _preparer?.background = false;
+    _playAfterInstall = game.id;
+    sounds.play(Cue.select);
+    show(T.format('startsWhenReady', [game.name]), icon: game.icon);
+    _stepPrepare();
+    _changed();
+  }
+
+  void _tellSkipped(String id, PrepareSkip reason) {
+    final game = games.where((game) => game.id == id).firstOrNull;
+    if (game == null) return;
+    switch (reason) {
+      case BatteryLow():
+        show(T.format('notPreparedBattery', [game.name]), icon: game.icon);
+      case SpaceShort(:final shortage):
+        show(
+          T.format('notPreparedSpace', [game.name, byteText(shortage.needed), byteText(shortage.free)]),
+          icon: game.icon,
+        );
+    }
+  }
+
+  /// New games from a scan: the locked ones go to the background queue, and what happens to the
+  /// first is returned for the "New game" notice.
+  ({bool preparing, bool waiting, PrepareSkip? skipped}) _prepareNewGames(List<Game> added) {
+    const nothing = (preparing: false, waiting: false, skipped: null);
+    if (!preferences.prepareNewGames || toolkit == null) return nothing;
+    final locked = added.where((game) => stateOf(game) is Locked).toList();
+    if (locked.isEmpty) return nothing;
+    prepare.add(locked.map((game) => game.id));
+    final skips = _stepPrepare(quiet: true);
+    final first = locked.first.id;
+    for (final (id, reason) in skips) {
+      if (id == first) return (preparing: false, waiting: false, skipped: reason);
+    }
+    return (preparing: prepare.active == first, waiting: prepare.pending.contains(first), skipped: null);
+  }
+
+  /// "New game: [name]", with what happens to it when it is prepared in the background.
+  static String newGameText(List<String> names, {bool preparing = false, bool waiting = false, PrepareSkip? skipped}) {
+    final one = names.length == 1;
+    switch (skipped) {
+      case BatteryLow():
+        return T.format('newGameNotPreparedBattery', [names.first]);
+      case SpaceShort():
+        return T.format('newGameNotPreparedSpace', [names.first]);
+      case null:
+        break;
+    }
+    if (preparing) {
+      return one ? T.format('newGamePreparing', [names.first]) : T.format('newGamesPreparing', [names.length]);
+    }
+    if (waiting) {
+      return one ? T.format('newGameWaiting', [names.first]) : T.format('newGamesWaiting', [names.length]);
+    }
+    return one ? T.format('newGame', [names.first]) : T.format('newGames', [names.length]);
   }
 
   void uninstall(Game game) {
@@ -2193,7 +2508,13 @@ class AppModel extends ChangeNotifier {
       case Layer.copyWarning:
         final warning = copyWarning;
         if (warning == null) return const [];
-        return [PanelCategory(id: 'copy', title: T.text('copyWarningTitle'), rows: _copyWarningRows(warning))];
+        return [
+          PanelCategory(
+            id: 'copy',
+            title: warning.shortage == null ? T.text('copyWarningTitle') : T.text('noSpaceTitle'),
+            rows: _copyWarningRows(warning),
+          ),
+        ];
       case Layer.friends:
         return [PanelCategory(id: 'friends', title: T.text('friendsTitle'), rows: together.friendRows())];
       case Layer.party:
@@ -2248,53 +2569,94 @@ class AppModel extends ChangeNotifier {
     }
   }
 
-  List<PanelRow> _copyWarningRows(({Game game, int bytes}) warning) {
+  /// The copy panel: the room the unlock lacks (when it does), why the game's files would be
+  /// copied (when they would), and the ways out.
+  List<PanelRow> _copyWarningRows(({Game game, int bytes, SpaceShortage? shortage, int? needed, int? free}) warning) {
     final windows = system == HostSystem.windows;
     final size = byteText(warning.bytes);
+    final shortage = warning.shortage;
+    final copying = warning.bytes > 0 && (shortage == null || shortage.copying);
+    void dismiss() {
+      closeOverlay();
+      copyWarning = null;
+    }
+
     return [
-      PanelRow(
-        id: 'why',
-        title: warning.game.name,
-        kind: InfoRow(T.format(windows ? 'copyWarningWindows' : 'copyWarningLinux', [size])),
-      ),
-      PanelRow(
-        id: 'sameDrive',
-        title: T.text('copyFixFolder'),
-        detail: T.text('copyFixFolderDetail'),
-        kind: ActionRow(() {
-          closeOverlay();
-          copyWarning = null;
-          unawaited(chooseGamesFolder());
-        }),
-      ),
-      if (windows)
+      if (shortage != null)
+        PanelRow(
+          id: 'space',
+          title: T.format('noSpaceAmount', [byteText(shortage.needed), byteText(shortage.free)]),
+          kind: InfoRow(
+            '${T.text('noSpaceNothingWritten')}\n${copying ? T.format('noSpaceCopying', [size]) : T.text('noSpaceWhy')}',
+          ),
+        ),
+      if (copying)
+        PanelRow(
+          id: 'why',
+          title: warning.game.name,
+          kind: InfoRow(
+            T.format(windows ? 'copyWarningWindows' : 'copyWarningLinux', [size]) +
+                (shortage == null && warning.needed != null && warning.free != null
+                    ? '\n${T.format('copySpace', [byteText(warning.needed!), byteText(warning.free!)])}'
+                    : ''),
+          ),
+        ),
+      if (copying)
+        PanelRow(
+          id: 'sameDrive',
+          title: T.text('copyFixFolder'),
+          detail: T.text('copyFixFolderDetail'),
+          kind: ActionRow(() {
+            dismiss();
+            unawaited(chooseGamesFolder());
+          }),
+        )
+      else
+        PanelRow(
+          id: 'otherDrive',
+          title: T.text('noSpaceFolder'),
+          detail: T.text('noSpaceFolderDetail'),
+          kind: ActionRow(() {
+            dismiss();
+            unawaited(chooseGamesFolder());
+          }),
+        ),
+      if (windows && copying)
         PanelRow(
           id: 'developerMode',
           title: T.text('copyFixDeveloperMode'),
           detail: T.text('copyFixDeveloperModeDetail'),
           kind: ActionRow(() {
             services.openUrl?.call(Uri.parse('ms-settings:developers'));
-            closeOverlay();
-            copyWarning = null;
+            dismiss();
             show(T.text('copyFixDeveloperModeThen'));
           }),
         ),
-      PanelRow(
-        id: 'copyAnyway',
-        title: T.text('copyAnyway'),
-        detail: T.format('copyAnywayDetail', [size]),
-        kind: ActionRow(() {
-          closeOverlay();
-          copyWarning = null;
-          unlock(warning.game, copy: true);
-        }),
-      ),
+      if (shortage == null)
+        PanelRow(
+          id: 'copyAnyway',
+          title: T.text('copyAnyway'),
+          detail: T.format('copyAnywayDetail', [size]),
+          kind: ActionRow(() {
+            dismiss();
+            unlock(warning.game, copy: true);
+          }),
+        )
+      else
+        PanelRow(
+          id: 'retry',
+          title: T.text('noSpaceRetry'),
+          detail: T.text('noSpaceRetryDetail'),
+          kind: ActionRow(() {
+            dismiss();
+            unlock(warning.game, copy: true);
+          }),
+        ),
       PanelRow(
         id: 'cancel',
         title: T.text('cancel'),
         kind: ActionRow(() {
-          closeOverlay();
-          copyWarning = null;
+          dismiss();
           if (_playAfterInstall == warning.game.id) _playAfterInstall = null;
         }),
       ),
@@ -2399,6 +2761,16 @@ class AppModel extends ChangeNotifier {
             kind: ActionRow(() => unawaited(chooseGamesFolder())),
           ),
           PanelRow(id: 'rescan', title: T.text('rescan'), kind: ActionRow(rescan)),
+          PanelRow(
+            id: 'prepareNewGames',
+            title: T.text('prepareNewGames'),
+            detail: T.text('prepareNewGamesDetail'),
+            kind: ToggleRow(preferences.prepareNewGames, (value) {
+              preferences.prepareNewGames = value;
+              savePreferences();
+              _stepPrepare();
+            }),
+          ),
         ],
       ),
       PanelCategory(id: 'engine', title: T.text('engine'), rows: engine.settingsRows()),
@@ -3311,6 +3683,8 @@ class AppModel extends ChangeNotifier {
     _focusWatch?.cancel();
     _navigator?.dispose();
     _installer?.cancel();
+    _preparer?.cancel();
+    _prepareTimer?.cancel();
     engine.cancel();
     fonts.dispose();
     together.dispose();

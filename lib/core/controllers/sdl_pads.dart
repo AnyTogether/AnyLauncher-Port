@@ -372,9 +372,12 @@ class SdlLibrary implements SdlBackend {
 
   /// Where SDL2 is looked for, in order.
   static List<String> candidates({String? executable, bool? windows}) {
-    final folder = File(executable ?? Platform.resolvedExecutable).parent.path;
-    final separator = Platform.pathSeparator;
-    return (windows ?? Platform.isWindows)
+    final onWindows = windows ?? Platform.isWindows;
+    final path = executable ?? Platform.resolvedExecutable;
+    final separator = onWindows ? r'\' : '/';
+    final cut = onWindows ? path.lastIndexOf(RegExp(r'[\\/]')) : path.lastIndexOf('/');
+    final folder = cut < 0 ? '.' : path.substring(0, cut);
+    return onWindows
         ? ['$folder${separator}SDL2.dll', 'SDL2.dll']
         : ['$folder${separator}lib${separator}libSDL2-2.0.so.0', 'libSDL2-2.0.so.0', 'libSDL2.so'];
   }

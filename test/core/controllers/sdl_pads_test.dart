@@ -215,7 +215,7 @@ void main() {
     });
 
     test('where SDL2 is looked for', () {
-      expect(SdlLibrary.candidates(executable: r'C:\Games\AnyPS5\anyps5_desktop.exe', windows: true).last, 'SDL2.dll');
+      expect(SdlLibrary.candidates(executable: r'C:\Games\AnyPS5\anyps5_desktop.exe', windows: true), [r'C:\Games\AnyPS5\SDL2.dll', 'SDL2.dll']);
       expect(SdlLibrary.candidates(executable: '/opt/anyps5-desktop/anyps5_desktop', windows: false), [
         '/opt/anyps5-desktop/lib/libSDL2-2.0.so.0',
         'libSDL2-2.0.so.0',

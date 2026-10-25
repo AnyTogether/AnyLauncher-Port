@@ -5,13 +5,19 @@ release when it is made.
 
 ## Next release
 
-- **Glass, a new theme.** Frosted ice over a slow, cold background: the selected game's
-  picture shows blurred and cooled behind the screen, every card, button and panel is a pane of
+- **Glass, a new theme.** The launcher's window turns see-through: your desktop and the
+  windows behind it show through, blurred and tinted so the text stays readable over any
+  wallpaper, like a Windows 11 Acrylic window. Every card, button and panel on it is a pane of
   frosted glass with a rim of light, and the focused one turns into a bright ice chip with a
   glint that runs across it (not with reduced animations). It comes with a new **Ice** accent.
-  Pick it in **Settings → Appearance → Theme** or on the first start; **Reduce Transparency**
-  there draws the panes solid, and a graphics card too slow for the blur gets solid panes by
-  itself.
+  Pick it in **Settings → Appearance → Theme** or on the first start. **Glass Transparency**
+  there sets how much shows through (0 % is solid) and **Show Game Art Behind** lays the
+  selected game's picture over the desktop; **Reduce Transparency** draws everything solid, and
+  a graphics card too slow for Glass gets the solid look by itself. On Windows 11 22H2 and later
+  the backdrop is the system's Acrylic (shown while the window is active, as for every app);
+  Windows 10 and earlier Windows 11 get the older acrylic blur. On Linux the window is
+  see-through wherever the desktop composites, blurred on KDE Plasma (X11), unblurred with more
+  tint elsewhere (GNOME, Wayland); without a compositor Glass draws its own frosted background.
 - **No more full copies across drives.** A game whose dump is on another drive than the games
   folder now links to the dump's files with symbolic links instead of copying tens of GB (on
   Windows this needs Developer Mode, or the launcher run as administrator). Where no link can be

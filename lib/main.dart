@@ -5,6 +5,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import 'ui/soloud_audio.dart';
+import 'core/app_update.dart';
 import 'core/host.dart';
 import 'core/toolkit_download.dart';
 import 'ui/app_model.dart';
@@ -24,6 +25,7 @@ void main() {
             : Process.run('xdg-open', [url.toString()]),
       ),
       engineReleases: GitHubReleases(),
+      launcherReleases: LauncherUpdates.source(),
       audio: SoloudAudio.new,
     ),
   );
@@ -33,6 +35,7 @@ void main() {
   unawaited(model.startPhoneServer());
   unawaited(model.together.start());
   unawaited(model.engine.startupCheck());
+  unawaited(model.updates.startupCheck());
   runApp(AnyPS5App(model: model));
 }
 

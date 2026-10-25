@@ -1,5 +1,6 @@
 import 'strings_table.dart';
 import 'strings_together.dart';
+import 'strings_updates.dart';
 
 /// The launcher's two languages.
 enum Language {
@@ -167,9 +168,10 @@ abstract final class T {
   /// The text for [key] in the current language, English when the language has none.
   static String text(String key) {
     final turkish = language == Language.turkish;
-    return (turkish ? _turkish[key] ?? togetherTurkish[key] ?? turkishTable[key] : null) ??
+    return (turkish ? _turkish[key] ?? togetherTurkish[key] ?? updatesTurkish[key] ?? turkishTable[key] : null) ??
         _english[key] ??
         togetherEnglish[key] ??
+        updatesEnglish[key] ??
         englishTable[key] ??
         key;
   }

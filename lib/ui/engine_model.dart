@@ -41,6 +41,10 @@ class EngineModel {
   /// A package GitHub gave no checksum for, waiting for the user to download it anyway.
   ToolkitPackage? unverified;
 
+  /// An unsigned package of a signing source from before signing began, waiting for the user to
+  /// download it anyway.
+  ToolkitPackage? unsigned;
+
   /// Why the last download failed.
   String? error;
 
@@ -134,7 +138,7 @@ class EngineModel {
 
   /// Downloads [package] (the latest when null), makes it the toolkit in use and deletes
   /// versions nothing needs any more. True when it is in place.
-  Future<bool> download([ToolkitPackage? package, bool allowUnverified = false]) async {
+  Future<bool> download([ToolkitPackage? package, bool allowUnverified = false, bool allowUnsigned = false]) async {
     if (downloading != null) return false;
     if (package == null) {
       if (latest == null) await check(quiet: true);
@@ -155,6 +159,7 @@ class EngineModel {
       final kit = await store.install(
         package,
         allowUnverified: allowUnverified,
+        allowUnsigned: allowUnsigned,
         cancel: cancel,
         onProgress: (next) {
           progress = next;
@@ -166,6 +171,7 @@ class EngineModel {
         },
       );
       unverified = null;
+      unsigned = null;
       refresh();
       app.preferences.toolkitFolder = kit.root;
       app.savePreferences();
@@ -180,6 +186,9 @@ class EngineModel {
         case ToolkitFailureKind.unverified:
           unverified = package;
           app.show(T.text('engineUnverified'));
+        case ToolkitFailureKind.unsigned:
+          unsigned = package;
+          app.show(T.text('engineUnsigned'));
         default:
           error = failure.message;
           app.show(T.format('engineFailed', [failure.message]));
@@ -256,6 +265,13 @@ class EngineModel {
           detail: T.format('engineUnverifiedDetail', ['v${pending.version}']),
           kind: ActionRow(() => unawaited(download(pending, true)), destructive: true),
         )
+      else if (unsigned case final ToolkitPackage pending)
+        PanelRow(
+          id: 'engineDownload',
+          title: T.text('engineUnsignedTitle'),
+          detail: T.format('engineUnsignedDetail', ['v${pending.version}']),
+          kind: ActionRow(() => unawaited(download(pending, false, true)), destructive: true),
+        )
       else if (latestPackage case final ToolkitPackage newest when updateAvailable || current == null)
         PanelRow(
           id: 'engineDownload',
@@ -273,6 +289,9 @@ class EngineModel {
             : T.format('engineNewest', ['v${latest!.version}']),
         kind: ActionRow(() => unawaited(check())),
       ),
+      // Upstream does not sign its releases; ours are checked against their signatures.
+      if (_source != null && _source!.signingKeys == null)
+        PanelRow(id: 'engineSigning', title: T.text('engineUpstreamUnsigned'), kind: const InfoRow('')),
     ];
     // Every version GitHub lists and every one on disk, newest first.
     final versions = <String>{

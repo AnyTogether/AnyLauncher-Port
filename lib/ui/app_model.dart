@@ -33,6 +33,7 @@ import 'engine_model.dart';
 import 'strings.dart';
 import 'theme.dart';
 import 'together_model.dart';
+import 'update_model.dart';
 
 /// The launcher's own choices, kept as JSON in the config folder.
 class Preferences {
@@ -366,6 +367,7 @@ class LauncherServices {
     this.voiceEngine,
     this.talkKeys,
     this.engineReleases,
+    this.launcherReleases,
     this.hostGlibc,
     this.audio,
     this.decodeSong,
@@ -383,6 +385,10 @@ class LauncherServices {
 
   /// Where the AnyPS5 engine's releases are read from (GitHub); none in tests without a fake.
   final GitHubReleases? engineReleases;
+
+  /// Where AnyPS5 Desktop's own releases are read from (GitHub, signed); none in tests without a
+  /// fake.
+  final GitHubReleases? launcherReleases;
 
   /// Party voice's microphone and connections; flutter_webrtc by default.
   final VoiceEngine Function()? voiceEngine;
@@ -485,6 +491,7 @@ class AppModel extends ChangeNotifier {
 
   /// The AnyPS5 engine downloaded from upstream: versions, the download, the one in use.
   late final EngineModel engine = EngineModel(this);
+  late final LauncherUpdateModel updates = LauncherUpdateModel(this);
 
   /// The text row the cursor is in, by id; null while the keys move through the launcher.
   String? editingRow;
@@ -1432,6 +1439,7 @@ class AppModel extends ChangeNotifier {
             title: T.text('toolkitVersion'),
             kind: InfoRow(kit == null ? '—' : EngineModel.label(kit)),
           ),
+          ...updates.aboutRows(),
         ],
       ),
     ];

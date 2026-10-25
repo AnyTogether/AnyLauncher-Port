@@ -12,6 +12,8 @@ import '../support/ui_support.dart';
 /// The launcher's own update on screen: the notice beside the top bar, focused from the pad, and
 /// waiting for a game, in both languages.
 void main() {
+  // Always newer than the launcher, whatever version it is (and the same in the goldens).
+  const newer = '9.0.0';
   final shell = find.byType(LauncherShell);
   Fixture? fixture;
 
@@ -25,13 +27,13 @@ void main() {
   AppModel ready(Language language) {
     fixture = makeFixture(system: HostSystem.windows, language: language);
     final model = fixture!.model;
-    final installer = p.join(fixture!.temp.path, 'AnyPS5-Desktop-Setup-0.1.6-x64.exe');
+    final installer = p.join(fixture!.temp.path, 'AnyPS5-Desktop-Setup-$newer-x64.exe');
     File(installer).writeAsBytesSync([0x4D, 0x5A]);
     T.language = language;
     model.updates
-      ..latest = sampleRelease('0.1.6')
+      ..latest = sampleRelease(newer)
       ..downloaded = installer
-      ..downloadedVersion = '0.1.6';
+      ..downloadedVersion = newer;
     return model;
   }
 

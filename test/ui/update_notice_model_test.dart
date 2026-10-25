@@ -5,6 +5,7 @@ import 'package:anyps5_desktop/core/host.dart';
 import 'package:anyps5_desktop/core/update_notice.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
+import 'package:anyps5_desktop/ui/together_model.dart' show launcherVersion;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
@@ -17,6 +18,8 @@ import '../support/ui_support.dart';
 /// with Restart Now and Later, Later for the next launch, About's states. (The screens are in
 /// update_notice_screens_test.dart: a file with widget tests gets no real HTTP.)
 void main() {
+  // Always newer than the launcher, whatever version it is (and the same in the goldens).
+  const newer = '9.0.0';
   final key = TestReleaseKey('desktop release');
   late FakeGitHub github;
   Fixture? fixture;
@@ -31,7 +34,7 @@ void main() {
 
   setUp(() async {
     github = await FakeGitHub.start(repository: LauncherUpdates.repository);
-    github.releases.add(signed(release('0.1.6'), [key]));
+    github.releases.add(signed(release(newer), [key]));
     started.clear();
     quits.clear();
   });
@@ -59,11 +62,11 @@ void main() {
     test('a newer release is downloaded quietly, then the notice offers Restart Now', () async {
       final model = launcher();
       await model.updates.startupCheck();
-      expect(model.updates.state, const UpdateReady('0.1.6'));
+      expect(model.updates.state, const UpdateReady(newer));
       expect(model.updates.showsNotice, isTrue);
       expect(model.toast, isNull, reason: 'no toast, no progress: the notice says it once it is ready');
       await model.updates.restartNow();
-      expect(started.single.$1, endsWith('AnyPS5-Desktop-Setup-0.1.6-x64.exe'));
+      expect(started.single.$1, endsWith('AnyPS5-Desktop-Setup-$newer-x64.exe'));
       expect(started.single.$2, SelfApply.installerArguments);
       expect(quits, [0]);
     });
@@ -77,7 +80,7 @@ void main() {
       expect(model.updates.showsNotice, isFalse, reason: 'the next check does not bring it back');
       expect(started, isEmpty);
       expect(await model.updates.applyPendingAtLaunch(), isTrue);
-      expect(started.single.$1, endsWith('AnyPS5-Desktop-Setup-0.1.6-x64.exe'));
+      expect(started.single.$1, endsWith('AnyPS5-Desktop-Setup-$newer-x64.exe'));
       expect(await model.updates.applyPendingAtLaunch(), isFalse, reason: 'once');
     });
 
@@ -112,7 +115,7 @@ void main() {
       await model.updates.startupCheck();
       expect(model.updates.apply, SelfApply.appImage);
       model.updates.later();
-      expect(File(appImage).readAsBytesSync(), filler('appimage0.1.6'));
+      expect(File(appImage).readAsBytesSync(), filler('appimage$newer'));
       expect(started, isEmpty, reason: 'Later starts nothing');
     }, skip: Platform.isWindows ? 'chmod' : false);
 
@@ -141,11 +144,11 @@ void main() {
     test('About shows where it stands', () async {
       final model = launcher();
       expect(model.updates.aboutRows().map((row) => row.detail), [
-        T.format('desktopVersion', ['0.1.5']),
+        T.format('desktopVersion', [launcherVersion]),
       ]);
       await model.updates.startupCheck();
       final rows = model.updates.aboutRows();
-      expect(rows.first.title, 'AnyPS5 Desktop 0.1.6 is ready · Restart Now');
+      expect(rows.first.title, 'AnyPS5 Desktop $newer is ready · Restart Now');
       expect(rows.first.detail, 'Restart now, or it goes in at the next launch');
     });
   });

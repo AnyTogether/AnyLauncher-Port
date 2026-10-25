@@ -8,6 +8,8 @@ import '../core/game_library.dart';
 import 'app_model.dart';
 import 'background.dart';
 import 'components.dart';
+import 'level_badge.dart';
+import 'panels.dart' show PersonAvatar;
 import 'strings.dart';
 import 'theme.dart';
 import 'together_model.dart';
@@ -128,6 +130,8 @@ class TopBar extends StatelessWidget {
     final accent = model.accentChoice.color;
     final together = model.together;
     final name = together.user?.displayName ?? model.preferences.profileName;
+    final level = together.signedIn ? together.hub.self.level : null;
+    final offline = together.signedIn && together.appearingOffline;
     Widget iconButton(IconData icon, int index, VoidCallback action, {int badge = 0}) {
       final focused = model.focus == HomeFocus.top(index) && model.overlay == null;
       return Pressable(
@@ -216,28 +220,64 @@ class TopBar extends StatelessWidget {
         SizedBox(width: 22 * scale),
         PhoneIndicator(model: model),
         SizedBox(width: 22 * scale),
-        Container(
-          width: 36 * scale,
-          height: 36 * scale,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [accent, accent.withValues(alpha: 0.55)],
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 36 * scale,
+              height: 36 * scale,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [accent, accent.withValues(alpha: 0.55)],
+                ),
+              ),
+              child: Text(
+                name.isEmpty ? '?' : name.characters.first.toUpperCase(),
+                style: AppText.display(16 * scale, weight: FontWeight.w700),
+              ),
             ),
-          ),
-          child: Text(
-            name.isEmpty ? '?' : name.characters.first.toUpperCase(),
-            style: AppText.display(16 * scale, weight: FontWeight.w700),
-          ),
+            // Appearing offline: a grey dot on the picture, as friends see it.
+            if (offline)
+              Positioned(
+                right: -2 * scale,
+                bottom: -2 * scale,
+                child: Container(
+                  width: 13 * scale,
+                  height: 13 * scale,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: PersonAvatar.statusColor(PersonStatus.offline),
+                    border: Border.all(color: Colors.black, width: 2.2 * scale),
+                  ),
+                ),
+              ),
+          ],
         ),
         SizedBox(width: 10 * scale),
-        Text(
-          name,
-          style: AppText.display(16 * scale, weight: FontWeight.w500, color: Colors.white.withValues(alpha: 0.9)),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              name,
+              style: AppText.display(16 * scale, weight: FontWeight.w500, color: Colors.white.withValues(alpha: 0.9)),
+            ),
+            if (offline)
+              Text(
+                T.text('presenceAppearing'),
+                style: AppText.display(
+                  12 * scale,
+                  weight: FontWeight.w500,
+                  color: Colors.white.withValues(alpha: 0.55),
+                ),
+              ),
+          ],
         ),
+        if (level != null) ...[SizedBox(width: 10 * scale), LevelBadgeView(level: level, size: 30 * scale)],
         SizedBox(width: 22 * scale),
         Clock(now: now),
       ],

@@ -200,7 +200,8 @@ void main() {
       model.open(Layer.profile);
       model.together
         ..profileReturn = Layer.friends
-        ..profileIndex = 1
+        // Compare trophies first, then the games: the second game.
+        ..profileIndex = 2
         ..profile = ProfilePage(
           profile: const TogetherProfile(
             userId: 'u-bora',

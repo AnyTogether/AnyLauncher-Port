@@ -4,10 +4,13 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/together/levels.dart';
 import 'app_model.dart';
+import 'compare_view.dart';
 import 'components.dart';
 import 'crash_report_view.dart';
 import 'home.dart';
+import 'level_badge.dart';
 import 'messages_view.dart';
 import 'profile_view.dart';
 import 'onboarding.dart';
@@ -233,6 +236,10 @@ class _LauncherShellState extends State<LauncherShell> {
                                   onBack: () => model.handle(Command.back),
                                   child: ProfileView(model: model),
                                 ),
+                                Layer.compare => WithBackPill(
+                                  onBack: () => model.handle(Command.back),
+                                  child: CompareView(model: model),
+                                ),
                                 null => const SizedBox.shrink(),
                                 _ => PanelView(model: model),
                               },
@@ -241,7 +248,7 @@ class _LauncherShellState extends State<LauncherShell> {
                         ),
                         if (model.starting != null) _StartingCard(model: model),
                         if (model.pairing != null) PairingCard(model: model),
-                        _Toast(message: model.toast),
+                        _Toast(message: model.toast, level: model.toastLevel),
                       ],
                     ),
                   ),
@@ -302,9 +309,12 @@ class _StartingCard extends StatelessWidget {
 }
 
 class _Toast extends StatelessWidget {
-  const _Toast({required this.message});
+  const _Toast({required this.message, this.level});
 
   final String? message;
+
+  /// A trophy level reached: its badge before the words, the toast a little larger.
+  final LevelBadge? level;
 
   @override
   Widget build(BuildContext context) {
@@ -327,6 +337,36 @@ class _Toast extends StatelessWidget {
             ),
             child: message == null
                 ? const SizedBox.shrink()
+                : level != null
+                ? Glass(
+                    key: ValueKey(message),
+                    radius: 34 * scale,
+                    opacity: 0.66,
+                    padding: EdgeInsets.fromLTRB(12 * scale, 10 * scale, 28 * scale, 10 * scale),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        LevelBadgeView(level: level!, size: 44 * scale),
+                        SizedBox(width: 14 * scale),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              LevelColors.tierName(level!.tier).toUpperCase(),
+                              style: AppText.display(
+                                11 * scale,
+                                weight: FontWeight.w700,
+                                color: LevelColors.bright(level!.tier),
+                              ).copyWith(letterSpacing: 1.1 * scale),
+                            ),
+                            SizedBox(height: 2 * scale),
+                            Text(message!, style: AppText.display(18 * scale, weight: FontWeight.w600)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  )
                 : Glass(
                     key: ValueKey(message),
                     radius: 30 * scale,

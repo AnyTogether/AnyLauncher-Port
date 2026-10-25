@@ -7,6 +7,7 @@ import '../core/controls.dart';
 import '../core/trophies.dart';
 import 'app_model.dart';
 import 'components.dart';
+import 'level_badge.dart';
 import 'home.dart';
 import 'strings.dart';
 import 'theme.dart';
@@ -492,6 +493,10 @@ class _RowView extends StatelessWidget {
                       if (row.glyph != null) ...[
                         SizedBox(width: 8 * scale),
                         PadGlyphIcon(row.glyph!, size: 15 * scale, color: titleColor),
+                      ],
+                      if (row.level != null) ...[
+                        SizedBox(width: 10 * scale),
+                        LevelBadgeView(level: row.level!, size: 24 * scale),
                       ],
                     ],
                   ),

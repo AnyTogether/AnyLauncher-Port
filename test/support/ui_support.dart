@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:anyps5_desktop/core/audio/atrac9.dart';
 import 'package:anyps5_desktop/core/audio/audio_out.dart';
+import 'package:anyps5_desktop/core/crash_report.dart';
 import 'package:anyps5_desktop/core/desktop/desktop.dart';
 import 'package:anyps5_desktop/core/font_download.dart';
 import 'package:anyps5_desktop/core/gamepad/pad_navigation.dart';
@@ -137,6 +138,7 @@ Fixture makeFixture({
   Future<PlayableSong?> Function(String path)? decodeSong,
   FontArchive? cjkFonts,
   String? builtInFonts,
+  Future<String?> Function(String suggestedName)? saveFile,
 }) {
   final opened = <Uri>[];
   final copied = <String>[];
@@ -198,6 +200,9 @@ Fixture makeFixture({
       decodeSong: decodeSong,
       cjkFonts: cjkFonts,
       builtInFonts: builtInFonts,
+      saveFile: saveFile,
+      systemInfo: () async =>
+          const SystemInfo(os: 'Ubuntu 24.04.1 LTS, kernel 6.8.0-45-generic', cpu: 'AMD Ryzen 7 5800X', memoryGB: 32),
     ),
   );
   model.rescan();

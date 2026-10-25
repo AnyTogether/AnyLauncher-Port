@@ -15,11 +15,13 @@ import 'core/host.dart';
 import 'core/release_signing.dart';
 import 'core/toolkit_download.dart';
 import 'ui/app_model.dart';
+import 'ui/crash_model.dart';
 import 'ui/launcher.dart';
 import 'ui/theme.dart';
 
-void main() {
+void main(List<String> arguments) {
   WidgetsFlutterBinding.ensureInitialized();
+  final options = LaunchOptions.parse(arguments);
   final model = AppModel(
     paths: AppPaths.forSystem(HostSystem.current),
     services: LauncherServices(
@@ -31,6 +33,12 @@ void main() {
             : Process.run('xdg-open', [url.toString()]),
       ),
       copyText: (text) => unawaited(Clipboard.setData(ClipboardData(text: text))),
+      saveFile: (name) async => (await getSaveLocation(
+        suggestedName: name,
+        acceptedTypeGroups: const [
+          XTypeGroup(label: 'Text', extensions: ['txt']),
+        ],
+      ))?.path,
       engineReleases: GitHubReleases(),
       launcherReleases: LauncherUpdates.source(),
       audio: SoloudAudio.new,
@@ -42,6 +50,7 @@ void main() {
       desktop: Platform.isWindows ? WindowsDesktop() : LinuxDesktop(),
     ),
   );
+  model.crash.traceAll = options.trace;
   unawaited(model.startAudio());
   model.startPads();
   if (model.preferences.onboarded) model.rescan();

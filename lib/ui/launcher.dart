@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'app_model.dart';
 import 'components.dart';
+import 'crash_report_view.dart';
 import 'home.dart';
 import 'messages_view.dart';
 import 'profile_view.dart';
@@ -221,6 +222,7 @@ class _LauncherShellState extends State<LauncherShell> {
                               child: switch (model.overlay) {
                                 Layer.library => LibraryGrid(model: model),
                                 Layer.log => LogView(model: model),
+                                Layer.crashReport => CrashReportView(model: model),
                                 Layer.trophies => TrophyView(model: model),
                                 Layer.gallery => GalleryView(model: model),
                                 Layer.messages => WithBackPill(

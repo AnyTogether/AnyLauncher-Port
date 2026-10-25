@@ -12,11 +12,13 @@ import '../core/audio/interface_sounds.dart';
 import '../core/audio/theme_music.dart';
 import '../core/audio/tones.dart';
 import '../core/controls.dart';
+import '../core/crash_report.dart' show Diagnosis, SystemInfo;
 import '../core/desktop/desktop.dart';
 import '../core/font_download.dart';
 import '../core/family/family_rules.dart' show TitleVerdict;
 import '../core/gamepad/pad_navigation.dart';
 import '../core/game_library.dart';
+import '../core/game_log.dart';
 import '../core/game_process.dart';
 import '../core/game_settings.dart';
 import '../core/host.dart';
@@ -35,6 +37,7 @@ import '../core/together/token_store.dart';
 import '../core/together/voice_mesh.dart';
 import '../core/trophies.dart';
 import 'components.dart';
+import 'crash_model.dart';
 import 'engine_model.dart';
 import 'fonts_model.dart';
 import 'strings.dart';
@@ -287,6 +290,9 @@ enum Layer {
 
   /// Family limits: today's play time, asking a parent for more.
   family,
+
+  /// A game's last start: why it stopped, crash_log.txt to save, the issue to open.
+  crashReport,
 }
 
 /// A settings row the panels draw and the keyboard moves through.
@@ -424,7 +430,15 @@ class LauncherServices {
     this.cjkFonts,
     this.fontClient,
     this.builtInFonts,
+    this.saveFile,
+    this.systemInfo,
   });
+
+  /// Asks the user where to save a file, [suggestedName] first; null when they cancelled.
+  final Future<String?> Function(String suggestedName)? saveFile;
+
+  /// This computer for a crash report; read from the system when not given.
+  final Future<SystemInfo> Function()? systemInfo;
 
   /// The Japanese, Chinese and Korean fonts downloaded when a game needs them (Noto Sans CJK
   /// from GitHub); none in tests without a fake, which then download nothing.
@@ -617,6 +631,9 @@ class AppModel extends ChangeNotifier {
 
   /// The system fonts games get: the folder put together for them, the CJK download.
   late final FontsModel fonts = FontsModel(this);
+
+  /// The crash report of a game's last start, and detailed logging.
+  late final CrashModel crash = CrashModel(this);
 
   /// The text row the cursor is in, by id; null while the keys move through the launcher.
   String? editingRow;
@@ -1054,6 +1071,8 @@ class AppModel extends ChangeNotifier {
     final game = games.where((game) => game.id == id).firstOrNull;
     if (game == null) return _startNext();
     progress[id] = (InstallStep.unwrap, 0);
+    final unlockLines = <String>[];
+    final unlockLog = GameLog.unlockFile(paths.logs, game.titleId);
     final installer = Installer(
       game: game,
       toolkit: kit,
@@ -1064,13 +1083,17 @@ class AppModel extends ChangeNotifier {
         notifyListeners();
         _publishActivity();
       },
-      onLog: (line) => _appendLog(game, line),
+      onLog: (line) {
+        unlockLines.add(line);
+        _appendLog(game, line);
+      },
     );
     _installer = installer;
     _changed();
     unawaited(() async {
       try {
         final installed = await installer.run();
+        GameLog.writeUnlockLog(unlockLog, unlockLines);
         final record = Installer.record(installed, system: system);
         if (record != null) records[id] = record;
         sounds.play(Cue.unlocked);
@@ -1082,6 +1105,7 @@ class AppModel extends ChangeNotifier {
       } on InstallCancelled {
         // Nothing to say.
       } on Object catch (error) {
+        GameLog.writeUnlockLog(unlockLog, unlockLines, failure: error.toString());
         failures[id] = error.toString();
         show('${T.text('unlockFailed')}: ${game.name}');
       } finally {
@@ -1167,7 +1191,8 @@ class AppModel extends ChangeNotifier {
 
   // Playing.
 
-  Future<void> play(Game game) async {
+  /// Plays [game]; [trace] turns detailed logging on for this start only.
+  Future<void> play(Game game, {bool trace = false}) async {
     final folder = root;
     if (folder == null || starting != null || running != null) return;
     final allowed = together.family.beforePlay(game);
@@ -1190,6 +1215,9 @@ class AppModel extends ChangeNotifier {
     preferences.lastPlayed[game.id] = DateTime.now().toIso8601String();
     savePreferences();
     final logFile = paths.logFile(game.titleId);
+    final traced = crash.traced(settings, once: trace);
+    // A log grown too big is set aside before the font watch reads where it ends.
+    GameLog.rollForStart(logFile);
     try {
       // A game in Japanese, Korean or Chinese waits for those fonts; every game gets the folder
       // the fonts are put together in.
@@ -1201,6 +1229,7 @@ class AppModel extends ChangeNotifier {
           screenshots: paths.pictures,
           fonts: systemFonts,
           shaderCacheFolder: paths.shaderCache(game.slug),
+          trace: traced,
         ),
         ...?remote?.bridgeEnvironment,
         // The engine's online bridge reads the AnyTogether game session there.
@@ -1212,10 +1241,12 @@ class AppModel extends ChangeNotifier {
         environment: environment,
         logFile: logFile,
         system: system,
+        traced: traced,
       );
       starting = null;
       running = (game, run);
       _stopped = false;
+      crash.started(game, traced: traced);
       final began = DateTime.now();
       // Upstream's engine does not read ANYPS5_FULLSCREEN or ANYPS5_WINDOW_SIZE: the launcher
       // sizes its window or presses its F11 once the window is open.
@@ -1232,7 +1263,7 @@ class AppModel extends ChangeNotifier {
       _loadTrophies(game);
       if (running?.$1 == game) running = null;
       together.gameChanged();
-      if (code != 0) show('${T.text('gameEnded')} ($code)');
+      crash.ended(game, code, stopped: _stopped);
       _changed();
     } on Object catch (error) {
       starting = null;
@@ -1336,6 +1367,20 @@ class AppModel extends ChangeNotifier {
   void stopGame() {
     if (running != null) _stopped = true;
     running?.$2.stop();
+  }
+
+  /// Asks the game playing to close as its window would (a family limit): the launcher closed
+  /// it, so no crash report follows.
+  Future<void> closeGame() async {
+    if (running == null) return;
+    _stopped = true;
+    await running!.$2.close();
+  }
+
+  /// Ends the game playing at once (a family limit after its grace).
+  void killGame() {
+    if (running != null) _stopped = true;
+    running?.$2.kill();
   }
 
   // Messages.
@@ -1466,6 +1511,9 @@ class AppModel extends ChangeNotifier {
         return;
       case Layer.log:
         if (command == Command.back || command == Command.select) closeOverlay();
+        return;
+      case Layer.crashReport:
+        crash.command(command);
         return;
       case Layer.gallery:
         _galleryCommand(command);
@@ -1630,6 +1678,8 @@ class AppModel extends ChangeNotifier {
         return [PanelCategory(id: 'party', title: T.text('partyTitle'), rows: together.partyRows())];
       case Layer.family:
         return [PanelCategory(id: 'family', title: T.text('familyTitle'), rows: together.family.rows())];
+      case Layer.crashReport:
+        return [PanelCategory(id: 'report', title: T.text('reportKicker'), rows: crash.rows())];
       case Layer.friendOptions:
         return [
           PanelCategory(
@@ -1961,6 +2011,7 @@ class AppModel extends ChangeNotifier {
           }),
         ),
         PanelRow(id: 'log', title: T.text('openLog'), kind: ActionRow(() => open(Layer.log))),
+        ..._reportRows(game, settings, change),
         PanelRow(
           id: 'folder',
           title: T.text('showInFinder'),
@@ -1985,10 +2036,41 @@ class AppModel extends ChangeNotifier {
           title: T.text('uninstall'),
           kind: ActionRow(() => open(Layer.confirmUninstall), destructive: true),
         ),
-      ] else
+      ] else ...[
         PanelRow(id: 'log', title: T.text('openLog'), kind: ActionRow(() => open(Layer.log))),
+        ..._reportRows(game, settings, change),
+      ],
     ];
   }
+
+  /// The last start's crash report, detailed logging, and (installed) one start with it.
+  List<PanelRow> _reportRows(Game game, GameSettings settings, void Function(GameSettings) change) => [
+    PanelRow(
+      id: 'report',
+      title: T.text('lastSessionReport'),
+      detail: switch (crash.lastSessions[game.titleId]?.diagnosis) {
+        final Diagnosis diagnosis => CrashModel.diagnosisText(diagnosis),
+        null => T.text('lastSessionReportDetail'),
+      },
+      kind: ActionRow(() => unawaited(crash.open(game, afterCrash: false))),
+    ),
+    PanelRow(
+      id: 'trace',
+      title: T.text('traceTitle'),
+      detail: T.text('traceDetail'),
+      kind: ToggleRow(settings.trace == true, (value) => change(settings.copyWith(trace: value ? true : null))),
+    ),
+    if (records.containsKey(game.id))
+      PanelRow(
+        id: 'playTraced',
+        title: T.text('reportPlayTraced'),
+        detail: T.text('reportPlayTracedDetail'),
+        kind: ActionRow(() {
+          closeOverlay();
+          unawaited(play(game, trace: true));
+        }),
+      ),
+  ];
 
   List<PanelRow> _controlRows(Game game) {
     final settings = currentSettings(game);
@@ -2081,6 +2163,10 @@ class AppModel extends ChangeNotifier {
     }
     if (panelRow >= rows.length) panelRow = 0;
   }
+
+  /// What a command does in the open panel's rows (for panels with their own Back, like the
+  /// crash report).
+  void panelCommand(Command command) => _panelCommand(command);
 
   void _panelCommand(Command command) {
     final categories = panelCategories();

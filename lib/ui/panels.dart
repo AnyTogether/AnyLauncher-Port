@@ -237,7 +237,7 @@ class PanelView extends StatelessWidget {
                         SizedBox(width: 28 * scale),
                       ],
                       Expanded(
-                        child: _Rows(model: model, rows: category.rows),
+                        child: PanelRows(model: model, rows: category.rows),
                       ),
                     ],
                   ),
@@ -287,8 +287,9 @@ class _CategoryTab extends StatelessWidget {
   }
 }
 
-class _Rows extends StatelessWidget {
-  const _Rows({required this.model, required this.rows});
+/// A panel's rows, the focused one kept in view.
+class PanelRows extends StatelessWidget {
+  const PanelRows({super.key, required this.model, required this.rows});
 
   final AppModel model;
   final List<PanelRow> rows;

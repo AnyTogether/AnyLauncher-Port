@@ -220,9 +220,9 @@ class FamilyGate {
         }
       case PlayTimeEvent.close:
         app.show(T.text('familyClosing'));
-        unawaited(app.running?.$2.close());
+        unawaited(app.closeGame());
       case PlayTimeEvent.kill:
-        app.running?.$2.kill();
+        app.killGame();
     }
   }
 

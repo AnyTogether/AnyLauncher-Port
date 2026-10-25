@@ -63,6 +63,24 @@ void main() {
     expect(T.format('fontsCjkDownloading', [42]), 'Downloading… 42%');
   });
 
+  test('the crash report and detailed logging texts are in both languages, the PC\'s words', () {
+    bool crash(String key) =>
+        key.startsWith('report') ||
+        key.startsWith('trace') ||
+        key.startsWith('lastSession') ||
+        key.startsWith('diagnosis');
+    expect(englishTable.keys.where(crash).toSet(), turkishTable.keys.where(crash).toSet());
+    for (final language in Language.values) {
+      T.language = language;
+      for (final key in englishTable.keys.where(crash)) {
+        expect(T.text(key), isNot(contains('Mac')), reason: '$key in ${language.code}');
+      }
+      expect(T.text('reportSave'), contains('crash_log.txt'));
+    }
+    T.language = Language.turkish;
+    expect(T.format('reportStopped', ['Stray']), 'Stray durdu');
+  });
+
   test('the tables cover the same keys', () {
     expect(englishTable.keys.toSet(), turkishTable.keys.toSet());
   });

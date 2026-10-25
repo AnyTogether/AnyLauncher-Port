@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'app_model.dart';
@@ -241,66 +243,73 @@ class _ThemeStep extends StatelessWidget {
       children: [
         _StepTitle(title: T.text('chooseTheme'), subtitle: T.text('chooseThemeSubtitle')),
         SizedBox(height: 46 * scale),
-        Row(
-          children: [
-            for (final style in LookStyle.values) ...[
-              GestureDetector(
-                onTap: () => model.previewTheme(style.index),
-                child: AnimatedScale(
-                  scale: model.onboardingChoice == style.index ? 1.04 : 0.97,
-                  duration: Motion.focus,
-                  curve: Motion.settle,
-                  child: AnimatedOpacity(
-                    opacity: model.onboardingChoice == style.index ? 1 : 0.72,
-                    duration: Motion.focus,
-                    child: SizedBox(
-                      width: 330 * scale,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          FocusRing(
-                            focused: model.onboardingChoice == style.index,
-                            radius: 18 * scale,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(18 * scale),
-                              child: SizedBox(
-                                width: 330 * scale,
-                                height: 186 * scale,
-                                child: ThemeBackground(
-                                  style: style,
-                                  paused: model.onboardingChoice != style.index,
-                                  time: time,
-                                ),
-                              ),
-                            ),
-                          ),
-                          SizedBox(height: 14 * scale),
-                          Row(
+        LayoutBuilder(
+          builder: (context, constraints) {
+            // The looks share the row: each card as wide as it can be, up to 330.
+            final count = LookStyle.values.length;
+            final card = math.min(330 * scale, (constraints.maxWidth - 26 * scale * (count - 1)) / count);
+            return Row(
+              children: [
+                for (final style in LookStyle.values) ...[
+                  GestureDetector(
+                    onTap: () => model.previewTheme(style.index),
+                    child: AnimatedScale(
+                      scale: model.onboardingChoice == style.index ? 1.04 : 0.97,
+                      duration: Motion.focus,
+                      curve: Motion.settle,
+                      child: AnimatedOpacity(
+                        opacity: model.onboardingChoice == style.index ? 1 : 0.72,
+                        duration: Motion.focus,
+                        child: SizedBox(
+                          width: card,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                style.title,
-                                style: AppText.display(
-                                  22 * scale,
-                                  weight: model.onboardingChoice == style.index ? FontWeight.w600 : FontWeight.w400,
+                              FocusRing(
+                                focused: model.onboardingChoice == style.index,
+                                radius: 18 * scale,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(18 * scale),
+                                  child: SizedBox(
+                                    width: card,
+                                    height: card * 186 / 330,
+                                    child: ThemeBackground(
+                                      style: style,
+                                      paused: model.onboardingChoice != style.index,
+                                      time: time,
+                                    ),
+                                  ),
                                 ),
                               ),
-                              const Spacer(),
-                              Container(
-                                width: 12 * scale,
-                                height: 12 * scale,
-                                decoration: BoxDecoration(shape: BoxShape.circle, color: style.defaultAccent.color),
+                              SizedBox(height: 14 * scale),
+                              Row(
+                                children: [
+                                  Text(
+                                    style.title,
+                                    style: AppText.display(
+                                      22 * scale,
+                                      weight: model.onboardingChoice == style.index ? FontWeight.w600 : FontWeight.w400,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Container(
+                                    width: 12 * scale,
+                                    height: 12 * scale,
+                                    decoration: BoxDecoration(shape: BoxShape.circle, color: style.defaultAccent.color),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ),
-              SizedBox(width: 26 * scale),
-            ],
-          ],
+                  if (style != LookStyle.values.last) SizedBox(width: 26 * scale),
+                ],
+              ],
+            );
+          },
         ),
       ],
     );

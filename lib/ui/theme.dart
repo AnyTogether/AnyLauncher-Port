@@ -1,14 +1,19 @@
+import 'dart:math' as math;
+
 import 'package:flutter/animation.dart';
 import 'package:flutter/painting.dart';
 
 import 'strings.dart';
 
-/// The three built-in looks: an animated background (shaders/background.frag) with the colors
-/// the interface draws over it.
+/// The built-in looks: an animated background (shaders/background.frag) with the colors the
+/// interface draws over it. New looks go last: the index is what the preferences keep.
 enum LookStyle {
   cosmic(Color.fromRGBO(3, 6, 23, 1), Color.fromRGBO(10, 38, 107, 1), Color.fromRGBO(107, 163, 255, 1), Accent.blue),
   aurora(Color.fromRGBO(2, 8, 11, 1), Color.fromRGBO(5, 77, 77, 1), Color.fromRGBO(143, 255, 199, 1), Accent.mint),
-  sunset(Color.fromRGBO(15, 3, 10, 1), Color.fromRGBO(133, 28, 56, 1), Color.fromRGBO(255, 163, 84, 1), Accent.coral);
+  sunset(Color.fromRGBO(15, 3, 10, 1), Color.fromRGBO(133, 28, 56, 1), Color.fromRGBO(255, 163, 84, 1), Accent.coral),
+
+  /// Frosted ice: the surfaces are layered glass over a slow, cold background (glass.dart).
+  glass(Color.fromRGBO(4, 16, 28, 1), Color.fromRGBO(28, 79, 115, 1), Color.fromRGBO(207, 239, 255, 1), Accent.ice);
 
   const LookStyle(this.deep, this.middle, this.bright, this.defaultAccent);
 
@@ -22,7 +27,13 @@ enum LookStyle {
     LookStyle.cosmic => 'themeCosmic',
     LookStyle.aurora => 'themeAurora',
     LookStyle.sunset => 'themeSunset',
+    LookStyle.glass => 'themeGlass',
   });
+
+  /// The look kept as [index] in the preferences; anything unknown (a newer launcher's look,
+  /// a hand-edited file) is Cosmic.
+  static LookStyle fromIndex(Object? index) =>
+      index is int && index >= 0 && index < values.length ? values[index] : LookStyle.cosmic;
 
   /// The theme's colors as #RRGGBB, for the phone to wear.
   static String hex(Color color) =>
@@ -35,7 +46,8 @@ enum Accent {
   coral(Color.fromRGBO(255, 128, 102, 1)),
   violet(Color.fromRGBO(168, 133, 255, 1)),
   gold(Color.fromRGBO(255, 204, 92, 1)),
-  white(Color.fromRGBO(240, 240, 240, 1));
+  white(Color.fromRGBO(240, 240, 240, 1)),
+  ice(Color.fromRGBO(138, 216, 255, 1));
 
   const Accent(this.color);
   final Color color;
@@ -49,7 +61,34 @@ enum Accent {
       Accent.violet => turkish ? 'Mor' : 'Violet',
       Accent.gold => turkish ? 'Altın' : 'Gold',
       Accent.white => turkish ? 'Beyaz' : 'White',
+      Accent.ice => turkish ? 'Buz' : 'Ice',
     };
+  }
+
+  /// The ink for words and glyphs drawn on this accent: dark on the light ones.
+  Color get ink => Contrast.inkOn(color);
+}
+
+/// Which ink reads on a fill, by the WCAG formulas.
+abstract final class Contrast {
+  /// The dark ink used on light fills: a deep navy rather than black, so it sits with the
+  /// glass look's colors.
+  static const darkInk = Color(0xFF071422);
+  static const lightInk = Color(0xFFFFFFFF);
+
+  /// Dark ink on a fill lighter than 0.4 relative luminance, white otherwise.
+  static Color inkOn(Color fill) => luminance(fill) > 0.4 ? darkInk : lightInk;
+
+  /// WCAG 2 relative luminance of an opaque color.
+  static double luminance(Color color) {
+    double channel(double c) => c <= 0.04045 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4).toDouble();
+    return 0.2126 * channel(color.r) + 0.7152 * channel(color.g) + 0.0722 * channel(color.b);
+  }
+
+  /// WCAG 2 contrast ratio between two opaque colors, 1 to 21.
+  static double ratio(Color a, Color b) {
+    final (la, lb) = (luminance(a), luminance(b));
+    return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
   }
 }
 

@@ -1,6 +1,6 @@
 #version 460 core
 // The themes' animated backgrounds: the GLSL form of the macOS launcher's Metal shader
-// (BackgroundRenderer.swift), the same three looks and the same palette uniforms.
+// (BackgroundRenderer.swift), the same looks and the same palette uniforms.
 #include <flutter/runtime_effect.glsl>
 
 precision highp float;
@@ -127,11 +127,67 @@ vec3 sunset(vec2 uv, float aspect, float time) {
     return color;
 }
 
+// Glass: cold light behind frosted ice. Large soft fields of glacier blue, teal and a little
+// periwinkle drift very slowly, two faint diagonal streaks of refracted light cross them, and a
+// still frost grain (added in main) sits over it all. Kept dark: white text must read on the
+// glass surfaces drawn over any pixel of it (see test/ui/glass_test.dart).
+float field(vec2 p, vec2 center, float radius) {
+    vec2 d = p - center;
+    return exp(-dot(d, d) / (radius * radius));
+}
+
+vec3 glass(vec2 uv, float aspect, float time) {
+    vec2 p = vec2(uv.x * aspect, uv.y);
+    float t = time * 0.035;
+    vec3 glacier = vec3(0.20, 0.50, 0.70);
+    vec3 teal = vec3(0.07, 0.40, 0.44);
+    vec3 periwinkle = vec3(0.36, 0.38, 0.80);
+    // Deep at the left and the bottom, where the words sit; lit towards the upper right.
+    vec3 color = mix(uMiddle * 0.30, uDeep * 0.75, smoothstep(0.0, 1.0, uv.y * 0.75 + (1.0 - uv.x) * 0.35));
+    // A slow warp, so the fields' edges never look like circles.
+    vec2 warp = vec2(fbm(p * 0.8 + vec2(t * 0.6, 3.1)), fbm(p * 0.8 + vec2(7.4, -t * 0.5))) - 0.5;
+    vec2 q = p + warp * 0.5;
+    color += glacier * 0.74 * field(q, vec2(aspect * (0.70 + 0.06 * sin(t * 0.7)), 0.30 + 0.06 * cos(t * 0.5)), 0.50);
+    color += teal * 0.45 * field(q, vec2(aspect * (0.40 + 0.08 * cos(t * 0.6 + 1.3)), 0.62 + 0.05 * sin(t * 0.8)), 0.42);
+    color += periwinkle * 0.26 * field(q, vec2(aspect * (0.22 + 0.06 * sin(t * 0.45 + 2.0)), 0.20 + 0.06 * sin(t * 0.55)), 0.36);
+    color += uBright * 0.10 * field(q, vec2(aspect * (0.92 + 0.04 * cos(t * 0.9)), 0.05), 0.30);
+    // The ice itself: a still mottling, as of frost on the far side of the pane.
+    color *= 0.90 + 0.20 * fbm(p * 2.6 + 1.7);
+    // Two streaks of light refracted through the pane's edge: soft bands, cyan on one side and
+    // periwinkle on the other, barely moving.
+    float diagonal = uv.x * aspect * 0.55 + uv.y;
+    for (int streak = 0; streak < 2; streak++) {
+        float s = float(streak);
+        float center = 0.78 + 0.62 * s + 0.05 * sin(t * (0.4 + 0.15 * s) + s * 2.4);
+        float width = 0.10 - 0.035 * s;
+        float d = (diagonal - center) / width;
+        float along = smoothstep(-0.05, 0.4, uv.y) * smoothstep(1.1, 0.45, uv.y);
+        float band = exp(-d * d) * along;
+        float cold = exp(-(d + 0.9) * (d + 0.9) * 2.5) * along;
+        float warm = exp(-(d - 0.9) * (d - 0.9) * 2.5) * along;
+        float core = exp(-d * d * 9.0) * along;
+        color += vec3(0.78, 0.92, 1.0) * (band * (0.06 - 0.02 * s) + core * (0.05 - 0.015 * s));
+        color += vec3(0.30, 0.85, 1.0) * cold * 0.035 + periwinkle * warm * 0.03;
+    }
+    return color;
+}
+
 void main() {
     vec2 position = FlutterFragCoord().xy;
     float aspect = uSize.x / max(uSize.y, 1.0);
     vec2 uv = position / uSize;
     float time = uTime;
+    if (uTheme > 2.5) {
+        vec3 ice = glass(uv, aspect, time);
+        vec2 middle = (uv - vec2(0.5, 0.45)) * vec2(aspect, 1.0);
+        ice *= 1.0 - 0.5 * smoothstep(0.3, 1.2, length(middle));
+        ice = ice / (1.0 + ice * 0.5);
+        // Frost: a grain that stays put (per pixel, not per frame), so it reads as the texture
+        // of the ice rather than noise.
+        ice += (hash(floor(position) * 0.731 + 5.17) - 0.5) / 255.0 * 5.0;
+        fragColor = vec4(ice, 1.0);
+        return;
+    }
     vec3 color = uTheme > 1.5 ? sunset(uv, aspect, time) : (uTheme > 0.5 ? aurora(uv, aspect, time) : cosmic(uv, aspect, time));
     vec2 centered = (uv - 0.5) * vec2(aspect, 1.0);
     color *= 1.0 - 0.45 * smoothstep(0.35, 1.25, length(centered));

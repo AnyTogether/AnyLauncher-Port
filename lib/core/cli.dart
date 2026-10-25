@@ -24,7 +24,9 @@ const usage = '''usage: anyps5_tool <command>
                                            release unless a version is given) into the launcher's
                                            toolkits folder, or <dir>; prints the toolkit's folder
   install <game folder> <games folder>     unwrap, relink and lay out (ANYPS5_TOOLKIT names the toolkit)
-  play <game folder> <games folder>        start an installed game with its saved settings
+  play <game folder> <games folder> [--trace]
+                                           start an installed game with its saved settings;
+                                           --trace turns on the engine's detailed logging
   remote [--allow-all] [--hidden] [--port <port>] [--devices <file>] [--games <folder>]
                                            the phone server until stopped''';
 
@@ -101,7 +103,8 @@ Future<int> runCli(
       } on Object catch (error) {
         return fail('FAIL: $error');
       }
-    case 'play' when arguments.length == 3:
+    case 'play' when arguments.length == 3 || (arguments.length == 4 && arguments[3] == '--trace'):
+      final trace = arguments.length == 4;
       final game = GameLibrary.inspect(arguments[1]);
       if (game == null) return fail('not a game folder: ${arguments[1]}');
       final installed = Installer.installedFolder(game, arguments[2]);
@@ -118,10 +121,15 @@ Future<int> runCli(
           inputFile: inputFile,
           screenshots: paths.pictures,
           shaderCacheFolder: paths.shaderCache(game.slug),
+          trace: trace,
         ),
         logFile: paths.logFile(game.titleId),
+        traced: trace || settings.trace == true,
       );
-      output.writeln('started ${game.titleId} (pid ${running.pid}), log ${paths.logFile(game.titleId)}');
+      output.writeln(
+        'started ${game.titleId} (pid ${running.pid})${trace || settings.trace == true ? ' with detailed logging' : ''}, '
+        'log ${paths.logFile(game.titleId)}',
+      );
       final code = await running.exitCode;
       output.writeln('exit $code');
       return code;

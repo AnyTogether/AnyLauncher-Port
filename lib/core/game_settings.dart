@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'controls.dart';
+import 'game_log.dart';
 
 /// Where the performance overlay sits.
 enum OverlayCorner {
@@ -38,6 +39,7 @@ class GameSettings {
     this.tuning,
     this.shaderCache,
     this.phoneLayout,
+    this.trace,
   });
 
   factory GameSettings.fromJson(Map<String, dynamic> json) {
@@ -69,6 +71,7 @@ class GameSettings {
       tuning: tuning is Map<String, dynamic> ? InputTuning.fromJson(tuning) : null,
       shaderCache: json['shaderCache'] as bool?,
       phoneLayout: json['phoneLayout'] as String?,
+      trace: json['trace'] as bool?,
     );
   }
 
@@ -104,6 +107,9 @@ class GameSettings {
   /// The phone's pad layout for this game, as the phone sent it (its JSON); null for the default.
   final String? phoneLayout;
 
+  /// Detailed logging ([TraceMode]) on every start; null is off.
+  final bool? trace;
+
   Map<String, Object?> toJson() => {
     'fullscreen': fullscreen,
     'windowSize': windowSize,
@@ -117,6 +123,7 @@ class GameSettings {
     if (tuning != null) 'tuning': tuning!.toJson(),
     if (shaderCache != null) 'shaderCache': shaderCache,
     if (phoneLayout != null) 'phoneLayout': phoneLayout,
+    if (trace != null) 'trace': trace,
   };
 
   static const _keep = Object();
@@ -135,6 +142,7 @@ class GameSettings {
     Object? tuning = _keep,
     Object? shaderCache = _keep,
     Object? phoneLayout = _keep,
+    Object? trace = _keep,
   }) => GameSettings(
     resolution: identical(resolution, _keep) ? this.resolution : resolution as String?,
     fullscreen: fullscreen ?? this.fullscreen,
@@ -148,17 +156,20 @@ class GameSettings {
     tuning: identical(tuning, _keep) ? this.tuning : tuning as InputTuning?,
     shaderCache: identical(shaderCache, _keep) ? this.shaderCache : shaderCache as bool?,
     phoneLayout: identical(phoneLayout, _keep) ? this.phoneLayout : phoneLayout as String?,
+    trace: identical(trace, _keep) ? this.trace : trace as bool?,
   );
 
   /// The environment a game starts with. [inputFile] is the anyps5-input.ini written for it,
   /// [screenshots] and [fonts] the launcher's folders for F12 screenshots and system fonts,
-  /// [shaderCacheFolder] where its shader and pipeline caches go.
+  /// [shaderCacheFolder] where its shader and pipeline caches go; [trace] turns detailed logging
+  /// on for this start even when the setting is off.
   Map<String, String> environment({
     required int launcherLanguage,
     String? inputFile,
     String? screenshots,
     String? fonts,
     String? shaderCacheFolder,
+    bool trace = false,
   }) {
     final environment = <String, String>{
       'ANYPS5_FULLSCREEN': fullscreen ? '1' : '0',
@@ -181,6 +192,7 @@ class GameSettings {
       environment['ANYPS5_SHADER_CACHE_DIR'] = shaderCacheFolder;
     }
     if (frameGeneration == true) environment['ANYPS5_FRAME_GEN'] = '1';
+    if (trace || this.trace == true) environment.addAll(TraceMode.environment);
     return environment;
   }
 

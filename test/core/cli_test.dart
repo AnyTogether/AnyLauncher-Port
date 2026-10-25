@@ -71,6 +71,14 @@ void main() {
     final log = File(p.join(temp.path, 'home', '.local', 'state', 'AnyPS5', 'logs', 'PPSA07007.log'))
         .readAsStringSync();
     expect(log, contains('relinked game'));
+    expect(log, isNot(contains(' trace\n')));
+    // --trace: this start with detailed logging, as its start line says.
+    final traced = await run(['play', game, root, '--trace'], environment: environment);
+    expect(traced.$1, 0, reason: traced.$3);
+    expect(traced.$2, contains('detailed logging'));
+    final again = File(p.join(temp.path, 'home', '.local', 'state', 'AnyPS5', 'logs', 'PPSA07007.log'))
+        .readAsStringSync();
+    expect(RegExp(r'^--- \S+ \S+ trace$', multiLine: true).hasMatch(again), isTrue);
   });
 
   test('remote: a phone is let in with --allow-all and sees the games', () async {

@@ -5,6 +5,13 @@ release when it is made.
 
 ## Next release
 
+- **Glass, a new theme.** Frosted ice over a slow, cold background: the selected game's
+  picture shows blurred and cooled behind the screen, every card, button and panel is a pane of
+  frosted glass with a rim of light, and the focused one turns into a bright ice chip with a
+  glint that runs across it (not with reduced animations). It comes with a new **Ice** accent.
+  Pick it in **Settings → Appearance → Theme** or on the first start; **Reduce Transparency**
+  there draws the panes solid, and a graphics card too slow for the blur gets solid panes by
+  itself.
 - **No more full copies across drives.** A game whose dump is on another drive than the games
   folder now links to the dump's files with symbolic links instead of copying tens of GB (on
   Windows this needs Developer Mode, or the launcher run as administrator). Where no link can be

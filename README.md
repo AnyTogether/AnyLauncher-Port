@@ -174,6 +174,17 @@ joins and starts it. The session, with the players' own properties, is written f
 online bridge at `Together/game-session.json` in the config folder (`ANYPS5_TOGETHER_SESSION`
 points at it), which does the playing together.
 
+The trophy level (from all trophy points, bronze to platinum in its hexagon) is beside the
+user's name on the home screen, in the friends panel and on their profile with the way to the
+next level; each friend's row shows theirs when they let the user see their trophies. A level
+reached comes as a toast with the trophy sound (the gateway's `level.up`). A friend's profile
+shows their showcase (pinned trophies and favourite games) and **Compare trophies** (also in
+their options): the games either has trophies in, both-play first, then one game's trophies
+side by side with when each earned them. **Show me as → Appear offline** (Settings →
+AnyTogether) hides the user from everyone else (`PATCH /me/presence`, followed on the user's
+other devices through `presence.mode`); the socket, messages, parties and cloud saves go on as
+ever.
+
 The session (an access token and a refresh token) is kept per system:
 
 - **Windows**: `%APPDATA%\AnyPS5\Together\session.bin`, sealed with DPAPI

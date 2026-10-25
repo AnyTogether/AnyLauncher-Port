@@ -3,6 +3,24 @@
 Notes for the next GitHub release, written as changes land; the section is copied into the
 release when it is made.
 
+## 0.1.5
+
+### Trophy levels, showcases and comparing trophies
+
+Your trophy level (all your trophy points, bronze up to platinum, in a hexagon that grows a
+frame every 100 levels) is beside your name on the home screen and in the friends panel, and on
+your profile with how far the next level is. Friends' rows show their levels. Reaching a level
+says so with the trophy sound. A friend's profile shows their showcase, their pinned trophies
+and favourite games, and **Compare trophies**: the games either of you has trophies in, the
+ones you both play first, then a game's trophies side by side, who earned what and when. A
+friend who keeps their trophies private is said so.
+
+### Appear offline
+
+**Settings → AnyTogether → Show me as** has **Online** and **Appear offline**: friends see you
+as offline, while messages, parties and cloud saves keep working. Your other devices follow the
+choice, and your name says "Appearing offline" while it is on.
+
 ## 0.1.4
 
 ### Crash reports and detailed logging

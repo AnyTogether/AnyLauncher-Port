@@ -8,6 +8,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import 'host.dart';
+import 'release_signing.dart';
 import 'toolkit.dart';
 
 /// Why getting the AnyPS5 engine from upstream did not work.
@@ -23,6 +24,13 @@ enum ToolkitFailureKind {
 
   /// A downloaded file is not the one GitHub described (size or checksum).
   checksum,
+
+  /// A release that must be signed is not, or its signature is not good: it is refused.
+  signature,
+
+  /// A release of a signing source published before signing began; it is only used when the
+  /// user says so.
+  unsigned,
 
   /// The archive names a file outside its own folder, or a link that leads out of it.
   unsafeArchive,
@@ -67,14 +75,21 @@ class ReleaseAsset {
   final String? sha256;
 }
 
-/// A release of upstream AnyPS5 (boykopovar/AnyPS5).
+/// A release on GitHub: upstream AnyPS5's (boykopovar/AnyPS5), or one of ours, which are signed.
 class UpstreamRelease {
-  const UpstreamRelease({required this.tag, required this.assets, this.published, this.prerelease = false});
+  const UpstreamRelease({
+    required this.tag,
+    required this.assets,
+    this.published,
+    this.prerelease = false,
+    this.signingKeys,
+  });
 
-  factory UpstreamRelease.fromJson(Map<String, dynamic> json) => UpstreamRelease(
+  factory UpstreamRelease.fromJson(Map<String, dynamic> json, {List<ReleaseKey>? signingKeys}) => UpstreamRelease(
     tag: json['tag_name'] as String,
     published: DateTime.tryParse(json['published_at'] as String? ?? ''),
     prerelease: json['prerelease'] as bool? ?? false,
+    signingKeys: signingKeys,
     assets: [
       for (final asset in json['assets'] as List<dynamic>? ?? const [])
         if (asset is Map<String, dynamic>) ReleaseAsset.fromJson(asset),
@@ -86,8 +101,27 @@ class UpstreamRelease {
   final bool prerelease;
   final List<ReleaseAsset> assets;
 
+  /// The keys a release of a signing source (AnyPS5-ARM, AnyPS5 Desktop) must be signed with;
+  /// null for upstream, which does not sign its releases (GitHub's checksums check those).
+  final List<ReleaseKey>? signingKeys;
+
   /// The tag without its v: 0.1.3.
   String get version => tag.startsWith('v') ? tag.substring(1) : tag;
+
+  ReleaseAsset? named(String name) => assets.where((asset) => asset.name == name).firstOrNull;
+
+  /// SHA256SUMS and SHA256SUMS.sig, when the release has both.
+  (ReleaseAsset, ReleaseAsset)? get signatureFiles {
+    final sums = named(ReleaseSigning.sumsName);
+    final signature = named(ReleaseSigning.signatureName);
+    return sums == null || signature == null ? null : (sums, signature);
+  }
+
+  /// How far the release can be trusted; null for upstream's (GitHub's checksums only).
+  ReleaseTrust? get trust {
+    if (signingKeys == null) return null;
+    return ReleaseSigning.trust(version, signed: signatureFiles != null);
+  }
 
   /// The relinker and the system libraries for [system], null when the release has none.
   ///
@@ -95,7 +129,6 @@ class UpstreamRelease {
   /// and `prx-linux-v0.1.3.tar.gz`; the other archive format of the same libraries is the
   /// fallback.
   ToolkitPackage? packageFor(HostSystem system) {
-    ReleaseAsset? named(String name) => assets.where((asset) => asset.name == name).firstOrNull;
     final windows = system == HostSystem.windows;
     final relinker = named(windows ? 'relinker-v$version.exe' : 'relinker-v$version');
     final prefix = 'prx-${windows ? 'windows' : 'linux'}-v$version';
@@ -121,6 +154,9 @@ class ToolkitPackage {
 
   /// Whether GitHub gave a checksum for both files.
   bool get verified => relinker.sha256 != null && libraries.sha256 != null;
+
+  /// How far the release can be trusted; null for upstream's (GitHub's checksums only).
+  ReleaseTrust? get trust => release.trust;
 
   /// The version.txt a toolkit made from this package has: upstream-v0.1.3.
   String get toolkitVersion => ToolkitStore.versionText(version);
@@ -167,9 +203,10 @@ class DownloadCancel {
   }
 }
 
-/// Reads upstream's releases from GitHub's API.
+/// Reads a repository's releases from GitHub's API: upstream's by default. [signingKeys] makes
+/// it a signing source (one of ours), whose releases must be signed with those keys.
 class GitHubReleases {
-  GitHubReleases({Uri? api, this.repository = defaultRepository, HttpClient Function()? client})
+  GitHubReleases({Uri? api, this.repository = defaultRepository, this.signingKeys, HttpClient Function()? client})
     : api = api ?? Uri.parse('https://api.github.com'),
       _client = client ?? HttpClient.new;
 
@@ -177,13 +214,14 @@ class GitHubReleases {
 
   final Uri api;
   final String repository;
+  final List<ReleaseKey>? signingKeys;
   final HttpClient Function() _client;
 
   /// The release GitHub calls the latest.
   Future<UpstreamRelease> latest() async {
     final json = await _get('repos/$repository/releases/latest');
     if (json is! Map<String, dynamic>) throw ToolkitFailure(ToolkitFailureKind.network, 'GitHub sent no release');
-    return UpstreamRelease.fromJson(json);
+    return UpstreamRelease.fromJson(json, signingKeys: signingKeys);
   }
 
   /// Every recent release, newest first, without drafts.
@@ -192,7 +230,8 @@ class GitHubReleases {
     if (json is! List<dynamic>) throw ToolkitFailure(ToolkitFailureKind.network, 'GitHub sent no releases');
     final releases = [
       for (final entry in json)
-        if (entry is Map<String, dynamic> && entry['draft'] != true) UpstreamRelease.fromJson(entry),
+        if (entry is Map<String, dynamic> && entry['draft'] != true)
+          UpstreamRelease.fromJson(entry, signingKeys: signingKeys),
     ]..sort((a, b) => compareVersions(b.version, a.version));
     return releases;
   }
@@ -359,6 +398,54 @@ abstract final class AssetDownload {
   }
 }
 
+/// The signed sums of a release of a signing source: SHA256SUMS and SHA256SUMS.sig are
+/// downloaded into [folder] and the signature checked with the release's keys.
+abstract final class SignedRelease {
+  static Future<SignedSums> sums(
+    UpstreamRelease release,
+    String folder, {
+    DownloadCancel? cancel,
+    HttpClient Function()? client,
+  }) async {
+    final keys = release.signingKeys;
+    final files = release.signatureFiles;
+    if (keys == null || files == null) {
+      throw ToolkitFailure(ToolkitFailureKind.signature, '${release.tag} is not signed');
+    }
+    final (sumsAsset, signatureAsset) = files;
+    final paths = <String>[];
+    for (final asset in [sumsAsset, signatureAsset]) {
+      if (asset.size > ReleaseSigning.largestFile) {
+        throw ToolkitFailure(ToolkitFailureKind.signature, '${asset.name} of ${release.tag} is too large');
+      }
+      final path = p.join(folder, '${release.tag}.${asset.name}');
+      await AssetDownload.fetch(
+        asset.url,
+        path,
+        size: asset.size,
+        sha256: asset.sha256,
+        cancel: cancel,
+        client: client,
+      );
+      paths.add(path);
+    }
+    try {
+      return ReleaseSigning.verify(File(paths[0]).readAsBytesSync(), File(paths[1]).readAsBytesSync(), keys: keys);
+    } on SigningFailure catch (failure) {
+      throw ToolkitFailure(ToolkitFailureKind.signature, '${release.tag}: ${failure.message}');
+    } finally {
+      for (final path in paths) {
+        if (File(path).existsSync()) File(path).deleteSync();
+      }
+    }
+  }
+
+  /// The sha256 the signed [sums] give [asset]; fails when they do not list it.
+  static String digestOf(SignedSums sums, ReleaseAsset asset) =>
+      sums.digestFor(asset.name) ??
+      (throw ToolkitFailure(ToolkitFailureKind.signature, 'the signed release does not list ${asset.name}'));
+}
+
 /// Unpacks a zip or a .tar.gz into a folder without letting it write anywhere else: names that
 /// are absolute, carry a drive or climb out with .. stop the unpacking, and so does a link whose
 /// target leads out of the folder. Links that stay inside are made last (on POSIX; Windows
@@ -515,21 +602,42 @@ class ToolkitStore {
     return toolkit.problem == null ? toolkit : null;
   }
 
-  /// Downloads [package], checks it and lays it out as a toolkit; returns it. Without
-  /// [allowUnverified], a package GitHub gave no checksum for is refused before any download.
+  /// Downloads [package], checks it and lays it out as a toolkit; returns it.
+  ///
+  /// A release of a signing source is checked against its signed SHA256SUMS; one published after
+  /// signing began without a signature is refused, an older unsigned one needs [allowUnsigned].
+  /// Upstream's releases are checked with GitHub's checksums: without [allowUnverified], a package
+  /// GitHub gave no checksum for is refused. All of this happens before any download.
   Future<Toolkit> install(
     ToolkitPackage package, {
     bool allowUnverified = false,
+    bool allowUnsigned = false,
     void Function(ToolkitProgress)? onProgress,
     DownloadCancel? cancel,
     HttpClient Function()? client,
   }) async {
-    if (!package.verified && !allowUnverified) {
-      throw ToolkitFailure(ToolkitFailureKind.unverified, 'GitHub gave no checksum for AnyPS5 ${package.version}');
-    }
     final version = package.version;
     if (!_plainName(version)) {
       throw ToolkitFailure(ToolkitFailureKind.unsafeArchive, 'unusable version name $version');
+    }
+    var relinkerSha256 = package.relinker.sha256;
+    var librariesSha256 = package.libraries.sha256;
+    switch (package.trust) {
+      case ReleaseTrust.signed:
+        final sums = await SignedRelease.sums(package.release, _downloads, cancel: cancel, client: client);
+        relinkerSha256 = SignedRelease.digestOf(sums, package.relinker);
+        librariesSha256 = SignedRelease.digestOf(sums, package.libraries);
+      case ReleaseTrust.unsignedRefused:
+        throw ToolkitFailure(
+          ToolkitFailureKind.signature,
+          'AnyPS5 $version is not signed, though it came out after releases began to be signed',
+        );
+      case ReleaseTrust.unsignedOlder when !allowUnsigned:
+        throw ToolkitFailure(ToolkitFailureKind.unsigned, 'AnyPS5 $version is unsigned (an older release)');
+      case ReleaseTrust.unsignedOlder || null:
+        if (!package.verified && !allowUnverified) {
+          throw ToolkitFailure(ToolkitFailureKind.unverified, 'GitHub gave no checksum for AnyPS5 $version');
+        }
     }
     final total = package.size;
     final relinkerFile = p.join(_downloads, package.relinker.name);
@@ -538,7 +646,7 @@ class ToolkitStore {
       package.relinker.url,
       relinkerFile,
       size: package.relinker.size,
-      sha256: package.relinker.sha256,
+      sha256: relinkerSha256,
       cancel: cancel,
       client: client,
       onProgress: (received) => onProgress?.call(ToolkitProgress(ToolkitPhase.download, received, total)),
@@ -547,7 +655,7 @@ class ToolkitStore {
       package.libraries.url,
       librariesFile,
       size: package.libraries.size,
-      sha256: package.libraries.sha256,
+      sha256: librariesSha256,
       cancel: cancel,
       client: client,
       onProgress: (received) =>

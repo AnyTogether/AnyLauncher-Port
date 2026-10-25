@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:anyps5_desktop/core/host.dart';
+import 'package:anyps5_desktop/core/release_signing.dart';
 import 'package:anyps5_desktop/core/toolkit.dart';
 import 'package:anyps5_desktop/core/toolkit_download.dart';
 import 'package:path/path.dart' as p;
@@ -9,6 +10,7 @@ import 'package:test/test.dart';
 
 import '../support/fake_github.dart';
 import '../support/fixtures.dart';
+import '../support/signing.dart';
 
 void main() {
   late FakeGitHub github;
@@ -259,6 +261,60 @@ void main() {
       expect(error.kind, ToolkitFailureKind.badLayout);
       expect(store(HostSystem.linux).installed(), isEmpty);
       expect(Directory(store(HostSystem.linux).folderFor('0.1.3')).existsSync(), isFalse);
+    });
+  });
+
+  group('signed source', () {
+    final key = TestReleaseKey('release');
+    late FakeGitHub ours;
+    late GitHubReleases signedReleases;
+
+    setUp(() async {
+      ours = await FakeGitHub.start(repository: 'utkuhalis/AnyPS5-ARM');
+      signedReleases = GitHubReleases(api: ours.api, repository: 'utkuhalis/AnyPS5-ARM', signingKeys: [key.key]);
+    });
+    tearDown(() => ours.close());
+
+    test('a signed release is checked against its signed sums and installed', () async {
+      ours.releases.add(signed(upstreamRelease('0.2.17'), [key]));
+      final package = (await signedReleases.latest()).packageFor(HostSystem.linux)!;
+      expect(package.trust, ReleaseTrust.signed);
+      final kit = await store(HostSystem.linux).install(package);
+      expect(kit.problem, isNull);
+    });
+
+    test('a file that does not match the signed sums is refused, even when GitHub agrees with it', () async {
+      final release = signed(upstreamRelease('0.2.17'), [key]);
+      release.files['prx-linux-v0.2.17.tar.gz'] = tarGzOf({'libs/libkernel.prx': filler('evil')});
+      ours.releases.add(release);
+      final package = (await signedReleases.latest()).packageFor(HostSystem.linux)!;
+      expect((await failure(store(HostSystem.linux).install(package))).kind, ToolkitFailureKind.checksum);
+    });
+
+    test('a signature by another key is refused before the files are downloaded', () async {
+      ours.releases.add(signed(upstreamRelease('0.2.17'), [TestReleaseKey('stranger')]));
+      final package = (await signedReleases.latest()).packageFor(HostSystem.linux)!;
+      final refused = await failure(store(HostSystem.linux).install(package));
+      expect(refused.kind, ToolkitFailureKind.signature);
+      expect(ours.downloads.where((path) => !path.contains('SHA256SUMS')), isEmpty);
+    });
+
+    test('an unsigned release after signing began is refused; an older one only when the user agrees', () async {
+      ours.releases.addAll([upstreamRelease('0.2.17'), upstreamRelease('0.2.15')]);
+      final all = await signedReleases.all();
+      final newer = all.firstWhere((release) => release.version == '0.2.17').packageFor(HostSystem.linux)!;
+      expect(newer.trust, ReleaseTrust.unsignedRefused);
+      expect((await failure(store(HostSystem.linux).install(newer))).kind, ToolkitFailureKind.signature);
+      final older = all.firstWhere((release) => release.version == '0.2.15').packageFor(HostSystem.linux)!;
+      expect(older.trust, ReleaseTrust.unsignedOlder);
+      expect((await failure(store(HostSystem.linux).install(older))).kind, ToolkitFailureKind.unsigned);
+      expect(ours.downloads, isEmpty);
+      expect((await store(HostSystem.linux).install(older, allowUnsigned: true)).problem, isNull);
+    });
+
+    test('upstream releases are not signed and stay on GitHub checksums', () async {
+      github.releases.add(upstreamRelease('0.1.3'));
+      expect((await releases.latest()).packageFor(HostSystem.linux)!.trust, isNull);
     });
   });
 

@@ -3,6 +3,16 @@
 Notes for the next GitHub release, written as changes land; the section is copied into the
 release when it is made.
 
+## Next release
+
+- **No more full copies across drives.** A game whose dump is on another drive than the games
+  folder now links to the dump's files with symbolic links instead of copying tens of GB (on
+  Windows this needs Developer Mode, or the launcher run as administrator). Where no link can be
+  made, the launcher says before unlocking how many GB would be copied and why, with the two
+  fixes: a games folder on the dump's drive, or Developer Mode (**Settings → System → For
+  developers**, one button away), or **Copy Anyway**. A linked game whose dump moved says so
+  instead of crashing.
+
 ## 0.1.5
 
 ### Trophy levels, showcases and comparing trophies

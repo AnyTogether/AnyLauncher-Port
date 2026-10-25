@@ -23,7 +23,8 @@ works as a controller (the protocol in section 12.4 of the
     icon0/pic0/snd0, executable kind)
   - `self_unwrap.dart` SELF/fSELF to ELF, byte-identical to upstream `tools/unwrap_self.py`
   - `installer.dart`, `toolkit.dart`, `file_links.dart`, `host.dart` unwrap, relink, lay out
-    (hard links through FFI: `link(2)` / `CreateHardLinkW`), carry saves over, start
+    (links through FFI: `link(2)` / `CreateHardLinkW` / `CreateSymbolicLinkW`), carry saves
+    over, start
   - `toolkit_download.dart` the AnyPS5 engine from upstream's GitHub releases: resumable,
     checksum-checked downloads, safe unpacking, one toolkit folder per version
   - `game_settings.dart`, `controls.dart` per-game choices, the game environment and
@@ -201,8 +202,9 @@ The session (an access token and a refresh token) is kept per system:
 ## Installed games
 
 `<games folder>/.AnyPS5/Games/<TITLE>-<hash>/` holds `app.elf`/`app.exe`, `libs/`, `app0/`
-(the dump's files as hard links where the volume allows, symbolic links on Linux otherwise,
-copies on Windows otherwise, with the relinked modules copied over), `anyps5-install.json` and
+(the dump's files as hard links where the volume allows, symbolic links otherwise, on Windows
+with Developer Mode on or the launcher elevated; copies only where neither works, which the
+launcher says before unlocking, with the relinked modules copied over), `anyps5-install.json` and
 `launch.sh`/`launch.cmd`. The game runs there, so its saves (`_sd`), trophies (`_trophy`) and
 data stay with it and move into a new install.
 

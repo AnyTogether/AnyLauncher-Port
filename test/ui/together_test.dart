@@ -445,13 +445,15 @@ void main() {
     test('a party: start it, invite from a friend\'s options, join its voice, choose the talk key', () async {
       final together = model.together;
       model.open(Layer.party);
-      expect(rowIds(), ['party-start', 'party-open']);
+      expect(rowIds(), ['party-start', 'party-open', 'party-code-enter', 'party-code-look']);
       await together.startParty();
       expect(rowIds(), [
         'voice-join',
         'party-members',
         'party-member-u-me',
         'party-privacy',
+        'party-code-new',
+        'party-discord',
         'party-invite-title',
         'party-invite-u-ana',
         'party-invite-u-bora',
@@ -493,6 +495,222 @@ void main() {
       await together.leaveParty();
       expect(together.hub.voice.active, isFalse);
       expect(together.hub.parties.party, isNull);
+    });
+
+    PanelRow row(String id) => model.panelCategories()[model.panelCategory].rows.firstWhere((row) => row.id == id);
+
+    void run(String id) => (row(id).kind as ActionRow).run();
+
+    /// The party as the server would send it in party.updated, with [changes].
+    Map<String, dynamic> partyView(Map<String, dynamic> changes) => {...server.party!, ...changes};
+
+    test('a join code: make it, copy the code and the link, a new one, stop it', () async {
+      final together = model.together;
+      model.open(Layer.party);
+      await together.startParty();
+      final id = together.hub.parties.party!.id;
+      expect(rowIds(), isNot(contains('party-code')));
+      expect(row('party-code-new').title, 'Make a join code');
+
+      run('party-code-new');
+      await until(() => together.hub.parties.party!.joinCode != null);
+      expect(server.callsTo('parties/$id/code', method: 'POST'), hasLength(1));
+      expect(row('party-code').title, 'K7QM-3XPA');
+      expect(rowIds().where((id) => id.startsWith('party-code')), [
+        'party-code',
+        'party-code-copy',
+        'party-code-link',
+        'party-code-new',
+        'party-code-stop',
+      ]);
+      expect(row('party-code-new').title, 'New code');
+
+      run('party-code-copy');
+      expect(fixture.copied.last, 'K7QM-3XPA');
+      expect(model.toast, 'Code copied');
+      run('party-code-link');
+      expect(fixture.copied.last, 'https://anytogether.kodla.agency/join/K7QM3XPA');
+      expect(model.toast, 'Link copied');
+
+      run('party-code-new');
+      await until(() => together.hub.parties.party!.joinCode?.code == 'H8NZ4WRB');
+      expect(row('party-code').title, 'H8NZ-4WRB');
+
+      run('party-code-stop');
+      await until(() => server.callsTo('parties/$id/code', method: 'DELETE').isNotEmpty);
+      expect(together.hub.parties.party!.joinCode, isNull);
+      expect(rowIds(), isNot(contains('party-code')));
+      expect(rowIds(), contains('party-code-new'));
+
+      T.language = Language.turkish;
+      expect(row('party-code-new').title, 'Katılma kodu oluştur');
+    });
+
+    test('join requests: the leader is told, lets them in or turns them down; members see none', () async {
+      final together = model.together;
+      model.open(Layer.party);
+      await together.startParty();
+      final id = together.hub.parties.party!.id;
+
+      server.push('party.request', {'partyId': id, 'from': FakeTogether.card('u-cem', 'cem', 'Cem'), 'via': 'code'});
+      await until(() => together.hub.parties.party!.requests.length == 1);
+      expect(model.toast, 'Cem asks to join with your code');
+      server.push('party.request', {
+        'partyId': id,
+        'from': FakeTogether.card('u-deniz', 'deniz', 'Deniz'),
+        'via': 'list',
+      });
+      await until(() => together.hub.parties.party!.requests.length == 2);
+      expect(model.toast, 'Deniz asks to join the party');
+      expect(together.partyBadge, 2);
+      expect(rowIds().take(4), [
+        'party-request-u-cem',
+        'party-request-decline-u-cem',
+        'party-request-u-deniz',
+        'party-request-decline-u-deniz',
+      ]);
+      expect(row('party-request-u-cem').title, 'Let Cem in');
+      expect(row('party-request-u-cem').detail, '@cem · asked with your code');
+      expect(row('party-request-u-deniz').detail, '@deniz · asks to join');
+      expect(row('party-request-decline-u-deniz').title, 'Turn down Deniz');
+
+      run('party-request-u-cem');
+      await until(() => server.callsTo('parties/$id/requests/u-cem/accept', method: 'POST').isNotEmpty);
+      expect(model.toast, 'Cem is invited');
+      run('party-request-decline-u-deniz');
+      await until(() => server.callsTo('parties/$id/requests/u-deniz/decline', method: 'POST').isNotEmpty);
+      expect(together.hub.parties.party!.requests, isEmpty);
+      expect(rowIds().where((id) => id.startsWith('party-request')), isEmpty);
+      expect(together.partyBadge, 0);
+
+      // The party view carries the requests too.
+      server.push(
+        'party.updated',
+        partyView({
+          'requests': [FakeTogether.card('u-emre', 'emre', 'Emre')],
+        }),
+      );
+      await until(() => rowIds().contains('party-request-u-emre'));
+      expect(row('party-request-u-emre').detail, '@emre · asks to join');
+
+      // A member who does not lead sees no requests and no code.
+      server.push(
+        'party.updated',
+        partyView({
+          'leaderId': 'u-ana',
+          'requests': [FakeTogether.card('u-emre', 'emre', 'Emre')],
+          'joinCode': {'code': 'K7QM3XPA', 'url': 'https://anytogether.kodla.agency/join/K7QM3XPA'},
+        }),
+      );
+      await until(() => together.hub.parties.party!.leaderId == 'u-ana');
+      expect(rowIds().where((id) => id.startsWith('party-request') || id.startsWith('party-code')), isEmpty);
+      expect(together.partyBadge, 0);
+
+      // Asking with a code and being turned down.
+      server.push('party.request_answered', {'partyId': 'p-other', 'answer': 'declined'});
+      await until(() => model.toast == 'Your request to join was turned down');
+    });
+
+    test('the Discord link: the leader sets it, a wrong one is refused, everyone opens it', () async {
+      final together = model.together;
+      model.open(Layer.party);
+      await together.startParty();
+      final id = together.hub.parties.party!.id;
+      expect(rowIds(), isNot(contains('party-discord-open')));
+      final field = row('party-discord').kind as TextRow;
+      expect(field.hint, 'https://discord.gg/…');
+
+      field.set('https://example.com/x');
+      field.submit!();
+      await until(() => model.toast == 'Use a discord.gg or discord.com link');
+      expect(together.hub.parties.party!.discord, isNull);
+
+      (row('party-discord').kind as TextRow).set('https://discord.gg/abc');
+      (row('party-discord').kind as TextRow).submit!();
+      await until(() => together.hub.parties.party!.discord == 'https://discord.gg/abc');
+      expect(server.callsTo('parties/$id', method: 'PATCH').last.body, {'discord': 'https://discord.gg/abc'});
+      expect((row('party-discord').kind as TextRow).value, 'https://discord.gg/abc');
+      expect(row('party-discord-open').title, 'Open in Discord');
+
+      run('party-discord-open');
+      expect(fixture.opened.last, Uri.parse('https://discord.gg/abc'));
+
+      run('party-discord-clear');
+      await until(() => together.hub.parties.party!.discord == null);
+      expect(server.callsTo('parties/$id', method: 'PATCH').last.body, {'discord': null});
+      expect(rowIds(), isNot(contains('party-discord-open')));
+
+      // A member sees the link to open, not to change.
+      server.push('party.updated', partyView({'leaderId': 'u-ana', 'discord': 'https://discord.com/invite/xyz'}));
+      await until(() => together.hub.parties.party!.leaderId == 'u-ana');
+      expect(rowIds(), contains('party-discord-open'));
+      expect(rowIds(), isNot(contains('party-discord')));
+      expect(rowIds(), isNot(contains('party-discord-clear')));
+      run('party-discord-open');
+      expect(fixture.opened.last, Uri.parse('https://discord.com/invite/xyz'));
+    });
+
+    test('joining with a code: what it opens, then asking to join', () async {
+      final together = model.together;
+      server.joinPreviews['K7QM3XPA'] = {
+        'code': 'K7QM3XPA',
+        'kind': 'party',
+        'id': 'p-cem',
+        'host': {'userId': 'u-cem', 'handle': 'cem', 'displayName': 'Cem', 'avatar': null},
+        'game': {'titleId': 'PPSA01001', 'title': 'Orbit Runner', 'names': <String, String>{}, 'iconUrl': null},
+        'size': 3,
+        'max': 8,
+        'expiresAt': '2026-10-26T20:00:00Z',
+        'state': 'none',
+      };
+      model.open(Layer.party);
+
+      // Not a code at all: said so without asking.
+      (row('party-code-enter').kind as TextRow).set('hello');
+      run('party-code-look');
+      expect(model.toast, "That code doesn't work");
+      expect(server.callsTo('join/HELLO'), isEmpty);
+
+      // A code that works nowhere.
+      (row('party-code-enter').kind as TextRow).set('ABCD-EFGH');
+      run('party-code-look');
+      await until(() => server.callsTo('join/ABCDEFGH').isNotEmpty);
+      await until(() => model.toast == "That code doesn't work");
+
+      final field = row('party-code-enter').kind as TextRow;
+      expect(field.hint, 'XXXX-XXXX');
+      field.set('k7qm-3xpa');
+      field.submit!();
+      await until(() => together.codePreview != null);
+      expect(rowIds().take(3), ['party-code-preview', 'party-code-ask', 'party-code-cancel']);
+      expect(row('party-code-preview').title, "Cem's party");
+      expect(row('party-code-preview').detail, '3 of 8 in it · Orbit Runner');
+
+      run('party-code-ask');
+      await until(() => server.callsTo('join/K7QM3XPA', method: 'POST').isNotEmpty);
+      await until(() => model.toast == "Asked to join Cem's party");
+      expect(rowIds().take(3), ['party-code-preview', 'party-code-asked', 'party-code-cancel']);
+
+      run('party-code-cancel');
+      expect(together.codePreview, isNull);
+      expect(rowIds(), contains('party-code-enter'));
+
+      // A Share Play code opens elsewhere.
+      server.joinPreviews['H8NZ4WRB'] = {
+        'code': 'H8NZ4WRB',
+        'kind': 'share_play',
+        'id': 's-1',
+        'host': {'userId': 'u-cem', 'handle': 'cem', 'displayName': 'Cem', 'avatar': null},
+        'game': null,
+        'size': 1,
+        'max': 4,
+        'state': 'none',
+      };
+      (row('party-code-enter').kind as TextRow).set('https://anytogether.kodla.agency/join/H8NZ4WRB');
+      run('party-code-look');
+      await until(() => together.codePreview != null);
+      expect(rowIds(), isNot(contains('party-code-ask')));
+      expect(row('party-code-preview').detail, "That's a Share Play code; here you can join parties");
     });
 
     test('an invite shows, can be accepted; a full party says so', () async {

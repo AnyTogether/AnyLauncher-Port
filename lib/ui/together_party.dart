@@ -1,10 +1,15 @@
 part of 'together_model.dart';
 
 /// Parties on AnyTogether: start one (invite only, or open to friends), invite friends, see who is
-/// in it, accept an invite or walk into a friend's open party, leave; and its voice, with the
+/// in it, accept an invite or walk into a friend's open party, leave; a join code for people who
+/// are not friends to ask with, their requests, the party's Discord link; and its voice, with the
 /// microphone, push-to-talk and the talk key.
 extension TogetherParty on TogetherModel {
-  int get partyBadge => hub.parties.invites.where((invite) => invite.partyId != hub.parties.party?.id).length;
+  int get partyBadge {
+    final party = hub.parties.party;
+    final requests = party != null && party.leads(user?.id ?? '') ? party.requests.length : 0;
+    return hub.parties.invites.where((invite) => invite.partyId != party?.id).length + requests;
+  }
 
   List<PanelRow> partyRows() {
     final me = user;
@@ -35,6 +40,7 @@ extension TogetherParty on TogetherModel {
     ];
     if (party == null) {
       rows.addAll([
+        ...codePreviewRows(),
         PanelRow(
           id: 'party-start',
           title: T.text('partyStart'),
@@ -50,6 +56,23 @@ extension TogetherParty on TogetherModel {
             app.refresh();
           }),
         ),
+        if (codePreview == null) ...[
+          PanelRow(
+            id: 'party-code-enter',
+            title: T.text('partyCodeEnter'),
+            kind: TextRow(
+              joinCodeDraft,
+              (text) => joinCodeDraft = text,
+              submit: () => unawaited(lookUpCode()),
+              hint: 'XXXX-XXXX',
+            ),
+          ),
+          PanelRow(
+            id: 'party-code-look',
+            title: T.text('partyCodeLook'),
+            kind: ActionRow(() => unawaited(lookUpCode())),
+          ),
+        ],
         // Friends whose party is open to them.
         for (final friend in hub.friends.friends)
           if (friend.presence.party case final PresenceParty open when open.open && open.size < open.max)
@@ -66,6 +89,22 @@ extension TogetherParty on TogetherModel {
     final voice = hub.voice;
     final leader = party.leads(me.id);
     rows.addAll([
+      if (leader)
+        for (final person in party.requests) ...[
+          PanelRow(
+            id: 'party-request-${person.id}',
+            title: T.format('partyRequestLet', [person.displayName]),
+            detail:
+                '@${person.handle} · ${T.text(hub.parties.requestVia[person.id] == 'code' ? 'partyRequestWithCode' : 'partyRequestAsks')}',
+            person: TogetherModel.card(person),
+            kind: ActionRow(() => unawaited(answerRequest(person, accept: true))),
+          ),
+          PanelRow(
+            id: 'party-request-decline-${person.id}',
+            title: T.format('partyRequestTurnDown', [person.displayName]),
+            kind: ActionRow(() => unawaited(answerRequest(person, accept: false)), destructive: true),
+          ),
+        ],
       ...voiceRows(party),
       PanelRow(
         id: 'party-members',
@@ -104,6 +143,8 @@ extension TogetherParty on TogetherModel {
           detail: T.text('partyOpenDetail'),
           kind: ToggleRow(party.open, (value) => unawaited(setPartyOpen(value))),
         ),
+      if (leader) ...joinCodeRows(party),
+      ...discordRows(party, leader: leader),
     ]);
     final invitable = hub.friends.friends.where((friend) => !party.has(friend.person.id)).toList();
     final invited = {for (final person in party.invited) person.id};
@@ -138,6 +179,115 @@ extension TogetherParty on TogetherModel {
       ),
     );
     return rows;
+  }
+
+  /// The leader's join code: the code, copying it or its link, a new one, stopping it.
+  List<PanelRow> joinCodeRows(Party party) {
+    final code = party.joinCode;
+    if (code == null) {
+      return [
+        PanelRow(
+          id: 'party-code-new',
+          title: T.text('partyCodeMake'),
+          detail: T.text('partyCodeMakeDetail'),
+          kind: ActionRow(() => unawaited(newJoinCode())),
+        ),
+      ];
+    }
+    return [
+      PanelRow(id: 'party-code', title: code.shown, detail: T.text('partyCodeDetail'), kind: const InfoRow('')),
+      PanelRow(
+        id: 'party-code-copy',
+        title: T.text('partyCodeCopy'),
+        kind: ActionRow(() => copy(code.shown, 'partyCodeCopied')),
+      ),
+      PanelRow(
+        id: 'party-code-link',
+        title: T.text('partyCodeCopyLink'),
+        kind: ActionRow(() => copy(code.url.toString(), 'partyLinkCopied')),
+      ),
+      PanelRow(id: 'party-code-new', title: T.text('partyCodeNew'), kind: ActionRow(() => unawaited(newJoinCode()))),
+      PanelRow(
+        id: 'party-code-stop',
+        title: T.text('partyCodeStop'),
+        kind: ActionRow(() => unawaited(stopJoinCode()), destructive: true),
+      ),
+    ];
+  }
+
+  /// The party's Discord link: the leader types or removes it; everyone opens it.
+  List<PanelRow> discordRows(Party party, {required bool leader}) {
+    final link = party.discord;
+    return [
+      if (leader)
+        PanelRow(
+          id: 'party-discord',
+          title: T.text('partyDiscord'),
+          detail: T.text('partyDiscordDetail'),
+          kind: TextRow(
+            discordDraft ?? link ?? '',
+            (text) => discordDraft = text,
+            submit: () => unawaited(setDiscord(discordDraft ?? link ?? '')),
+            hint: 'https://discord.gg/…',
+          ),
+        ),
+      if (link != null)
+        PanelRow(
+          id: 'party-discord-open',
+          title: T.text('partyDiscordOpen'),
+          detail: link,
+          kind: ActionRow(() => openDiscord(link)),
+        ),
+      if (leader && link != null)
+        PanelRow(
+          id: 'party-discord-clear',
+          title: T.text('partyDiscordClear'),
+          kind: ActionRow(() => unawaited(setDiscord('')), destructive: true),
+        ),
+    ];
+  }
+
+  /// What the code looked up opens, and asking to join it.
+  List<PanelRow> codePreviewRows() {
+    final preview = codePreview;
+    if (preview == null) return const [];
+    final host = preview.host?.displayName ?? '?';
+    final game = preview.game;
+    final gameText = game == null
+        ? null
+        : app.games.any((known) => known.titleId == game.titleId)
+        ? gameName(game.titleId)
+        : game.name(T.language.code);
+    return [
+      PanelRow(
+        id: 'party-code-preview',
+        title: T.format('partyCodeOf', [host]),
+        detail: preview.party
+            ? [
+                T.format('partySize', [preview.size, preview.max]),
+                ?gameText,
+              ].join(' · ')
+            : T.text('partyCodeSharePlay'),
+        person: preview.host == null ? null : TogetherModel.card(preview.host!),
+        kind: const InfoRow(''),
+      ),
+      if (preview.party)
+        switch (preview.state) {
+          'requested' => PanelRow(
+            id: 'party-code-asked',
+            title: T.format('partyCodeWaiting', [host]),
+            kind: const InfoRow(''),
+          ),
+          'invited' => PanelRow(id: 'party-code-state', title: T.text('partyCodeInvited'), kind: const InfoRow('')),
+          'member' => PanelRow(id: 'party-code-state', title: T.text('partyCodeMember'), kind: const InfoRow('')),
+          _ => PanelRow(
+            id: 'party-code-ask',
+            title: T.text('partyCodeAsk'),
+            kind: ActionRow(() => unawaited(askWithCode())),
+          ),
+        },
+      PanelRow(id: 'party-code-cancel', title: T.text('cancel'), kind: ActionRow(closeCodePreview)),
+    ];
   }
 
   /// The party's voice: joining, the microphone, push-to-talk and its key, leaving.
@@ -213,6 +363,79 @@ extension TogetherParty on TogetherModel {
     await hub.parties.invite([person.id]);
     app.show(T.format('gameInvited', [person.displayName]));
   });
+
+  Future<void> newJoinCode() => _partyCall(() => hub.parties.newCode());
+
+  Future<void> stopJoinCode() => _partyCall(() => hub.parties.stopCode());
+
+  Future<void> answerRequest(Person person, {required bool accept}) => _partyCall(() async {
+    await hub.parties.answerRequest(person.id, accept: accept);
+    if (accept) app.show(T.format('gameInvited', [person.displayName]));
+  });
+
+  void copy(String text, String said) {
+    app.services.copyText?.call(text);
+    app.show(T.text(said));
+  }
+
+  void openDiscord(String link) {
+    final url = Uri.tryParse(link);
+    if (url != null) app.services.openUrl?.call(url);
+  }
+
+  /// The leader's Discord link; empty removes it. The server says which links are Discord's.
+  Future<void> setDiscord(String text) async {
+    final link = text.trim();
+    try {
+      await hub.parties.setDiscord(link.isEmpty ? null : link);
+      discordDraft = null;
+      app.show(T.text(link.isEmpty ? 'partyDiscordRemoved' : 'partyDiscordSaved'));
+    } on TogetherProblem catch (problem) {
+      app.show(problem.status == 400 ? T.text('partyDiscordWrong') : message(problem));
+    } on Object catch (error) {
+      app.show(message(error));
+    }
+  }
+
+  /// What the typed join code opens.
+  Future<void> lookUpCode() async {
+    final code = JoinCode.clean(joinCodeDraft);
+    if (code == null) return app.show(T.text('partyCodeWrong'));
+    try {
+      codePreview = await hub.parties.preview(code);
+      joinCodeDraft = '';
+      app.refresh();
+    } on TogetherProblem catch (problem) {
+      app.show(problem.status == 404 ? T.text('partyCodeWrong') : message(problem));
+    } on Object catch (error) {
+      app.show(message(error));
+    }
+  }
+
+  /// Asks the code's party leader to let this account in; their yes is an invite.
+  Future<void> askWithCode() async {
+    final preview = codePreview;
+    if (preview == null) return;
+    final host = preview.host?.displayName ?? '?';
+    try {
+      final state = await hub.parties.askToJoin(preview.code);
+      codePreview = preview.withState(state);
+      app.show(state == 'invited' ? T.text('partyCodeInvited') : T.format('partyCodeAsked', [host]));
+    } on TogetherProblem catch (problem) {
+      if (problem.status == 409) {
+        codePreview = preview.withState('member');
+        return app.show(T.text('partyCodeMember'));
+      }
+      app.show(problem.status == 404 ? T.text('partyCodeWrong') : message(problem));
+    } on Object catch (error) {
+      app.show(message(error));
+    }
+  }
+
+  void closeCodePreview() {
+    codePreview = null;
+    app.refresh();
+  }
 
   Future<void> leaveParty() => _partyCall(() async {
     await hub.voice.leave();

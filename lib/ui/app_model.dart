@@ -405,6 +405,7 @@ class LauncherServices {
     this.preferredPorts = true,
     this.cable = true,
     this.openUrl,
+    this.copyText,
     this.environment,
     this.togetherStore,
     this.togetherServer,
@@ -475,6 +476,9 @@ class LauncherServices {
 
   /// Opens a web page in the browser.
   final void Function(Uri url)? openUrl;
+
+  /// Puts a text on the clipboard.
+  final void Function(String text)? copyText;
 
   /// The environment the launcher reads (ANYTOGETHER_URL); the process's by default.
   final Map<String, String>? environment;

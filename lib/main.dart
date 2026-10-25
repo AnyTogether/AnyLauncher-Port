@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'ui/soloud_audio.dart';
 import 'core/desktop/linux_desktop.dart';
@@ -29,6 +30,7 @@ void main() {
             ? Process.run('rundll32', ['url.dll,FileProtocolHandler', url.toString()])
             : Process.run('xdg-open', [url.toString()]),
       ),
+      copyText: (text) => unawaited(Clipboard.setData(ClipboardData(text: text))),
       engineReleases: GitHubReleases(),
       launcherReleases: LauncherUpdates.source(),
       audio: SoloudAudio.new,

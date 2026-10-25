@@ -100,13 +100,16 @@ Uint8List backgroundArt(int tint) => png(160, 90, (x, y) {
 });
 
 class Fixture {
-  Fixture(this.temp, this.model, this.toolkit, this.opened);
+  Fixture(this.temp, this.model, this.toolkit, this.opened, this.copied);
   final Directory temp;
   final AppModel model;
   final String toolkit;
 
   /// Web pages the launcher opened in the browser.
   final List<Uri> opened;
+
+  /// Texts the launcher put on the clipboard.
+  final List<String> copied;
 
   void dispose() => temp.deleteSync(recursive: true);
 }
@@ -136,6 +139,7 @@ Fixture makeFixture({
   String? builtInFonts,
 }) {
   final opened = <Uri>[];
+  final copied = <String>[];
   final temp = temporaryFolder('ui');
   final root = p.join(temp.path, 'Games');
   final toolkit = makeFakeToolkit(p.join(temp.path, 'toolkit'));
@@ -175,6 +179,7 @@ Fixture makeFixture({
       preferredPorts: false,
       cable: false,
       openUrl: opened.add,
+      copyText: copied.add,
       environment: const {},
       togetherStore: togetherStore ?? MemoryTokenStore(),
       togetherServer: together,
@@ -207,7 +212,7 @@ Fixture makeFixture({
   writeTrophies(orbit.folder, installed: installed, earned: [1, 2]);
   model.rescan();
   model.sizes[orbit.id] = 48200000000;
-  return Fixture(temp, model, toolkit, opened);
+  return Fixture(temp, model, toolkit, opened, copied);
 }
 
 /// Renders the launcher at 1600x900 with the background and clock held still.

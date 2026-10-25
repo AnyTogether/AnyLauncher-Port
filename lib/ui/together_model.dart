@@ -58,6 +58,14 @@ class TogetherModel {
       app.show(T.format('gameInvitedYou', [invite.from?.displayName ?? '', gameName(invite.titleId)]));
     };
     hub.games.onEnded = (host) => app.show(T.format('sessionEnded', [host?.displayName ?? '']));
+    hub.parties.onRequest = (person, via) {
+      _noticeSound();
+      app.show(T.format(via == 'code' ? 'partyAsksCode' : 'partyAsks', [person.displayName]));
+    };
+    hub.parties.onRequestAnswered = (accepted) {
+      // A yes is an invite, which says so itself.
+      if (!accepted) app.show(T.text('partyRequestDeclined'));
+    };
     hub.addListener(app.refresh);
     hub.friends.onRequest = (person) {
       _noticeSound();
@@ -109,6 +117,12 @@ class TogetherModel {
 
   /// Party: whether a party started now is open to friends.
   bool partyStartsOpen = false;
+
+  /// Party: a join code being typed, what the code looked up opens, and the Discord link being
+  /// typed (null while it is not).
+  String joinCodeDraft = '';
+  JoinPreview? codePreview;
+  String? discordDraft;
 
   /// Messages: the conversation or friend chosen on the left, whether the keys are in the thread,
   /// which quick reply (or the field, the last) is focused there, and what is typed.
@@ -178,6 +192,9 @@ class TogetherModel {
       friendHandle = '';
       chosen = null;
       draft = '';
+      joinCodeDraft = '';
+      codePreview = null;
+      discordDraft = null;
       messagesIndex = 0;
       messagesInThread = false;
       profile = null;

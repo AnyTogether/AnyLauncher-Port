@@ -118,6 +118,9 @@ class JoinPreview {
   final String state;
 
   bool get party => kind == 'party';
+
+  JoinPreview withState(String state) =>
+      JoinPreview(code: code, kind: kind, id: id, host: host, game: game, size: size, max: max, state: state);
 }
 
 /// The party someone is in: who leads it, who is in it and who is invited, whether friends may

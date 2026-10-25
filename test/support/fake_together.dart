@@ -99,6 +99,11 @@ class FakeTogether {
   Map<String, dynamic>? party;
   final List<Map<String, dynamic>> partyInvites = [];
   final Map<String, String> callPeers = {};
+
+  /// The join codes the party gets, in turn, and what codes open (by code) for someone holding
+  /// one.
+  final List<String> nextCodes = ['K7QM3XPA', 'H8NZ4WRB', 'P2TV6YCD'];
+  final Map<String, Map<String, dynamic>> joinPreviews = {};
   int _ids = 0;
 
   /// A conversation with [others] (cards), and its messages as [texts] by author id.
@@ -150,6 +155,9 @@ class FakeTogether {
     'members': members,
     'invited': <Map<String, dynamic>>[],
     'call': null,
+    'joinCode': null,
+    'discord': null,
+    'requests': <Map<String, dynamic>>[],
   };
 
   /// The user is in a party with [others].
@@ -609,9 +617,44 @@ class FakeTogether {
           );
           return (204, null);
         case ('PATCH', null):
-          party!['privacy'] = call.body['privacy'];
+          if (call.body.containsKey('privacy')) party!['privacy'] = call.body['privacy'];
+          if (call.body.containsKey('discord')) {
+            final link = call.body['discord'] as String?;
+            if (link != null && !RegExp(r'^https://(discord\.gg|(www\.)?discord\.com)/').hasMatch(link)) {
+              return problem(400, 'bad_request', 'Invalid body');
+            }
+            party!['discord'] = link;
+          }
           return (200, party);
+        case ('POST', '/code'):
+          final code = nextCodes.removeAt(0);
+          final joinCode = party!['joinCode'] = {
+            'code': code,
+            'url': 'https://anytogether.kodla.agency/join/$code',
+            'expiresAt': '2026-10-26T20:00:00Z',
+          };
+          return (201, joinCode);
+        case ('DELETE', '/code'):
+          if (party?['joinCode'] == null) return problem(404, 'not_found');
+          party!['joinCode'] = null;
+          return (204, null);
       }
+    }
+    final request = RegExp(r'^parties/([^/]+)/requests/([^/]+)/(accept|decline)$').firstMatch(call.path);
+    if (call.method == 'POST' && request != null) {
+      final requests = party?['requests'] as List<dynamic>? ?? [];
+      requests.removeWhere((person) => (person as Map)['userId'] == request.group(2));
+      return (204, null);
+    }
+    final joinCode = RegExp(r'^join/([A-Z0-9]+)$').firstMatch(call.path);
+    if (joinCode != null) {
+      final preview = joinPreviews[joinCode.group(1)];
+      if (preview == null) return problem(404, 'not_found');
+      if (call.method == 'GET') return (200, preview);
+      if (preview['state'] == 'member') return problem(409, 'conflict', 'Already a member');
+      final again = preview['state'] == 'requested' || preview['state'] == 'invited';
+      if (!again) preview['state'] = 'requested';
+      return (again ? 200 : 201, {'kind': preview['kind'], 'id': preview['id'], 'state': preview['state']});
     }
     final callAction = RegExp(r'^calls/([^/]+)/(leave|mute)$').firstMatch(call.path);
     if (call.method == 'POST' && callAction != null) return (204, null);

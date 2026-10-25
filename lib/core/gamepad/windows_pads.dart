@@ -3,10 +3,13 @@ import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
 
+import 'feel.dart';
 import 'pad_navigation.dart';
 
 typedef _XInputGetStateNative = Uint32 Function(Uint32 index, Pointer<Uint8> state);
 typedef _XInputGetState = int Function(int index, Pointer<Uint8> state);
+typedef _XInputSetStateNative = Uint32 Function(Uint32 index, Pointer<Uint16> vibration);
+typedef _XInputSetState = int Function(int index, Pointer<Uint16> vibration);
 typedef _GetProcAddressNative = Pointer<Void> Function(Pointer<Void> module, Pointer<Void> name);
 typedef _GetProcAddress = Pointer<Void> Function(Pointer<Void> module, Pointer<Void> name);
 typedef _LoadLibraryNative = Pointer<Void> Function(Pointer<Utf16> name);
@@ -21,8 +24,9 @@ typedef _JoyConfigChanged = int Function(int flags);
 /// (with the Guide button from XInputGetStateEx), PlayStation pads (DualSense, DualShock 4),
 /// which XInput does not see, through winmm's joystick API. A slot with nothing in it is only
 /// asked again every two seconds (asking an empty slot is slow), which is also how a controller
-/// plugged in later is found.
-class WindowsPadSource implements PadSource {
+/// plugged in later is found. XInput pads' motors give the launcher's pulses (XInputSetState);
+/// winmm has no force feedback, so a PlayStation pad read through it stays still.
+class WindowsPadSource implements PadSource, PadRumble {
   WindowsPadSource({this.every = const Duration(milliseconds: 16)});
 
   final Duration every;
@@ -32,6 +36,8 @@ class WindowsPadSource implements PadSource {
   Timer? _timer;
   void Function(PadEvent)? _onEvent;
   _XInputGetState? _xinput;
+  _XInputSetState? _setState;
+  Pointer<Uint16>? _vibration;
   _JoyGetPosEx? _joyGetPosEx;
   _JoyGetDevCaps? _joyGetDevCaps;
   _JoyConfigChanged? _joyConfigChanged;
@@ -67,7 +73,12 @@ class WindowsPadSource implements PadSource {
         }
         if (function == nullptr) continue;
         _xinput = function.cast<NativeFunction<_XInputGetStateNative>>().asFunction<_XInputGetState>();
-        found.add('$name${ex ? ' (Guide)' : ''}');
+        final setState = using((arena) => address(module, 'XInputSetState'.toNativeUtf8(allocator: arena).cast()));
+        if (setState != nullptr) {
+          _setState = setState.cast<NativeFunction<_XInputSetStateNative>>().asFunction<_XInputSetState>();
+          _vibration = calloc<Uint16>(2);
+        }
+        found.add('$name${ex ? ' (Guide)' : ''}${setState != nullptr ? ' (rumble)' : ''}');
         break;
       }
     } on Object catch (error) {
@@ -192,16 +203,61 @@ class WindowsPadSource implements PadSource {
   }
 
   @override
+  PadRumble? get motors => this;
+
+  @override
+  bool canRumble(String pad) =>
+      _setState != null && XInputRumble.index(pad) != null && _xinputConnected.contains(XInputRumble.index(pad));
+
+  @override
+  void rumble(String pad, double strong, double weak, Duration length) {
+    final setState = _setState;
+    final vibration = _vibration;
+    final index = XInputRumble.index(pad);
+    if (setState == null || vibration == null || index == null) return;
+    final (left, right) = XInputRumble.speeds(strong, weak);
+    vibration[0] = left;
+    vibration[1] = right;
+    try {
+      setState(index, vibration);
+    } on Object {
+      // A pad that went away: nothing to stop.
+    }
+  }
+
+  @override
   void stop() {
     _timer?.cancel();
     _timer = null;
+    // Nothing keeps turning after the launcher stops reading.
+    for (final index in _xinputConnected) {
+      rumble('xinput$index', 0, 0, Duration.zero);
+    }
     for (final pointer in [_state, _joyInfo, _caps]) {
       if (pointer != null) calloc.free(pointer);
     }
+    if (_vibration case final Pointer<Uint16> vibration) calloc.free(vibration);
+    _vibration = null;
+    _setState = null;
     _state = null;
     _joyInfo = null;
     _caps = null;
   }
+}
+
+/// XInput's motors: XINPUT_VIBRATION is two WORDs, the left (low frequency, heavy) motor's speed
+/// and the right (high frequency, light) one's.
+abstract final class XInputRumble {
+  /// The XInput slot of a pad id the reader gave ('xinput2' is 2); null for a winmm pad.
+  static int? index(String pad) {
+    if (!pad.startsWith('xinput')) return null;
+    final index = int.tryParse(pad.substring(6));
+    return index != null && index >= 0 && index < 4 ? index : null;
+  }
+
+  /// [strong] and [weak] (0 to 1) as the two motor speeds.
+  static (int, int) speeds(double strong, double weak) =>
+      ((strong.clamp(0.0, 1.0) * 65535).round(), (weak.clamp(0.0, 1.0) * 65535).round());
 }
 
 /// Little-endian reads from native memory copied into Dart.

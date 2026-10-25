@@ -23,7 +23,15 @@ void main() {
     test('every cue is as long as its partials and 20 ms more, as on the Mac', () {
       expect(
         {for (final cue in Cue.values) cue: Tones.render(cue).length},
-        {Cue.move: 2866, Cue.select: 7497, Cue.back: 6835, Cue.unlocked: 22050, Cue.ring: 21168},
+        {
+          Cue.move: 2866,
+          Cue.select: 7497,
+          Cue.back: 6835,
+          Cue.unlocked: 22050,
+          Cue.ring: 21168,
+          Cue.bump: 3528,
+          Cue.hover: 2866,
+        },
       );
     });
 
@@ -86,7 +94,7 @@ void main() {
   });
 
   group('InterfaceSounds', () {
-    test('loads the five cues once and plays them softly under the volume chosen', () async {
+    test('loads the seven cues once and plays them softly under the volume chosen', () async {
       final out = FakeAudio();
       final sounds = InterfaceSounds(out);
       sounds.play(Cue.move);
@@ -99,6 +107,8 @@ void main() {
         'anyps5-back.wav',
         'anyps5-unlocked.wav',
         'anyps5-ring.wav',
+        'anyps5-bump.wav',
+        'anyps5-hover.wav',
       ]);
       sounds.play(Cue.select);
       expect(out.cues, ['select']);
@@ -110,6 +120,25 @@ void main() {
       sounds.enabled = false;
       sounds.play(Cue.move);
       expect(out.cues, ['select', 'back']);
+    });
+
+    test('every cue asked for is counted and told, sounds on or off (the pulse that goes with it)', () async {
+      final sounds = InterfaceSounds(FakeAudio());
+      final told = <Cue>[];
+      sounds.onCue = told.add;
+      sounds.enabled = false;
+      sounds.play(Cue.select);
+      sounds.play(Cue.bump);
+      expect(sounds.requests, 2);
+      expect(told, [Cue.select, Cue.bump]);
+    });
+
+    test('the bump is the quietest cue and the hover tick is the move tick, softer', () {
+      double peak(Cue cue) => Tones.render(cue).map((sample) => sample.abs()).reduce(math.max);
+      for (final cue in Cue.values.where((cue) => cue != Cue.bump)) {
+        expect(peak(Cue.bump), lessThan(peak(cue)), reason: '$cue');
+      }
+      expect(peak(Cue.hover), closeTo(peak(Cue.move) * 0.7, 1e-6));
     });
 
     test('four voices in turn: a fifth sound stops the first', () async {

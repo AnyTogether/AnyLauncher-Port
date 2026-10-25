@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/gamepad/feel.dart';
 import '../core/together/levels.dart';
 import 'app_model.dart';
 import 'compare_view.dart';
@@ -37,6 +38,14 @@ class LauncherShell extends StatefulWidget {
 class _LauncherShellState extends State<LauncherShell> {
   final FocusNode _focus = FocusNode(debugLabel: 'launcher');
 
+  /// A held arrow key repeats on the same pace as a held direction on a controller (the
+  /// system's own key repeats are dropped).
+  late final HoldRepeater<Command> _keys = HoldRepeater<Command>((command) {
+    final model = widget.model;
+    if (model.editingRow != null || model.capturing != null || !model.active) return _keys.stop();
+    model.command(command, repeat: true);
+  });
+
   /// The window in front or behind another: the theme song plays only in front.
   late final AppLifecycleListener _lifecycle;
 
@@ -45,7 +54,11 @@ class _LauncherShellState extends State<LauncherShell> {
     super.initState();
     widget.model.addListener(_modelChanged);
     _lifecycle = AppLifecycleListener(
-      onStateChange: (state) => widget.model.setActive(state == AppLifecycleState.resumed),
+      onStateChange: (state) {
+        // A key let go in another window never says so here.
+        if (state != AppLifecycleState.resumed) _keys.stop();
+        widget.model.setActive(state == AppLifecycleState.resumed);
+      },
     );
   }
 
@@ -70,6 +83,7 @@ class _LauncherShellState extends State<LauncherShell> {
   @override
   void dispose() {
     widget.model.removeListener(_modelChanged);
+    _keys.stop();
     _lifecycle.dispose();
     _focus.dispose();
     super.dispose();
@@ -91,7 +105,10 @@ class _LauncherShellState extends State<LauncherShell> {
         together.talkKeyInWindow(event.physicalKey.usbHidUsage, down: event is KeyDownEvent)) {
       return KeyEventResult.handled;
     }
-    if (event is KeyUpEvent) return KeyEventResult.ignored;
+    if (event is KeyUpEvent) {
+      if (_keys.heldBy == event.logicalKey) _keys.stop();
+      return KeyEventResult.ignored;
+    }
     if (together.capturingTalkKey && event is KeyDownEvent) {
       if (event.logicalKey == LogicalKeyboardKey.escape) {
         together.capturingTalkKey = false;
@@ -115,6 +132,14 @@ class _LauncherShellState extends State<LauncherShell> {
     if (key == LogicalKeyboardKey.arrowRight) command = Command.right;
     if (key == LogicalKeyboardKey.arrowUp) command = Command.up;
     if (key == LogicalKeyboardKey.arrowDown) command = Command.down;
+    if (command != null) {
+      // The launcher's own repeat paces a held arrow.
+      if (repeat) return KeyEventResult.handled;
+      model.usedKeyboard();
+      model.command(command);
+      _keys.holdQuietly(command, by: key);
+      return KeyEventResult.handled;
+    }
     if (!repeat) {
       if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter || key == LogicalKeyboardKey.space) {
         command = Command.select;
@@ -131,7 +156,8 @@ class _LauncherShellState extends State<LauncherShell> {
       }
     }
     if (command == null) return KeyEventResult.ignored;
-    model.handle(command);
+    model.usedKeyboard();
+    model.command(command);
     return KeyEventResult.handled;
   }
 
@@ -157,6 +183,7 @@ class _LauncherShellState extends State<LauncherShell> {
   /// between games, in lists it scrolls them.
   void _pointerDown(PointerDownEvent event) {
     final model = widget.model;
+    model.usedKeyboard();
     if (event.kind != PointerDeviceKind.mouse || event.buttons & kSecondaryMouseButton == 0) return;
     if (model.editingRow != null || model.capturing != null) return;
     if (model.overlay == null && model.focus.isTiles && model.pairing == null) return;
@@ -183,78 +210,83 @@ class _LauncherShellState extends State<LauncherShell> {
       child: Listener(
         onPointerDown: _pointerDown,
         onPointerSignal: _pointerSignal,
-        child: HintScope(
-          onAction: _hint,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final scale = math.min(constraints.maxWidth / 1600, constraints.maxHeight / 900);
-              return LayoutScale(
-                scale: scale,
-                child: ListenableBuilder(
-                  listenable: model,
-                  builder: (context, _) => ColoredBox(
-                    color: model.look.deep,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Backdrop(model: model, time: widget.time),
-                        RepaintBoundary(
-                          child: AnimatedSwitcher(
-                            duration: Motion.fade,
-                            switchInCurve: Motion.settle,
-                            child: model.preferences.onboarded
-                                ? HomeView(key: const ValueKey('home'), model: model, now: widget.now)
-                                : OnboardingView(key: const ValueKey('onboarding'), model: model, time: widget.time),
+        child: HoverTicks(
+          onArrive: (id, event) =>
+              model.hoverArrived(id, x: event.position.dx, y: event.position.dy, buttonsDown: event.buttons != 0),
+          onLeave: model.hoverLeft,
+          child: HintScope(
+            onAction: _hint,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final scale = math.min(constraints.maxWidth / 1600, constraints.maxHeight / 900);
+                return LayoutScale(
+                  scale: scale,
+                  child: ListenableBuilder(
+                    listenable: model,
+                    builder: (context, _) => ColoredBox(
+                      color: model.look.deep,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Backdrop(model: model, time: widget.time),
+                          RepaintBoundary(
+                            child: AnimatedSwitcher(
+                              duration: Motion.fade,
+                              switchInCurve: Motion.settle,
+                              child: model.preferences.onboarded
+                                  ? HomeView(key: const ValueKey('home'), model: model, now: widget.now)
+                                  : OnboardingView(key: const ValueKey('onboarding'), model: model, time: widget.time),
+                            ),
                           ),
-                        ),
-                        RepaintBoundary(
-                          child: AnimatedSwitcher(
-                            duration: Motion.overlay,
-                            reverseDuration: Motion.overlay,
-                            switchInCurve: Motion.settle,
-                            switchOutCurve: Curves.easeIn,
-                            transitionBuilder: (child, animation) => FadeTransition(
-                              opacity: animation,
-                              child: ScaleTransition(
-                                scale: Tween(begin: 0.985, end: 1.0).animate(animation),
-                                child: child,
+                          RepaintBoundary(
+                            child: AnimatedSwitcher(
+                              duration: Motion.overlay,
+                              reverseDuration: Motion.overlay,
+                              switchInCurve: Motion.settle,
+                              switchOutCurve: Curves.easeIn,
+                              transitionBuilder: (child, animation) => FadeTransition(
+                                opacity: animation,
+                                child: ScaleTransition(
+                                  scale: Tween(begin: 0.985, end: 1.0).animate(animation),
+                                  child: child,
+                                ),
+                              ),
+                              child: KeyedSubtree(
+                                key: ValueKey(model.overlay),
+                                child: switch (model.overlay) {
+                                  Layer.library => LibraryGrid(model: model),
+                                  Layer.log => LogView(model: model),
+                                  Layer.crashReport => CrashReportView(model: model),
+                                  Layer.trophies => TrophyView(model: model),
+                                  Layer.gallery => GalleryView(model: model),
+                                  Layer.messages => WithBackPill(
+                                    onBack: () => model.handle(Command.back),
+                                    child: MessagesView(model: model),
+                                  ),
+                                  Layer.profile => WithBackPill(
+                                    onBack: () => model.handle(Command.back),
+                                    child: ProfileView(model: model),
+                                  ),
+                                  Layer.compare => WithBackPill(
+                                    onBack: () => model.handle(Command.back),
+                                    child: CompareView(model: model),
+                                  ),
+                                  null => const SizedBox.shrink(),
+                                  _ => PanelView(model: model),
+                                },
                               ),
                             ),
-                            child: KeyedSubtree(
-                              key: ValueKey(model.overlay),
-                              child: switch (model.overlay) {
-                                Layer.library => LibraryGrid(model: model),
-                                Layer.log => LogView(model: model),
-                                Layer.crashReport => CrashReportView(model: model),
-                                Layer.trophies => TrophyView(model: model),
-                                Layer.gallery => GalleryView(model: model),
-                                Layer.messages => WithBackPill(
-                                  onBack: () => model.handle(Command.back),
-                                  child: MessagesView(model: model),
-                                ),
-                                Layer.profile => WithBackPill(
-                                  onBack: () => model.handle(Command.back),
-                                  child: ProfileView(model: model),
-                                ),
-                                Layer.compare => WithBackPill(
-                                  onBack: () => model.handle(Command.back),
-                                  child: CompareView(model: model),
-                                ),
-                                null => const SizedBox.shrink(),
-                                _ => PanelView(model: model),
-                              },
-                            ),
                           ),
-                        ),
-                        if (model.starting != null) _StartingCard(model: model),
-                        if (model.pairing != null) PairingCard(model: model),
-                        _Toast(message: model.toast, level: model.toastLevel, icon: model.toastIcon),
-                      ],
+                          if (model.starting != null) _StartingCard(model: model),
+                          if (model.pairing != null) PairingCard(model: model),
+                          _Toast(message: model.toast, level: model.toastLevel, icon: model.toastIcon),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
       ),

@@ -19,7 +19,7 @@ import 'ui/crash_model.dart';
 import 'ui/launcher.dart';
 import 'ui/theme.dart';
 
-void main(List<String> arguments) {
+Future<void> main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
   final options = LaunchOptions.parse(arguments);
   final model = AppModel(
@@ -50,6 +50,8 @@ void main(List<String> arguments) {
       desktop: Platform.isWindows ? WindowsDesktop() : LinuxDesktop(),
     ),
   );
+  // An update left for this launch (Later) goes in first: its installer opens the launcher again.
+  if (await model.updates.applyPendingAtLaunch()) exit(0);
   model.crash.traceAll = options.trace;
   unawaited(model.startAudio());
   model.startPads();

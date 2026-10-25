@@ -156,8 +156,14 @@ class _ConsoleButtonState extends State<ConsoleButton> {
         : Colors.white.withValues(alpha: widget.prominent ? 0.2 : (_hovering ? 0.16 : 0.1));
     return MouseRegion(
       cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovering = true),
-      onExit: (_) => setState(() => _hovering = false),
+      onEnter: (event) {
+        setState(() => _hovering = true);
+        HoverTicks.arrive(context, this, event);
+      },
+      onExit: (_) {
+        setState(() => _hovering = false);
+        HoverTicks.leave(context, this);
+      },
       child: GestureDetector(
         onTapDown: (_) => setState(() => _pressed = true),
         onTapCancel: () => setState(() => _pressed = false),
@@ -410,6 +416,24 @@ class HintScope extends InheritedWidget {
   bool updateShouldNotify(HintScope oldWidget) => oldWidget.onAction != onAction;
 }
 
+/// Where the hover tick goes: the soft navigation sound when the pointer arrives on a control,
+/// tile, row or card (the launcher's shell gives it; nothing without one).
+class HoverTicks extends InheritedWidget {
+  const HoverTicks({super.key, required this.onArrive, required this.onLeave, required super.child});
+
+  final void Function(Object id, PointerEvent event) onArrive;
+  final void Function(Object id) onLeave;
+
+  static void arrive(BuildContext context, Object id, PointerEvent event) =>
+      context.getInheritedWidgetOfExactType<HoverTicks>()?.onArrive(id, event);
+
+  static void leave(BuildContext context, Object id) =>
+      context.getInheritedWidgetOfExactType<HoverTicks>()?.onLeave(id);
+
+  @override
+  bool updateShouldNotify(HoverTicks oldWidget) => false;
+}
+
 /// A child that reacts to the pointer: the click cursor, a hover state for [builder], a press
 /// that shrinks it a little, and [onTap]. [onHover] runs when the pointer moves over it (not
 /// when a list scrolls it under a still pointer), so a hover can move the keyboard's focus
@@ -464,8 +488,14 @@ class _PressableState extends State<Pressable> {
     final enabled = widget.onTap != null || widget.onDoubleTap != null;
     return MouseRegion(
       cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
-      onEnter: (_) => setState(() => _hovering = true),
-      onExit: (_) => setState(() => _hovering = false),
+      onEnter: (event) {
+        setState(() => _hovering = true);
+        if (enabled || widget.onHover != null) HoverTicks.arrive(context, this, event);
+      },
+      onExit: (_) {
+        setState(() => _hovering = false);
+        HoverTicks.leave(context, this);
+      },
       onHover: widget.onHover == null ? null : (_) => widget.onHover!(),
       child: Listener(
         onPointerDown: (event) => _down = event.timeStamp,

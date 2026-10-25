@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import 'host.dart';
@@ -57,5 +59,54 @@ abstract final class LauncherUpdates {
       client: client,
     );
     return target;
+  }
+
+  /// The marker of an installer downloaded, checked and left for the next launch (Later).
+  static const pendingFile = 'pending.json';
+
+  /// Later on Windows: the installer [file] of [version] runs at the next launch. Its SHA-256
+  /// now (checked against the signed sums while it downloaded) goes with it, so a file changed
+  /// meanwhile is never run.
+  static void writePending(String folder, String version, String file) {
+    final digest = sha256.convert(File(file).readAsBytesSync()).toString();
+    Directory(folder).createSync(recursive: true);
+    File(p.join(folder, pendingFile))
+        .writeAsStringSync(jsonEncode({'version': version, 'file': file, 'sha256': digest}));
+  }
+
+  /// At launch: the installer left by Later, once (the marker goes whatever happens next), when
+  /// it is for a version past [current] and the file is the one that was checked; null otherwise.
+  static String? takePending(String folder, String current) {
+    final marker = File(p.join(folder, pendingFile));
+    if (!marker.existsSync()) return null;
+    try {
+      final json = jsonDecode(marker.readAsStringSync());
+      marker.deleteSync();
+      if (json is! Map<String, dynamic>) return null;
+      final version = json['version'];
+      final file = json['file'];
+      final digest = json['sha256'];
+      if (version is! String || file is! String || digest is! String) return null;
+      if (compareVersions(version, current) <= 0 || !File(file).existsSync()) return null;
+      if (sha256.convert(File(file).readAsBytesSync()).toString() != digest) return null;
+      return file;
+    } on Object {
+      if (marker.existsSync()) marker.deleteSync();
+      return null;
+    }
+  }
+
+  /// Puts the downloaded AppImage [file] in place of the running one ([appImage], \$APPIMAGE):
+  /// copied beside it, made executable and renamed over it, so the running launcher keeps its
+  /// own (already open) copy and the next start is the new one.
+  static void swapAppImage(String file, String appImage) {
+    final staged = '\$appImage.new';
+    File(file).copySync(staged);
+    final chmod = Process.runSync('chmod', ['755', staged]);
+    if (chmod.exitCode != 0) {
+      File(staged).deleteSync();
+      throw FileSystemException('chmod failed', staged);
+    }
+    File(staged).renameSync(appImage);
   }
 }

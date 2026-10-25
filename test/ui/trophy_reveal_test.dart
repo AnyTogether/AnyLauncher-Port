@@ -1,3 +1,4 @@
+import 'package:anyps5_desktop/core/trophies.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:flutter/services.dart';
@@ -67,6 +68,38 @@ void main() {
     final earned = set.trophies.firstWhere((trophy) => trophy.unlocked != null);
     expect(model.canReveal(earned), isFalse);
     expect(model.isSecret(earned), isFalse);
+  });
+
+  test('a hidden trophy once earned is never shown as hidden; only unearned hidden ones are', () {
+    const secret = Trophy(
+      serviceLabel: 0,
+      number: 9,
+      grade: TrophyGrade.gold,
+      hidden: true,
+      name: 'Twist',
+      detail: 'The end',
+    );
+    final earned = Trophy(
+      serviceLabel: 0,
+      number: 9,
+      grade: TrophyGrade.gold,
+      hidden: true,
+      name: 'Twist',
+      detail: 'The end',
+      unlocked: DateTime.utc(2026, 10, 25),
+    );
+    expect(model.isSecret(secret), isTrue);
+    expect(model.isSecret(earned), isFalse);
+    expect(model.canReveal(earned), isFalse, reason: 'nothing to show or hide again');
+    // Shown and hidden again before it was earned: once earned it shows all the same.
+    model.revealedTrophies = {earned.id};
+    expect(model.isSecret(earned), isFalse);
+    model.revealedTrophies = {};
+    expect(model.isSecret(earned), isFalse);
+    // In the list only the hidden silver not earned yet is masked.
+    final orbit = model.selectedGame!;
+    final set = model.trophies[orbit.id]!;
+    expect(set.trophies.where(model.isSecret).map((trophy) => trophy.name), ['Ghost Signal']);
   });
 
   test('Always Show Hidden Trophies shows them all, and is kept with the preferences', () {

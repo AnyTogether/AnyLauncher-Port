@@ -1,6 +1,20 @@
-/// The texts of AnyPS5 Desktop's own updates and of signed downloads, in both languages; kept
-/// apart from the other tables like the AnyTogether ones.
+/// The texts of AnyPS5 Desktop's own updates (the home screen's notice, About), signed downloads
+/// and the controller's vibration, in both languages; kept apart from the other tables like the
+/// AnyTogether ones.
 const updatesEnglish = <String, String>{
+  'desktopNoticeReady': 'AnyPS5 Desktop %@ is ready',
+  'desktopNoticeDownloaded': 'AnyPS5 Desktop %@ is downloaded',
+  'desktopRestartNow': 'Restart Now',
+  'desktopLater': 'Later',
+  'desktopShowFile': 'Show File',
+  'desktopRestartWaiting': 'Restarts when your game closes',
+  'desktopCancelRestart': 'Cancel Restart',
+  'desktopUpdateLaterDetail': 'Restart now, or it goes in at the next launch',
+  'desktopUpdateApplyFailed': 'The update could not be put in place: %@',
+  'desktopUpdateNoAnswer': 'No answer from GitHub: it asks again in a while',
+  'desktopUpToDateAt': 'Up to date (%@) · checked %@',
+  'controllerVibration': 'Controller Vibration',
+  'controllerVibrationDetail': 'Soft pulses for select, back, errors, trophies, invitations and the end of a row; never while a game is in front',
   'desktopUpdateAvailable': 'AnyPS5 Desktop %@ is out: Settings › About',
   'desktopUpToDate': 'AnyPS5 Desktop is up to date (%@)',
   'desktopUpdateTo': 'Download AnyPS5 Desktop %@',
@@ -18,6 +32,19 @@ const updatesEnglish = <String, String>{
 };
 
 const updatesTurkish = <String, String>{
+  'desktopNoticeReady': 'AnyPS5 Desktop %@ hazır',
+  'desktopNoticeDownloaded': 'AnyPS5 Desktop %@ indirildi',
+  'desktopRestartNow': 'Şimdi Yeniden Başlat',
+  'desktopLater': 'Sonra',
+  'desktopShowFile': 'Dosyayı Göster',
+  'desktopRestartWaiting': 'Oyun kapanınca yeniden başlar',
+  'desktopCancelRestart': 'İptal Et',
+  'desktopUpdateLaterDetail': 'Şimdi yeniden başlat ya da bir sonraki açılışta kurulsun',
+  'desktopUpdateApplyFailed': 'Güncelleme yerine konamadı: %@',
+  'desktopUpdateNoAnswer': 'GitHub yanıt vermedi: bir süre sonra yeniden sorar',
+  'desktopUpToDateAt': 'Güncel (%@) · %@ denetlendi',
+  'controllerVibration': 'Kumanda Titreşimi',
+  'controllerVibrationDetail': 'Seçme, geri, hata, kupa, davet ve satır sonunda hafif titreşim; oyun öndeyken asla',
   'desktopUpdateAvailable': 'AnyPS5 Desktop %@ çıktı: Ayarlar › Hakkında',
   'desktopUpToDate': 'AnyPS5 Desktop güncel (%@)',
   'desktopUpdateTo': 'AnyPS5 Desktop %@ sürümünü indir',

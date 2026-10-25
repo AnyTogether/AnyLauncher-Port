@@ -22,6 +22,13 @@ class InterfaceSounds {
   /// 0 to 1.
   double volume = 1;
 
+  /// Every cue asked for, sounds on or off: a command that asked for none (and moved nothing)
+  /// hit the end of its row.
+  int requests = 0;
+
+  /// Told of every cue asked for, sounds on or off (the controller's pulse that goes with it).
+  void Function(Cue cue)? onCue;
+
   final Map<Cue, Object> _sounds = {};
   final List<Object?> _playing = List.filled(voices, null);
   final Set<Cue> _thisTurn = {};
@@ -40,6 +47,8 @@ class InterfaceSounds {
   /// Plays [cue]; the same cue asked twice in one step (a row that opens a panel) plays once.
   /// [overGame] plays it while a game is in front too (a trophy earned).
   void play(Cue cue, {bool overGame = false}) {
+    requests++;
+    onCue?.call(cue);
     if (!enabled || (muted && !overGame) || volume <= 0) return;
     final sound = _sounds[cue];
     if (sound == null || !_thisTurn.add(cue)) return;

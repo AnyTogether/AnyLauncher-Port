@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:anyps5_desktop/core/desktop/desktop.dart';
+import 'package:anyps5_desktop/core/gamepad/feel.dart';
 import 'package:anyps5_desktop/core/gamepad/pad_navigation.dart';
 import 'package:anyps5_desktop/core/installer.dart';
 import 'package:anyps5_desktop/core/screenshots.dart';
@@ -66,8 +67,19 @@ class FakeDesktop implements DesktopWindows {
   void dispose() {}
 }
 
-class FakePads implements PadSource {
+class FakePads implements PadSource, PadRumble {
   void Function(PadEvent)? send;
+
+  /// What the launcher set the motors to: "pad strong weak ms".
+  final List<String> rumbles = [];
+
+  @override
+  PadRumble? get motors => this;
+  @override
+  bool canRumble(String pad) => true;
+  @override
+  void rumble(String pad, double strong, double weak, Duration length) =>
+      rumbles.add('$pad $strong $weak ${length.inMilliseconds}');
 
   @override
   void start(void Function(PadEvent event) onEvent) => send = onEvent;
@@ -158,6 +170,76 @@ void main() {
       model.stopGame();
       await playing;
     }, skip: Platform.isWindows ? 'the fake game is a shell script' : false);
+  });
+
+  group('controller feel', () {
+    late Fixture fixture;
+    late AppModel model;
+    late FakePads pads;
+
+    setUp(() {
+      pads = FakePads();
+      fixture = makeFixture(pads: () => pads);
+      model = fixture.model..startPads();
+    });
+
+    tearDown(() {
+      model.dispose();
+      fixture.dispose();
+    });
+
+    Future<List<String>> felt() async {
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      final seen = [...pads.rumbles];
+      pads.rumbles.clear();
+      return seen;
+    }
+
+    test('select and back pulse in the pad that pressed them, then the motors stop', () async {
+      pads.press(PadButton.north);
+      expect(model.overlay, Layer.gameSettings);
+      expect(await felt(), ['pad 0.0 0.42 18', 'pad 0.0 0.0 0'], reason: 'opening the options is a select');
+      pads.press(PadButton.east);
+      expect(await felt(), ['pad 0.0 0.3 14', 'pad 0.0 0.0 0']);
+    });
+
+    test('the end of the row bumps once, barely', () async {
+      model.select(0);
+      pads.press(PadButton.dpadLeft);
+      expect(model.selected, 0);
+      expect(await felt(), ['pad 0.0 0.2 12', 'pad 0.0 0.0 0']);
+      pads.press(PadButton.dpadRight);
+      expect(model.selected, 1);
+      expect(await felt(), isEmpty, reason: 'moving the focus has no pulse');
+    });
+
+    test('nothing while the keyboard is in use, a game is in front or the setting is off', () async {
+      model.usedKeyboard();
+      model.command(Command.options);
+      expect(await felt(), isEmpty, reason: 'the controller on the desk stays still');
+      model.command(Command.back);
+      pads.press(PadButton.north);
+      await felt();
+      model.setActive(false);
+      model.vibrate(HapticCue.trophy);
+      expect(await felt(), isEmpty, reason: 'the game owns the pad');
+      model.setActive(true);
+      model.preferences.controllerVibration = false;
+      model.haptics.enabled = false;
+      pads.press(PadButton.east);
+      expect(await felt(), isEmpty);
+    });
+
+    test('Controller Vibration is a Behaviour setting, on by default, kept', () {
+      expect(model.preferences.controllerVibration, isTrue);
+      model.open(Layer.settings);
+      final behaviour = model.panelCategories().firstWhere((category) => category.id == 'general');
+      expect(behaviour.rows.map((row) => row.id), contains('vibration'));
+      final json = model.preferences.toJson();
+      expect(json['controllerVibration'], isTrue);
+      expect(Preferences.fromJson({...json, 'controllerVibration': false}).controllerVibration, isFalse);
+      expect(Preferences.fromJson({}).controllerVibration, isTrue);
+    });
   });
 
   group('trophies while playing', () {

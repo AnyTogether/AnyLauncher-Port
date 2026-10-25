@@ -829,6 +829,8 @@ class TrophyView extends StatelessWidget {
                         KeepVisible(
                           active: index == model.trophyIndex,
                           child: MouseRegion(
+                            onEnter: (event) => HoverTicks.arrive(context, 'trophy-$index', event),
+                            onExit: (_) => HoverTicks.leave(context, 'trophy-$index'),
                             onHover: (_) => model.hoverTrophy(index),
                             child: Builder(
                               builder: (context) {

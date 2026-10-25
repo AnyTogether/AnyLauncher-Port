@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'feel.dart';
 
 /// A controller's buttons, by place on the pad (Cross is south, Triangle north; on an Xbox pad
 /// A is south, Y north). The system readers (Windows XInput and winmm, Linux evdev) turn their
@@ -61,25 +61,17 @@ class PadGone extends PadEvent {
 enum PadCommand { left, right, up, down, select, back, options, previousGame, nextGame, home }
 
 /// Controller input as launcher commands, the way the macOS launcher's Input.swift reads a pad:
-/// the D-pad and the left stick move (a held direction repeats as a console menu does), Cross/A
-/// selects, Circle/B goes back, Triangle/Y and Options open the options, L1 and R1 move between
-/// games, PS/Guide brings the launcher in front of the game and back. Any number of pads at
-/// once; a pad that goes away lets go of what it held.
+/// the D-pad and the left stick move (a held direction repeats on [KeyRepeat]'s pace, the same
+/// as the arrow keys; the stick has hysteresis, [StickGate]), Cross/A selects, Circle/B goes
+/// back, Triangle/Y and Options open the options, L1 and R1 move between games, PS/Guide brings
+/// the launcher in front of the game and back. Any number of pads at once; a pad that goes away
+/// lets go of what it held.
 class PadNavigator {
-  PadNavigator(
-    this.onCommand, {
-    this.firstRepeat = const Duration(milliseconds: 380),
-    this.repeat = const Duration(milliseconds: 85),
-  });
+  PadNavigator(this.onCommand) {
+    _repeater = HoldRepeater<PadCommand>(_send);
+  }
 
   final void Function(PadCommand command) onCommand;
-  final Duration firstRepeat;
-  final Duration repeat;
-
-  /// How far the stick must lean before it counts as a direction, and how far back it must come
-  /// before it lets go (so a stick resting near the edge does not flicker).
-  static const press = 0.55;
-  static const release = 0.4;
 
   static const buttons = {
     PadButton.south: PadCommand.select,
@@ -92,12 +84,22 @@ class PadNavigator {
   };
 
   final Map<String, _PadState> _pads = {};
-  PadCommand? _held;
-  String? _heldBy;
-  Timer? _timer;
+  late final HoldRepeater<PadCommand> _repeater;
+
+  /// The pad that gave the last command: the one the launcher's pulses go to.
+  String? lastPad;
+  String? _sending;
 
   /// The direction being repeated, for tests.
-  PadCommand? get held => _held;
+  PadCommand? get held => _repeater.held;
+
+  /// Whether the command being handed on is a repeat of a held direction.
+  bool get repeating => _repeater.repeating;
+
+  void _send(PadCommand command) {
+    lastPad = _sending ?? _repeater.heldBy as String? ?? lastPad;
+    onCommand(command);
+  }
 
   void handle(PadEvent event) {
     final state = _pads.putIfAbsent(event.pad, _PadState.new);
@@ -106,71 +108,65 @@ class PadNavigator {
         if (state.pressed.contains(button) == down) return;
         down ? state.pressed.add(button) : state.pressed.remove(button);
         final command = buttons[button];
-        if (down && command != null) onCommand(command);
-      case PadAxisEvent(:final axis, :final value):
-        final leaning = axis == PadAxis.leftX ? state.x : state.y;
-        final next = value.abs() >= press ? value : (value.abs() <= release ? 0.0 : (leaning == 0 ? 0.0 : value));
-        if (axis == PadAxis.leftX) {
-          state.x = next;
-        } else {
-          state.y = next;
+        if (down && command != null) {
+          _sending = event.pad;
+          _send(command);
+          _sending = null;
         }
+      case PadAxisEvent(:final axis, :final value):
+        if (axis == PadAxis.leftX) {
+          state.x = value;
+        } else {
+          state.y = value;
+        }
+        state.stick.update(state.x, state.y);
       case PadGone():
         _pads.remove(event.pad);
-        if (_heldBy == event.pad) _hold(null, null);
+        if (_repeater.heldBy == event.pad) _repeater.stop();
         return;
     }
     _direction(event.pad, state);
   }
 
   void _direction(String pad, _PadState state) {
-    var x = 0.0;
-    var y = 0.0;
+    var x = 0;
+    var y = 0;
     if (state.pressed.contains(PadButton.dpadLeft)) x -= 1;
     if (state.pressed.contains(PadButton.dpadRight)) x += 1;
     if (state.pressed.contains(PadButton.dpadUp)) y -= 1;
     if (state.pressed.contains(PadButton.dpadDown)) y += 1;
-    if (x == 0 && y == 0) {
-      x = state.x;
-      y = state.y;
-    }
-    final PadCommand? command;
-    if (x == 0 && y == 0) {
-      command = null;
-    } else if (x.abs() >= y.abs() && x != 0) {
-      command = x > 0 ? PadCommand.right : PadCommand.left;
+    final Direction? direction;
+    if (x != 0 || y != 0) {
+      // The D-pad wins over the stick; a diagonal is its horizontal half.
+      direction = x != 0 ? (x > 0 ? Direction.right : Direction.left) : (y > 0 ? Direction.down : Direction.up);
     } else {
-      command = y > 0 ? PadCommand.down : PadCommand.up;
+      direction = state.stick.held;
     }
+    final command = switch (direction) {
+      Direction.left => PadCommand.left,
+      Direction.right => PadCommand.right,
+      Direction.up => PadCommand.up,
+      Direction.down => PadCommand.down,
+      null => null,
+    };
     // Another pad's held direction is only let go by that pad.
-    if (command == null && _heldBy != pad) return;
-    if (command == _held && (_heldBy == pad || command == null)) return;
-    _hold(command, command == null ? null : pad);
-  }
-
-  void _hold(PadCommand? command, String? pad) {
-    _timer?.cancel();
-    _timer = null;
-    _held = command;
-    _heldBy = pad;
-    if (command == null) return;
-    onCommand(command);
-    _timer = Timer(firstRepeat, () {
-      _timer = Timer.periodic(repeat, (_) {
-        if (_held case final PadCommand held) onCommand(held);
-      });
-    });
+    if (command == null && _repeater.heldBy != pad) return;
+    if (command == _repeater.held && (_repeater.heldBy == pad || command == null)) return;
+    if (command == null) return _repeater.stop();
+    _sending = pad;
+    _repeater.hold(command, by: pad);
+    _sending = null;
   }
 
   void dispose() {
-    _timer?.cancel();
+    _repeater.stop();
     _pads.clear();
-    _held = null;
   }
 }
 
 class _PadState {
   final Set<PadButton> pressed = {};
+  final StickGate stick = StickGate();
   double x = 0;
   double y = 0;
 }
@@ -183,6 +179,10 @@ abstract class PadSource {
 
   /// What the reader found, for the log ("XInput 1, DualSense (winmm) 0").
   String get description;
+
+  /// The controllers' motors, where this reader can turn them (XInput, evdev force feedback);
+  /// null where it cannot.
+  PadRumble? get motors;
 }
 
 /// No controllers (tests, systems without a reader).
@@ -194,6 +194,8 @@ class NoPadSource implements PadSource {
   void stop() {}
   @override
   String get description => 'none';
+  @override
+  PadRumble? get motors => null;
 }
 
 /// One controller as a polling reader sees it at one moment: what is held, where the stick is.

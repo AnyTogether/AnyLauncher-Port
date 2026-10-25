@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+import 'feel.dart';
 import 'pad_navigation.dart';
 
 typedef _OpenNative = Int32 Function(Pointer<Utf8> path, Int32 flags);
@@ -13,6 +14,8 @@ typedef _IoctlNative = Int32 Function(Int32 fd, UnsignedLong request, VarArgs<(P
 typedef _Ioctl = int Function(int fd, int request, Pointer<Void> argument);
 typedef _CloseNative = Int32 Function(Int32 fd);
 typedef _Close = int Function(int fd);
+typedef _WriteNative = IntPtr Function(Int32 fd, Pointer<Uint8> buffer, IntPtr count);
+typedef _Write = int Function(int fd, Pointer<Uint8> buffer, int count);
 
 /// A controller the kernel lists: its event node and what it is.
 class LinuxPadDevice {
@@ -29,8 +32,10 @@ class LinuxPadDevice {
 
 /// Controllers on Linux through evdev: every input device the kernel gives a joystick handler
 /// (js*) is read from its /dev/input/event* node (the logged-in user may read them on desktop
-/// systems), one found later is picked up within two seconds, one unplugged is let go.
-class LinuxPadSource implements PadSource {
+/// systems), one found later is picked up within two seconds, one unplugged is let go. A pad
+/// with force feedback (FF_RUMBLE) gives the launcher's pulses through the same node opened for
+/// writing; one without, or a node the user may not write, stays still.
+class LinuxPadSource implements PadSource, PadRumble {
   LinuxPadSource({this.devicesFile = '/proc/bus/input/devices', this.inputFolder = '/dev/input'});
 
   final String devicesFile;
@@ -105,6 +110,7 @@ class LinuxPadSource implements PadSource {
 
   void _close(String event, {bool refused = false}) {
     unawaited(_reading.remove(event)?.cancel());
+    _rumblers.remove(event)?.close();
     // A node that could not be read is not tried again until it goes away and comes back.
     if (refused && File('$inputFolder/$event').existsSync()) _refused.add(event);
     _onEvent?.call(PadGone(event));
@@ -137,14 +143,127 @@ class LinuxPadSource implements PadSource {
     }
   }
 
+  /// Each pad's force feedback, opened the first time a pulse goes to it; null where it has none.
+  final Map<String, EvdevRumbler?> _rumblers = {};
+
+  @override
+  PadRumble? get motors => this;
+
+  @override
+  bool canRumble(String pad) =>
+      _reading.containsKey(pad) && (_rumblers.putIfAbsent(pad, () => EvdevRumbler.open('$inputFolder/$pad')) != null);
+
+  @override
+  void rumble(String pad, double strong, double weak, Duration length) {
+    if (!canRumble(pad)) return;
+    _rumblers[pad]?.rumble(strong, weak, length);
+  }
+
   @override
   void stop() {
     _timer?.cancel();
     _timer = null;
+    for (final rumbler in _rumblers.values) {
+      rumbler?.close();
+    }
+    _rumblers.clear();
     for (final subscription in _reading.values) {
       unawaited(subscription.cancel());
     }
     _reading.clear();
+  }
+}
+
+/// Force feedback through an evdev node: one FF_RUMBLE effect uploaded (EVIOCSFF) and played by
+/// writing an EV_FF event; the kernel stops it after its own length, and a pulse of zero stops it
+/// at once.
+class EvdevRumbler {
+  EvdevRumbler._(this._fd, this._id, this._write, this._ioctl, this._closeFd);
+
+  final int _fd;
+  int _id;
+  final _Write _write;
+  final _Ioctl _ioctl;
+  final _Close _closeFd;
+  bool _closed = false;
+
+  /// EVIOCSFF: _IOW('E', 0x80, struct ff_effect), 48 bytes on 64-bit systems.
+  static const uploadRequest = 0x40304580;
+  static const effectSize = 48;
+  static const _rumbleType = 0x50; // FF_RUMBLE
+  static const _forceFeedback = 0x15; // EV_FF
+
+  /// struct ff_effect for a rumble: type, id (-1 asks for a new one), the replay's length in
+  /// ms, then the strong and weak magnitudes at offset 16.
+  static Uint8List effect(int id, double strong, double weak, Duration length) {
+    final bytes = ByteData(effectSize);
+    bytes.setUint16(0, _rumbleType, Endian.little);
+    bytes.setInt16(2, id, Endian.little);
+    bytes.setUint16(10, length.inMilliseconds.clamp(0, 0xFFFF), Endian.little);
+    bytes.setUint16(16, (strong.clamp(0.0, 1.0) * 0xFFFF).round(), Endian.little);
+    bytes.setUint16(18, (weak.clamp(0.0, 1.0) * 0xFFFF).round(), Endian.little);
+    return bytes.buffer.asUint8List();
+  }
+
+  /// struct input_event that plays (1) or stops (0) effect [id].
+  static Uint8List playEvent(int id, {required bool play}) {
+    final bytes = ByteData(EvdevDecoder.size);
+    bytes.setUint16(16, _forceFeedback, Endian.little);
+    bytes.setUint16(18, id, Endian.little);
+    bytes.setInt32(20, play ? 1 : 0, Endian.little);
+    return bytes.buffer.asUint8List();
+  }
+
+  /// Opens [path] for writing and uploads a silent rumble; null when the node cannot be written
+  /// or the pad has no rumble.
+  static EvdevRumbler? open(String path) {
+    try {
+      final libc = DynamicLibrary.process();
+      final openFd = libc.lookupFunction<_OpenNative, _Open>('open');
+      final ioctl = libc.lookupFunction<_IoctlNative, _Ioctl>('ioctl');
+      final close = libc.lookupFunction<_CloseNative, _Close>('close');
+      final write = libc.lookupFunction<_WriteNative, _Write>('write');
+      final fd = using((arena) => openFd(path.toNativeUtf8(allocator: arena), 2 | 0x800 /* O_RDWR | O_NONBLOCK */));
+      if (fd < 0) return null;
+      final id = _upload(ioctl, fd, -1, 0, 0, Duration.zero);
+      if (id == null) {
+        close(fd);
+        return null;
+      }
+      return EvdevRumbler._(fd, id, write, ioctl, close);
+    } on Object {
+      return null;
+    }
+  }
+
+  static int? _upload(_Ioctl ioctl, int fd, int id, double strong, double weak, Duration length) => using((arena) {
+    final buffer = arena<Uint8>(effectSize);
+    buffer.asTypedList(effectSize).setAll(0, effect(id, strong, weak, length));
+    if (ioctl(fd, uploadRequest, buffer.cast()) != 0) return null;
+    return ByteData.sublistView(buffer.asTypedList(effectSize)).getInt16(2, Endian.little);
+  });
+
+  void rumble(double strong, double weak, Duration length) {
+    if (_closed) return;
+    final play = (strong > 0 || weak > 0) && length > Duration.zero;
+    if (play) {
+      final id = _upload(_ioctl, _fd, _id, strong, weak, length);
+      if (id == null) return;
+      _id = id;
+    }
+    using((arena) {
+      final event = playEvent(_id, play: play);
+      final buffer = arena<Uint8>(event.length);
+      buffer.asTypedList(event.length).setAll(0, event);
+      _write(_fd, buffer, event.length);
+    });
+  }
+
+  void close() {
+    if (_closed) return;
+    rumble(0, 0, Duration.zero);
+    _closed = true;
+    _closeFd(_fd);
   }
 }
 

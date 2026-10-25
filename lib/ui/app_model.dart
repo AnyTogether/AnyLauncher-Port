@@ -17,6 +17,7 @@ import '../core/desktop_notice.dart';
 import '../core/desktop/desktop.dart';
 import '../core/font_download.dart';
 import '../core/family/family_rules.dart' show TitleVerdict;
+import '../core/gamepad/feel.dart';
 import '../core/gamepad/pad_navigation.dart';
 import '../core/game_library.dart';
 import '../core/game_log.dart';
@@ -74,6 +75,7 @@ class Preferences {
     ..engineSource = json['engineSource'] as String? ?? 'upstream'
     ..fontsFolder = json['fontsFolder'] as String?
     ..showHiddenTrophies = json['showHiddenTrophies'] as bool? ?? false
+    ..controllerVibration = json['controllerVibration'] as bool? ?? true
     ..cjkGames = {
       for (final id in json['cjkGames'] as List<dynamic>? ?? const <dynamic>[])
         if (id is String) id,
@@ -122,6 +124,10 @@ class Preferences {
   /// Hidden trophies show their name, description and icon before they are earned.
   bool showHiddenTrophies = false;
 
+  /// Soft pulses in the controller for select, back, errors, trophies, invitations and the end
+  /// of a row.
+  bool controllerVibration = true;
+
   /// The title IDs of games seen asking for Japanese, Chinese or Korean fonts: their next start
   /// waits for those to download.
   Set<String> cjkGames = {};
@@ -148,6 +154,7 @@ class Preferences {
     'engineSource': engineSource,
     'fontsFolder': fontsFolder,
     'showHiddenTrophies': showHiddenTrophies,
+    'controllerVibration': controllerVibration,
     'cjkGames': cjkGames.toList()..sort(),
   };
 
@@ -249,12 +256,14 @@ abstract final class InstallSpan {
 /// A move on the launcher's screen, from the keyboard or the phone.
 enum Command { left, right, up, down, select, back, options, previousGame, nextGame, home }
 
-/// Where the home screen's focus is: the tiles, a top-bar button, or a button under the title.
+/// Where the home screen's focus is: the tiles, a top-bar button, a button under the title, or
+/// one of the update notice's (0 Restart Now, 1 Later), left of the top bar's.
 class HomeFocus {
   const HomeFocus._(this.area, this.index);
   static const tiles = HomeFocus._('tiles', 0);
   const HomeFocus.top(int index) : this._('top', index);
   const HomeFocus.actions(int index) : this._('actions', index);
+  const HomeFocus.notice(int index) : this._('notice', index);
 
   final String area;
   final int index;
@@ -262,6 +271,7 @@ class HomeFocus {
   bool get isTiles => area == 'tiles';
   bool get isTop => area == 'top';
   bool get isActions => area == 'actions';
+  bool get isNotice => area == 'notice';
 
   @override
   bool operator ==(Object other) => other is HomeFocus && other.area == area && other.index == index;
@@ -454,7 +464,16 @@ class LauncherServices {
     this.builtInFonts,
     this.saveFile,
     this.systemInfo,
+    this.startDetached,
+    this.quit,
   });
+
+  /// Starts a program that outlives the launcher (an update's installer, the new AppImage);
+  /// Process.start detached by default.
+  final Future<void> Function(String executable, List<String> arguments)? startDetached;
+
+  /// Ends the launcher (Restart Now); exit by default.
+  final void Function(int code)? quit;
 
   /// Asks the user where to save a file, [suggestedName] first; null when they cancelled.
   final Future<String?> Function(String suggestedName)? saveFile;
@@ -560,7 +579,83 @@ class AppModel extends ChangeNotifier {
     Motion.reduced = this.preferences.reducedMotion;
     together = TogetherModel(this);
     _applySound();
+    sounds.onCue = _cueAsked;
   }
+
+  // Feel: the controller's pulses, the end-of-row bump, the hover tick.
+
+  /// The launcher's own clock for the feel's timings.
+  final Stopwatch _clock = Stopwatch()..start();
+  Duration get feelNow => _clock.elapsed;
+
+  /// When the last cue other than the hover tick was asked for.
+  Duration? _lastCue;
+
+  late final PulsePlayer _pulses = PulsePlayer(_PadMotors(this));
+
+  /// The pulses the controller gives: Settings › Behaviour › Controller Vibration, never while a
+  /// game (or another window) is in front, only while the pad is the device in use.
+  late final HapticFeedback haptics = HapticFeedback(_pulses, enabled: preferences.controllerVibration);
+
+  final EdgeBump _edge = EdgeBump();
+  final HoverGate _hover = HoverGate();
+
+  void _cueAsked(Cue cue) {
+    if (cue != Cue.hover) _lastCue = feelNow;
+    final haptic = HapticCue.forSound(cue.name);
+    if (haptic != null) haptics.play(haptic, now: feelNow);
+  }
+
+  /// A pulse told on its own: a trophy, an invitation, an error.
+  void vibrate(HapticCue cue) => haptics.play(cue, now: feelNow);
+
+  /// The keyboard or the mouse was used: the controller on the desk stays still.
+  void usedKeyboard() => haptics.padInUse = false;
+
+  /// What a command may change where the eye is: a direction that changed none of it and asked
+  /// for no sound hit the end of its row.
+  Object _focusMark() => (
+    overlay,
+    focus.area,
+    focus.index,
+    selected,
+    libraryIndex,
+    panelRow,
+    panelCategory,
+    trophyIndex,
+    galleryIndex,
+    galleryViewing,
+    capturing,
+    editingRow,
+  );
+
+  /// A command from the keys or a controller: handled, and a direction that did nothing bumps
+  /// (once per press, once in a hold that reaches the end).
+  void command(Command command, {bool repeat = false}) {
+    final mark = _focusMark();
+    final asked = sounds.requests;
+    handle(command);
+    final direction =
+        command == Command.left || command == Command.right || command == Command.up || command == Command.down;
+    if (_edge.handled(
+      direction: direction,
+      repeat: repeat,
+      changed: sounds.requests != asked || _focusMark() != mark,
+    )) {
+      sounds.play(Cue.bump);
+    }
+  }
+
+  /// The pointer arrived on a control, tile, row or card: the quiet tick, when [HoverGate] lets
+  /// it.
+  void hoverArrived(Object id, {required double x, required double y, required bool buttonsDown}) {
+    final allowed = preferences.sounds && active && preferences.onboarded;
+    if (_hover.arrive(id, x: x, y: y, now: feelNow, lastCue: _lastCue, buttonsDown: buttonsDown, allowed: allowed)) {
+      sounds.play(Cue.hover);
+    }
+  }
+
+  void hoverLeft(Object id) => _hover.leave(id);
 
   late final AudioOut _audio = services.audio?.call() ?? const SilentAudio();
 
@@ -590,6 +685,9 @@ class AppModel extends ChangeNotifier {
   void setActive(bool value) {
     if (active == value) return;
     active = value;
+    // Behind a game (or any other window) the pad is the game's: the motors stop at once.
+    haptics.launcherInFront = value;
+    if (value) updates.activated();
     // Back in front: a toolkit rebuilt meanwhile is read again.
     if (value) _forgetDiskFacts();
     // Something copied in while the launcher was away shows at once.
@@ -641,12 +739,14 @@ class AppModel extends ChangeNotifier {
       PadCommand.home => Command.home,
     };
     if (!active && mapped != Command.home) return;
+    haptics.padInUse = true;
+    _pulses.pad = _navigator?.lastPad;
     if (editingRow != null) return;
     if (capturing != null && mapped != Command.back) return;
     if (overlay == Layer.settings && (mapped == Command.previousGame || mapped == Command.nextGame)) {
       return moveCategory(mapped == Command.nextGame ? 1 : -1);
     }
-    handle(mapped);
+    this.command(mapped, repeat: _navigator?.repeating ?? false);
   }
 
   /// The AnyPS5 engine downloaded from upstream: versions, the download, the one in use.
@@ -1371,12 +1471,14 @@ class AppModel extends ChangeNotifier {
       _trophyWatch?.cancel();
       _loadTrophies(game);
       if (running?.$1 == game) running = null;
+      updates.gameEnded();
       together.gameChanged();
       crash.ended(game, code, stopped: _stopped);
       _changed();
     } on Object catch (error) {
       starting = null;
       fonts.ended();
+      vibrate(HapticCue.error);
       show('${T.text('startFailed')}: $error');
       _changed();
     }
@@ -1395,8 +1497,9 @@ class AppModel extends ChangeNotifier {
       _earned = now;
       if (fresh.isEmpty) return;
       _loadTrophies(game);
-      // Heard over the game too.
+      // Heard over the game too; felt only with the launcher in front.
       sounds.play(Cue.unlocked, overGame: true);
+      vibrate(HapticCue.trophy);
       for (final id in fresh) {
         final trophy = trophies[game.id]?.trophies.where((trophy) => trophy.id == id).firstOrNull;
         if (trophy == null) continue;
@@ -1636,7 +1739,8 @@ class AppModel extends ChangeNotifier {
         switch (command) {
           case Command.up || Command.down:
             final next = (trophyIndex + (command == Command.down ? 1 : -1)).clamp(0, count == 0 ? 0 : count - 1);
-            if (next != trophyIndex) sounds.play(Cue.move);
+            if (next == trophyIndex) return;
+            sounds.play(Cue.move);
             trophyIndex = next;
             _changed();
           case Command.select:
@@ -1697,6 +1801,9 @@ class AppModel extends ChangeNotifier {
       if (command == Command.select) unawaited(chooseGamesFolder());
       return;
     }
+    // The notice went (Later, or the update went in): its focus goes to the top bar.
+    if (focus.isNotice && !updates.showsNotice) focus = const HomeFocus.top(0);
+    if (focus == const HomeFocus.notice(1) && updates.restartAfterGame) focus = const HomeFocus.notice(0);
     switch ((focus.area, command)) {
       case ('tiles', Command.left):
         moveSelection(-1);
@@ -1708,8 +1815,21 @@ class AppModel extends ChangeNotifier {
         _moveFocus(const HomeFocus.top(1));
       case ('tiles', Command.select):
         primaryAction(game);
+      case ('top', Command.left) when focus.index == 0 && updates.showsNotice:
+        _moveFocus(HomeFocus.notice(updates.restartAfterGame ? 0 : 1));
       case ('top', Command.left):
         _moveFocus(HomeFocus.top((focus.index - 1).clamp(0, topButtons - 1)));
+      case ('notice', Command.left):
+        _moveFocus(HomeFocus.notice(focus.index > 0 ? focus.index - 1 : 0));
+      case ('notice', Command.right):
+        _moveFocus(focus.index == 1 || updates.restartAfterGame ? const HomeFocus.top(0) : const HomeFocus.notice(1));
+      case ('notice', Command.down) || ('notice', Command.back):
+        _moveFocus(HomeFocus.tiles);
+      case ('notice', Command.select) when focus.index == 0:
+        updates.restartAfterGame ? updates.cancelRestart() : unawaited(updates.restartNow());
+      case ('notice', Command.select):
+        updates.later();
+        _moveFocus(const HomeFocus.top(0));
       case ('top', Command.right):
         _moveFocus(HomeFocus.top((focus.index + 1).clamp(0, topButtons - 1)));
       case ('top', Command.down) || ('top', Command.back):
@@ -2041,6 +2161,18 @@ class AppModel extends ChangeNotifier {
                 savePreferences();
               },
             ),
+          ),
+          PanelRow(
+            id: 'vibration',
+            title: T.text('controllerVibration'),
+            detail: T.text('controllerVibrationDetail'),
+            kind: ToggleRow(preferences.controllerVibration, (value) {
+              preferences.controllerVibration = value;
+              haptics.enabled = value;
+              savePreferences();
+              // Turned on from the pad: a pulse at once says what it feels like.
+              if (value) vibrate(HapticCue.select);
+            }),
           ),
           PanelRow(
             id: 'hiddenTrophies',
@@ -2845,14 +2977,29 @@ class AppModel extends ChangeNotifier {
     _library?.stop();
     _trophyWatch?.cancel();
     _toastTimer?.cancel();
+    _pulses.stop();
     _pads?.stop();
     _navigator?.dispose();
     _installer?.cancel();
     engine.cancel();
     fonts.dispose();
     together.dispose();
+    updates.dispose();
     music.dispose();
     unawaited(stopPhoneServer());
     super.dispose();
   }
+}
+
+/// The motors of whatever controllers are being read now (none before the pads start).
+class _PadMotors implements PadRumble {
+  _PadMotors(this.app);
+  final AppModel app;
+
+  @override
+  bool canRumble(String pad) => app._pads?.motors?.canRumble(pad) ?? false;
+
+  @override
+  void rumble(String pad, double strong, double weak, Duration length) =>
+      app._pads?.motors?.rumble(pad, strong, weak, length);
 }

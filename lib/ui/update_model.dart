@@ -4,21 +4,32 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../core/app_update.dart';
+import '../core/audio/tones.dart';
+import '../core/gamepad/feel.dart' show HapticCue;
+import '../core/host.dart';
 import '../core/toolkit_download.dart';
+import '../core/update_notice.dart';
 import 'app_model.dart';
 import 'components.dart';
 import 'strings.dart';
 import 'together_model.dart' show launcherVersion;
 
-/// New versions of AnyPS5 Desktop itself: whether one is out, and its installer downloaded and
-/// checked against the release's signature, for the user to run (Settings › About).
+/// New versions of AnyPS5 Desktop itself: looked for at the start, every six hours while the
+/// launcher stays open and when it comes back to the front after half an hour; a newer one is
+/// downloaded quietly and checked against the release's signature, then a quiet notice on the
+/// home screen offers Restart Now and Later (the next launch). Settings › About shows where it
+/// stands.
 class LauncherUpdateModel {
   LauncherUpdateModel(this.app);
 
   final AppModel app;
 
-  /// What GitHub said last.
+  static const every = Duration(hours: 6);
+  static const afterAway = Duration(minutes: 30);
+
+  /// What GitHub said last, and when it last answered.
   UpstreamRelease? latest;
+  DateTime? lastCheck;
   bool checking = false;
   String? checkError;
 
@@ -27,11 +38,20 @@ class LauncherUpdateModel {
   int total = 0;
   DownloadCancel? _cancel;
 
-  /// The checked installer, once downloaded.
+  /// The checked download, once there, and the version it is.
   String? downloaded;
+  String? downloadedVersion;
 
   /// Why the last download failed.
   String? error;
+
+  /// Later on the home screen's notice, by version.
+  final UpdateNotice notice = UpdateNotice();
+
+  /// Restart Now with a game running: the restart waits for the game to close.
+  bool restartAfterGame = false;
+
+  Timer? _timer;
 
   GitHubReleases? get _source => app.services.launcherReleases;
 
@@ -40,13 +60,38 @@ class LauncherUpdateModel {
 
   bool get available => latest != null && LauncherUpdates.isNewer(latest!, current);
 
-  bool get _appImage => (app.services.environment ?? Platform.environment)['APPIMAGE']?.isNotEmpty ?? false;
+  String? get _appImagePath {
+    final path = (app.services.environment ?? Platform.environment)['APPIMAGE'];
+    return path == null || path.isEmpty ? null : path;
+  }
+
+  bool get _appImage => _appImagePath != null;
 
   /// The newest release's file for this system.
   ReleaseAsset? get asset => latest == null ? null : LauncherUpdates.assetFor(latest!, app.system, appImage: _appImage);
 
-  /// Where installers are downloaded to.
+  /// Where downloads are kept.
   String get folder => p.join(app.paths.cache, 'Updates');
+
+  /// The update ready: downloaded for the newest version.
+  String? get _ready =>
+      downloaded != null && available && downloadedVersion == latest!.version ? downloadedVersion : null;
+
+  LauncherUpdateState get state => LauncherUpdateState.of(
+    checking: checking,
+    newer: available ? latest!.version : null,
+    progress: received == null ? null : (total <= 0 ? 0 : received! / total),
+    ready: _ready,
+    lastCheck: lastCheck,
+    failed: checkError != null,
+  );
+
+  /// How the ready download goes in: the installer, the AppImage swapped, or by the user.
+  SelfApply get apply =>
+      SelfApply.of(windows: app.system == HostSystem.windows, appImage: _appImage, file: downloaded ?? '');
+
+  /// The home screen's quiet notice: an update ready, or a restart waiting for the game.
+  bool get showsNotice => restartAfterGame || notice.shows(state);
 
   /// Asks GitHub for the newest release; without [quiet], says what came of it.
   Future<void> check({bool quiet = false}) async {
@@ -57,11 +102,10 @@ class LauncherUpdateModel {
     app.refresh();
     try {
       latest = await source.latest();
+      lastCheck = DateTime.now();
       if (!quiet) {
         app.show(
-          available
-              ? T.format('desktopUpdateAvailable', [latest!.version])
-              : T.format('desktopUpToDate', [current]),
+          available ? T.format('desktopUpdateAvailable', [latest!.version]) : T.format('desktopUpToDate', [current]),
         );
       }
     } on ToolkitFailure catch (failure) {
@@ -73,15 +117,36 @@ class LauncherUpdateModel {
     }
   }
 
-  /// At start: a quiet look, said once when a newer version is out.
+  /// At start: a quiet look, then the same every six hours while the launcher stays open.
   Future<void> startupCheck() async {
     if (_source == null) return;
-    await check(quiet: true);
-    if (available) app.show(T.format('desktopUpdateAvailable', [latest!.version]));
+    _timer ??= Timer.periodic(every, (_) => unawaited(periodicCheck()));
+    await periodicCheck(first: true);
   }
 
-  /// Downloads the newest release's installer once its signature checked out.
-  Future<void> download() async {
+  /// A quiet look; a newer release with a file for this system is downloaded at once (its
+  /// notice comes once it is ready), one without is said once.
+  Future<void> periodicCheck({bool first = false}) async {
+    final before = latest?.version;
+    await check(quiet: true);
+    if (!available) return;
+    if (asset == null) {
+      if (first || before != latest!.version) app.show(T.format('desktopUpdateAvailable', [latest!.version]));
+      return;
+    }
+    if (_ready == null && received == null) await download(quiet: true);
+  }
+
+  /// The launcher came back to the front: asked again after half an hour away.
+  void activated() {
+    if (_source == null || checking || received != null) return;
+    final last = lastCheck;
+    if (last != null && DateTime.now().difference(last) < afterAway) return;
+    unawaited(periodicCheck());
+  }
+
+  /// Downloads the newest release's file once its signature checked out.
+  Future<void> download({bool quiet = false}) async {
     final release = latest;
     final file = asset;
     if (release == null || file == null || received != null) return;
@@ -107,11 +172,12 @@ class LauncherUpdateModel {
           }
         },
       );
-      app.show(T.format('desktopUpdateReady', [release.version]));
+      downloadedVersion = release.version;
     } on ToolkitFailure catch (failure) {
       if (failure.kind != ToolkitFailureKind.cancelled) {
         error = failure.message;
-        app.show(T.format('desktopUpdateFailed', [failure.message]));
+        // The periodic check says nothing over a game or a screen; About shows it.
+        if (!quiet) app.show(T.format('desktopUpdateFailed', [failure.message]));
       }
     } finally {
       received = null;
@@ -122,50 +188,160 @@ class LauncherUpdateModel {
 
   void cancel() => _cancel?.cancel();
 
-  /// The About rows: the version, a newer one to download or the downloaded installer, and the
-  /// check.
+  /// Restart Now: the update goes in and the launcher opens again on it; with a game running,
+  /// the restart waits for the game to close. A download only the user can put in place is shown.
+  Future<void> restartNow() async {
+    final file = downloaded;
+    if (_ready == null || file == null) return;
+    if (apply == SelfApply.manual) {
+      app.services.openFolder?.call(p.dirname(file));
+      return;
+    }
+    switch (UpdateRestart.decide(gameRunning: app.running != null || app.starting != null)) {
+      case UpdateRestart.afterGame:
+        restartAfterGame = true;
+        app.refresh();
+      case UpdateRestart.now:
+        restartAfterGame = false;
+        app.sounds.play(Cue.select);
+        try {
+          if (apply == SelfApply.installer) {
+            await (app.services.startDetached ?? _startDetached)(file, SelfApply.installerArguments);
+          } else {
+            final appImage = _appImagePath!;
+            LauncherUpdates.swapAppImage(file, appImage);
+            await (app.services.startDetached ?? _startDetached)(appImage, const []);
+          }
+          (app.services.quit ?? exit)(0);
+        } on Object catch (failure) {
+          app.vibrate(HapticCue.error);
+          app.show(T.format('desktopUpdateApplyFailed', ['$failure']));
+        }
+    }
+  }
+
+  static Future<void> _startDetached(String executable, List<String> arguments) =>
+      Process.start(executable, arguments, mode: ProcessStartMode.detached);
+
+  void cancelRestart() {
+    restartAfterGame = false;
+    app.refresh();
+  }
+
+  /// Later: the update goes in at the next launch (the installer then runs first, an AppImage is
+  /// swapped now, the running copy keeps going), and the notice does not come back for it.
+  void later() {
+    final file = downloaded;
+    final version = _ready;
+    notice.later(state);
+    restartAfterGame = false;
+    app.sounds.play(Cue.back);
+    if (file != null && version != null) {
+      try {
+        switch (apply) {
+          case SelfApply.installer:
+            LauncherUpdates.writePending(folder, version, file);
+          case SelfApply.appImage:
+            LauncherUpdates.swapAppImage(file, _appImagePath!);
+          case SelfApply.manual:
+            break;
+        }
+      } on Object catch (failure) {
+        app.show(T.format('desktopUpdateApplyFailed', ['$failure']));
+      }
+    }
+    app.refresh();
+  }
+
+  /// A game closed while a restart waited for it: a moment for its saves, then the restart.
+  void gameEnded() {
+    if (!restartAfterGame) return;
+    Timer(const Duration(seconds: 5), () {
+      if (restartAfterGame && app.running == null && app.starting == null) unawaited(restartNow());
+    });
+  }
+
+  /// At launch, before the window: an installer left by Later runs now (silently, opening the
+  /// launcher again after it) and this launcher quits. True when it did.
+  Future<bool> applyPendingAtLaunch() async {
+    if (app.system != HostSystem.windows) return false;
+    final installer = LauncherUpdates.takePending(folder, current);
+    if (installer == null) return false;
+    try {
+      await (app.services.startDetached ?? _startDetached)(installer, SelfApply.installerArguments);
+      return true;
+    } on Object {
+      return false;
+    }
+  }
+
+  void dispose() {
+    _timer?.cancel();
+    _timer = null;
+    _cancel?.cancel();
+  }
+
+  /// The About rows: the version, the update where it stands (at most one row that acts) and
+  /// the check.
   List<PanelRow> aboutRows() {
     final release = latest;
     final file = asset;
+    final now = state;
     return [
-      if (received case final int bytes)
-        PanelRow(
+      switch (now) {
+        UpdateDownloading(:final version, :final percent) => PanelRow(
           id: 'desktopUpdate',
-          title: T.format('desktopUpdateDownloading', [release?.version ?? '', total <= 0 ? 0 : bytes * 100 ~/ total]),
-          detail: T.format('engineProgress', [byteText(bytes), byteText(total)]),
+          title: T.format('desktopUpdateDownloading', [version, percent]),
+          detail: T.format('engineProgress', [byteText(received ?? 0), byteText(total)]),
           kind: ActionRow(cancel),
-        )
-      else if (downloaded case final String path when available)
-        PanelRow(
+        ),
+        UpdateReady() when restartAfterGame => PanelRow(
           id: 'desktopUpdate',
-          title: T.format('desktopUpdateReady', [release!.version]),
-          detail: path,
-          kind: ActionRow(() => app.services.openFolder?.call(p.dirname(path))),
-        )
-      else if (available && file != null)
-        PanelRow(
+          title: T.text('desktopRestartWaiting'),
+          detail: T.text('desktopCancelRestart'),
+          kind: ActionRow(cancelRestart),
+        ),
+        UpdateReady(:final version) when apply == SelfApply.manual => PanelRow(
           id: 'desktopUpdate',
-          title: T.format('desktopUpdateTo', [release!.version]),
-          detail: T.format('desktopUpdateDetail', [file.name, byteText(file.size)]),
+          title: T.format('desktopNoticeDownloaded', [version]),
+          detail: downloaded,
+          kind: ActionRow(() => unawaited(restartNow())),
+        ),
+        UpdateReady(:final version) => PanelRow(
+          id: 'desktopUpdate',
+          title: '${T.format('desktopNoticeReady', [version])} · ${T.text('desktopRestartNow')}',
+          detail: T.text('desktopUpdateLaterDetail'),
+          kind: ActionRow(() => unawaited(restartNow())),
+        ),
+        UpdateAvailable(:final version) when file != null => PanelRow(
+          id: 'desktopUpdate',
+          title: T.format('desktopUpdateTo', [version]),
+          detail: error ?? T.format('desktopUpdateDetail', [file.name, byteText(file.size)]),
           kind: ActionRow(() => unawaited(download())),
-        )
-      else if (available)
-        PanelRow(
+        ),
+        UpdateAvailable(:final version) => PanelRow(
           id: 'desktopUpdate',
-          title: T.format('desktopUpdateAvailable', [release!.version]),
+          title: T.format('desktopUpdateAvailable', [version]),
           detail: T.text('desktopUpdateNoFile'),
           kind: const InfoRow(''),
         ),
+        _ => null,
+      },
       PanelRow(
         id: 'desktopUpdateCheck',
         title: T.text('checkForUpdatesNow'),
-        detail: checking
-            ? T.text('checkingUpdates')
-            : release == null
-            ? (checkError == null ? T.format('desktopVersion', [current]) : T.text('updateCheckFailed'))
-            : T.format('desktopNewest', [release.version, current]),
+        detail: switch (now) {
+          UpdateChecking() => T.text('checkingUpdates'),
+          UpdateCheckFailed() => T.text('desktopUpdateNoAnswer'),
+          UpdateCurrent(:final checked) => T.format('desktopUpToDateAt', [current, _time(checked)]),
+          UpdateIdle() => T.format('desktopVersion', [current]),
+          _ => T.format('desktopNewest', [release?.version ?? '', current]),
+        },
         kind: ActionRow(() => unawaited(check())),
       ),
-    ];
+    ].nonNulls.toList();
   }
+
+  static String _time(DateTime time) =>
+      '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
 }

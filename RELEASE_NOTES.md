@@ -19,6 +19,26 @@ release when it is made.
   and the game selected on the home screen; a desktop notice says it too while the launcher is
   behind other windows. On Linux every folder down to the scan's depth is watched, and a games
   folder on a drive that is not plugged in yet is found when it is.
+- **Controller vibration.** Soft, short pulses in the controller for select, back, errors,
+  trophies, invitations and the end of a row (**Settings → Behaviour → Controller Vibration**, on
+  by default). Only while the launcher is in front and the controller is what you are using; the
+  motors stop the moment a game comes in front. Xbox and other XInput pads on Windows, pads with
+  force feedback on Linux; a pad without motors (or a PlayStation pad read through winmm) stays
+  still.
+- **Input feel.** A held direction repeats at the same pace on the controller and the arrow keys
+  (0.4 s, then 0.08 s, a little faster after six); the stick engages at half and lets go only
+  below a third, so a resting stick no longer jitters; a direction with nowhere to go answers
+  with a quiet knock (once per press). A soft tick plays when the mouse arrives on a tile, row or
+  button.
+- **Updates while it stays open.** The launcher looks for a new version every six hours and when
+  it comes back to the front after half an hour, downloads it in the background (signature
+  checked as before), then shows a quiet notice beside the top bar: **Restart Now** or **Later**
+  (it goes in at the next launch, and the notice does not come back). Restart Now with a game
+  running waits for the game. On Windows the installer runs silently and opens the launcher
+  again; an AppImage is swapped for the new one; with the archive, **Show File**. About shows
+  checking, up to date, downloading with its percent, or ready.
+- **Hidden trophies.** Checked: a hidden trophy you earned always shows its name; only unearned
+  hidden ones are masked.
 
 ## 0.1.5
 

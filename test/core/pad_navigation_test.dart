@@ -64,9 +64,9 @@ void main() {
       fakeAsync((async) {
         navigator.handle(down(PadButton.dpadDown));
         expect(commands, [PadCommand.down]);
-        async.elapse(const Duration(milliseconds: 379));
+        async.elapse(const Duration(milliseconds: 399));
         expect(commands, hasLength(1), reason: 'nothing before the first repeat');
-        async.elapse(const Duration(milliseconds: 1 + 85 * 3));
+        async.elapse(const Duration(milliseconds: 1 + 80 * 2));
         expect(commands, List.filled(4, PadCommand.down));
         navigator.handle(up(PadButton.dpadDown));
         async.elapse(const Duration(seconds: 1));
@@ -75,15 +75,18 @@ void main() {
       });
     });
 
-    test('the left stick moves past its threshold, lets go only once back near the middle', () {
+    test('the left stick engages past half, lets go only below a third (no flutter at rest)', () {
       fakeAsync((async) {
-        navigator.handle(const PadAxisEvent('a', PadAxis.leftX, 0.5));
+        navigator.handle(const PadAxisEvent('a', PadAxis.leftX, 0.45));
         expect(commands, isEmpty, reason: 'not far enough');
         navigator.handle(const PadAxisEvent('a', PadAxis.leftX, 0.8));
         expect(commands, [PadCommand.right]);
-        navigator.handle(const PadAxisEvent('a', PadAxis.leftX, 0.5));
-        expect(navigator.held, PadCommand.right, reason: 'between the two thresholds it still holds');
-        navigator.handle(const PadAxisEvent('a', PadAxis.leftX, 0.1));
+        for (final value in [0.48, 0.35, 0.31, 0.44]) {
+          navigator.handle(PadAxisEvent('a', PadAxis.leftX, value));
+          expect(navigator.held, PadCommand.right, reason: 'between the two thresholds it still holds');
+        }
+        expect(commands, [PadCommand.right], reason: 'a resting stick near the line moves nothing more');
+        navigator.handle(const PadAxisEvent('a', PadAxis.leftX, 0.29));
         expect(navigator.held, isNull);
         navigator.handle(const PadAxisEvent('a', PadAxis.leftY, -0.9));
         expect(commands.last, PadCommand.up, reason: 'up is negative, as the readers give it');

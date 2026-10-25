@@ -140,6 +140,10 @@ Fixture makeFixture({
   String? builtInFonts,
   Future<String?> Function(String suggestedName)? saveFile,
   HostSystem system = HostSystem.linux,
+  GitHubReleases? launcherReleases,
+  Future<void> Function(String executable, List<String> arguments)? startDetached,
+  void Function(int code)? quit,
+  Map<String, String> environment = const {},
 }) {
   final opened = <Uri>[];
   final copied = <String>[];
@@ -183,7 +187,7 @@ Fixture makeFixture({
       cable: false,
       openUrl: opened.add,
       copyText: copied.add,
-      environment: const {},
+      environment: environment,
       togetherStore: togetherStore ?? MemoryTokenStore(),
       togetherServer: together,
       togetherPollEvery: const Duration(milliseconds: 10),
@@ -202,6 +206,9 @@ Fixture makeFixture({
       cjkFonts: cjkFonts,
       builtInFonts: builtInFonts,
       saveFile: saveFile,
+      launcherReleases: launcherReleases,
+      startDetached: startDetached,
+      quit: quit,
       systemInfo: () async =>
           const SystemInfo(os: 'Ubuntu 24.04.1 LTS, kernel 6.8.0-45-generic', cpu: 'AMD Ryzen 7 5800X', memoryGB: 32),
     ),

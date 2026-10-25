@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../core/audio/tones.dart';
 import '../core/family/family_rules.dart' show TitleVerdict;
 import '../core/game_library.dart';
+import '../core/update_notice.dart' show SelfApply;
 import 'app_model.dart';
 import 'background.dart';
 import 'components.dart';
@@ -118,6 +119,91 @@ class HomeView extends StatelessWidget {
   }
 }
 
+/// The launcher's own update, ready: a quiet line beside the top bar's buttons with Restart Now
+/// (Show File where the user puts it in place) and Later; nothing blocks, nothing comes back
+/// after Later. With a game running, Restart Now waits for it and the line says so.
+class UpdateNoticeBar extends StatelessWidget {
+  const UpdateNoticeBar({super.key, required this.model});
+
+  final AppModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final updates = model.updates;
+    final waiting = updates.restartAfterGame;
+    final manual = updates.apply == SelfApply.manual;
+    final version = updates.downloadedVersion ?? '';
+    final accent = model.accentChoice.color;
+    Widget pill(String title, int index, VoidCallback action) {
+      final focused = model.focus == HomeFocus.notice(index) && model.overlay == null;
+      return Pressable(
+        key: ValueKey('update-notice-$index'),
+        onTap: action,
+        builder: (context, hovering) => AnimatedScale(
+          scale: focused ? 1.05 : 1,
+          duration: Motion.focus,
+          curve: Motion.settle,
+          child: AnimatedContainer(
+            duration: Motion.focus,
+            height: 34 * scale,
+            padding: EdgeInsets.symmetric(horizontal: 14 * scale),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(17 * scale),
+              color: focused
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: (index == 0 ? 0.14 : 0.06) + (hovering ? 0.06 : 0)),
+            ),
+            child: Text(
+              title,
+              style: AppText.display(
+                13 * scale,
+                weight: FontWeight.w600,
+                color: focused ? Colors.black : Colors.white.withValues(alpha: index == 0 ? 0.95 : 0.7),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      height: 44 * scale,
+      padding: EdgeInsets.only(left: 16 * scale, right: 5 * scale),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.32),
+        borderRadius: BorderRadius.circular(22 * scale),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            waiting ? Icons.hourglass_top_rounded : Icons.download_for_offline_rounded,
+            size: 18 * scale,
+            color: accent,
+          ),
+          SizedBox(width: 10 * scale),
+          Text(
+            waiting
+                ? T.text('desktopRestartWaiting')
+                : T.format(manual ? 'desktopNoticeDownloaded' : 'desktopNoticeReady', [version]),
+            style: AppText.display(15 * scale, weight: FontWeight.w500, color: Colors.white.withValues(alpha: 0.92)),
+          ),
+          SizedBox(width: 12 * scale),
+          pill(
+            T.text(waiting ? 'desktopCancelRestart' : (manual ? 'desktopShowFile' : 'desktopRestartNow')),
+            0,
+            () => waiting ? updates.cancelRestart() : unawaited(updates.restartNow()),
+          ),
+          if (!waiting) ...[SizedBox(width: 6 * scale), pill(T.text('desktopLater'), 1, updates.later)],
+        ],
+      ),
+    );
+  }
+}
+
 class TopBar extends StatelessWidget {
   const TopBar({super.key, required this.model, this.now});
 
@@ -201,6 +287,16 @@ class TopBar extends StatelessWidget {
           ),
         ],
         const Spacer(),
+        AnimatedSwitcher(
+          duration: Motion.focus,
+          child: model.updates.showsNotice
+              ? Padding(
+                  key: const ValueKey('update-notice'),
+                  padding: EdgeInsets.only(right: 22 * scale),
+                  child: UpdateNoticeBar(model: model),
+                )
+              : const SizedBox.shrink(),
+        ),
         iconButton(Icons.grid_view_rounded, 0, () => model.open(Layer.library)),
         SizedBox(width: 22 * scale),
         iconButton(Icons.settings_rounded, 1, () => model.open(Layer.settings)),

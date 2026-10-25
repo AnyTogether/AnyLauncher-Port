@@ -3,8 +3,9 @@ import 'dart:typed_data';
 
 import 'wav.dart';
 
-/// The launcher's interface sounds.
-enum Cue { move, select, back, unlocked, ring }
+/// The launcher's interface sounds: [bump] when a direction has nowhere to go, [hover] when the
+/// pointer arrives on something.
+enum Cue { move, select, back, unlocked, ring, bump, hover }
 
 /// One sine of a cue: its frequency, when it starts and how long it lasts, in seconds.
 typedef Partial = (double frequency, double start, double length);
@@ -23,12 +24,26 @@ abstract final class Tones {
     Cue.unlocked: ([(660, 0.0, 0.12), (990, 0.09, 0.14), (1320, 0.18, 0.3)], 12),
     // A friend calling: two soft trills.
     Cue.ring: ([(988, 0.0, 0.11), (1319, 0.1, 0.11), (988, 0.2, 0.11), (1319, 0.3, 0.16)], 5),
+    // The end of a row: B3 and a fast decay, the quietest cue.
+    Cue.bump: ([(247, 0.0, 0.06)], 55),
+    // The pointer on something new: the move tick, about 3 dB lower.
+    Cue.hover: ([(1320, 0.0, 0.045)], 70),
   };
+
+  /// How loud each cue is against the others (1 for the rest).
+  static const gains = <Cue, double>{Cue.bump: 0.6, Cue.hover: 0.7};
 
   /// The cue as mono samples at [rate].
   static Float32List render(Cue cue, {int rate = sampleRate}) {
     final (partials, decay) = recipes[cue]!;
-    return synthesize(partials, decay, rate: rate);
+    final samples = synthesize(partials, decay, rate: rate);
+    final gain = gains[cue] ?? 1;
+    if (gain != 1) {
+      for (var index = 0; index < samples.length; index++) {
+        samples[index] *= gain;
+      }
+    }
+    return samples;
   }
 
   /// Sine partials with a 4 ms attack and an exponential decay, plus a quieter octave that dies

@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import '../core/audio/tones.dart';
 import '../core/game_library.dart';
+import '../core/gamepad/feel.dart' show HapticCue;
 import '../core/host.dart';
 import '../core/remote/remote_protocol.dart';
 import '../core/together/account.dart';
@@ -56,6 +57,7 @@ class TogetherModel {
     );
     hub.games.onInvite = (invite) {
       _noticeSound();
+      app.vibrate(HapticCue.ring);
       app.show(T.format('gameInvitedYou', [invite.from?.displayName ?? '', gameName(invite.titleId)]));
     };
     hub.games.onEnded = (host) => app.show(T.format('sessionEnded', [host?.displayName ?? '']));
@@ -903,6 +905,7 @@ class TogetherModel {
       case 'party.invite':
         final from = data['from'];
         _noticeSound();
+        app.vibrate(HapticCue.ring);
         app.show(
           T.format('partyInvitedYou', [from is Map<String, dynamic> ? (from['displayName'] as String?) ?? '' : '']),
         );

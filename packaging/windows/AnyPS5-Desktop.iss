@@ -72,6 +72,9 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; The launcher's own update (Restart Now, or Later at the next launch) runs this installer with
+; /VERYSILENT /relaunch=1: the launcher opens again on the new version.
+Filename: "{app}\{#AppExe}"; Flags: nowait runasoriginaluser; Check: WizardSilent and RelaunchAsked
 
 [Code]
 // Ends a running launcher: asked to close first, then ended if it is still there.
@@ -82,6 +85,12 @@ begin
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM {#AppExe}', '', SW_HIDE, ewWaitUntilTerminated, Code);
   Sleep(1500);
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM {#AppExe}', '', SW_HIDE, ewWaitUntilTerminated, Code);
+end;
+
+// The launcher asked to be opened again after a silent update.
+function RelaunchAsked(): Boolean;
+begin
+  Result := ExpandConstant('{param:relaunch|0}') = '1';
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;

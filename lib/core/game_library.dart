@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'binary.dart';
+import 'family/family_rules.dart' show AgeLevels;
 import 'self_unwrap.dart';
 
 /// What a dump's eboot.bin is.
@@ -31,6 +32,7 @@ class Game {
     this.icon,
     this.background,
     this.music,
+    this.ageLevels,
   });
 
   /// The dump's folder, as the scan found it.
@@ -50,6 +52,10 @@ class Game {
   final String? icon;
   final String? background;
   final String? music;
+
+  /// param.json's age ratings (`ageLevel`): "default" or a region such as "US", to an age; null
+  /// when the dump has none.
+  final Map<String, int>? ageLevels;
 
   String get id => folder;
 
@@ -173,6 +179,7 @@ abstract final class GameLibrary {
       icon: existing('icon0.png'),
       background: existing('pic0.png'),
       music: existing('snd0.at9'),
+      ageLevels: AgeLevels.parse(parameters['ageLevel']),
     );
   }
 

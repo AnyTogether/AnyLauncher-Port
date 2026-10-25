@@ -26,6 +26,7 @@ String makeDump(
   List<String> pictures = const [],
   bool bom = false,
   Map<String, String> files = const {},
+  Map<String, Object>? ageLevel,
 }) {
   final folder = p.join(parent, folderName);
   Directory(p.join(folder, 'sce_sys')).createSync(recursive: true);
@@ -33,6 +34,7 @@ String makeDump(
     for (final entry in names.entries) entry.key: {'titleName': entry.value},
   };
   final parameters = <String, Object>{'titleId': titleId, 'contentVersion': version, 'localizedParameters': localized};
+  if (ageLevel != null) parameters['ageLevel'] = ageLevel;
   if (defaultLanguage != null) {
     if (defaultLanguageAtTop) {
       parameters['defaultLanguage'] = defaultLanguage;

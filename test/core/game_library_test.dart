@@ -33,6 +33,12 @@ void main() {
     expect(game.slug, 'ppsa01234');
   });
 
+  test('the age ratings of param.json, when it has them', () {
+    final rated = makeDump(root.path, 'Rated', ageLevel: {'default': 16, 'US': 13, 'DE': 12, 'bad': 'x'});
+    expect(GameLibrary.inspect(rated)!.ageLevels, {'default': 16, 'US': 13, 'DE': 12});
+    expect(GameLibrary.inspect(makeDump(root.path, 'Plain'))!.ageLevels, isNull);
+  });
+
   test('the default language picks the name, inside localizedParameters or at the top', () {
     final inside = makeDump(root.path, 'A', names: {'en-US': 'English', 'ja-JP': 'Japanese'}, defaultLanguage: 'ja-JP');
     final top = makeDump(

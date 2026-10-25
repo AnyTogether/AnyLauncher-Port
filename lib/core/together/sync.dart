@@ -120,6 +120,9 @@ class TogetherSync {
   late String deviceId;
   bool deviceRegistered = false;
   Map<String, String> gameNames = {};
+
+  /// Each game's age ratings from its param.json, taught with its name.
+  Map<String, Map<String, int>> gameAges = {};
   Set<String> taughtGames = {};
   Map<String, SyncTrophySet> sets = {};
   Set<String> uploadedSets = {};
@@ -141,6 +144,12 @@ class TogetherSync {
       gameNames = {
         for (final entry in (json['gameNames'] as Map<String, dynamic>? ?? const {}).entries)
           entry.key: entry.value as String,
+      };
+      gameAges = {
+        for (final entry in (json['gameAges'] as Map<String, dynamic>? ?? const {}).entries)
+          entry.key: {
+            for (final level in (entry.value as Map<String, dynamic>).entries) level.key: (level.value as num).toInt(),
+          },
       };
       taughtGames = {for (final id in json['taughtGames'] as List<dynamic>? ?? const []) id as String};
       sets = {
@@ -166,6 +175,7 @@ class TogetherSync {
           'deviceId': deviceId,
           'deviceRegistered': deviceRegistered,
           'gameNames': gameNames,
+          'gameAges': gameAges,
           'taughtGames': taughtGames.toList(),
           'sets': {for (final entry in sets.entries) entry.key: entry.value.toJson()},
           'uploadedSets': uploadedSets.toList(),
@@ -183,6 +193,27 @@ class TogetherSync {
   bool get isEmpty =>
       sessions.isEmpty && _pendingTrophies().isEmpty && sets.values.every((set) => uploadedSets.contains(set.key));
 
+  /// A game the catalogue should know: its name and its age ratings (param.json's ageLevel),
+  /// taught again when the ratings change.
+  void teachGame({required String titleId, required String gameName, Map<String, int>? ageLevels}) {
+    if (!titleIdPattern.hasMatch(titleId)) return;
+    _learn(titleId, gameName, ageLevels);
+    _save();
+  }
+
+  void _learn(String titleId, String gameName, Map<String, int>? ageLevels) {
+    gameNames[titleId] = gameName;
+    if (ageLevels == null || ageLevels.isEmpty) return;
+    final known = gameAges[titleId];
+    final same =
+        known != null &&
+        known.length == ageLevels.length &&
+        ageLevels.entries.every((entry) => known[entry.key] == entry.value);
+    if (same) return;
+    gameAges[titleId] = Map.of(ageLevels);
+    taughtGames.remove(titleId);
+  }
+
   /// A game played from [startedAt] to [endedAt]; a few seconds are no session. [exit] is normal,
   /// crashed or killed.
   void recordSession({
@@ -191,9 +222,10 @@ class TogetherSync {
     required DateTime startedAt,
     required DateTime endedAt,
     String exit = 'normal',
+    Map<String, int>? ageLevels,
   }) {
     if (!titleIdPattern.hasMatch(titleId) || !endedAt.isAfter(startedAt.add(const Duration(seconds: 5)))) return;
-    gameNames[titleId] = gameName;
+    _learn(titleId, gameName, ageLevels);
     sessions.add({
       'id': uuidv4(),
       'titleId': titleId,
@@ -233,6 +265,7 @@ class TogetherSync {
         if (taughtGames.contains(entry.key)) continue;
         await account.call('PUT', 'games/${entry.key}', {
           'names': {'en': entry.value},
+          'ageLevels': ?gameAges[entry.key],
         });
         taughtGames.add(entry.key);
         _save();

@@ -12,6 +12,13 @@ release when it is made.
   fixes: a games folder on the dump's drive, or Developer Mode (**Settings → System → For
   developers**, one button away), or **Copy Anyway**. A linked game whose dump moved says so
   instead of crashing.
+- **New games show up by themselves.** A game copied into the games folder, in a subfolder too,
+  appears as soon as its copy is far enough along (a big copy that started before its
+  eboot.bin and param.json were there no longer goes unnoticed, and an unlock going on no longer
+  holds it back), with **New game: <name>** and its icon (or **3 new games**), the select sound,
+  and the game selected on the home screen; a desktop notice says it too while the launcher is
+  behind other windows. On Linux every folder down to the scan's depth is watched, and a games
+  folder on a drive that is not plugged in yet is found when it is.
 
 ## 0.1.5
 

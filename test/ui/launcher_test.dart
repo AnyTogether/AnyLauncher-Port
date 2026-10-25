@@ -178,6 +178,17 @@ void main() {
       await expectLater(shell, matchesGoldenFile('goldens/trophies.png'));
     });
 
+    testWidgets('a new game copied in: its toast with the icon', (tester) async {
+      fixture = makeFixture();
+      final model = fixture.model;
+      final orbit = model.games[indexOf(model, 'PPSA01001')];
+      model.select(indexOf(model, 'PPSA01001'));
+      model.show(T.format('newGame', [orbit.name]), icon: orbit.icon);
+      await pumpLauncher(tester, model);
+      await expectLater(shell, matchesGoldenFile('goldens/new_game_toast.png'));
+      await tester.pump(const Duration(seconds: 5));
+    });
+
     testWidgets('a phone asking to pair', (tester) async {
       fixture = makeFixture();
       final model = fixture.model;

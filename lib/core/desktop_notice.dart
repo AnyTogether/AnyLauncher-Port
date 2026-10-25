@@ -3,11 +3,17 @@ import 'dart:io';
 /// A notification on the desktop, over the game being played: notify-send on Linux, a toast
 /// through PowerShell on Windows. Best effort: nothing is said when the system cannot show one.
 abstract final class DesktopNotice {
-  static void show(String title, String body) {
+  /// [urgent] (Linux) keeps the notice up until it is seen: for what stops the game.
+  static void show(String title, String body, {bool urgent = true}) {
     final Future<Process> started;
     try {
       if (Platform.isLinux) {
-        started = Process.start('notify-send', ['--app-name=AnyPS5', '--urgency=critical', title, body]);
+        started = Process.start('notify-send', [
+          '--app-name=AnyPS5',
+          '--urgency=${urgent ? 'critical' : 'normal'}',
+          title,
+          body,
+        ]);
       } else if (Platform.isWindows) {
         // The texts go in the environment, not the script, so nothing in them is run.
         started = Process.start(

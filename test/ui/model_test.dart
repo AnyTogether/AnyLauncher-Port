@@ -133,6 +133,87 @@ void main() {
     expect(model.games, hasLength(5));
   });
 
+  group('a new game in the games folder', () {
+    late List<(String, String)> notices;
+    late Directory staging;
+
+    setUp(() {
+      notices = [];
+      model.desktopNotify = (title, body) => notices.add((title, body));
+      staging = Directory(p.join(fixture.temp.path, 'staging'))..createSync();
+    });
+
+    /// A dump copied the way a big copy lands: its folder, a while later sce_sys, then eboot.bin.
+    Future<String> copyInSteps(String parent, String name, String titleId, String title) async {
+      final source = makeDump(staging.path, name, titleId: titleId, names: {'en-US': title}, pictures: ['icon0.png']);
+      final folder = p.join(parent, name);
+      Directory(folder).createSync(recursive: true);
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      Directory(p.join(folder, 'sce_sys')).createSync();
+      for (final file in Directory(p.join(source, 'sce_sys')).listSync().whereType<File>()) {
+        file.copySync(p.join(folder, 'sce_sys', p.basename(file.path)));
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      File(p.join(source, 'eboot.bin')).copySync(p.join(folder, 'eboot.bin'));
+      return folder;
+    }
+
+    test('copied into a subfolder in steps, it shows up, is selected and announced', () async {
+      model.watchGamesFolder();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      final folder = await copyInSteps(p.join(model.root!, 'More', 'Games'), 'late', 'PPSA09019', 'Late Arrival');
+      await until(() => model.games.any((game) => game.titleId == 'PPSA09019'));
+      expect(model.toast, T.format('newGame', ['Late Arrival']));
+      expect(model.toastIcon, p.join(folder, 'sce_sys', 'icon0.png'));
+      expect(model.selectedGame?.titleId, 'PPSA09019', reason: 'on the home screen the new game is selected');
+      expect(notices, isEmpty, reason: 'the launcher is in front: its own toast is enough');
+    });
+
+    test('with the launcher in the background a desktop notice says it too', () async {
+      model.watchGamesFolder();
+      model.setActive(false);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      makeDump(model.root!, 'late', titleId: 'PPSA09029', names: {'en-US': 'Night Shift'});
+      await until(() => notices.isNotEmpty);
+      expect(notices.single, (T.format('newGame', ['Night Shift']), T.text('newGameDetail')));
+    });
+
+    test('several at once are counted; removed games go without a word; the first scan says nothing', () {
+      expect(model.toast, isNull, reason: 'the fixture\'s scans were the first');
+      for (final (index, name) in ['Alpha', 'Beta', 'Gamma'].indexed) {
+        makeDump(model.root!, 'new$index', titleId: 'PPSA0710$index', names: {'en-US': name});
+      }
+      model.rescan();
+      expect(model.toast, T.format('newGames', [3]));
+      model.toast = null;
+      Directory(p.join(model.root!, 'new0')).deleteSync(recursive: true);
+      model.rescan();
+      expect(model.toast, isNull);
+      expect(model.games.any((game) => game.titleId == 'PPSA07100'), isFalse);
+    });
+
+    test('a new games folder is a new start, not a pile of new games', () async {
+      final other = Directory(p.join(fixture.temp.path, 'other'))..createSync();
+      makeDump(other.path, 'one', titleId: 'PPSA08001', names: {'en-US': 'Other One'});
+      model.preferences.gamesFolder = other.path;
+      model.rescan();
+      expect(model.games.single.titleId, 'PPSA08001');
+      expect(model.toast, isNull);
+    });
+
+    test('an unlock going on does not hold the new game back, nor is it disturbed', () async {
+      final stray = model.games[indexOf('PPSA02002')];
+      File(p.join(stray.folder, 'eboot.bin')).writeAsBytesSync(typicalSelf());
+      model.watchGamesFolder();
+      model.unlock(stray);
+      expect(model.stateOf(stray), isA<Installing>());
+      makeDump(model.root!, 'during', titleId: 'PPSA09039', names: {'en-US': 'Meanwhile'});
+      await until(() => model.games.any((game) => game.titleId == 'PPSA09039'));
+      expect(model.toast, T.format('newGame', ['Meanwhile']));
+      await until(() => model.stateOf(model.games.firstWhere((game) => game.id == stray.id)) is Installed);
+    });
+  });
+
   group('an unlock that would copy', () {
     // The games folder cannot link to the dump: another drive, Windows without Developer Mode.
     setUp(() => FileLinks.calls = LinkCalls(hardLink: (_, _) => false, symbolicLink: (_, _) => false));

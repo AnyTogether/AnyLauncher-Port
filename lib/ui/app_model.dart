@@ -13,6 +13,7 @@ import '../core/audio/theme_music.dart';
 import '../core/audio/tones.dart';
 import '../core/controls.dart';
 import '../core/crash_report.dart' show Diagnosis, SystemInfo;
+import '../core/desktop_notice.dart';
 import '../core/desktop/desktop.dart';
 import '../core/font_download.dart';
 import '../core/family/family_rules.dart' show TitleVerdict;
@@ -23,6 +24,7 @@ import '../core/game_process.dart';
 import '../core/game_settings.dart';
 import '../core/host.dart';
 import '../core/installer.dart';
+import '../core/library_watch.dart';
 import '../core/remote/adb_tunnel.dart';
 import '../core/remote/mdns.dart';
 import '../core/remote/paired_devices.dart';
@@ -590,6 +592,8 @@ class AppModel extends ChangeNotifier {
     active = value;
     // Back in front: a toolkit rebuilt meanwhile is read again.
     if (value) _forgetDiskFacts();
+    // Something copied in while the launcher was away shows at once.
+    if (value) _library?.rescanSoon();
     notifyListeners();
   }
 
@@ -826,6 +830,13 @@ class AppModel extends ChangeNotifier {
   /// it says one was reached.
   String? toast;
   LevelBadge? toastLevel;
+
+  /// A game's icon before the words (a new game).
+  String? toastIcon;
+
+  /// A notice on the desktop while the launcher is behind other windows.
+  void Function(String title, String body) desktopNotify = (title, body) =>
+      DesktopNotice.show(title, body, urgent: false);
   Timer? _toastTimer;
 
   RemoteServer? remote;
@@ -917,9 +928,36 @@ class AppModel extends ChangeNotifier {
       _changed();
       return;
     }
+    if (folder != _scannedFolder) {
+      // A new games folder: what its first scan finds is not new.
+      _tracker.reset();
+      _scannedFolder = folder;
+    }
+    _takeScan(folder, GameLibrary.survey(folder).games);
+  }
+
+  /// The watcher's scans: nothing is read again when the library is the same.
+  List<String> _watchedScan(String folder) {
+    if (_disposed || root != folder) return const [];
+    final survey = GameLibrary.survey(folder);
+    if (folder != _scannedFolder || !GameLibrary.sameListing(games, survey.games)) {
+      if (folder != _scannedFolder) {
+        _tracker.reset();
+        _scannedFolder = folder;
+      }
+      _takeScan(folder, survey.games);
+    }
+    return survey.incomplete;
+  }
+
+  /// A scan's games: the records and trophies read again, the selection kept on the game it
+  /// was on, and the games not seen before announced. An unlock going on is left as it is: its
+  /// record is written only when it is done.
+  void _takeScan(String folder, List<Game> found) {
     final previous = selectedGame?.id;
+    final focusedInLibrary = libraryIndex >= 0 && libraryIndex < games.length ? games[libraryIndex].id : null;
     _forgetDiskFacts();
-    games = GameLibrary.scan(folder);
+    games = found;
     records.clear();
     trophies.clear();
     for (final game in games) {
@@ -929,8 +967,34 @@ class AppModel extends ChangeNotifier {
       _loadTrophies(game);
     }
     final index = games.indexWhere((game) => game.id == previous);
-    selected = index >= 0 ? index : 0;
+    selected = index >= 0 ? index : selected.clamp(0, games.isEmpty ? 0 : games.length - 1);
+    final libraryAt = games.indexWhere((game) => game.id == focusedInLibrary);
+    libraryIndex = libraryAt >= 0 ? libraryAt : libraryIndex.clamp(0, games.isEmpty ? 0 : games.length - 1);
+    final added = _tracker.update(found);
+    if (added.isNotEmpty) _announceNewGames(added);
     _changed();
+  }
+
+  /// "New game: [name]" (or "3 new games") with the select sound; the game is selected when the
+  /// home screen shows, and the desktop says it too while the launcher is behind other windows.
+  void _announceNewGames(List<Game> added) {
+    if (!preferences.onboarded) return;
+    final name = added.first.nameFor([T.language.code]);
+    final text = added.length == 1 ? T.format('newGame', [name]) : T.format('newGames', [added.length]);
+    if (overlay == null && running == null && starting == null) {
+      final index = games.indexOf(added.first);
+      if (index >= 0) {
+        selected = index;
+        focus = HomeFocus.tiles;
+        measureSelected();
+      }
+    }
+    show(text, icon: added.length == 1 ? added.first.icon : null);
+    sounds.play(Cue.select);
+    if (!active) {
+      final names = added.take(3).map((game) => game.nameFor([T.language.code])).join(', ');
+      desktopNotify(text, added.length == 1 ? T.text('newGameDetail') : (added.length > 3 ? '$names…' : names));
+    }
   }
 
   void _loadTrophies(Game game) {
@@ -947,30 +1011,22 @@ class AppModel extends ChangeNotifier {
     }
   }
 
-  StreamSubscription<FileSystemEvent>? _watch;
-  Timer? _rescanSoon;
+  LibraryWatcher? _library;
   String? _watched;
+  final LibraryTracker _tracker = LibraryTracker();
+  String? _scannedFolder;
 
-  /// Watches the games folder: a dump copied in or removed shows up on its own, a moment after
-  /// the folder settles. (Linux watches the folder itself, Windows and macOS the whole tree.)
+  /// Watches the games folder and everything in it (library_watch.dart): a dump copied in, in a
+  /// subfolder too, shows up on its own a moment after its copy is far enough along, and one
+  /// removed goes. An unlock going on does not hold the scans back.
   void watchGamesFolder() {
     final folder = root;
     if (folder == _watched) return;
-    unawaited(_watch?.cancel());
-    _watch = null;
+    _library?.stop();
+    _library = null;
     _watched = folder;
-    if (folder == null || !Directory(folder).existsSync()) return;
-    try {
-      _watch = Directory(folder).watch(recursive: !Platform.isLinux).listen((event) {
-        if (event.path.contains(GameLibrary.storeName)) return;
-        _rescanSoon?.cancel();
-        _rescanSoon = Timer(const Duration(seconds: 2), () {
-          if (_installer == null) rescan();
-        });
-      }, onError: (Object _) {});
-    } on FileSystemException {
-      // No watching: the rescan in Settings still works.
-    }
+    if (folder == null) return;
+    _library = LibraryWatcher(folder, onScan: () => _watchedScan(folder))..start();
   }
 
   /// The size of the selected game, measured once.
@@ -1438,13 +1494,15 @@ class AppModel extends ChangeNotifier {
 
   // Messages.
 
-  void show(String message, {LevelBadge? level}) {
+  void show(String message, {LevelBadge? level, String? icon}) {
     toast = message;
     toastLevel = level;
+    toastIcon = icon;
     _toastTimer?.cancel();
     _toastTimer = Timer(Duration(seconds: level == null ? 4 : 5), () {
       toast = null;
       toastLevel = null;
+      toastIcon = null;
       notifyListeners();
     });
     notifyListeners();
@@ -2784,8 +2842,7 @@ class AppModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    unawaited(_watch?.cancel());
-    _rescanSoon?.cancel();
+    _library?.stop();
     _trophyWatch?.cancel();
     _toastTimer?.cancel();
     _pads?.stop();

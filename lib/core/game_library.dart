@@ -88,27 +88,67 @@ class Game {
   String toString() => 'Game($titleId, $name, $folder)';
 }
 
+/// What a look through the games folder found: the games, and the folders that look like a dump
+/// still being copied (a sce_sys folder or an eboot.bin, but no whole game yet).
+class LibrarySurvey {
+  const LibrarySurvey(this.games, this.incomplete);
+
+  final List<Game> games;
+  final List<String> incomplete;
+}
+
 abstract final class GameLibrary {
   /// Where the launcher keeps what it makes inside the games folder.
   static const storeName = '.AnyPS5';
   static const _skipped = {storeName, 'sce_sys', 'sce_module', 'sce_modules', 'prx', 'out', 'rel'};
 
   /// Finds every game folder under [root], down to three levels, sorted by name.
-  static List<Game> scan(String root) {
+  static List<Game> scan(String root) => survey(root).games;
+
+  /// The games under [root] and the dumps not whole yet. Cheap: a listing per level and each
+  /// game's param.json.
+  static LibrarySurvey survey(String root) {
     final found = <Game>[];
-    _visit(root, 0, found);
+    final incomplete = <String>[];
+    _visit(root, 0, found, incomplete);
     found.sort((a, b) {
       final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
       return byName != 0 ? byName : a.folder.compareTo(b.folder);
     });
-    return found;
+    return LibrarySurvey(found, incomplete);
   }
 
-  static void _visit(String folder, int depth, List<Game> found) {
+  /// Whether two scans show the same library: the same folders, names, art and states.
+  static bool sameListing(List<Game> left, List<Game> right) {
+    if (left.length != right.length) return false;
+    for (var index = 0; index < left.length; index++) {
+      final a = left[index], b = right[index];
+      if (a.folder != b.folder ||
+          a.titleId != b.titleId ||
+          a.name != b.name ||
+          a.version != b.version ||
+          a.executable != b.executable ||
+          a.icon != b.icon ||
+          a.background != b.background ||
+          a.music != b.music ||
+          !_sameNames(a.names, b.names)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static bool _sameNames(Map<String, String> a, Map<String, String> b) =>
+      a.length == b.length && a.entries.every((entry) => b[entry.key] == entry.value);
+
+  static void _visit(String folder, int depth, List<Game> found, List<String> incomplete) {
     final game = inspect(folder);
     if (game != null) {
       found.add(game);
       return;
+    }
+    if (Directory(p.join(folder, 'sce_sys')).existsSync() || File(p.join(folder, 'eboot.bin')).existsSync()) {
+      incomplete.add(folder);
     }
     if (depth >= 3) return;
     List<FileSystemEntity> entries;
@@ -121,7 +161,7 @@ abstract final class GameLibrary {
     for (final entry in entries) {
       final name = p.basename(entry.path);
       if (name.startsWith('.') || _skipped.contains(name)) continue;
-      if (entry is Directory) _visit(entry.path, depth + 1, found);
+      if (entry is Directory) _visit(entry.path, depth + 1, found, incomplete);
     }
   }
 

@@ -248,7 +248,7 @@ class _LauncherShellState extends State<LauncherShell> {
                         ),
                         if (model.starting != null) _StartingCard(model: model),
                         if (model.pairing != null) PairingCard(model: model),
-                        _Toast(message: model.toast, level: model.toastLevel),
+                        _Toast(message: model.toast, level: model.toastLevel, icon: model.toastIcon),
                       ],
                     ),
                   ),
@@ -309,9 +309,12 @@ class _StartingCard extends StatelessWidget {
 }
 
 class _Toast extends StatelessWidget {
-  const _Toast({required this.message, this.level});
+  const _Toast({required this.message, this.level, this.icon});
 
   final String? message;
+
+  /// A game's icon before the words (a new game).
+  final String? icon;
 
   /// A trophy level reached: its badge before the words, the toast a little larger.
   final LevelBadge? level;
@@ -364,6 +367,28 @@ class _Toast extends StatelessWidget {
                             Text(message!, style: AppText.display(18 * scale, weight: FontWeight.w600)),
                           ],
                         ),
+                      ],
+                    ),
+                  )
+                : icon != null
+                ? Glass(
+                    key: ValueKey(message),
+                    radius: 30 * scale,
+                    opacity: 0.6,
+                    padding: EdgeInsets.fromLTRB(10 * scale, 10 * scale, 26 * scale, 10 * scale),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(9 * scale),
+                          child: SizedBox(
+                            width: 36 * scale,
+                            height: 36 * scale,
+                            child: ArtworkImage(path: icon!, cacheWidth: 96),
+                          ),
+                        ),
+                        SizedBox(width: 14 * scale),
+                        Text(message!, style: AppText.display(16 * scale, weight: FontWeight.w500)),
                       ],
                     ),
                   )

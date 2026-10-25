@@ -794,6 +794,16 @@ class TrophyView extends StatelessWidget {
                         ),
                       ),
                     ],
+                    // △ shows the focused hidden trophy, and hides it again.
+                    if (model.focusedTrophy case final Trophy trophy when model.canReveal(trophy)) ...[
+                      SizedBox(height: 22 * scale),
+                      Hint(
+                        keys: 'O',
+                        glyph: PadGlyph.triangle,
+                        label: T.text(model.isSecret(trophy) ? 'trophyShow' : 'trophyHide'),
+                        action: HintAction.options,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -812,7 +822,8 @@ class TrophyView extends StatelessWidget {
                                 final trophy = set.trophies[index];
                                 final focused = index == model.trophyIndex;
                                 final earned = trophy.unlocked != null;
-                                final secret = trophy.hidden && !earned;
+                                final secret = model.isSecret(trophy);
+                                final revealable = model.canReveal(trophy);
                                 final color = focused ? Colors.black : Colors.white;
                                 return AnimatedContainer(
                                   duration: Motion.focus,
@@ -885,6 +896,15 @@ class TrophyView extends StatelessWidget {
                                         ),
                                       ),
                                       SizedBox(width: 16 * scale),
+                                      if (revealable) ...[
+                                        _RevealChip(
+                                          key: ValueKey('trophy-reveal-$index'),
+                                          shown: !secret,
+                                          focused: focused,
+                                          onTap: () => model.toggleReveal(index),
+                                        ),
+                                        SizedBox(width: 14 * scale),
+                                      ],
                                       Column(
                                         crossAxisAlignment: CrossAxisAlignment.end,
                                         children: [
@@ -912,6 +932,48 @@ class TrophyView extends StatelessWidget {
                     ],
                   ),
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A hidden trophy's Show (or, once shown, Hide), for the pointer: the same as △ on it.
+class _RevealChip extends StatelessWidget {
+  const _RevealChip({super.key, required this.shown, required this.focused, required this.onTap});
+
+  final bool shown;
+  final bool focused;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final ink = focused ? Colors.black : Colors.white;
+    return Semantics(
+      button: true,
+      child: Pressable(
+        onTap: onTap,
+        pressScale: 0.94,
+        builder: (context, hovering) => AnimatedContainer(
+          duration: Motion.focus,
+          curve: Motion.settle,
+          padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 6 * scale),
+          decoration: BoxDecoration(
+            color: ink.withValues(alpha: hovering ? 0.16 : 0.08),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              PadGlyphIcon(PadGlyph.triangle, size: 11 * scale, color: ink.withValues(alpha: 0.7)),
+              SizedBox(width: 6 * scale),
+              Text(
+                T.text(shown ? 'trophyHide' : 'trophyShow'),
+                style: AppText.display(12.5 * scale, weight: FontWeight.w600, color: ink.withValues(alpha: 0.85)),
               ),
             ],
           ),

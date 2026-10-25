@@ -67,6 +67,7 @@ class Preferences {
     ..musicVolume = (json['musicVolume'] as num?)?.toInt()
     ..engineSource = json['engineSource'] as String? ?? 'upstream'
     ..fontsFolder = json['fontsFolder'] as String?
+    ..showHiddenTrophies = json['showHiddenTrophies'] as bool? ?? false
     ..cjkGames = {
       for (final id in json['cjkGames'] as List<dynamic>? ?? const <dynamic>[])
         if (id is String) id,
@@ -112,6 +113,9 @@ class Preferences {
   /// A folder of the user's own fonts (the console's, say) games get first; null for none.
   String? fontsFolder;
 
+  /// Hidden trophies show their name, description and icon before they are earned.
+  bool showHiddenTrophies = false;
+
   /// The title IDs of games seen asking for Japanese, Chinese or Korean fonts: their next start
   /// waits for those to download.
   Set<String> cjkGames = {};
@@ -137,6 +141,7 @@ class Preferences {
     'lastPlayed': lastPlayed,
     'engineSource': engineSource,
     'fontsFolder': fontsFolder,
+    'showHiddenTrophies': showHiddenTrophies,
     'cjkGames': cjkGames.toList()..sort(),
   };
 
@@ -718,8 +723,12 @@ class AppModel extends ChangeNotifier {
           _changed();
         } else if (_galleryFrom case final Layer from) {
           final trophy = trophyIndex;
+          final revealed = revealedTrophies;
           open(from, cue: Cue.back);
-          if (from == Layer.trophies) trophyIndex = trophy;
+          if (from == Layer.trophies) {
+            trophyIndex = trophy;
+            revealedTrophies = revealed;
+          }
         } else {
           closeOverlay();
         }
@@ -740,6 +749,30 @@ class AppModel extends ChangeNotifier {
   /// Each game's trophies, read at the scan; a game without trophy packages has none.
   final Map<String, TrophySet> trophies = {};
   int trophyIndex = 0;
+
+  /// The hidden trophies shown in the list open now (△ on one), by id; forgotten when it closes.
+  Set<String> revealedTrophies = {};
+
+  /// Whether [trophy] is hidden from the list until it is earned, and can be shown with △.
+  bool canReveal(Trophy trophy) => trophy.hidden && trophy.unlocked == null && !preferences.showHiddenTrophies;
+
+  /// Whether the list shows [trophy] as a hidden trophy: no name, description or icon.
+  bool isSecret(Trophy trophy) => canReveal(trophy) && !revealedTrophies.contains(trophy.id);
+
+  /// The trophy the list's focus is on.
+  Trophy? get focusedTrophy => trophies[selectedGame?.id]?.trophies.elementAtOrNull(trophyIndex);
+
+  /// Shows a hidden trophy in the list, or hides it again (△, or a click on its Show).
+  void toggleReveal(int index) {
+    final trophy = trophies[selectedGame?.id]?.trophies.elementAtOrNull(index);
+    if (trophy == null || !canReveal(trophy)) return;
+    trophyIndex = index;
+    final shown = !revealedTrophies.remove(trophy.id);
+    if (shown) revealedTrophies = {...revealedTrophies, trophy.id};
+    sounds.play(shown ? Cue.select : Cue.back);
+    _changed();
+  }
+
   Timer? _trophyWatch;
   Set<String> _earned = {};
   Installer? _installer;
@@ -1325,7 +1358,10 @@ class AppModel extends ChangeNotifier {
     if (next == Layer.library) libraryIndex = selected;
     if (next == Layer.gameSettings) _gameFacts.clear();
     if (next == Layer.log) shownLog = selectedGame == null ? '' : logText(selectedGame!);
-    if (next == Layer.trophies) trophyIndex = 0;
+    if (next == Layer.trophies) {
+      trophyIndex = 0;
+      revealedTrophies = {};
+    }
     if (next == Layer.trophies || next == Layer.gallery) _loadShots();
     if (next == Layer.gallery) {
       galleryIndex = 0;
@@ -1338,6 +1374,7 @@ class AppModel extends ChangeNotifier {
   void closeOverlay() {
     overlay = null;
     capturing = null;
+    revealedTrophies = {};
     sounds.play(Cue.back);
     _changed();
   }
@@ -1364,6 +1401,7 @@ class AppModel extends ChangeNotifier {
     if (focus.isActions && focus.index >= actionCount) focus = HomeFocus.actions(actionCount - 1);
     if (overlay == Layer.trophies) {
       trophyIndex = 0;
+      revealedTrophies = {};
       if (!trophies.containsKey(selectedGame?.id)) overlay = null;
     }
     measureSelected();
@@ -1439,6 +1477,9 @@ class AppModel extends ChangeNotifier {
           case Command.select:
             final trophy = trophies[selectedGame?.id]?.trophies.elementAtOrNull(trophyIndex);
             if (trophyShots[trophy?.id] case final String shot) openGallery(shot: shot);
+          // △ (Triangle, Y, O) on a hidden trophy shows it, and hides it again.
+          case Command.options when focusedTrophy != null && canReveal(focusedTrophy!):
+            toggleReveal(trophyIndex);
           case Command.back || Command.options:
             closeOverlay();
           default:
@@ -1772,6 +1813,15 @@ class AppModel extends ChangeNotifier {
                 savePreferences();
               },
             ),
+          ),
+          PanelRow(
+            id: 'hiddenTrophies',
+            title: T.text('showHiddenTrophies'),
+            detail: T.text('showHiddenTrophiesDetail'),
+            kind: ToggleRow(preferences.showHiddenTrophies, (value) {
+              preferences.showHiddenTrophies = value;
+              savePreferences();
+            }),
           ),
         ],
       ),

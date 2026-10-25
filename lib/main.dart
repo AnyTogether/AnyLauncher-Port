@@ -5,8 +5,13 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import 'ui/soloud_audio.dart';
+import 'core/desktop/linux_desktop.dart';
+import 'core/desktop/windows_desktop.dart';
+import 'core/gamepad/linux_pads.dart';
+import 'core/gamepad/windows_pads.dart';
 import 'core/app_update.dart';
 import 'core/host.dart';
+import 'core/release_signing.dart';
 import 'core/toolkit_download.dart';
 import 'ui/app_model.dart';
 import 'ui/launcher.dart';
@@ -27,9 +32,16 @@ void main() {
       engineReleases: GitHubReleases(),
       launcherReleases: LauncherUpdates.source(),
       audio: SoloudAudio.new,
+      armEngineReleases: GitHubReleases(
+        repository: ArmToolkitPackage.repository,
+        signingKeys: ReleaseSigning.trustedKeys,
+      ),
+      pads: () => Platform.isWindows ? WindowsPadSource() : LinuxPadSource(),
+      desktop: Platform.isWindows ? WindowsDesktop() : LinuxDesktop(),
     ),
   );
   unawaited(model.startAudio());
+  model.startPads();
   if (model.preferences.onboarded) model.rescan();
   model.watchGamesFolder();
   unawaited(model.startPhoneServer());

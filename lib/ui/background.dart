@@ -148,6 +148,9 @@ class _FallbackPainter extends CustomPainter {
 class GameArtwork extends StatefulWidget {
   const GameArtwork({super.key, required this.path, this.animated = true});
 
+  /// The width backgrounds are decoded at.
+  static const cacheWidth = 1920;
+
   final String path;
   final bool animated;
 
@@ -162,6 +165,13 @@ class _GameArtworkState extends State<GameArtwork> with SingleTickerProviderStat
   void initState() {
     super.initState();
     if (widget.animated) _drift.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(GameArtwork oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.animated == oldWidget.animated) return;
+    widget.animated ? _drift.repeat(reverse: true) : _drift.stop();
   }
 
   @override
@@ -182,7 +192,7 @@ class _GameArtworkState extends State<GameArtwork> with SingleTickerProviderStat
             alignment: Alignment.topRight,
             child: child,
           ),
-          child: ArtworkImage(path: widget.path, cacheWidth: 1920),
+          child: ArtworkImage(path: widget.path, cacheWidth: GameArtwork.cacheWidth),
         ),
         const DecoratedBox(
           decoration: BoxDecoration(

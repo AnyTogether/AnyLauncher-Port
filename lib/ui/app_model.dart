@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
@@ -11,7 +12,9 @@ import '../core/audio/interface_sounds.dart';
 import '../core/audio/theme_music.dart';
 import '../core/audio/tones.dart';
 import '../core/controls.dart';
+import '../core/desktop/desktop.dart';
 import '../core/family/family_rules.dart' show TitleVerdict;
+import '../core/gamepad/pad_navigation.dart';
 import '../core/game_library.dart';
 import '../core/game_process.dart';
 import '../core/game_settings.dart';
@@ -23,6 +26,7 @@ import '../core/remote/paired_devices.dart';
 import '../core/remote/remote_protocol.dart';
 import '../core/remote/remote_server.dart';
 import '../core/save_backup.dart';
+import '../core/screenshots.dart';
 import '../core/toolkit.dart';
 import '../core/toolkit_download.dart';
 import '../core/together/talk_key.dart';
@@ -35,6 +39,7 @@ import 'strings.dart';
 import 'theme.dart';
 import 'together_model.dart';
 import 'update_model.dart';
+import 'trophy_card.dart';
 
 /// The launcher's own choices, kept as JSON in the config folder.
 class Preferences {
@@ -58,6 +63,7 @@ class Preferences {
     ..sounds = json['sounds'] as bool? ?? true
     ..soundVolume = (json['soundVolume'] as num?)?.toInt()
     ..musicVolume = (json['musicVolume'] as num?)?.toInt()
+    ..engineSource = json['engineSource'] as String? ?? 'upstream'
     ..lastPlayed = {
       for (final entry in (json['lastPlayed'] as Map<String, dynamic>? ?? const {}).entries)
         entry.key: entry.value as String,
@@ -92,6 +98,10 @@ class Preferences {
   int? musicVolume;
   Map<String, String> lastPlayed = {};
 
+  /// Which engine the settings offer: 'upstream' (boykopovar/AnyPS5) or 'arm' (AnyPS5-ARM's,
+  /// with the phone controller, full screen and window size).
+  String engineSource = 'upstream';
+
   Map<String, Object?> toJson() => {
     'language': language,
     'theme': theme,
@@ -111,6 +121,7 @@ class Preferences {
     'soundVolume': soundVolume,
     'musicVolume': musicVolume,
     'lastPlayed': lastPlayed,
+    'engineSource': engineSource,
   };
 
   static Preferences load(String file) {
@@ -241,6 +252,9 @@ enum Layer {
   updateChoice,
   log,
   trophies,
+
+  /// The selected game's pictures: F12 screenshots and the ones taken when trophies were earned.
+  gallery,
 
   /// AnyTogether: friends and requests, what can be done with one friend, the messages, the
   /// party and its voice.
@@ -381,7 +395,25 @@ class LauncherServices {
     this.hostGlibc,
     this.audio,
     this.decodeSong,
+    this.armEngineReleases,
+    this.pads,
+    this.desktop,
+    this.renderTrophyCard,
   });
+
+  /// Where AnyPS5-ARM's engine is read from (its signed GitHub releases); none in tests without
+  /// a fake.
+  final GitHubReleases? armEngineReleases;
+
+  /// Where controller input comes from (XInput and winmm on Windows, evdev on Linux); none when
+  /// not given.
+  final PadSource Function()? pads;
+
+  /// The game's window, its picture and the trophy card over it; nothing when not given.
+  final DesktopWindows? desktop;
+
+  /// Draws the trophy card for the desktop's window; TrophyCard.render by default.
+  final Future<RgbaImage> Function(Trophy trophy, double scale)? renderTrophyCard;
 
   /// The sound card for the interface sounds and theme songs; none (silence) when not given.
   final AudioOut Function()? audio;
@@ -483,6 +515,8 @@ class AppModel extends ChangeNotifier {
   void setActive(bool value) {
     if (active == value) return;
     active = value;
+    // Back in front: a toolkit rebuilt meanwhile is read again.
+    if (value) _forgetDiskFacts();
     notifyListeners();
   }
 
@@ -498,6 +532,45 @@ class AppModel extends ChangeNotifier {
 
   /// AnyTogether: the account, friends, messages, parties.
   late final TogetherModel together;
+
+  DesktopWindows get desktop => services.desktop ?? const NoDesktop();
+
+  PadSource? _pads;
+  PadNavigator? _navigator;
+
+  /// Reads the controllers: their moves become the same commands as the keys.
+  void startPads() {
+    if (_pads != null) return;
+    final source = services.pads?.call();
+    if (source == null) return;
+    final navigator = PadNavigator(padCommand);
+    _navigator = navigator;
+    _pads = source..start(navigator.handle);
+  }
+
+  /// A controller command. With the launcher behind a game (or another window) only PS/Guide
+  /// counts: it brings the launcher in front, as on the Mac.
+  void padCommand(PadCommand command) {
+    final mapped = switch (command) {
+      PadCommand.left => Command.left,
+      PadCommand.right => Command.right,
+      PadCommand.up => Command.up,
+      PadCommand.down => Command.down,
+      PadCommand.select => Command.select,
+      PadCommand.back => Command.back,
+      PadCommand.options => Command.options,
+      PadCommand.previousGame => Command.previousGame,
+      PadCommand.nextGame => Command.nextGame,
+      PadCommand.home => Command.home,
+    };
+    if (!active && mapped != Command.home) return;
+    if (editingRow != null) return;
+    if (capturing != null && mapped != Command.back) return;
+    if (overlay == Layer.settings && (mapped == Command.previousGame || mapped == Command.nextGame)) {
+      return moveCategory(mapped == Command.nextGame ? 1 : -1);
+    }
+    handle(mapped);
+  }
 
   /// The AnyPS5 engine downloaded from upstream: versions, the download, the one in use.
   late final EngineModel engine = EngineModel(this);
@@ -549,6 +622,88 @@ class AppModel extends ChangeNotifier {
   final Map<String, String> failures = {};
   final Map<String, int> sizes = {};
 
+  /// The selected game's pictures while the gallery is open, newest first; the one the focus is
+  /// on and whether it is shown over the whole screen.
+  List<String> galleryShots = const [];
+  int galleryIndex = 0;
+  bool galleryViewing = false;
+  Layer? _galleryFrom;
+
+  /// The picture taken when each trophy of the selected game was earned, by trophy id.
+  Map<String, String> trophyShots = const {};
+
+  static const galleryColumns = 4;
+
+  List<String> screenshotsOf(Game game) => Screenshots.list(paths.pictures, game);
+
+  void _loadShots() {
+    final game = selectedGame;
+    galleryShots = game == null ? const [] : screenshotsOf(game);
+    trophyShots = Screenshots.trophyShots(galleryShots);
+  }
+
+  /// Opens the gallery of the selected game, coming back to [from] (or home) after.
+  void openGallery({String? shot}) {
+    _galleryFrom = overlay;
+    open(Layer.gallery);
+    final index = shot == null ? -1 : galleryShots.indexOf(shot);
+    if (index >= 0) {
+      galleryIndex = index;
+      galleryViewing = true;
+      _changed();
+    }
+  }
+
+  void _galleryCommand(Command command) {
+    final count = galleryShots.length;
+    void move(int delta) {
+      final next = (galleryIndex + delta).clamp(0, count == 0 ? 0 : count - 1);
+      if (next == galleryIndex) return;
+      galleryIndex = next;
+      sounds.play(Cue.move);
+      _changed();
+    }
+
+    switch (command) {
+      case Command.left:
+        move(-1);
+      case Command.right:
+        move(1);
+      case Command.up:
+        if (!galleryViewing) move(-galleryColumns);
+      case Command.down:
+        if (!galleryViewing) move(galleryColumns);
+      case Command.select:
+        if (count == 0) return;
+        galleryViewing = !galleryViewing;
+        sounds.play(galleryViewing ? Cue.select : Cue.back);
+        _changed();
+      case Command.back || Command.options:
+        if (galleryViewing) {
+          galleryViewing = false;
+          sounds.play(Cue.back);
+          _changed();
+        } else if (_galleryFrom case final Layer from) {
+          final trophy = trophyIndex;
+          open(from, cue: Cue.back);
+          if (from == Layer.trophies) trophyIndex = trophy;
+        } else {
+          closeOverlay();
+        }
+      default:
+        break;
+    }
+  }
+
+  /// A click on a picture in the gallery: shown big; a click on the big one goes back.
+  void tapShot(int index) {
+    if (index < 0 || index >= galleryShots.length) return;
+    galleryIndex = index;
+    galleryViewing = true;
+    sounds.play(Cue.select);
+    _changed();
+  }
+
   /// Each game's trophies, read at the scan; a game without trophy packages has none.
   final Map<String, TrophySet> trophies = {};
   int trophyIndex = 0;
@@ -581,9 +736,54 @@ class AppModel extends ChangeNotifier {
   Game? get selectedGame => games.isEmpty ? null : games[selected.clamp(0, games.length - 1)];
 
   /// The chosen toolkit; without one (or when it is gone), the newest downloaded engine.
+  ///
+  /// Finding it reads the disk (the relinker, every library, version.txt), and the screen asks
+  /// for it for every game on every frame it builds: it is looked up again only when the choice,
+  /// the downloaded engines or the library change.
   Toolkit? get toolkit {
-    final folder = preferences.toolkitFolder;
-    return Toolkit.locate([?folder, for (final kit in engine.downloaded) kit.root], system: system);
+    final key = (preferences.toolkitFolder, identityHashCode(engine.downloaded), _toolkitEpoch);
+    if (key != _toolkitKey) {
+      final folder = preferences.toolkitFolder;
+      _toolkit = Toolkit.locate([?folder, for (final kit in engine.downloaded) kit.root], system: system);
+      _toolkitVersion = _toolkit?.version;
+      _toolkitKey = key;
+    }
+    return _toolkit;
+  }
+
+  Toolkit? _toolkit;
+  String? _toolkitVersion;
+  Object? _toolkitKey;
+  int _toolkitEpoch = 0;
+
+  /// The version.txt of [toolkit], read once with it.
+  String? get toolkitVersion {
+    toolkit;
+    return _toolkitVersion;
+  }
+
+  /// Facts about a game the settings rows show that cost a disk read (its patch file, its
+  /// backups), read when its settings open rather than on every frame.
+  final Map<String, ({bool resolution, List<String> backups})> _gameFacts = {};
+
+  ({bool resolution, List<String> backups}) _factsOf(Game game) => _gameFacts.putIfAbsent(game.id, () {
+    final patch = toolkit?.patchFile(game.titleId);
+    var resolution = false;
+    try {
+      resolution = patch != null && ResolutionPatch.supports(File(patch).readAsStringSync());
+    } on FileSystemException {
+      resolution = false;
+    }
+    return (resolution: resolution, backups: SaveBackup.backups(backupFolder(game)));
+  });
+
+  /// The log shown in the log layer, read as it opens.
+  String shownLog = '';
+
+  /// Reads the disk again for what the screen keeps (the toolkit, a game's facts).
+  void _forgetDiskFacts() {
+    _toolkitEpoch++;
+    _gameFacts.clear();
   }
 
   String? get root => preferences.gamesFolder;
@@ -609,6 +809,7 @@ class AppModel extends ChangeNotifier {
       return;
     }
     final previous = selectedGame?.id;
+    _forgetDiskFacts();
     games = GameLibrary.scan(folder);
     records.clear();
     trophies.clear();
@@ -681,7 +882,7 @@ class AppModel extends ChangeNotifier {
     if (failure != null) return Failed(failure);
     final record = records[game.id];
     if (record != null) {
-      final version = toolkit?.version;
+      final version = toolkitVersion;
       return Installed(outdated: (version != null && version != record.toolkit) || engine.updateAvailable);
     }
     if (game.executable == ExecutableKind.unreadable) return const Unreadable();
@@ -841,7 +1042,7 @@ class AppModel extends ChangeNotifier {
   String backupFolder(Game game) => SaveBackup.folderFor(paths.backupsFolder, game.name, game.titleId);
 
   String? _lastBackupText(Game game) {
-    final latest = SaveBackup.backups(backupFolder(game)).firstOrNull;
+    final latest = _factsOf(game).backups.firstOrNull;
     if (latest == null) return null;
     return T.format('lastBackup', [p.basenameWithoutExtension(latest)]);
   }
@@ -851,6 +1052,7 @@ class AppModel extends ChangeNotifier {
     if (folder == null) return;
     try {
       SaveBackup.backUp(Installer.installedFolder(game, folder), backupFolder(game), DateTime.now());
+      _gameFacts.remove(game.id);
       show(T.text('savesBackedUp'));
     } on Object catch (error) {
       show('${T.text('backupFailed')}: $error');
@@ -865,6 +1067,7 @@ class AppModel extends ChangeNotifier {
     if (running?.$1 == game) return show(T.text('closeGameFirst'));
     try {
       SaveBackup.restore(latest, Installer.installedFolder(game, folder), backupFolder(game), DateTime.now());
+      _gameFacts.remove(game.id);
       _loadTrophies(game);
       show(T.text('savesRestored'));
     } on Object catch (error) {
@@ -939,6 +1142,11 @@ class AppModel extends ChangeNotifier {
       running = (game, run);
       _stopped = false;
       final began = DateTime.now();
+      // Upstream's engine does not read ANYPS5_FULLSCREEN or ANYPS5_WINDOW_SIZE: the launcher
+      // sizes its window or presses its F11 once the window is open.
+      if (!engine.readsDisplaySettings) {
+        unawaited(desktop.applyDisplay(run.pid, fullscreen: settings.fullscreen, windowSize: settings.windowSize));
+      }
       _watchTrophies(game);
       together.gameChanged();
       _changed();
@@ -970,11 +1178,15 @@ class AppModel extends ChangeNotifier {
       _earned = now;
       if (fresh.isEmpty) return;
       _loadTrophies(game);
-      sounds.play(Cue.unlocked);
+      // Heard over the game too.
+      sounds.play(Cue.unlocked, overGame: true);
       for (final id in fresh) {
         final trophy = trophies[game.id]?.trophies.where((trophy) => trophy.id == id).firstOrNull;
         if (trophy == null) continue;
         show('${T.text('trophyEarned')} · ${trophy.name}');
+        if (running case (final Game playing, final RunningGame run) when playing == game) {
+          unawaited(celebrate(game, trophy, run.pid));
+        }
         remote?.publish(
           RemoteTrophy(
             name: trophy.name,
@@ -986,6 +1198,59 @@ class AppModel extends ChangeNotifier {
       }
       _changed();
     });
+  }
+
+  Future<void> _cards = Future.value();
+
+  /// A trophy earned while the game is in front: a picture of the game at that moment (taken
+  /// before the card covers any of it) into its pictures folder, then the card over the game,
+  /// one after another when several come at once; a notification where no card can be shown.
+  Future<void> celebrate(Game game, Trophy trophy, int pid) async {
+    final shot = await _trophyShot(game, trophy, pid);
+    if (shot != null) {
+      trophyShots = {...trophyShots, trophy.id: shot};
+      if (overlay == Layer.trophies || overlay == Layer.gallery) _loadShots();
+      notifyListeners();
+    }
+    final previous = _cards;
+    final done = Completer<void>();
+    _cards = done.future;
+    await previous;
+    try {
+      final scale = desktop.cardScale(pid);
+      final card = await (services.renderTrophyCard ?? (trophy, scale) => TrophyCard.render(trophy, scale: scale))(
+        trophy,
+        scale,
+      );
+      if (!await desktop.showCard(card, pid: pid)) {
+        await desktop.notify(
+          T.text('trophyEarned'),
+          trophy.name.isEmpty ? T.text('trophyHidden') : trophy.name,
+          icon: shot,
+        );
+      }
+    } on Object {
+      // The toast in the launcher and the phone still say it.
+    } finally {
+      done.complete();
+    }
+  }
+
+  /// Saves the game's window as it is now as the picture of [trophy]; its path, or null.
+  Future<String?> _trophyShot(Game game, Trophy trophy, int pid) async {
+    try {
+      final frame = await desktop.captureGame(pid);
+      if (frame == null) return null;
+      final path = Screenshots.trophyPath(paths.pictures, game, trophy.id, DateTime.now());
+      await Isolate.run(() {
+        File(path)
+          ..parent.createSync(recursive: true)
+          ..writeAsBytesSync(PngEncoder.rgba(frame.width, frame.height, frame.pixels));
+      });
+      return path;
+    } on Object {
+      return null;
+    }
   }
 
   /// Whether the user (or the phone) closed the game playing.
@@ -1018,7 +1283,14 @@ class AppModel extends ChangeNotifier {
     panelCategory = 0;
     capturing = null;
     if (next == Layer.library) libraryIndex = selected;
+    if (next == Layer.gameSettings) _gameFacts.clear();
+    if (next == Layer.log) shownLog = selectedGame == null ? '' : logText(selectedGame!);
     if (next == Layer.trophies) trophyIndex = 0;
+    if (next == Layer.trophies || next == Layer.gallery) _loadShots();
+    if (next == Layer.gallery) {
+      galleryIndex = 0;
+      galleryViewing = false;
+    }
     _skipToFocusable();
     _changed();
   }
@@ -1067,6 +1339,15 @@ class AppModel extends ChangeNotifier {
     }
     if (!preferences.onboarded) return _onboardingCommand(command);
     if (command == Command.home) {
+      // PS/Guide: from the game to the launcher and back; behind another window, to the front.
+      if (running case (_, final RunningGame run)) {
+        unawaited(active ? desktop.focusGame(run.pid) : desktop.raiseLauncher());
+        return;
+      }
+      if (!active) {
+        unawaited(desktop.raiseLauncher());
+        return;
+      }
       if (overlay != null) closeOverlay();
       return;
     }
@@ -1104,6 +1385,9 @@ class AppModel extends ChangeNotifier {
       case Layer.log:
         if (command == Command.back || command == Command.select) closeOverlay();
         return;
+      case Layer.gallery:
+        _galleryCommand(command);
+        return;
       case Layer.trophies:
         final count = trophies[selectedGame?.id]?.trophies.length ?? 0;
         switch (command) {
@@ -1112,6 +1396,9 @@ class AppModel extends ChangeNotifier {
             if (next != trophyIndex) sounds.play(Cue.move);
             trophyIndex = next;
             _changed();
+          case Command.select:
+            final trophy = trophies[selectedGame?.id]?.trophies.elementAtOrNull(trophyIndex);
+            if (trophyShots[trophy?.id] case final String shot) openGallery(shot: shot);
           case Command.back || Command.options:
             closeOverlay();
           default:
@@ -1469,8 +1756,7 @@ class AppModel extends ChangeNotifier {
     final settings = currentSettings(game);
     void change(GameSettings next) => saveSettings(game, next);
     final installed = records.containsKey(game.id);
-    final patch = toolkit?.patchFile(game.titleId);
-    final supportsResolution = patch != null && ResolutionPatch.supports(File(patch).readAsStringSync());
+    final supportsResolution = _factsOf(game).resolution;
     final languages = ConsoleLanguage.all;
     final languageIndex = settings.language == null
         ? 0
@@ -1479,6 +1765,8 @@ class AppModel extends ChangeNotifier {
       PanelRow(
         id: 'display',
         title: T.text('display'),
+        // Upstream's engine ignores the choice: the launcher presses F11 for it, and says so.
+        detail: engine.readsDisplaySettings ? null : T.text('displayUpstream'),
         kind: ChoiceRow([T.text('windowed'), T.text('fullscreen')], settings.fullscreen ? 1 : 0, (index) {
           change(settings.copyWith(fullscreen: index == 1));
         }),
@@ -1487,6 +1775,7 @@ class AppModel extends ChangeNotifier {
         PanelRow(
           id: 'windowSize',
           title: T.text('windowSize'),
+          detail: engine.readsDisplaySettings ? null : T.text('windowSizeUpstream'),
           kind: StepperRow(
             value: settings.windowSize,
             min: 30,
@@ -1553,6 +1842,12 @@ class AppModel extends ChangeNotifier {
         kind: ActionRow(() => open(Layer.controls)),
       ),
       PanelRow(
+        id: 'gallery',
+        title: T.text('screenshotsTitle'),
+        detail: T.text('screenshotsDetail'),
+        kind: ActionRow(openGallery),
+      ),
+      PanelRow(
         id: 'shaderCache',
         title: T.text('shaderCache'),
         detail: T.text('shaderCacheDetail'),
@@ -1583,7 +1878,7 @@ class AppModel extends ChangeNotifier {
           detail: _lastBackupText(game) ?? T.text('backUpSavesDetail'),
           kind: ActionRow(() => backUpSaves(game)),
         ),
-        if (SaveBackup.backups(backupFolder(game)).isNotEmpty)
+        if (_factsOf(game).backups.isNotEmpty)
           PanelRow(
             id: 'restore',
             title: T.text('restoreLatest'),
@@ -1713,10 +2008,14 @@ class AppModel extends ChangeNotifier {
       case Command.left || Command.right:
         final delta = command == Command.right ? 1 : -1;
         switch (row?.kind) {
+          // As on the Mac: the arrows stop at the first and the last option (only a select goes
+          // round), so ← always goes back, even on a row of two.
           case ChoiceRow(:final options, selected: final current, :final set):
-            final next = (current + delta) % options.length;
-            set(next);
-            if (next != current) sounds.play(Cue.move);
+            final next = (current + delta).clamp(0, options.length - 1);
+            if (next != current) {
+              set(next);
+              sounds.play(Cue.move);
+            }
           case StepperRow(:final value, :final min, :final max, :final step, :final set):
             final next = (value + delta * step).clamp(min, max);
             if (next != value) {
@@ -1759,6 +2058,47 @@ class AppModel extends ChangeNotifier {
       default:
         break;
     }
+  }
+
+  /// A click on a row: the focus goes there and the row does what Enter does.
+  void activateRow(int index) {
+    final rows = _currentRows;
+    if (index < 0 || index >= rows.length || !rows[index].focusable) return;
+    panelRow = index;
+    handle(Command.select);
+  }
+
+  /// A click on a row's ‹ › or − + : one step back or on, the focus going to the row.
+  void stepRow(int index, int delta) {
+    final rows = _currentRows;
+    if (index < 0 || index >= rows.length || !rows[index].focusable) return;
+    if (panelRow != index) {
+      panelRow = index;
+      _changed();
+    }
+    handle(delta < 0 ? Command.left : Command.right);
+  }
+
+  /// The pointer moved over a row: the focus follows it, quietly.
+  void hoverRow(int index) {
+    final rows = _currentRows;
+    if (index == panelRow || index < 0 || index >= rows.length || !rows[index].focusable) return;
+    panelRow = index;
+    _changed();
+  }
+
+  /// The pointer moved over a game in the library.
+  void hoverLibrary(int index) {
+    if (index == libraryIndex || index < 0 || index >= games.length) return;
+    libraryIndex = index;
+    _changed();
+  }
+
+  /// The pointer moved over a trophy.
+  void hoverTrophy(int index) {
+    if (index == trophyIndex || index < 0) return;
+    trophyIndex = index;
+    _changed();
   }
 
   void selectCategory(int index) {
@@ -2151,6 +2491,8 @@ class AppModel extends ChangeNotifier {
     _rescanSoon?.cancel();
     _trophyWatch?.cancel();
     _toastTimer?.cancel();
+    _pads?.stop();
+    _navigator?.dispose();
     _installer?.cancel();
     engine.cancel();
     together.dispose();

@@ -58,10 +58,12 @@ enum Accent {
 abstract final class Motion {
   static bool reduced = false;
 
-  static Duration get focus => Duration(milliseconds: reduced ? 120 : 260);
-  static Duration get layout => Duration(milliseconds: reduced ? 150 : 380);
-  static Duration get fade => Duration(milliseconds: reduced ? 150 : 550);
-  static Duration get overlay => Duration(milliseconds: reduced ? 150 : 340);
+  /// Nothing the user waits for takes longer than 200 ms: a layer that fades in slowly reads
+  /// as lag between the screen before and the next.
+  static Duration get focus => Duration(milliseconds: reduced ? 100 : 160);
+  static Duration get layout => Duration(milliseconds: reduced ? 120 : 200);
+  static Duration get fade => Duration(milliseconds: reduced ? 120 : 200);
+  static Duration get overlay => Duration(milliseconds: reduced ? 120 : 180);
 
   /// A strong ease-out: starts fast, settles softly.
   static const Curve settle = Cubic(0.22, 1, 0.36, 1);

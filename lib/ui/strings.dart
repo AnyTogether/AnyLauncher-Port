@@ -93,6 +93,29 @@ abstract final class T {
     'phoneAddress': 'Address for the phone',
     'backUpSavesDetail': 'Saves and trophies, into the AnyPS5 Backups folder',
     'restoreLatest': 'Restore the latest backup',
+    'hintPreviousGame': 'Previous',
+    'hintNextGame': 'Next',
+    'screenshotsTitle': 'Screenshots',
+    'screenshotsDetail': 'F12 in a game, and a picture every time you earn a trophy',
+    'screenshotsNone': 'No pictures yet: press F12 in the game, or earn a trophy.',
+    'trophyShot': 'The moment you earned it · Enter to open',
+    'displayUpstream': 'Upstream\'s engine ignores this: the launcher presses its F11 once the game opens. The AnyPS5-ARM engine does it itself',
+    'windowSizeUpstream':
+        'Upstream\'s engine opens at 60%: the launcher resizes its window. The AnyPS5-ARM engine opens at this size',
+    'engineSourceTitle': 'Engine',
+    'engineUpstreamName': 'Upstream AnyPS5 (boykopovar/AnyPS5)',
+    'engineArmName': 'AnyPS5-ARM engine: phone controller, full screen and window size',
+    'engineUpstreamShort': 'Upstream',
+    'engineArmShort': 'AnyPS5-ARM',
+    'engineArmWhy':
+        'The AnyPS5-ARM engine opens games full screen or at the window size you chose, and takes the phone controller',
+    'engineArmWhyDetail':
+        'Built from AnyPS5-ARM on top of upstream\'s engine; downloaded from AnyPS5-ARM\'s signed GitHub releases',
+    'engineArmDownload': 'Download the AnyPS5-ARM engine %@',
+    'engineArmUse': 'Use the AnyPS5-ARM engine %@',
+    'engineArmNone': 'AnyPS5-ARM has no engine for this system yet',
+    'engineArmUpToDate': 'The AnyPS5-ARM engine is up to date',
+    'engineArmSource': 'From GitHub · utkuhalis/AnyPS5-ARM',
   };
 
   static const _turkish = <String, String>{
@@ -164,6 +187,30 @@ abstract final class T {
     'phoneAddress': 'Telefon için adres',
     'backUpSavesDetail': 'Kayıtlar ve kupalar, AnyPS5 Backups klasörüne',
     'restoreLatest': 'Son yedeği geri yükle',
+    'hintPreviousGame': 'Önceki',
+    'hintNextGame': 'Sonraki',
+    'screenshotsTitle': 'Ekran Görüntüleri',
+    'screenshotsDetail': 'Oyunda F12 ve her kupa kazandığında bir görüntü',
+    'screenshotsNone': 'Henüz görüntü yok: oyunda F12\'ye bas ya da bir kupa kazan.',
+    'trophyShot': 'Kazandığın an · açmak için Enter',
+    'displayUpstream':
+        'Upstream motoru bunu okumaz: oyun açılınca başlatıcı F11\'e basar. AnyPS5-ARM motoru bunu kendisi yapar',
+    'windowSizeUpstream':
+        'Upstream motoru %60 açılır: pencereyi başlatıcı boyutlandırır. AnyPS5-ARM motoru doğrudan bu boyutta açılır',
+    'engineSourceTitle': 'Motor',
+    'engineUpstreamName': 'Upstream AnyPS5 (boykopovar/AnyPS5)',
+    'engineArmName': 'AnyPS5-ARM motoru: telefon kumandası, tam ekran ve pencere boyutu',
+    'engineUpstreamShort': 'Upstream',
+    'engineArmShort': 'AnyPS5-ARM',
+    'engineArmWhy':
+        'AnyPS5-ARM motoru oyunları tam ekran ya da seçtiğin pencere boyutunda açar ve telefon kumandasını kullanır',
+    'engineArmWhyDetail':
+        'Upstream motorunun üstüne AnyPS5-ARM\'dan derlenir; AnyPS5-ARM\'ın imzalı GitHub sürümlerinden indirilir',
+    'engineArmDownload': 'AnyPS5-ARM motoru %@ indir',
+    'engineArmUse': 'AnyPS5-ARM motoru %@ kullan',
+    'engineArmNone': 'AnyPS5-ARM\'ın bu sistem için henüz motoru yok',
+    'engineArmUpToDate': 'AnyPS5-ARM motoru güncel',
+    'engineArmSource': 'GitHub\'dan · utkuhalis/AnyPS5-ARM',
   };
 
   /// The text for [key] in the current language, English when the language has none.

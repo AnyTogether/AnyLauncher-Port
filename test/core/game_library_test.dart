@@ -39,6 +39,24 @@ void main() {
     expect(GameLibrary.inspect(makeDump(root.path, 'Plain'))!.ageLevels, isNull);
   });
 
+  test('a dump laid out as Silksong\'s (PPSA12544-app0): its theme song is found; a game without one has none', () {
+    // sce_sys as the real dump has it: .dds beside the .png pictures, pic1/pic2, trophy2, snd0.at9.
+    final silksong = makeDump(
+      root.path,
+      'PPSA12544-app0',
+      titleId: 'PPSA12544',
+      names: {'en-US': 'Hollow Knight: Silksong'},
+      pictures: ['icon0.png', 'icon0.dds', 'pic0.png', 'pic0.dds', 'pic1.png', 'pic1.dds', 'pic2.png', 'snd0.at9'],
+      files: {'sce_sys/trophy2/trophy00.ucp': 'x', 'Media/data.bin': 'x', 'sce_module/libc.prx': 'x'},
+    );
+    final game = GameLibrary.scan(root.path).single;
+    expect(game.folder, silksong);
+    expect(game.music, p.join(silksong, 'sce_sys', 'snd0.at9'));
+    expect(game.background, p.join(silksong, 'sce_sys', 'pic0.png'));
+    final quiet = makeDump(root.path, 'Quiet', titleId: 'PPSA00002', pictures: ['icon0.png', 'pic0.png']);
+    expect(GameLibrary.inspect(quiet)!.music, isNull, reason: 'no snd0.at9: silence, not an error');
+  });
+
   test('the default language picks the name, inside localizedParameters or at the top', () {
     final inside = makeDump(root.path, 'A', names: {'en-US': 'English', 'ja-JP': 'Japanese'}, defaultLanguage: 'ja-JP');
     final top = makeDump(

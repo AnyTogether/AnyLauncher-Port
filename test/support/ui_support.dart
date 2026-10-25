@@ -4,7 +4,11 @@ import 'dart:typed_data';
 
 import 'package:anyps5_desktop/core/audio/atrac9.dart';
 import 'package:anyps5_desktop/core/audio/audio_out.dart';
+import 'package:anyps5_desktop/core/desktop/desktop.dart';
+import 'package:anyps5_desktop/core/gamepad/pad_navigation.dart';
 import 'package:anyps5_desktop/core/host.dart';
+import 'package:anyps5_desktop/core/release_signing.dart';
+import 'package:anyps5_desktop/core/trophies.dart';
 import 'package:anyps5_desktop/core/installer.dart';
 import 'package:anyps5_desktop/core/toolkit_download.dart';
 import 'package:anyps5_desktop/core/together/talk_key.dart';
@@ -13,6 +17,7 @@ import 'package:anyps5_desktop/core/together/voice_mesh.dart';
 import 'package:anyps5_desktop/main.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/background.dart';
+import 'package:anyps5_desktop/ui/components.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -118,6 +123,11 @@ Fixture makeFixture({
   VoiceEngine Function()? voice,
   KeyStateReader? keys,
   Uri? engine,
+  Uri? armEngine,
+  List<ReleaseKey>? armKeys,
+  DesktopWindows? desktop,
+  PadSource Function()? pads,
+  Future<RgbaImage> Function(Trophy trophy, double scale)? renderTrophyCard,
   String? glibc,
   AudioOut? audio,
   Future<PlayableSong?> Function(String path)? decodeSong,
@@ -169,6 +179,12 @@ Fixture makeFixture({
       voiceEngine: voice ?? FakeVoiceEngine.new,
       talkKeys: () => keys,
       engineReleases: engine == null ? null : GitHubReleases(api: engine),
+      armEngineReleases: armEngine == null
+          ? null
+          : GitHubReleases(api: armEngine, repository: ArmToolkitPackage.repository, signingKeys: armKeys),
+      desktop: desktop,
+      pads: pads,
+      renderTrophyCard: renderTrophyCard,
       hostGlibc: () => glibc,
       audio: audio == null ? null : () => audio,
       decodeSong: decodeSong,
@@ -191,6 +207,7 @@ Fixture makeFixture({
 
 /// Renders the launcher at 1600x900 with the background and clock held still.
 Future<void> pumpLauncher(WidgetTester tester, AppModel model, {Size size = const Size(1600, 900)}) async {
+  ArtworkImage.readSynchronously = true;
   await tester.runAsync(() async {
     await loadFonts();
     await ThemeBackground.preload();

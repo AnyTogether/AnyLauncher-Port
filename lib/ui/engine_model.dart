@@ -67,17 +67,155 @@ class EngineModel {
   /// A newer engine than the downloaded one in use is out and not downloaded yet: games made
   /// with the current one are offered to be unlocked again with it.
   bool get updateAvailable {
+    final version = app.toolkitVersion;
+    if (isArm(version)) {
+      final newest = armPackage;
+      return newest != null &&
+          newest.version != version &&
+          !downloaded.any((kit) => p.basename(kit.root) == newest.version);
+    }
     final package = latestPackage;
     final current = currentVersion;
     if (package == null || current == null) return false;
-    return compareVersions(package.version, current) > 0 && store.find(package.version) == null;
+    // The store's toolkits are already listed: no disk read for a getter the screen asks often.
+    return compareVersions(package.version, current) > 0 &&
+        !downloaded.any((kit) => p.basename(kit.root) == package.version);
   }
 
   /// A toolkit's name for people: v0.1.3 for a downloaded one, its version.txt otherwise.
   static String label(Toolkit kit) {
+    if (isArm(kit.version)) return 'AnyPS5-ARM ${kit.version.substring(4)}';
     final upstream = ToolkitStore.upstreamVersion(kit.version);
     return upstream == null ? kit.version : 'v$upstream';
   }
+
+  // The AnyPS5-ARM engine, from AnyPS5-ARM's signed releases.
+
+  /// Whether the settings offer AnyPS5-ARM's engine rather than upstream's.
+  bool get armSelected => app.preferences.engineSource == 'arm';
+
+  /// The newest AnyPS5-ARM engine for this system GitHub lists, once asked.
+  ArmToolkitPackage? armPackage;
+  bool armChecked = false;
+  bool armChecking = false;
+  String? armError;
+
+  /// AnyPS5-ARM's releases, signed with the release keys built into the launcher.
+  GitHubReleases? get _armSource => app.services.armEngineReleases;
+
+  /// Asks AnyPS5-ARM's releases for its newest engine.
+  Future<void> checkArm({bool quiet = false}) async {
+    final source = _armSource;
+    if (source == null || armChecking) return;
+    armChecking = true;
+    armError = null;
+    app.refresh();
+    try {
+      armPackage = ArmToolkitPackage.find(await source.all(), app.system);
+      armChecked = true;
+      if (!quiet) {
+        app.show(
+          armPackage == null
+              ? T.text('engineArmNone')
+              : (updateAvailable ? T.format('engineUpdateToast', [armPackage!.commit]) : T.text('engineArmUpToDate')),
+        );
+      }
+    } on ToolkitFailure catch (failure) {
+      armError = failure.message;
+      if (!quiet) app.show(T.text('engineOffline'));
+    } finally {
+      armChecking = false;
+      app.refresh();
+    }
+  }
+
+  /// Switches the settings between upstream's engine and AnyPS5-ARM's; a downloaded one of that
+  /// kind is used at once, else the settings offer it.
+  void chooseSource(bool arm) {
+    app.preferences.engineSource = arm ? 'arm' : 'upstream';
+    app.savePreferences();
+    final kit = downloaded.where((kit) => isArm(kit.version) == arm).firstOrNull;
+    final current = app.toolkit;
+    if (kit != null && (current == null || isArm(current.version) != arm)) use(kit);
+    if (arm && !armChecked) unawaited(checkArm(quiet: true));
+    if (!arm && latest == null) unawaited(check(quiet: true));
+  }
+
+  List<PanelRow> _armRows(Toolkit? current) {
+    final package = armPackage;
+    final pending = downloading;
+    final have = package == null
+        ? null
+        : downloaded.where((kit) => p.basename(kit.root) == package.version).firstOrNull;
+    return [
+      if (current == null || !isArm(current.version))
+        PanelRow(
+          id: 'engineArmWhy',
+          title: T.text('engineArmWhy'),
+          detail: T.text('engineArmWhyDetail'),
+          kind: const InfoRow(''),
+        ),
+      if (pending != null)
+        PanelRow(
+          id: 'engineDownload',
+          title: T.format('engineDownloading', [
+            pending is ArmToolkitPackage ? pending.commit : 'v${pending.version}',
+            ((progress?.fraction ?? 0) * 100).floor(),
+          ]),
+          detail: '${progressText()} · ${T.text('engineStop')}',
+          kind: ActionRow(cancel),
+        )
+      else if (unsigned case final ArmToolkitPackage waiting)
+        PanelRow(
+          id: 'engineDownload',
+          title: T.text('engineUnsignedTitle'),
+          detail: T.format('engineUnsignedDetail', [waiting.commit]),
+          kind: ActionRow(() => unawaited(download(waiting, false, true)), destructive: true),
+        )
+      else if (unverified case final ArmToolkitPackage waiting)
+        PanelRow(
+          id: 'engineDownload',
+          title: T.text('engineUnverifiedTitle'),
+          detail: T.format('engineUnverifiedDetail', [waiting.commit]),
+          kind: ActionRow(() => unawaited(download(waiting, true)), destructive: true),
+        )
+      else if (package != null && have == null)
+        PanelRow(
+          id: 'engineDownload',
+          title: T.format('engineArmDownload', [package.commit]),
+          detail: '${byteText(package.size)} · ${package.release.tag}',
+          kind: ActionRow(() => unawaited(download(package))),
+        )
+      else if (have != null && (current == null || !p.equals(have.root, current.root)))
+        PanelRow(
+          id: 'engineDownload',
+          title: T.format('engineArmUse', [package!.commit]),
+          detail: T.text('engineDownloaded'),
+          kind: ActionRow(() => use(have)),
+        ),
+      PanelRow(
+        id: 'engineCheck',
+        title: T.text('engineCheck'),
+        detail: armChecking
+            ? T.text('checkingUpdates')
+            : armError != null
+            ? T.text('engineOffline')
+            : armChecked && package == null
+            ? T.text('engineArmNone')
+            : package == null
+            ? T.text('engineArmSource')
+            : T.format('engineNewest', ['${package.commit} · ${package.release.tag}']),
+        kind: ActionRow(() => unawaited(checkArm())),
+      ),
+    ];
+  }
+
+  /// Whether a toolkit's version.txt names an AnyPS5-ARM engine (`arm-<commit>`).
+  static bool isArm(String? version) => version != null && version.startsWith('arm-');
+
+  /// Whether the engine in use reads ANYPS5_FULLSCREEN and ANYPS5_WINDOW_SIZE itself (AnyPS5-ARM's
+  /// does; upstream's opens a window at 60% of the screen and goes full screen on F11).
+  bool get readsDisplaySettings => isArm(app.toolkitVersion);
 
   bool isDownloaded(Toolkit kit) => p.equals(p.dirname(kit.root), store.root);
 
@@ -131,7 +269,13 @@ class EngineModel {
 
   /// At start: a quiet look for a newer engine, said once when there is one.
   Future<void> startupCheck() async {
-    if (!online || !app.preferences.onboarded || currentVersion == null) return;
+    if (!online || !app.preferences.onboarded) return;
+    if (isArm(app.toolkitVersion)) {
+      await checkArm(quiet: true);
+      if (updateAvailable) app.show(T.format('engineUpdateToast', [armPackage!.commit]));
+      return;
+    }
+    if (currentVersion == null) return;
     await check(quiet: true);
     if (updateAvailable) app.show(T.format('engineUpdateToast', ['v${latest!.version}']));
   }
@@ -140,6 +284,14 @@ class EngineModel {
   /// versions nothing needs any more. True when it is in place.
   Future<bool> download([ToolkitPackage? package, bool allowUnverified = false, bool allowUnsigned = false]) async {
     if (downloading != null) return false;
+    if (package == null && (armSelected || isArm(app.toolkitVersion))) {
+      if (!armChecked) await checkArm(quiet: true);
+      package = armPackage;
+      if (package == null) {
+        app.show(T.text(armChecked ? 'engineArmNone' : 'engineOffline'));
+        return false;
+      }
+    }
     if (package == null) {
       if (latest == null) await check(quiet: true);
       package = latestPackage;
@@ -237,7 +389,34 @@ class EngineModel {
   List<PanelRow> settingsRows() {
     final current = app.toolkit;
     final package = downloading;
+    final source = PanelRow(
+      id: 'engineSource',
+      title: T.text('engineSourceTitle'),
+      detail: T.text(armSelected ? 'engineArmName' : 'engineUpstreamName'),
+      kind: ChoiceRow([T.text('engineUpstreamShort'), T.text('engineArmShort')], armSelected ? 1 : 0, (index) {
+        chooseSource(index == 1);
+      }),
+    );
+    if (armSelected) {
+      return [
+        source,
+        PanelRow(
+          id: 'engineCurrent',
+          title: T.text('engineInUse'),
+          detail: current?.root ?? T.text('toolkitDetail'),
+          kind: InfoRow(current == null ? T.text('toolkitMissing') : label(current)),
+        ),
+        ..._armRows(current),
+        PanelRow(
+          id: 'engineOwn',
+          title: T.text('engineOwn'),
+          detail: current != null && !isDownloaded(current) ? current.root : T.text('engineOwnFolderDetail'),
+          kind: ActionRow(() => unawaited(app.chooseToolkit())),
+        ),
+      ];
+    }
     final rows = <PanelRow>[
+      source,
       PanelRow(
         id: 'engineCurrent',
         title: T.text('engineInUse'),

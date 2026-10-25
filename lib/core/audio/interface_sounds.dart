@@ -38,8 +38,9 @@ class InterfaceSounds {
   }();
 
   /// Plays [cue]; the same cue asked twice in one step (a row that opens a panel) plays once.
-  void play(Cue cue) {
-    if (!enabled || muted || volume <= 0) return;
+  /// [overGame] plays it while a game is in front too (a trophy earned).
+  void play(Cue cue, {bool overGame = false}) {
+    if (!enabled || (muted && !overGame) || volume <= 0) return;
     final sound = _sounds[cue];
     if (sound == null || !_thisTurn.add(cue)) return;
     if (_thisTurn.length == 1) scheduleMicrotask(_thisTurn.clear);

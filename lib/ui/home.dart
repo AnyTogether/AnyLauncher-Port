@@ -29,24 +29,37 @@ class Backdrop extends StatelessWidget {
         model.preferences.gameArtwork &&
         model.overlay != Layer.settings &&
         game?.background != null;
+    // Under a layer the background is blurred and darkened: kept still, the blur is not worked
+    // out again on every frame, which is what made opening and closing layers stutter.
+    final covered = model.overlay != null || model.starting != null;
+    if (artwork && time == null) {
+      final index = model.selected;
+      for (final near in [index - 1, index + 1]) {
+        if (near >= 0 && near < model.games.length) {
+          ArtworkImage.warm(context, model.games[near].background, cacheWidth: GameArtwork.cacheWidth);
+        }
+      }
+    }
     return Stack(
       fit: StackFit.expand,
       children: [
         ThemeBackground(
           style: model.look,
-          paused: model.running != null || model.preferences.reducedMotion,
+          paused: model.running != null || model.preferences.reducedMotion || covered,
           time: time,
         ),
-        AnimatedSwitcher(
-          duration: Motion.fade,
-          switchInCurve: Motion.settle,
-          child: artwork
-              ? GameArtwork(
-                  key: ValueKey(game!.id),
-                  path: game.background!,
-                  animated: !model.preferences.reducedMotion && time == null,
-                )
-              : const SizedBox.expand(),
+        RepaintBoundary(
+          child: AnimatedSwitcher(
+            duration: Motion.fade,
+            switchInCurve: Motion.settle,
+            child: artwork
+                ? GameArtwork(
+                    key: ValueKey(game!.id),
+                    path: game.background!,
+                    animated: !model.preferences.reducedMotion && time == null && !covered,
+                  )
+                : const SizedBox.expand(),
+          ),
         ),
       ],
     );
@@ -117,10 +130,10 @@ class TopBar extends StatelessWidget {
     final name = together.user?.displayName ?? model.preferences.profileName;
     Widget iconButton(IconData icon, int index, VoidCallback action, {int badge = 0}) {
       final focused = model.focus == HomeFocus.top(index) && model.overlay == null;
-      return GestureDetector(
+      return Pressable(
         onTap: action,
-        child: AnimatedScale(
-          scale: focused ? 1.1 : 1,
+        builder: (context, hovering) => AnimatedScale(
+          scale: focused ? 1.1 : (hovering ? 1.05 : 1),
           duration: Motion.focus,
           curve: Motion.settle,
           child: Stack(
@@ -132,7 +145,7 @@ class TopBar extends StatelessWidget {
                 height: 44 * scale,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: focused ? Colors.white : Colors.white.withValues(alpha: 0.1),
+                  color: focused ? Colors.white : Colors.white.withValues(alpha: hovering ? 0.2 : 0.1),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.white.withValues(alpha: focused ? 0.4 : 0),
@@ -329,7 +342,10 @@ class TileRow extends StatelessWidget {
                   child: AnimatedOpacity(
                     duration: Motion.layout,
                     opacity: offset < 0 ? 0 : 1,
-                    child: GestureDetector(
+                    // A click selects at once (a GestureDetector with a double tap would wait to
+                    // see whether a second click comes); a second click plays.
+                    child: Pressable(
+                      key: ValueKey('tile-press-${game.id}'),
                       onTap: () {
                         if (model.selected != index) model.sounds.play(Cue.move);
                         model.select(index);
@@ -338,7 +354,7 @@ class TileRow extends StatelessWidget {
                         model.select(index);
                         model.primaryAction(game);
                       },
-                      child: GameTile(
+                      builder: (context, _) => GameTile(
                         model: model,
                         game: game,
                         size: size,

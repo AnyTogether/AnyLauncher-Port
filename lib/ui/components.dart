@@ -394,79 +394,273 @@ class _GlyphPainter extends CustomPainter {
   bool shouldRepaint(_GlyphPainter oldDelegate) => oldDelegate.glyph != glyph || oldDelegate.color != color;
 }
 
-/// A key or button with what it does.
-class Hint extends StatelessWidget {
-  const Hint({super.key, required this.keys, required this.label, this.glyph});
+/// What a hint pill does when it is clicked: the same as its key.
+enum HintAction { previousGame, nextGame, select, back, options }
 
-  final String keys;
-  final PadGlyph? glyph;
-  final String label;
+/// Runs a hint pill's action, given by the launcher's shell; without one the pills only show.
+class HintScope extends InheritedWidget {
+  const HintScope({super.key, required this.onAction, required super.child});
+
+  final void Function(HintAction action) onAction;
+
+  static void Function(HintAction)? of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<HintScope>()?.onAction;
+
+  @override
+  bool updateShouldNotify(HintScope oldWidget) => oldWidget.onAction != onAction;
+}
+
+/// A child that reacts to the pointer: the click cursor, a hover state for [builder], a press
+/// that shrinks it a little, and [onTap]. [onHover] runs when the pointer moves over it (not
+/// when a list scrolls it under a still pointer), so a hover can move the keyboard's focus
+/// without fighting the keys.
+class Pressable extends StatefulWidget {
+  const Pressable({
+    super.key,
+    required this.builder,
+    this.onTap,
+    this.onDoubleTap,
+    this.onHover,
+    this.pressScale = 0.97,
+  });
+
+  final Widget Function(BuildContext context, bool hovering) builder;
+  final VoidCallback? onTap;
+
+  /// A second click on it soon after the first; the first click still runs [onTap] at once.
+  final VoidCallback? onDoubleTap;
+  final VoidCallback? onHover;
+  final double pressScale;
+
+  /// How close two clicks must be to count as a double click.
+  static const doubleClick = Duration(milliseconds: 400);
+
+  @override
+  State<Pressable> createState() => _PressableState();
+}
+
+class _PressableState extends State<Pressable> {
+  bool _hovering = false;
+  bool _pressed = false;
+
+  /// When the pointer went down for this click and for the one before (the events' own times).
+  Duration? _down;
+  Duration? _lastTap;
+
+  void _tap() {
+    final now = _down;
+    final last = _lastTap;
+    if (widget.onDoubleTap != null && now != null && last != null && now - last <= Pressable.doubleClick) {
+      _lastTap = null;
+      widget.onDoubleTap!();
+      return;
+    }
+    _lastTap = now;
+    widget.onTap?.call();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final scale = LayoutScale.of(context);
-    final color = Colors.white.withValues(alpha: 0.72);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          padding: EdgeInsets.symmetric(horizontal: 7 * scale, vertical: 3 * scale),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.16),
-            borderRadius: BorderRadius.circular(5 * scale),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                keys,
-                style: AppText.display(12 * scale, weight: FontWeight.w700, color: color),
-              ),
-              if (glyph != null) ...[
-                Text(
-                  ' / ',
-                  style: AppText.display(12 * scale, weight: FontWeight.w700, color: color),
-                ),
-                PadGlyphIcon(glyph!, size: 12 * scale, color: color),
-              ],
-            ],
+    final enabled = widget.onTap != null || widget.onDoubleTap != null;
+    return MouseRegion(
+      cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      onHover: widget.onHover == null ? null : (_) => widget.onHover!(),
+      child: Listener(
+        onPointerDown: (event) => _down = event.timeStamp,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
+          onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
+          onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
+          onTap: enabled ? _tap : null,
+          child: AnimatedScale(
+            scale: _pressed ? widget.pressScale : 1,
+            duration: const Duration(milliseconds: 90),
+            curve: Motion.settle,
+            child: widget.builder(context, _hovering && enabled),
           ),
         ),
-        SizedBox(width: 8 * scale),
-        Text(
-          label,
-          style: AppText.display(13 * scale, weight: FontWeight.w500, color: color),
-        ),
-      ],
+      ),
     );
   }
 }
 
+/// A key or button with what it does; clicked, it does the same as the key.
+class Hint extends StatelessWidget {
+  const Hint({super.key, required this.keys, required this.label, this.glyph, this.action});
+
+  final String keys;
+  final PadGlyph? glyph;
+  final String label;
+  final HintAction? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final run = action == null ? null : HintScope.of(context);
+    Widget pill(bool hovering) {
+      final color = Colors.white.withValues(alpha: hovering ? 1 : 0.72);
+      return AnimatedContainer(
+        duration: Motion.focus,
+        curve: Motion.settle,
+        padding: EdgeInsets.symmetric(horizontal: 6 * scale, vertical: 4 * scale),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: hovering ? 0.12 : 0),
+          borderRadius: BorderRadius.circular(8 * scale),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 7 * scale, vertical: 3 * scale),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: hovering ? 0.26 : 0.16),
+                borderRadius: BorderRadius.circular(5 * scale),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    keys,
+                    style: AppText.display(12 * scale, weight: FontWeight.w700, color: color),
+                  ),
+                  if (glyph != null) ...[
+                    Text(
+                      ' / ',
+                      style: AppText.display(12 * scale, weight: FontWeight.w700, color: color),
+                    ),
+                    PadGlyphIcon(glyph!, size: 12 * scale, color: color),
+                  ],
+                ],
+              ),
+            ),
+            SizedBox(width: 8 * scale),
+            Text(
+              label,
+              style: AppText.display(13 * scale, weight: FontWeight.w500, color: color),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (run == null) return pill(false);
+    return Pressable(onTap: () => run(action!), builder: (context, hovering) => pill(hovering));
+  }
+}
+
 class HintBar extends StatelessWidget {
-  const HintBar({super.key, this.options = true});
+  const HintBar({super.key, this.options = true, this.games = true});
 
   final bool options;
+
+  /// Whether Q and E (L1 and R1) move between games here.
+  final bool games;
 
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
     return Wrap(
-      spacing: 22 * scale,
+      spacing: 10 * scale,
       runSpacing: 8 * scale,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         Hint(keys: '← → ↑ ↓', label: T.text('hintMove')),
-        Hint(keys: 'Q E / L1 R1', label: T.text('hintGame')),
-        Hint(keys: 'Enter', glyph: PadGlyph.cross, label: T.text('hintSelect')),
-        Hint(keys: 'Esc', glyph: PadGlyph.circle, label: T.text('hintBack')),
-        if (options) Hint(keys: 'O', glyph: PadGlyph.triangle, label: T.text('hintOptions')),
+        if (games) ...[
+          Hint(keys: 'Q / L1', label: T.text('hintPreviousGame'), action: HintAction.previousGame),
+          Hint(keys: 'E / R1', label: T.text('hintNextGame'), action: HintAction.nextGame),
+        ],
+        Hint(keys: 'Enter', glyph: PadGlyph.cross, label: T.text('hintSelect'), action: HintAction.select),
+        Hint(keys: 'Esc', glyph: PadGlyph.circle, label: T.text('hintBack'), action: HintAction.back),
+        if (options)
+          Hint(keys: 'O', glyph: PadGlyph.triangle, label: T.text('hintOptions'), action: HintAction.options),
       ],
     );
   }
 }
 
-/// A game's picture from its file, decoded at about the size it is shown. The file is read once
-/// and kept (icons are small, backgrounds a few megabytes), so the picture is not decoded again
-/// on every rebuild.
+/// The way out of a panel or a screen over the home screen, for the mouse: Esc / ○ Back.
+class BackPill extends StatelessWidget {
+  const BackPill({super.key, required this.onTap, this.close = false});
+
+  final VoidCallback onTap;
+
+  /// Shown as a close button (×) instead of Back.
+  final bool close;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    return Semantics(
+      button: true,
+      label: T.text(close ? 'close' : 'back'),
+      child: Pressable(
+        onTap: onTap,
+        builder: (context, hovering) => AnimatedContainer(
+          key: const ValueKey('back-pill'),
+          duration: Motion.focus,
+          curve: Motion.settle,
+          padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 9 * scale),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: hovering ? 0.22 : 0.1),
+            borderRadius: BorderRadius.circular(30 * scale),
+            border: Border.all(color: Colors.white.withValues(alpha: hovering ? 0.3 : 0.12)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                close ? Icons.close_rounded : Icons.arrow_back_rounded,
+                size: 17 * scale,
+                color: Colors.white.withValues(alpha: hovering ? 1 : 0.85),
+              ),
+              SizedBox(width: 8 * scale),
+              Text(
+                T.text(close ? 'close' : 'back'),
+                style: AppText.display(15 * scale, weight: FontWeight.w600, color: Colors.white),
+              ),
+              SizedBox(width: 10 * scale),
+              Text(
+                'Esc',
+                style: AppText.display(12 * scale, weight: FontWeight.w700, color: Colors.white.withValues(alpha: 0.5)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A full-screen layer with its way out for the mouse in the top right corner.
+class WithBackPill extends StatelessWidget {
+  const WithBackPill({super.key, required this.onBack, required this.child});
+
+  final VoidCallback onBack;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        child,
+        Positioned(
+          top: 18 * scale,
+          right: 24 * scale,
+          child: BackPill(onTap: onBack),
+        ),
+      ],
+    );
+  }
+}
+
+/// A game's picture from its file, decoded at about the size it is shown. The file is read and
+/// decoded away from the interface (FileImage), and the decoded picture stays in the image cache,
+/// so going back to a game shows it at once, without a disk read in the middle of a frame.
 class ArtworkImage extends StatelessWidget {
   const ArtworkImage({super.key, required this.path, this.fit = BoxFit.cover, this.cacheWidth});
 
@@ -474,27 +668,41 @@ class ArtworkImage extends StatelessWidget {
   final BoxFit fit;
   final int? cacheWidth;
 
-  static final Map<String, ImageProvider?> _providers = {};
+  /// Tests read the file on the spot: their fake clock never lets a file read in the
+  /// background finish while a frame waits for it.
+  @visibleForTesting
+  static bool readSynchronously = false;
 
-  static ImageProvider? provider(String path, int? cacheWidth) {
-    final key = '$path@$cacheWidth';
-    return _providers.putIfAbsent(key, () {
-      if (_providers.length > 200) _providers.clear();
-      try {
-        final image = MemoryImage(File(path).readAsBytesSync());
-        return cacheWidth == null ? image : ResizeImage(image, width: cacheWidth, policy: ResizeImagePolicy.fit);
-      } on FileSystemException {
-        return null;
-      }
-    });
+  static final Map<String, MemoryImage?> _read = {};
+
+  static ImageProvider provider(String path, int? cacheWidth) {
+    final ImageProvider image;
+    if (readSynchronously) {
+      final memory = _read.putIfAbsent(path, () {
+        try {
+          return MemoryImage(File(path).readAsBytesSync());
+        } on FileSystemException {
+          return null;
+        }
+      });
+      image = memory ?? FileImage(File(path));
+    } else {
+      image = FileImage(File(path));
+    }
+    return cacheWidth == null ? image : ResizeImage(image, width: cacheWidth, policy: ResizeImagePolicy.fit);
+  }
+
+  /// Decodes [path] ahead of time (the games beside the selected one), so its picture is ready
+  /// when the selection gets there.
+  static void warm(BuildContext context, String? path, {int? cacheWidth}) {
+    if (path == null) return;
+    unawaited(precacheImage(provider(path, cacheWidth), context, onError: (_, _) {}));
   }
 
   @override
   Widget build(BuildContext context) {
-    final image = provider(path, cacheWidth);
-    if (image == null) return const SizedBox.shrink();
     return Image(
-      image: image,
+      image: provider(path, cacheWidth),
       fit: fit,
       gaplessPlayback: true,
       filterQuality: FilterQuality.medium,

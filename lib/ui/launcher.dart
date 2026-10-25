@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -130,6 +131,44 @@ class _LauncherShellState extends State<LauncherShell> {
     return KeyEventResult.handled;
   }
 
+  /// A hint pill clicked: what its key does.
+  void _hint(HintAction action) {
+    final model = widget.model;
+    if (action == HintAction.previousGame || action == HintAction.nextGame) {
+      final delta = action == HintAction.nextGame ? 1 : -1;
+      if (model.overlay == Layer.settings) return model.moveCategory(delta);
+    }
+    model.handle(switch (action) {
+      HintAction.previousGame => Command.previousGame,
+      HintAction.nextGame => Command.nextGame,
+      HintAction.select => Command.select,
+      HintAction.back => Command.back,
+      HintAction.options => Command.options,
+    });
+  }
+
+  double _wheel = 0;
+
+  /// The right button is Back everywhere (as Esc is); on the home screen the wheel moves
+  /// between games, in lists it scrolls them.
+  void _pointerDown(PointerDownEvent event) {
+    final model = widget.model;
+    if (event.kind != PointerDeviceKind.mouse || event.buttons & kSecondaryMouseButton == 0) return;
+    if (model.editingRow != null || model.capturing != null) return;
+    if (model.overlay == null && model.focus.isTiles && model.pairing == null) return;
+    model.handle(Command.back);
+  }
+
+  void _pointerSignal(PointerSignalEvent event) {
+    final model = widget.model;
+    if (event is! PointerScrollEvent || model.overlay != null || !model.preferences.onboarded) return;
+    final delta = event.scrollDelta.dy.abs() > event.scrollDelta.dx.abs() ? event.scrollDelta.dy : event.scrollDelta.dx;
+    _wheel += delta;
+    if (_wheel.abs() < 40) return;
+    model.handle(_wheel > 0 ? Command.nextGame : Command.previousGame);
+    _wheel = 0;
+  }
+
   @override
   Widget build(BuildContext context) {
     final model = widget.model;
@@ -137,55 +176,78 @@ class _LauncherShellState extends State<LauncherShell> {
       focusNode: _focus,
       autofocus: true,
       onKeyEvent: _key,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final scale = math.min(constraints.maxWidth / 1600, constraints.maxHeight / 900);
-          return LayoutScale(
-            scale: scale,
-            child: ListenableBuilder(
-              listenable: model,
-              builder: (context, _) => ColoredBox(
-                color: model.look.deep,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Backdrop(model: model, time: widget.time),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 700),
-                      switchInCurve: Motion.inOut,
-                      child: model.preferences.onboarded
-                          ? HomeView(key: const ValueKey('home'), model: model, now: widget.now)
-                          : OnboardingView(key: const ValueKey('onboarding'), model: model, time: widget.time),
+      child: Listener(
+        onPointerDown: _pointerDown,
+        onPointerSignal: _pointerSignal,
+        child: HintScope(
+          onAction: _hint,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final scale = math.min(constraints.maxWidth / 1600, constraints.maxHeight / 900);
+              return LayoutScale(
+                scale: scale,
+                child: ListenableBuilder(
+                  listenable: model,
+                  builder: (context, _) => ColoredBox(
+                    color: model.look.deep,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Backdrop(model: model, time: widget.time),
+                        RepaintBoundary(
+                          child: AnimatedSwitcher(
+                            duration: Motion.fade,
+                            switchInCurve: Motion.settle,
+                            child: model.preferences.onboarded
+                                ? HomeView(key: const ValueKey('home'), model: model, now: widget.now)
+                                : OnboardingView(key: const ValueKey('onboarding'), model: model, time: widget.time),
+                          ),
+                        ),
+                        RepaintBoundary(
+                          child: AnimatedSwitcher(
+                            duration: Motion.overlay,
+                            reverseDuration: Motion.overlay,
+                            switchInCurve: Motion.settle,
+                            switchOutCurve: Curves.easeIn,
+                            transitionBuilder: (child, animation) => FadeTransition(
+                              opacity: animation,
+                              child: ScaleTransition(
+                                scale: Tween(begin: 0.985, end: 1.0).animate(animation),
+                                child: child,
+                              ),
+                            ),
+                            child: KeyedSubtree(
+                              key: ValueKey(model.overlay),
+                              child: switch (model.overlay) {
+                                Layer.library => LibraryGrid(model: model),
+                                Layer.log => LogView(model: model),
+                                Layer.trophies => TrophyView(model: model),
+                                Layer.gallery => GalleryView(model: model),
+                                Layer.messages => WithBackPill(
+                                  onBack: () => model.handle(Command.back),
+                                  child: MessagesView(model: model),
+                                ),
+                                Layer.profile => WithBackPill(
+                                  onBack: () => model.handle(Command.back),
+                                  child: ProfileView(model: model),
+                                ),
+                                null => const SizedBox.shrink(),
+                                _ => PanelView(model: model),
+                              },
+                            ),
+                          ),
+                        ),
+                        if (model.starting != null) _StartingCard(model: model),
+                        if (model.pairing != null) PairingCard(model: model),
+                        _Toast(message: model.toast),
+                      ],
                     ),
-                    AnimatedSwitcher(
-                      duration: Motion.overlay,
-                      switchInCurve: Motion.settle,
-                      transitionBuilder: (child, animation) => FadeTransition(
-                        opacity: animation,
-                        child: ScaleTransition(scale: Tween(begin: 0.985, end: 1.0).animate(animation), child: child),
-                      ),
-                      child: KeyedSubtree(
-                        key: ValueKey(model.overlay),
-                        child: switch (model.overlay) {
-                          Layer.library => LibraryGrid(model: model),
-                          Layer.log => LogView(model: model),
-                          Layer.trophies => TrophyView(model: model),
-                          Layer.messages => MessagesView(model: model),
-                          Layer.profile => ProfileView(model: model),
-                          null => const SizedBox.shrink(),
-                          _ => PanelView(model: model),
-                        },
-                      ),
-                    ),
-                    if (model.starting != null) _StartingCard(model: model),
-                    if (model.pairing != null) PairingCard(model: model),
-                    _Toast(message: model.toast),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-          );
-        },
+              );
+            },
+          ),
+        ),
       ),
     );
   }

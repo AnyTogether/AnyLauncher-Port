@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 
 import '../core/controls.dart';
 import '../core/trophies.dart';
@@ -22,84 +23,94 @@ class LibraryGrid extends StatelessWidget {
     final size = 196 * scale;
     return _Scrim(
       opacity: 0.74,
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 80 * scale, vertical: 60 * scale),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(T.text('library'), style: AppText.display(40 * scale, weight: FontWeight.w300)),
-                SizedBox(width: 14 * scale),
-                Padding(
-                  padding: EdgeInsets.only(bottom: 6 * scale),
-                  child: Text(
-                    '${model.games.length}',
-                    style: AppText.display(
-                      22 * scale,
-                      weight: FontWeight.w500,
-                      color: Colors.white.withValues(alpha: 0.5),
+      child: WithBackPill(
+        onBack: () => model.handle(Command.back),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 80 * scale, vertical: 60 * scale),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(T.text('library'), style: AppText.display(40 * scale, weight: FontWeight.w300)),
+                  SizedBox(width: 14 * scale),
+                  Padding(
+                    padding: EdgeInsets.only(bottom: 6 * scale),
+                    child: Text(
+                      '${model.games.length}',
+                      style: AppText.display(
+                        22 * scale,
+                        weight: FontWeight.w500,
+                        color: Colors.white.withValues(alpha: 0.5),
+                      ),
                     ),
                   ),
-                ),
-                const Spacer(),
-                const HintBar(options: false),
-              ],
-            ),
-            SizedBox(height: 26 * scale),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.all(14 * scale),
-                child: Wrap(
-                  spacing: 26 * scale,
-                  runSpacing: 30 * scale,
-                  children: [
-                    for (var index = 0; index < model.games.length; index++)
-                      KeepVisible(
-                        active: index == model.libraryIndex,
-                        child: GestureDetector(
-                          onTap: () {
-                            model.select(index);
-                            model.closeOverlay();
-                          },
-                          child: SizedBox(
-                            width: size,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                SizedBox.square(
-                                  dimension: size,
-                                  child: GameTile(
-                                    model: model,
-                                    game: model.games[index],
-                                    size: size,
-                                    focused: index == model.libraryIndex,
+                  const Spacer(),
+                  const HintBar(options: false, games: false),
+                ],
+              ),
+              SizedBox(height: 26 * scale),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.all(14 * scale),
+                  child: Wrap(
+                    spacing: 26 * scale,
+                    runSpacing: 30 * scale,
+                    children: [
+                      for (var index = 0; index < model.games.length; index++)
+                        KeepVisible(
+                          active: index == model.libraryIndex,
+                          child: Pressable(
+                            onHover: () => model.hoverLibrary(index),
+                            onTap: () {
+                              model.select(index);
+                              model.closeOverlay();
+                            },
+                            onDoubleTap: () {
+                              final game = model.games[index];
+                              model.select(index);
+                              if (model.overlay != null) model.closeOverlay();
+                              model.primaryAction(game);
+                            },
+                            builder: (context, _) => SizedBox(
+                              width: size,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  SizedBox.square(
+                                    dimension: size,
+                                    child: GameTile(
+                                      model: model,
+                                      game: model.games[index],
+                                      size: size,
+                                      focused: index == model.libraryIndex,
+                                    ),
                                   ),
-                                ),
-                                SizedBox(height: 10 * scale),
-                                Text(
-                                  model.games[index].nameFor([T.language.code]),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: AppText.display(
-                                    15 * scale,
-                                    weight: index == model.libraryIndex ? FontWeight.w600 : FontWeight.w400,
-                                    color: Colors.white.withValues(alpha: index == model.libraryIndex ? 1 : 0.75),
+                                  SizedBox(height: 10 * scale),
+                                  Text(
+                                    model.games[index].nameFor([T.language.code]),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppText.display(
+                                      15 * scale,
+                                      weight: index == model.libraryIndex ? FontWeight.w600 : FontWeight.w400,
+                                      color: Colors.white.withValues(alpha: index == model.libraryIndex ? 1 : 0.75),
+                                    ),
                                   ),
-                                ),
-                                SizedBox(height: 4 * scale),
-                                StateLabel(model: model, state: model.stateOf(model.games[index]), size: 12),
-                              ],
+                                  SizedBox(height: 4 * scale),
+                                  StateLabel(model: model, state: model.stateOf(model.games[index]), size: 12),
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -108,10 +119,13 @@ class LibraryGrid extends StatelessWidget {
 
 /// A darkened, blurred layer over the home screen.
 class _Scrim extends StatelessWidget {
-  const _Scrim({required this.child, this.opacity = 0.65});
+  const _Scrim({required this.child, this.opacity = 0.65, this.onTapOutside});
 
   final Widget child;
   final double opacity;
+
+  /// A click on the darkened area around what the layer shows (not on it).
+  final VoidCallback? onTapOutside;
 
   @override
   Widget build(BuildContext context) {
@@ -120,7 +134,19 @@ class _Scrim extends StatelessWidget {
         filter: ui.ImageFilter.blur(sigmaX: 30, sigmaY: 30),
         child: ColoredBox(
           color: Colors.black.withValues(alpha: opacity),
-          child: child,
+          child: onTapOutside == null
+              ? child
+              : Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    GestureDetector(
+                      key: const ValueKey('scrim-outside'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onTapOutside,
+                    ),
+                    child,
+                  ],
+                ),
         ),
       ),
     );
@@ -151,6 +177,7 @@ class PanelView extends StatelessWidget {
     };
     return _Scrim(
       opacity: 0.55,
+      onTapOutside: () => model.handle(Command.back),
       child: Center(
         child: SizedBox(
           width: (compact ? 760 : 1180) * scale,
@@ -168,7 +195,7 @@ class PanelView extends StatelessWidget {
                     Text(heading, style: AppText.display(34 * scale, weight: FontWeight.w300)),
                     if (!const {Layer.settings, Layer.friends, Layer.party}.contains(model.overlay) && !compact) ...[
                       SizedBox(width: 14 * scale),
-                      Flexible(
+                      Expanded(
                         child: Padding(
                           padding: EdgeInsets.only(bottom: 5 * scale),
                           child: Text(
@@ -179,7 +206,13 @@ class PanelView extends StatelessWidget {
                           ),
                         ),
                       ),
-                    ],
+                    ] else
+                      const Spacer(),
+                    SizedBox(width: 14 * scale),
+                    BackPill(
+                      onTap: () => model.handle(Command.back),
+                      close: !const {Layer.controls, Layer.friendOptions}.contains(model.overlay),
+                    ),
                   ],
                 ),
                 SizedBox(height: 24 * scale),
@@ -228,16 +261,17 @@ class _CategoryTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
-    return GestureDetector(
+    return Pressable(
       onTap: onTap,
-      child: AnimatedContainer(
+      pressScale: 0.985,
+      builder: (context, hovering) => AnimatedContainer(
         duration: Motion.focus,
         curve: Motion.settle,
         width: double.infinity,
         margin: EdgeInsets.only(bottom: 6 * scale),
         padding: EdgeInsets.symmetric(horizontal: 18 * scale, vertical: 14 * scale),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: selected ? 0.14 : 0),
+          color: Colors.white.withValues(alpha: selected ? 0.14 : (hovering ? 0.07 : 0)),
           borderRadius: BorderRadius.circular(12 * scale),
         ),
         child: Text(
@@ -245,7 +279,7 @@ class _CategoryTab extends StatelessWidget {
           style: AppText.display(
             17 * scale,
             weight: selected ? FontWeight.w600 : FontWeight.w400,
-            color: Colors.white.withValues(alpha: selected ? 1 : 0.6),
+            color: Colors.white.withValues(alpha: selected ? 1 : (hovering ? 0.85 : 0.6)),
           ),
         ),
       ),
@@ -270,13 +304,13 @@ class _Rows extends StatelessWidget {
             KeepVisible(
               active: index == model.panelRow,
               child: _RowView(
+                key: ValueKey('row-${rows[index].id}'),
                 model: model,
                 row: rows[index],
                 focused: index == model.panelRow,
-                onTap: () {
-                  model.panelRow = index;
-                  model.handle(Command.select);
-                },
+                onTap: () => model.activateRow(index),
+                onStep: (delta) => model.stepRow(index, delta),
+                onHover: () => model.hoverRow(index),
               ),
             ),
         ],
@@ -286,12 +320,24 @@ class _Rows extends StatelessWidget {
 }
 
 class _RowView extends StatelessWidget {
-  const _RowView({required this.model, required this.row, required this.focused, required this.onTap});
+  const _RowView({
+    super.key,
+    required this.model,
+    required this.row,
+    required this.focused,
+    required this.onTap,
+    required this.onStep,
+    required this.onHover,
+  });
 
   final AppModel model;
   final PanelRow row;
   final bool focused;
   final VoidCallback onTap;
+
+  /// One step back (-1) or on (1), from a click on ‹ › or − +.
+  final void Function(int delta) onStep;
+  final VoidCallback onHover;
 
   @override
   Widget build(BuildContext context) {
@@ -305,19 +351,28 @@ class _RowView extends StatelessWidget {
       final style = AppText.display(16 * scale, weight: FontWeight.w600, color: titleColor);
       switch (kind) {
         case ChoiceRow(:final options, :final selected):
+          final current = selected.clamp(0, options.length - 1);
           return Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.chevron_left_rounded, size: 20 * scale, color: detailColor),
+              _StepArrow(
+                key: ValueKey('${row.id}-previous'),
+                icon: Icons.chevron_left_rounded,
+                enabled: current > 0,
+                focused: focused,
+                onTap: () => onStep(-1),
+              ),
               ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: 280 * scale),
-                child: Text(
-                  options[selected.clamp(0, options.length - 1)],
-                  style: style,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                child: Text(options[current], style: style, overflow: TextOverflow.ellipsis),
               ),
-              Icon(Icons.chevron_right_rounded, size: 20 * scale, color: detailColor),
+              _StepArrow(
+                key: ValueKey('${row.id}-next'),
+                icon: Icons.chevron_right_rounded,
+                enabled: current < options.length - 1,
+                focused: focused,
+                onTap: () => onStep(1),
+              ),
             ],
           );
         case ToggleRow(:final value):
@@ -340,15 +395,27 @@ class _RowView extends StatelessWidget {
               decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
             ),
           );
-        case StepperRow(:final value, :final format):
+        case StepperRow(:final value, :final min, :final max, :final format):
           return Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.remove_rounded, size: 18 * scale, color: detailColor),
-              SizedBox(width: 10 * scale),
+              _StepArrow(
+                key: ValueKey('${row.id}-previous'),
+                icon: Icons.remove_rounded,
+                enabled: value > min,
+                focused: focused,
+                onTap: () => onStep(-1),
+              ),
+              SizedBox(width: 4 * scale),
               Text(format(value), style: style),
-              SizedBox(width: 10 * scale),
-              Icon(Icons.add_rounded, size: 18 * scale, color: detailColor),
+              SizedBox(width: 4 * scale),
+              _StepArrow(
+                key: ValueKey('${row.id}-next'),
+                icon: Icons.add_rounded,
+                enabled: value < max,
+                focused: focused,
+                onTap: () => onStep(1),
+              ),
             ],
           );
         case KeysRow(:final sources, :final capturing):
@@ -386,15 +453,17 @@ class _RowView extends StatelessWidget {
     }
 
     final info = kind is InfoRow && kind.text.isNotEmpty ? kind.text : null;
-    return GestureDetector(
+    return Pressable(
       onTap: row.focusable ? onTap : null,
-      child: AnimatedContainer(
+      onHover: row.focusable ? onHover : null,
+      pressScale: 0.99,
+      builder: (context, hovering) => AnimatedContainer(
         duration: Motion.focus,
         curve: Motion.settle,
         margin: EdgeInsets.only(bottom: 6 * scale),
         padding: EdgeInsets.symmetric(horizontal: 20 * scale, vertical: 14 * scale),
         decoration: BoxDecoration(
-          color: focused ? Colors.white : Colors.white.withValues(alpha: row.focusable ? 0.06 : 0),
+          color: focused ? Colors.white : Colors.white.withValues(alpha: row.focusable ? (hovering ? 0.12 : 0.06) : 0),
           borderRadius: BorderRadius.circular(14 * scale),
           boxShadow: [
             BoxShadow(
@@ -446,6 +515,41 @@ class _RowView extends StatelessWidget {
   }
 }
 
+/// A row's ‹ › or − + : its own click target, dimmed at the end of the choices.
+class _StepArrow extends StatelessWidget {
+  const _StepArrow({super.key, required this.icon, required this.enabled, required this.focused, required this.onTap});
+
+  final IconData icon;
+  final bool enabled;
+  final bool focused;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final ink = focused ? Colors.black : Colors.white;
+    return Pressable(
+      onTap: enabled ? onTap : null,
+      pressScale: 0.88,
+      builder: (context, hovering) => AnimatedContainer(
+        duration: Motion.focus,
+        curve: Motion.settle,
+        width: 32 * scale,
+        height: 32 * scale,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: ink.withValues(alpha: hovering ? 0.14 : 0),
+        ),
+        child: Icon(
+          icon,
+          size: 20 * scale,
+          color: ink.withValues(alpha: enabled ? (hovering ? 1 : 0.6) : 0.2),
+        ),
+      ),
+    );
+  }
+}
+
 /// The game's log, newest at the bottom.
 class LogView extends StatelessWidget {
   const LogView({super.key, required this.model});
@@ -456,7 +560,7 @@ class LogView extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
     final game = model.selectedGame;
-    final text = game == null ? '' : model.logText(game);
+    final text = model.shownLog;
     return _Scrim(
       opacity: 0.65,
       child: Padding(
@@ -614,159 +718,203 @@ class TrophyView extends StatelessWidget {
     final accent = model.accentChoice.color;
     return _Scrim(
       opacity: 0.6,
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 90 * scale, vertical: 64 * scale),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 360 * scale,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(T.text('trophies'), style: AppText.display(40 * scale, weight: FontWeight.w300)),
-                  SizedBox(height: 8 * scale),
-                  Text(
-                    set.title.isEmpty ? game!.name : set.title,
-                    style: AppText.display(18 * scale, color: Colors.white.withValues(alpha: 0.6)),
-                  ),
-                  SizedBox(height: 34 * scale),
-                  Text('${set.percent}%', style: AppText.display(64 * scale, weight: FontWeight.w200)),
-                  SizedBox(height: 10 * scale),
-                  ProgressLine(fraction: set.percent / 100, color: accent, height: 6 * scale),
-                  SizedBox(height: 28 * scale),
-                  for (final grade in TrophyGrade.values)
-                    if (set.count(grade).$2 > 0)
-                      Padding(
-                        padding: EdgeInsets.only(bottom: 12 * scale),
-                        child: Row(
+      child: WithBackPill(
+        onBack: () => model.handle(Command.back),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 90 * scale, vertical: 64 * scale),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 360 * scale,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(T.text('trophies'), style: AppText.display(40 * scale, weight: FontWeight.w300)),
+                    SizedBox(height: 8 * scale),
+                    Text(
+                      set.title.isEmpty ? game!.name : set.title,
+                      style: AppText.display(18 * scale, color: Colors.white.withValues(alpha: 0.6)),
+                    ),
+                    SizedBox(height: 34 * scale),
+                    Text('${set.percent}%', style: AppText.display(64 * scale, weight: FontWeight.w200)),
+                    SizedBox(height: 10 * scale),
+                    ProgressLine(fraction: set.percent / 100, color: accent, height: 6 * scale),
+                    SizedBox(height: 28 * scale),
+                    for (final grade in TrophyGrade.values)
+                      if (set.count(grade).$2 > 0)
+                        Padding(
+                          padding: EdgeInsets.only(bottom: 12 * scale),
+                          child: Row(
+                            children: [
+                              Icon(Icons.emoji_events_rounded, size: 22 * scale, color: gradeColor(grade)),
+                              SizedBox(width: 12 * scale),
+                              Text(gradeName(grade), style: AppText.display(17 * scale)),
+                              const Spacer(),
+                              Text(
+                                '${set.count(grade).$1} / ${set.count(grade).$2}',
+                                style: AppText.display(17 * scale, weight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ),
+                    // The moment the focused trophy was earned, when the launcher caught it.
+                    if (model.trophyShots[set.trophies.elementAtOrNull(model.trophyIndex)?.id]
+                        case final String shot) ...[
+                      SizedBox(height: 18 * scale),
+                      Pressable(
+                        key: const ValueKey('trophy-shot'),
+                        onTap: () => model.openGallery(shot: shot),
+                        builder: (context, hovering) => Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(Icons.emoji_events_rounded, size: 22 * scale, color: gradeColor(grade)),
-                            SizedBox(width: 12 * scale),
-                            Text(gradeName(grade), style: AppText.display(17 * scale)),
-                            const Spacer(),
-                            Text(
-                              '${set.count(grade).$1} / ${set.count(grade).$2}',
-                              style: AppText.display(17 * scale, weight: FontWeight.w600),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12 * scale),
+                              child: SizedBox(
+                                width: 360 * scale,
+                                height: 360 * scale * 9 / 16,
+                                child: ArtworkImage(path: shot, cacheWidth: 720),
+                              ),
+                            ),
+                            SizedBox(height: 8 * scale),
+                            Row(
+                              children: [
+                                Icon(Icons.photo_camera_rounded, size: 15 * scale, color: Colors.white70),
+                                SizedBox(width: 6 * scale),
+                                Text(
+                                  T.text('trophyShot'),
+                                  style: AppText.display(
+                                    13 * scale,
+                                    color: Colors.white.withValues(alpha: hovering ? 1 : 0.65),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
                       ),
-                ],
-              ),
-            ),
-            SizedBox(width: 60 * scale),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    for (var index = 0; index < set.trophies.length; index++)
-                      KeepVisible(
-                        active: index == model.trophyIndex,
-                        child: Builder(
-                          builder: (context) {
-                            final trophy = set.trophies[index];
-                            final focused = index == model.trophyIndex;
-                            final earned = trophy.unlocked != null;
-                            final secret = trophy.hidden && !earned;
-                            final color = focused ? Colors.black : Colors.white;
-                            return AnimatedContainer(
-                              duration: Motion.focus,
-                              curve: Motion.settle,
-                              margin: EdgeInsets.only(bottom: 8 * scale),
-                              padding: EdgeInsets.all(14 * scale),
-                              decoration: BoxDecoration(
-                                color: focused ? Colors.white : Colors.white.withValues(alpha: 0.06),
-                                borderRadius: BorderRadius.circular(14 * scale),
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 56 * scale,
-                                    height: 56 * scale,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(10 * scale),
-                                      color: Colors.black.withValues(alpha: 0.3),
-                                    ),
-                                    clipBehavior: Clip.antiAlias,
-                                    child: trophy.icon != null && !secret
-                                        ? Opacity(
-                                            opacity: earned ? 1 : 0.35,
-                                            child: Image.memory(
-                                              trophy.icon!,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, _, _) => const SizedBox(),
-                                            ),
-                                          )
-                                        : Icon(
-                                            secret
-                                                ? Icons.lock_rounded
-                                                : (earned ? Icons.emoji_events_rounded : Icons.emoji_events_outlined),
-                                            size: 26 * scale,
-                                            color: earned
-                                                ? gradeColor(trophy.grade)
-                                                : Colors.white.withValues(alpha: 0.5),
-                                          ),
-                                  ),
-                                  SizedBox(width: 16 * scale),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          secret ? T.text('trophyHidden') : trophy.name,
-                                          style: AppText.display(17 * scale, weight: FontWeight.w600, color: color),
-                                        ),
-                                        SizedBox(height: 4 * scale),
-                                        Text(
-                                          secret ? T.text('trophyHiddenDetail') : trophy.detail,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: AppText.display(13 * scale, color: color.withValues(alpha: 0.6)),
-                                        ),
-                                        if (trophy.progress case (final value, final target)) ...[
-                                          SizedBox(height: 8 * scale),
-                                          SizedBox(
-                                            width: 240 * scale,
-                                            child: ProgressLine(
-                                              fraction: value / target,
-                                              color: accent,
-                                              height: 4 * scale,
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                  SizedBox(width: 16 * scale),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Icon(
-                                        Icons.emoji_events_rounded,
-                                        size: 22 * scale,
-                                        color: gradeColor(trophy.grade),
-                                      ),
-                                      SizedBox(height: 6 * scale),
-                                      Text(
-                                        earned
-                                            ? '${trophy.unlocked!.toLocal().year}-${trophy.unlocked!.toLocal().month.toString().padLeft(2, '0')}-${trophy.unlocked!.toLocal().day.toString().padLeft(2, '0')}'
-                                            : T.text('trophyLocked'),
-                                        style: AppText.display(12 * scale, color: color.withValues(alpha: 0.6)),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ),
+                    ],
                   ],
                 ),
               ),
-            ),
-          ],
+              SizedBox(width: 60 * scale),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      for (var index = 0; index < set.trophies.length; index++)
+                        KeepVisible(
+                          active: index == model.trophyIndex,
+                          child: MouseRegion(
+                            onHover: (_) => model.hoverTrophy(index),
+                            child: Builder(
+                              builder: (context) {
+                                final trophy = set.trophies[index];
+                                final focused = index == model.trophyIndex;
+                                final earned = trophy.unlocked != null;
+                                final secret = trophy.hidden && !earned;
+                                final color = focused ? Colors.black : Colors.white;
+                                return AnimatedContainer(
+                                  duration: Motion.focus,
+                                  curve: Motion.settle,
+                                  margin: EdgeInsets.only(bottom: 8 * scale),
+                                  padding: EdgeInsets.all(14 * scale),
+                                  decoration: BoxDecoration(
+                                    color: focused ? Colors.white : Colors.white.withValues(alpha: 0.06),
+                                    borderRadius: BorderRadius.circular(14 * scale),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 56 * scale,
+                                        height: 56 * scale,
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(10 * scale),
+                                          color: Colors.black.withValues(alpha: 0.3),
+                                        ),
+                                        clipBehavior: Clip.antiAlias,
+                                        child: trophy.icon != null && !secret
+                                            ? Opacity(
+                                                opacity: earned ? 1 : 0.35,
+                                                child: Image.memory(
+                                                  trophy.icon!,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (_, _, _) => const SizedBox(),
+                                                ),
+                                              )
+                                            : Icon(
+                                                secret
+                                                    ? Icons.lock_rounded
+                                                    : (earned
+                                                          ? Icons.emoji_events_rounded
+                                                          : Icons.emoji_events_outlined),
+                                                size: 26 * scale,
+                                                color: earned
+                                                    ? gradeColor(trophy.grade)
+                                                    : Colors.white.withValues(alpha: 0.5),
+                                              ),
+                                      ),
+                                      SizedBox(width: 16 * scale),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              secret ? T.text('trophyHidden') : trophy.name,
+                                              style: AppText.display(17 * scale, weight: FontWeight.w600, color: color),
+                                            ),
+                                            SizedBox(height: 4 * scale),
+                                            Text(
+                                              secret ? T.text('trophyHiddenDetail') : trophy.detail,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: AppText.display(13 * scale, color: color.withValues(alpha: 0.6)),
+                                            ),
+                                            if (trophy.progress case (final value, final target)) ...[
+                                              SizedBox(height: 8 * scale),
+                                              SizedBox(
+                                                width: 240 * scale,
+                                                child: ProgressLine(
+                                                  fraction: value / target,
+                                                  color: accent,
+                                                  height: 4 * scale,
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                      SizedBox(width: 16 * scale),
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        children: [
+                                          Icon(
+                                            Icons.emoji_events_rounded,
+                                            size: 22 * scale,
+                                            color: gradeColor(trophy.grade),
+                                          ),
+                                          SizedBox(height: 6 * scale),
+                                          Text(
+                                            earned
+                                                ? '${trophy.unlocked!.toLocal().year}-${trophy.unlocked!.toLocal().month.toString().padLeft(2, '0')}-${trophy.unlocked!.toLocal().day.toString().padLeft(2, '0')}'
+                                                : T.text('trophyLocked'),
+                                            style: AppText.display(12 * scale, color: color.withValues(alpha: 0.6)),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -944,6 +1092,148 @@ class PersonAvatar extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// The selected game's pictures: a grid, or one over the whole screen.
+class GalleryView extends StatelessWidget {
+  const GalleryView({super.key, required this.model});
+
+  final AppModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final game = model.selectedGame;
+    final shots = model.galleryShots;
+    final muted = Colors.white.withValues(alpha: 0.6);
+    if (model.galleryViewing && shots.isNotEmpty) {
+      final index = model.galleryIndex.clamp(0, shots.length - 1);
+      return ColoredBox(
+        color: Colors.black.withValues(alpha: 0.94),
+        child: WithBackPill(
+          onBack: () => model.handle(Command.back),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(70 * scale, 80 * scale, 70 * scale, 40 * scale),
+            child: Column(
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      _StepArrow(
+                        key: const ValueKey('shot-previous'),
+                        icon: Icons.chevron_left_rounded,
+                        enabled: index > 0,
+                        focused: false,
+                        onTap: () => model.handle(Command.left),
+                      ),
+                      SizedBox(width: 16 * scale),
+                      Expanded(
+                        child: Pressable(
+                          key: const ValueKey('shot-large'),
+                          pressScale: 1,
+                          onTap: () => model.handle(Command.back),
+                          builder: (context, _) => ClipRRect(
+                            borderRadius: BorderRadius.circular(12 * scale),
+                            child: ArtworkImage(path: shots[index], fit: BoxFit.contain, cacheWidth: 1920),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 16 * scale),
+                      _StepArrow(
+                        key: const ValueKey('shot-next'),
+                        icon: Icons.chevron_right_rounded,
+                        enabled: index < shots.length - 1,
+                        focused: false,
+                        onTap: () => model.handle(Command.right),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 16 * scale),
+                Text(
+                  '${index + 1} / ${shots.length} · ${p.basename(shots[index])}',
+                  style: AppText.display(14 * scale, color: muted),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    final size = 330 * scale;
+    return _Scrim(
+      opacity: 0.74,
+      child: WithBackPill(
+        onBack: () => model.handle(Command.back),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 80 * scale, vertical: 60 * scale),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(T.text('screenshotsTitle'), style: AppText.display(40 * scale, weight: FontWeight.w300)),
+                  SizedBox(width: 14 * scale),
+                  if (game != null)
+                    Flexible(
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: 6 * scale),
+                        child: Text(
+                          game.nameFor([T.language.code]),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.display(20 * scale, color: muted),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              SizedBox(height: 26 * scale),
+              Expanded(
+                child: shots.isEmpty
+                    ? Text(T.text('screenshotsNone'), style: AppText.display(17 * scale, color: muted))
+                    : SingleChildScrollView(
+                        padding: EdgeInsets.all(14 * scale),
+                        child: Wrap(
+                          spacing: 22 * scale,
+                          runSpacing: 22 * scale,
+                          children: [
+                            for (var index = 0; index < shots.length; index++)
+                              KeepVisible(
+                                active: index == model.galleryIndex,
+                                child: Pressable(
+                                  key: ValueKey('shot-$index'),
+                                  onTap: () => model.tapShot(index),
+                                  builder: (context, hovering) => SizedBox(
+                                    width: size,
+                                    height: size * 9 / 16,
+                                    child: FocusRing(
+                                      focused: index == model.galleryIndex,
+                                      radius: 12 * scale,
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(12 * scale),
+                                        child: ColoredBox(
+                                          color: Colors.white.withValues(alpha: hovering ? 0.14 : 0.06),
+                                          child: ArtworkImage(path: shots[index], cacheWidth: 480),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+              ),
+              SizedBox(height: 14 * scale),
+              const Align(alignment: Alignment.centerRight, child: HintBar(options: false, games: false)),
+            ],
+          ),
+        ),
       ),
     );
   }

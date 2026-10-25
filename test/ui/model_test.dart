@@ -75,6 +75,9 @@ void main() {
     final orbit = model.games[indexOf('PPSA01001')];
     expect(model.stateOf(orbit), isA<Installed>().having((state) => state.outdated, 'outdated', isFalse));
     makeFakeToolkit(fixture.toolkit, version: 'toolkit-2');
+    // The toolkit is read again with the library (or when the launcher comes back in front), not
+    // on every frame.
+    model.rescan();
     expect(model.stateOf(orbit), isA<Installed>().having((state) => state.outdated, 'outdated', isTrue));
     model.primaryAction(orbit);
     expect(model.overlay, Layer.updateChoice);

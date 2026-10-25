@@ -3,6 +3,8 @@ import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
 
+import '../controllers/pad_info.dart';
+import '../controllers/pad_inventory.dart';
 import 'feel.dart';
 import 'pad_navigation.dart';
 
@@ -26,7 +28,7 @@ typedef _JoyConfigChanged = int Function(int flags);
 /// asked again every two seconds (asking an empty slot is slow), which is also how a controller
 /// plugged in later is found. XInput pads' motors give the launcher's pulses (XInputSetState);
 /// winmm has no force feedback, so a PlayStation pad read through it stays still.
-class WindowsPadSource implements PadSource, PadRumble {
+class WindowsPadSource implements PadSource, PadRumble, PadInventory {
   WindowsPadSource({this.every = const Duration(milliseconds: 16)});
 
   final Duration every;
@@ -47,6 +49,9 @@ class WindowsPadSource implements PadSource, PadRumble {
   final Map<String, PadSnapshot> _last = {};
   final Set<int> _xinputConnected = {};
   final Map<int, ({int xMin, int xMax, int yMin, int yMax})> _sony = {};
+  final Map<int, int> _sonyProducts = {};
+  final PadEventStates _states = PadEventStates();
+  void Function()? _changed;
   DateTime _lastRescan = DateTime.fromMillisecondsSinceEpoch(0);
   String _description = 'not started';
 
@@ -130,10 +135,10 @@ class WindowsPadSource implements PadSource, PadRumble {
       final id = 'xinput$index';
       if (result != 0) {
         if (connected) _gone(id);
-        _xinputConnected.remove(index);
+        if (_xinputConnected.remove(index)) _changed?.call();
         continue;
       }
-      _xinputConnected.add(index);
+      if (_xinputConnected.add(index)) _changed?.call();
       // XINPUT_STATE: dwPacketNumber, then wButtons at 4, the triggers, sThumbLX at 8, sThumbLY at 10.
       final bytes = ByteDataView(state.asTypedList(16));
       _report(id, PadMaps.xinput(bytes.u16(4), _deadZone(bytes.s16(8)), _deadZone(bytes.s16(10))));
@@ -151,7 +156,9 @@ class WindowsPadSource implements PadSource, PadRumble {
       info[1] = 0xFF | 0x200; // JOY_RETURNALL | JOY_RETURNPOVCTS
       if (getPos(id, info) != 0) {
         _sony.remove(id);
+        _sonyProducts.remove(id);
         _gone('winmm$id');
+        _changed?.call();
         continue;
       }
       final range = entry.value;
@@ -187,6 +194,9 @@ class WindowsPadSource implements PadSource, PadRumble {
       if (getPos(id, info) != 0) continue;
       // JOYCAPSW: wXmin at 68, wXmax 72, wYmin 76, wYmax 80.
       _sony[id] = (xMin: bytes.u32(68), xMax: bytes.u32(72), yMin: bytes.u32(76), yMax: bytes.u32(80));
+      // JOYCAPSW: wPid at 2.
+      _sonyProducts[id] = bytes.u16(2);
+      _changed?.call();
     }
   }
 
@@ -194,13 +204,55 @@ class WindowsPadSource implements PadSource, PadRumble {
     final before = _last[id] ?? PadSnapshot.idle;
     _last[id] = now;
     for (final event in PadSnapshot.diff(id, before, now)) {
+      _states.add(event);
       _onEvent?.call(event);
     }
   }
 
   void _gone(String id) {
+    _states.add(PadGone(id));
     if (_last.remove(id) != null) _onEvent?.call(PadGone(id));
   }
+
+  // PadInventory: what XInput and winmm can tell.
+
+  @override
+  List<PadInfo> get pads => [
+    for (final index in _xinputConnected.toList()..sort())
+      PadInfo(id: 'xinput$index', name: 'XInput controller ${index + 1}', kind: PadKind.xbox, driver: 'XInput', hasRumble: _setState != null),
+    for (final entry in _sonyProducts.entries)
+      PadInfo(
+        id: 'winmm${entry.key}',
+        name: switch (PadKind.classify(vendor: _sonyVendor, product: entry.value)) {
+          PadKind.dualSense => 'DualSense Wireless Controller',
+          PadKind.dualShock4 => 'DualShock 4 Wireless Controller',
+          PadKind.dualShock3 => 'PLAYSTATION(R)3 Controller',
+          _ => 'PlayStation controller',
+        },
+        kind: PadKind.classify(vendor: _sonyVendor, product: entry.value),
+        driver: 'winmm',
+        vendor: _sonyVendor,
+        product: entry.value,
+      ),
+  ];
+
+  @override
+  set onPadsChanged(void Function()? listener) => _changed = listener;
+
+  @override
+  PadState? state(String id) => _states[id] ?? (pads.any((pad) => pad.id == id) ? PadState.idle : null);
+
+  @override
+  bool setLight(String id, int red, int green, int blue) => false;
+
+  @override
+  void setPlayerLights(List<String> ordered) {}
+
+  @override
+  String get readerName => 'XInput and winmm';
+
+  @override
+  List<String> get refused => const [];
 
   @override
   PadRumble? get motors => this;

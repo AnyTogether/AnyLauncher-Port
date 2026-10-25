@@ -21,6 +21,11 @@ enum PadButton {
   dpadDown,
   dpadLeft,
   dpadRight,
+
+  /// The touchpad's click (DualSense, DualShock 4) and the extra button (Xbox Share, DualSense
+  /// microphone, Switch capture): only the controller test shows them.
+  touchpad,
+  misc,
 }
 
 /// The two axes the launcher reads: the left stick, -1 (left, up) to 1 (right, down).
@@ -88,6 +93,9 @@ class PadNavigator {
 
   /// The pad that gave the last command: the one the launcher's pulses go to.
   String? lastPad;
+
+  /// Settings › Controllers › Confirm Button: Circle (east) selects and Cross (south) goes back.
+  bool circleConfirms = false;
   String? _sending;
 
   /// The direction being repeated, for tests.
@@ -107,7 +115,14 @@ class PadNavigator {
       case PadButtonEvent(:final button, :final down):
         if (state.pressed.contains(button) == down) return;
         down ? state.pressed.add(button) : state.pressed.remove(button);
-        final command = buttons[button];
+        var command = buttons[button];
+        if (circleConfirms) {
+          command = switch (command) {
+            PadCommand.select => PadCommand.back,
+            PadCommand.back => PadCommand.select,
+            _ => command,
+          };
+        }
         if (down && command != null) {
           _sending = event.pad;
           _send(command);

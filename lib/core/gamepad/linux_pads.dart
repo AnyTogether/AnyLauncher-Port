@@ -5,6 +5,8 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+import '../controllers/pad_info.dart';
+import '../controllers/pad_inventory.dart';
 import 'feel.dart';
 import 'pad_navigation.dart';
 
@@ -19,12 +21,16 @@ typedef _Write = int Function(int fd, Pointer<Uint8> buffer, int count);
 
 /// A controller the kernel lists: its event node and what it is.
 class LinuxPadDevice {
-  const LinuxPadDevice({required this.event, required this.name, required this.vendor});
+  const LinuxPadDevice({required this.event, required this.name, required this.vendor, this.product = 0, this.bus = 0});
 
   /// event5 for /dev/input/event5.
   final String event;
   final String name;
   final int vendor;
+  final int product;
+
+  /// The kernel's bus number: 0x03 USB, 0x05 Bluetooth.
+  final int bus;
 
   /// Microsoft's pads, whose X and Y the xpad driver reports swapped.
   bool get xbox => vendor == 0x045E;
@@ -35,7 +41,7 @@ class LinuxPadDevice {
 /// systems), one found later is picked up within two seconds, one unplugged is let go. A pad
 /// with force feedback (FF_RUMBLE) gives the launcher's pulses through the same node opened for
 /// writing; one without, or a node the user may not write, stays still.
-class LinuxPadSource implements PadSource, PadRumble {
+class LinuxPadSource implements PadSource, PadRumble, PadInventory {
   LinuxPadSource({this.devicesFile = '/proc/bus/input/devices', this.inputFolder = '/dev/input'});
 
   final String devicesFile;
@@ -43,6 +49,9 @@ class LinuxPadSource implements PadSource, PadRumble {
 
   final Map<String, StreamSubscription<List<int>>> _reading = {};
   final Set<String> _refused = {};
+  final Map<String, LinuxPadDevice> _devices = {};
+  final PadEventStates _states = PadEventStates();
+  void Function()? _changed;
   Timer? _timer;
   void Function(PadEvent)? _onEvent;
   String _description = 'not started';
@@ -59,8 +68,8 @@ class LinuxPadSource implements PadSource, PadRumble {
       final event = names.where((name) => RegExp(r'^event\d+$').hasMatch(name)).firstOrNull;
       if (event == null || !names.any((name) => RegExp(r'^js\d+$').hasMatch(name))) continue;
       final name = RegExp(r'^N: Name="(.*)"$', multiLine: true).firstMatch(block)?.group(1) ?? event;
-      final vendor = int.tryParse(RegExp(r'Vendor=([0-9a-fA-F]{4})').firstMatch(block)?.group(1) ?? '', radix: 16) ?? 0;
-      found.add(LinuxPadDevice(event: event, name: name, vendor: vendor));
+      int number(String field) => int.tryParse(RegExp('$field=([0-9a-fA-F]{4})').firstMatch(block)?.group(1) ?? '', radix: 16) ?? 0;
+      found.add(LinuxPadDevice(event: event, name: name, vendor: number('Vendor'), product: number('Product'), bus: number('Bus')));
     }
     return found;
   }
@@ -80,6 +89,12 @@ class LinuxPadSource implements PadSource, PadRumble {
     } on FileSystemException {
       devices = const [];
     }
+    final listed = {for (final device in devices) device.event};
+    // A node refused and gone: tried again when it comes back.
+    _refused.retainWhere(listed.contains);
+    _devices
+      ..removeWhere((event, _) => !listed.contains(event))
+      ..addAll({for (final device in devices) device.event: device});
     for (final device in devices) {
       if (_reading.containsKey(device.event) || _refused.contains(device.event)) continue;
       _open(device);
@@ -96,6 +111,7 @@ class LinuxPadSource implements PadSource, PadRumble {
       _reading[device.event] = File(path).openRead().listen(
         (chunk) {
           for (final event in decoder.add(chunk)) {
+            _states.add(event);
             _onEvent?.call(event);
           }
         },
@@ -103,8 +119,10 @@ class LinuxPadSource implements PadSource, PadRumble {
         onDone: () => _close(device.event),
         cancelOnError: true,
       );
+      _changed?.call();
     } on FileSystemException {
       _refused.add(device.event);
+      _changed?.call();
     }
   }
 
@@ -113,8 +131,45 @@ class LinuxPadSource implements PadSource, PadRumble {
     _rumblers.remove(event)?.close();
     // A node that could not be read is not tried again until it goes away and comes back.
     if (refused && File('$inputFolder/$event').existsSync()) _refused.add(event);
+    _states.add(PadGone(event));
     _onEvent?.call(PadGone(event));
+    _changed?.call();
   }
+
+  // PadInventory: what evdev can tell.
+
+  @override
+  List<PadInfo> get pads => [
+    for (final event in _reading.keys)
+      if (_devices[event] case final device?)
+        PadInfo(
+          id: event,
+          name: device.name,
+          kind: PadKind.classify(vendor: device.vendor, product: device.product, name: device.name),
+          connection: device.bus == 0x05 ? PadConnection.bluetooth : device.bus == 0x03 ? PadConnection.usb : PadConnection.unknown,
+          driver: 'evdev',
+          vendor: device.vendor,
+          product: device.product,
+        ),
+  ];
+
+  @override
+  set onPadsChanged(void Function()? listener) => _changed = listener;
+
+  @override
+  PadState? state(String id) => _states[id] ?? (_reading.containsKey(id) ? PadState.idle : null);
+
+  @override
+  bool setLight(String id, int red, int green, int blue) => false;
+
+  @override
+  void setPlayerLights(List<String> ordered) {}
+
+  @override
+  String get readerName => 'evdev';
+
+  @override
+  List<String> get refused => [for (final event in _refused) _devices[event]?.name ?? event];
 
   /// The left stick's range (EVIOCGABS on ABS_X and ABS_Y), null when the kernel cannot be asked.
   static Map<int, (int, int)>? _ranges(String path) {

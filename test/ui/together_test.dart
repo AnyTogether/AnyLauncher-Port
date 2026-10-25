@@ -76,6 +76,7 @@ void main() {
       expect(rowIds(), [
         'together-user',
         'together-online',
+        'together-presence',
         'together-profile',
         'together-join',
         'together-signout',
@@ -261,7 +262,14 @@ void main() {
       final ana = model.panelCategories().single.rows.firstWhere((row) => row.id == 'friend-u-ana');
       (ana.kind as ActionRow).run();
       expect(model.overlay, Layer.friendOptions);
-      expect(rowIds(), ['friend-card', 'friend-profile', 'friend-message', 'friend-remove', 'friend-back']);
+      expect(rowIds(), [
+        'friend-card',
+        'friend-profile',
+        'friend-compare',
+        'friend-message',
+        'friend-remove',
+        'friend-back',
+      ]);
       model.handle(launcher.Command.back);
       expect(model.overlay, Layer.friends);
       (ana.kind as ActionRow).run();

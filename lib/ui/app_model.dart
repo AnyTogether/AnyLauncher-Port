@@ -32,6 +32,7 @@ import '../core/save_backup.dart';
 import '../core/screenshots.dart';
 import '../core/toolkit.dart';
 import '../core/toolkit_download.dart';
+import '../core/together/levels.dart';
 import '../core/together/talk_key.dart';
 import '../core/together/token_store.dart';
 import '../core/together/voice_mesh.dart';
@@ -288,6 +289,10 @@ enum Layer {
   party,
   profile,
 
+  /// Comparing trophies with someone: the games either has trophies in, then one game's trophies
+  /// side by side.
+  compare,
+
   /// Family limits: today's play time, asking a parent for more.
   family,
 
@@ -297,7 +302,15 @@ enum Layer {
 
 /// A settings row the panels draw and the keyboard moves through.
 class PanelRow {
-  const PanelRow({required this.id, required this.title, required this.kind, this.detail, this.glyph, this.person});
+  const PanelRow({
+    required this.id,
+    required this.title,
+    required this.kind,
+    this.detail,
+    this.glyph,
+    this.person,
+    this.level,
+  });
 
   final String id;
   final String title;
@@ -309,6 +322,9 @@ class PanelRow {
 
   /// Someone on AnyTogether the row is about, drawn as their picture before the title.
   final PanelPerson? person;
+
+  /// Their trophy level, drawn after the title.
+  final LevelBadge? level;
 
   bool get focusable => kind is! InfoRow;
 }
@@ -802,8 +818,10 @@ class AppModel extends ChangeNotifier {
   Game? starting;
   (Game, RunningGame)? running;
 
-  /// A short message at the bottom of the screen.
+  /// A short message at the bottom of the screen, with a trophy level's badge before it when
+  /// it says one was reached.
   String? toast;
+  LevelBadge? toastLevel;
   Timer? _toastTimer;
 
   RemoteServer? remote;
@@ -1385,11 +1403,13 @@ class AppModel extends ChangeNotifier {
 
   // Messages.
 
-  void show(String message) {
+  void show(String message, {LevelBadge? level}) {
     toast = message;
+    toastLevel = level;
     _toastTimer?.cancel();
-    _toastTimer = Timer(const Duration(seconds: 4), () {
+    _toastTimer = Timer(Duration(seconds: level == null ? 4 : 5), () {
       toast = null;
+      toastLevel = null;
       notifyListeners();
     });
     notifyListeners();
@@ -1558,6 +1578,9 @@ class AppModel extends ChangeNotifier {
         return;
       case Layer.profile:
         together.profileCommand(command);
+        return;
+      case Layer.compare:
+        together.compareCommand(command);
         return;
       case Layer.friendOptions when command == Command.back || command == Command.options:
         open(Layer.friends, cue: Cue.back);

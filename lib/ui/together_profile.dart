@@ -45,8 +45,19 @@ extension TogetherProfiles on TogetherModel {
     }
   }
 
-  /// Rows the keys move through: the games, then the trophies.
-  int get profileItems => (profile?.library.value?.length ?? 0) + (profile?.trophies.value?.length ?? 0);
+  /// Someone else's profile, read: their trophies can be compared with the user's.
+  bool get canCompare {
+    final page = profile;
+    return page != null && !page.profile.isMe;
+  }
+
+  /// Where the games start among the items the keys move through: after Compare trophies.
+  int get profileGamesFrom => canCompare ? 1 : 0;
+
+  /// Items the keys move through: Compare trophies (on someone else's profile), the games, then
+  /// the trophies.
+  int get profileItems =>
+      profileGamesFrom + (profile?.library.value?.length ?? 0) + (profile?.trophies.value?.length ?? 0);
 
   void profileCommand(Command command) {
     switch (command) {
@@ -58,8 +69,104 @@ extension TogetherProfiles on TogetherModel {
         if (next != profileIndex) app.sounds.play(Cue.move);
         profileIndex = next;
         app.refresh();
+      case Command.select when canCompare && profileIndex == 0:
+        compareProfile();
       case Command.back || Command.options:
         closeProfile();
+      default:
+        break;
+    }
+  }
+
+  /// Compare trophies, from the profile shown.
+  void compareProfile() {
+    final page = profile;
+    if (page == null || page.profile.isMe) return;
+    final shown = page.profile;
+    unawaited(
+      openCompare(Person(id: shown.userId, handle: shown.handle, displayName: shown.displayName, avatar: shown.avatar)),
+    );
+  }
+
+  // Comparing trophies.
+
+  /// The games [person] and the user have trophies in, both-play first; the layer shows them as
+  /// they come.
+  Future<void> openCompare(Person person) async {
+    compareReturn = app.overlay == Layer.compare ? compareReturn : app.overlay;
+    compareWith = person;
+    compareGames = null;
+    compareIndex = 0;
+    compareTitleId = null;
+    comparison = null;
+    comparisonIndex = 0;
+    app.open(Layer.compare);
+    final games = await hub.profiles.compareGames(person.handle);
+    if (app.overlay != Layer.compare || compareWith?.id != person.id) return;
+    compareGames = games;
+    app.refresh();
+  }
+
+  /// One game's trophies side by side.
+  Future<void> openComparedGame(ComparedGame game) async {
+    final person = compareWith;
+    if (person == null) return;
+    app.sounds.play(Cue.select);
+    compareTitleId = game.titleId;
+    comparison = null;
+    comparisonIndex = 0;
+    app.refresh();
+    final view = await hub.profiles.compareGame(person.handle, game.titleId);
+    if (app.overlay != Layer.compare || compareTitleId != game.titleId) return;
+    comparison = view;
+    app.refresh();
+  }
+
+  void closeCompare() {
+    if (compareTitleId != null) {
+      compareTitleId = null;
+      comparison = null;
+      app.sounds.play(Cue.back);
+      app.refresh();
+      return;
+    }
+    final back = compareReturn;
+    compareWith = null;
+    compareGames = null;
+    if (back == null) {
+      app.closeOverlay();
+    } else {
+      // Back on the profile it came from, as it was.
+      final index = profileIndex;
+      app.open(back, cue: Cue.back);
+      profileIndex = index;
+      if (back == Layer.friendOptions) {
+        app.panelRow = app.panelCategories().firstOrNull?.rows.indexWhere((row) => row.id == 'friend-compare') ?? 0;
+      }
+      app.refresh();
+    }
+  }
+
+  void compareCommand(Command command) {
+    final games = compareGames?.value ?? const <ComparedGame>[];
+    final trophies = comparison?.value?.trophies ?? const <ComparedTrophy>[];
+    final inGame = compareTitleId != null;
+    switch (command) {
+      case Command.up || Command.down:
+        final count = inGame ? trophies.length : games.length;
+        final current = inGame ? comparisonIndex : compareIndex;
+        final next = (current + (command == Command.down ? 1 : -1)).clamp(0, count == 0 ? 0 : count - 1);
+        if (next != current) app.sounds.play(Cue.move);
+        if (inGame) {
+          comparisonIndex = next;
+        } else {
+          compareIndex = next;
+        }
+        app.refresh();
+      case Command.select when !inGame && compareIndex < games.length:
+        unawaited(openComparedGame(games[compareIndex]));
+      case Command.back || Command.options:
+        closeCompare();
       default:
         break;
     }

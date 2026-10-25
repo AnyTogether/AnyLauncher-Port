@@ -11,6 +11,7 @@ import '../core/together/account.dart';
 import '../core/together/family.dart';
 import '../core/together/friends.dart';
 import '../core/together/hub.dart';
+import '../core/together/levels.dart';
 import '../core/together/people.dart';
 import '../core/together/server.dart';
 import '../core/together/socket.dart';
@@ -74,6 +75,12 @@ class TogetherModel {
       app.show(T.format('friendsAsked', [person.displayName]));
     };
     hub.friends.onAccepted = (person) => app.show(T.format('friendsNowFriends', [person.displayName]));
+    // A trophy level reached: the trophy's sound (heard over a game too) and the toast with the
+    // badge.
+    hub.self.onLevelUp = (level) {
+      app.sounds.play(Cue.unlocked, overGame: true);
+      app.show(T.format('levelUp', [level.level]), level: level);
+    };
     sync = TogetherSync(
       account: account,
       file: p.join(app.paths.config, 'Together', 'outbox.json'),
@@ -141,6 +148,17 @@ class TogetherModel {
   int profileIndex = 0;
   Layer? profileReturn;
 
+  /// Comparing trophies: with whom, their games (once read), the game the keys are on; one
+  /// game's trophies side by side once one is opened, and the trophy the keys are on; the layer
+  /// it goes back to.
+  Person? compareWith;
+  Section<List<ComparedGame>>? compareGames;
+  int compareIndex = 0;
+  String? compareTitleId;
+  Section<TrophyComparison>? comparison;
+  int comparisonIndex = 0;
+  Layer? compareReturn;
+
   /// A game session being opened for the game that just started.
   bool openingSession = false;
 
@@ -200,7 +218,13 @@ class TogetherModel {
       messagesIndex = 0;
       messagesInThread = false;
       profile = null;
-      if (const {Layer.friendOptions, Layer.messages, Layer.profile}.contains(app.overlay)) app.closeOverlay();
+      compareWith = null;
+      compareGames = null;
+      comparison = null;
+      compareTitleId = null;
+      if (const {Layer.friendOptions, Layer.messages, Layer.profile, Layer.compare}.contains(app.overlay)) {
+        app.closeOverlay();
+      }
     } else {
       // Every game's trophies go up once, the earned ones with their dates.
       for (final game in app.games) {
@@ -301,6 +325,29 @@ class TogetherModel {
   }
 
   bool get connected => hub.socket.status == SocketStatus.ready;
+
+  /// Friends see this user as offline (their choice); the socket and heartbeats go on as ever.
+  bool get appearingOffline => hub.self.appearOffline;
+
+  /// The user as their own rows show them: a grey dot while appearing offline.
+  PanelPerson get myCard => PanelPerson(
+    name: user?.displayName ?? '',
+    avatar: user?.avatar,
+    status: appearingOffline ? PersonStatus.offline : null,
+  );
+
+  /// Online or appear offline: shown at once, turned back with a word when the server cannot.
+  Future<void> setAppearOffline(bool on) async {
+    if (on == appearingOffline) return;
+    try {
+      await hub.self.setAppearOffline(on);
+    } on TogetherProblem catch (problem) {
+      app.show(problem.status == 404 ? T.text('presenceNotYet') : message(problem));
+    } on Object catch (error) {
+      app.show(message(error));
+    }
+    app.refresh();
+  }
 
   // Signing in.
 
@@ -537,8 +584,11 @@ class TogetherModel {
       PanelRow(
         id: 'friends-me',
         title: T.text('profileMine'),
-        detail: T.text('profileMineDetail'),
-        person: PanelPerson(name: me.displayName, avatar: me.avatar),
+        detail: appearingOffline
+            ? '${T.text('presenceAppearing')} · ${T.text('profileMineDetail')}'
+            : T.text('profileMineDetail'),
+        person: myCard,
+        level: hub.self.level,
         kind: ActionRow(() => unawaited(openMyProfile())),
       ),
       ...gameRows(),
@@ -583,6 +633,7 @@ class TogetherModel {
           title: friend.person.displayName,
           detail: '@${friend.person.handle} · ${presenceText(friend.presence)}',
           person: card(friend.person, status: status(friend.presence)),
+          level: friend.level,
           kind: ActionRow(() => openFriend(friend)),
         ),
       for (final person in friends.outgoing)
@@ -606,6 +657,7 @@ class TogetherModel {
         title: friend.person.displayName,
         detail: '@${friend.person.handle} · ${presenceText(friend.presence)}',
         person: card(friend.person, status: status(friend.presence)),
+        level: friend.level,
         kind: const InfoRow(''),
       ),
       PanelRow(
@@ -613,6 +665,12 @@ class TogetherModel {
         title: T.text('profileTitle'),
         detail: T.text('profileMineDetail'),
         kind: ActionRow(() => unawaited(openProfile(friend.person.handle, card: friend.person))),
+      ),
+      PanelRow(
+        id: 'friend-compare',
+        title: T.text('compareTrophies'),
+        detail: T.text('compareTrophiesDetail'),
+        kind: ActionRow(() => unawaited(openCompare(friend.person))),
       ),
       if (friend.presence.game case final PresenceGame game when game.joinable)
         PanelRow(
@@ -653,14 +711,25 @@ class TogetherModel {
         PanelRow(
           id: 'together-user',
           title: '@${me.handle}',
-          detail: me.displayName,
-          person: PanelPerson(name: me.displayName, avatar: me.avatar),
+          detail: appearingOffline ? '${me.displayName} · ${T.text('presenceAppearing')}' : me.displayName,
+          person: myCard,
+          level: hub.self.level,
           kind: const InfoRow(''),
         ),
         PanelRow(
           id: 'together-online',
           title: T.text('togetherOnline'),
           kind: InfoRow(connected ? T.text('togetherConnected') : T.text('togetherConnecting')),
+        ),
+        PanelRow(
+          id: 'together-presence',
+          title: T.text('presenceShowAs'),
+          detail: T.text('presenceHint'),
+          kind: ChoiceRow(
+            [T.text('presenceOnline'), T.text('presenceAppearOffline')],
+            appearingOffline ? 1 : 0,
+            (index) => unawaited(setAppearOffline(index == 1)),
+          ),
         ),
         ?family.settingsRow(),
         PanelRow(

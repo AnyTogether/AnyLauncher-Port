@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'controllers/pad_check.dart';
+import 'controllers/troubleshooter.dart';
 import 'game_library.dart';
 import 'glibc.dart';
 import 'game_process.dart';
@@ -36,7 +38,9 @@ const usage = '''usage: anyps5_tool <command>
                                            AnyPS5 (and with --games each unlocked game) as non-Steam
                                            games, without artwork (Settings > Steam draws it)
   steam remove [--user <id>] [--close-steam]
-                                           takes AnyPS5's shortcuts and pictures out of Steam''';
+                                           takes AnyPS5's shortcuts and pictures out of Steam
+  pads [--sdl <library>] [--seconds <n>]   the controllers as the launcher reads them (SDL2) for n
+                                           seconds (3), then what the troubleshooter finds''';
 
 /// The launcher's pipeline on the command line, for scripted checks on a Windows or Linux
 /// machine without the interface: the same code the launcher runs.
@@ -156,6 +160,19 @@ Future<int> runCli(
       return code;
     case 'steam' when arguments.length >= 2:
       return _steam(arguments.skip(1).toList(), output, errors, env, host);
+    case 'pads':
+      String? option(String name) {
+        final index = arguments.indexOf(name);
+        return index >= 0 && index + 1 < arguments.length ? arguments[index + 1] : null;
+      }
+      return padCheck(
+        out: output,
+        system: host,
+        sdlPath: option('--sdl'),
+        seconds: int.tryParse(option('--seconds') ?? '') ?? 3,
+        probe: HostProbe(host, environment: env),
+        executable: Platform.resolvedExecutable,
+      );
     case 'remote':
       return _remote(arguments.skip(1).toList(), output, errors, env, host, until);
     default:

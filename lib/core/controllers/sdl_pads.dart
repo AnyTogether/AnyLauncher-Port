@@ -383,17 +383,17 @@ class SdlLibrary implements SdlBackend {
   /// library is missing or will not start: the launcher then reads pads its older way.
   static SdlLibrary? load({List<String>? paths, void Function(String why)? failure}) {
     DynamicLibrary? library;
-    final tried = <String>[];
     for (final path in paths ?? candidates()) {
       try {
         library = DynamicLibrary.open(path);
         break;
-      } on Object catch (error) {
-        tried.add('$path: $error');
+      } on Object {
+        continue;
       }
     }
     if (library == null) {
-      failure?.call('SDL2 not found (${tried.join('; ')})');
+      // The paths only: the system's loader errors are long and say the same.
+      failure?.call('SDL2 not found: ${(paths ?? candidates()).join(', ')}');
       return null;
     }
     try {

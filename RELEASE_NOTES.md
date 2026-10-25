@@ -5,6 +5,10 @@ release when it is made.
 
 ## Next release
 
+Nothing yet.
+
+## 0.1.6
+
 - **Glass, a new theme.** The launcher's window turns see-through: your desktop and the
   windows behind it show through, blurred under a light tint so the wallpaper's colors glow,
   like a Windows 11 Acrylic window; the text sits on soft dark plates and panes of glass, so it

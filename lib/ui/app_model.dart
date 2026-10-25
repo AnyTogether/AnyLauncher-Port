@@ -15,6 +15,7 @@ import '../core/controls.dart';
 import '../core/crash_report.dart' show Diagnosis, SystemInfo;
 import '../core/desktop_notice.dart';
 import '../core/desktop/desktop.dart';
+import '../core/desktop/window_backdrop.dart';
 import '../core/font_download.dart';
 import '../core/family/family_rules.dart' show TitleVerdict;
 import '../core/gamepad/feel.dart';
@@ -44,6 +45,7 @@ import 'components.dart';
 import 'crash_model.dart';
 import 'engine_model.dart';
 import 'fonts_model.dart';
+import 'glass.dart';
 import 'strings.dart';
 import 'theme.dart';
 import 'together_model.dart';
@@ -69,6 +71,11 @@ class Preferences {
     ..gameArtwork = json['gameArtwork'] as bool? ?? true
     ..reducedMotion = json['reducedMotion'] as bool? ?? false
     ..reduceTransparency = json['reduceTransparency'] == true
+    ..glassTransparency = switch (json['glassTransparency']) {
+      final num percent => percent.toInt().clamp(0, 100),
+      _ => null,
+    }
+    ..glassArtwork = json['glassArtwork'] == true
     ..phoneServer = json['phoneServer'] as bool? ?? true
     ..togetherServer = json['togetherServer'] as String?
     ..friendsJoin = json['friendsJoin'] as bool? ?? true
@@ -102,6 +109,11 @@ class Preferences {
 
   /// Glass draws its surfaces solid, without the blur behind them.
   bool reduceTransparency = false;
+
+  /// Glass's see-through window: how much of the desktop shows, in percent (null for
+  /// GlassWindow.defaultTransparency), and whether the selected game's picture is laid over it.
+  int? glassTransparency;
+  bool glassArtwork = false;
   bool phoneServer = true;
 
   /// Another AnyTogether server than AnyTogether's own; null for that one.
@@ -151,6 +163,8 @@ class Preferences {
     'gameArtwork': gameArtwork,
     'reducedMotion': reducedMotion,
     'reduceTransparency': reduceTransparency,
+    'glassTransparency': glassTransparency,
+    'glassArtwork': glassArtwork,
     'phoneServer': phoneServer,
     'togetherServer': togetherServer,
     'friendsJoin': friendsJoin,
@@ -467,6 +481,7 @@ class LauncherServices {
     this.armEngineReleases,
     this.pads,
     this.desktop,
+    this.backdrop,
     this.renderTrophyCard,
     this.cjkFonts,
     this.fontClient,
@@ -511,6 +526,10 @@ class LauncherServices {
 
   /// The game's window, its picture and the trophy card over it; nothing when not given.
   final DesktopWindows? desktop;
+
+  /// The launcher window's see-through backdrop for Glass (Acrylic on Windows, an RGBA window
+  /// and KWin's blur on Linux); an opaque window when not given.
+  final WindowBackdrop? backdrop;
 
   /// Draws the trophy card for the desktop's window; TrophyCard.render by default.
   final Future<RgbaImage> Function(Trophy trophy, double scale)? renderTrophyCard;
@@ -962,8 +981,38 @@ class AppModel extends ChangeNotifier {
   /// Glass gave up its blur this run: the GPU took too long to draw it (RasterWatch).
   bool glassFallback = false;
 
-  /// Glass surfaces drawn solid: asked for, or the GPU too slow for the blur.
-  bool get solidGlass => preferences.reduceTransparency || glassFallback;
+  /// Glass surfaces drawn solid: asked for, the GPU too slow for the blur, or Glass
+  /// Transparency at 0 % on a window that could let the desktop through.
+  bool get solidGlass =>
+      preferences.reduceTransparency ||
+      glassFallback ||
+      (backdrop.kind.seeThrough && preferences.glassTransparency == 0);
+
+  WindowBackdrop get backdrop => services.backdrop ?? const NoBackdrop();
+
+  /// Glass's window: see-through to the desktop where the system can, under its tint.
+  GlassWindow get glassWindow => GlassWindow.make(
+    glass: look == LookStyle.glass,
+    solid: solidGlass,
+    transparency: preferences.glassTransparency,
+    kind: backdrop.kind,
+  );
+
+  bool? _backdropApplied;
+  Timer? _backdropRetry;
+
+  /// Puts the window's backdrop in step with the look: called after every change. Before the
+  /// window first shows it cannot be found, so it is tried again a little later.
+  void applyBackdrop() {
+    final seeThrough = glassWindow.seeThrough;
+    if (_backdropApplied == seeThrough || backdrop.kind == BackdropKind.none) return;
+    _backdropRetry?.cancel();
+    if (backdrop.apply(seeThrough: seeThrough)) {
+      _backdropApplied = seeThrough;
+    } else {
+      _backdropRetry = Timer(const Duration(milliseconds: 250), applyBackdrop);
+    }
+  }
 
   /// The GPU fell behind drawing Glass: its surfaces turn solid for the rest of the run, once
   /// said in a toast.
@@ -1626,6 +1675,7 @@ class AppModel extends ChangeNotifier {
     toastLevel = level;
     toastIcon = icon;
     _toastTimer?.cancel();
+    _backdropRetry?.cancel();
     _toastTimer = Timer(Duration(seconds: level == null ? 4 : 5), () {
       toast = null;
       toastLevel = null;
@@ -2072,6 +2122,24 @@ class AppModel extends ChangeNotifier {
                 savePreferences();
               }),
             ),
+          // How much of the desktop shows through Glass's window, where the system can show it.
+          if (look == LookStyle.glass && backdrop.kind.seeThrough && !preferences.reduceTransparency)
+            PanelRow(
+              id: 'glassTransparency',
+              title: T.text('glassTransparency'),
+              detail: T.text(backdrop.kind.blurs ? 'glassTransparencyDetail' : 'glassTransparencySharp'),
+              kind: StepperRow(
+                value: preferences.glassTransparency ?? GlassWindow.defaultTransparency,
+                min: 0,
+                max: 100,
+                step: 10,
+                format: _percent,
+                set: (value) {
+                  preferences.glassTransparency = value == GlassWindow.defaultTransparency ? null : value;
+                  savePreferences();
+                },
+              ),
+            ),
           PanelRow(
             id: 'accent',
             title: T.text('accent'),
@@ -2080,14 +2148,26 @@ class AppModel extends ChangeNotifier {
               savePreferences();
             }),
           ),
-          PanelRow(
-            id: 'artwork',
-            title: T.text('gameArtwork'),
-            kind: ToggleRow(preferences.gameArtwork, (value) {
-              preferences.gameArtwork = value;
-              savePreferences();
-            }),
-          ),
+          // Over the see-through window the picture is laid only when asked for.
+          if (glassWindow.seeThrough)
+            PanelRow(
+              id: 'glassArtwork',
+              title: T.text('glassArtwork'),
+              detail: T.text('glassArtworkDetail'),
+              kind: ToggleRow(preferences.glassArtwork, (value) {
+                preferences.glassArtwork = value;
+                savePreferences();
+              }),
+            )
+          else
+            PanelRow(
+              id: 'artwork',
+              title: T.text('gameArtwork'),
+              kind: ToggleRow(preferences.gameArtwork, (value) {
+                preferences.gameArtwork = value;
+                savePreferences();
+              }),
+            ),
           PanelRow(
             id: 'motion',
             title: T.text('motion'),

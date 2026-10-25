@@ -39,6 +39,28 @@ class Backdrop extends StatelessWidget {
     // Glass shows the picture frosted, from a small decode, and still; over the whole screen it
     // hides the background, which then rests.
     final glass = model.look == LookStyle.glass;
+    // Glass's see-through window: the desktop is the background, the picture only when asked.
+    final seeThrough = model.glassWindow.seeThrough;
+    if (seeThrough) {
+      final shown =
+          model.preferences.onboarded &&
+          model.preferences.glassArtwork &&
+          model.overlay != Layer.settings &&
+          game?.background != null;
+      return RepaintBoundary(
+        child: AnimatedSwitcher(
+          duration: Motion.fade,
+          switchInCurve: Motion.settle,
+          child: shown
+              ? Opacity(
+                  key: ValueKey(game!.id),
+                  opacity: 0.72,
+                  child: GameArtwork(path: game.background!, animated: false),
+                )
+              : const SizedBox.expand(),
+        ),
+      );
+    }
     if (artwork && time == null) {
       final index = model.selected;
       for (final near in [index - 1, index + 1]) {

@@ -69,6 +69,7 @@ class _LauncherShellState extends State<LauncherShell> {
     super.initState();
     SchedulerBinding.instance.addTimingsCallback(_timings);
     widget.model.addListener(_modelChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) => widget.model.applyBackdrop());
     _lifecycle = AppLifecycleListener(
       onStateChange: (state) {
         // A key let go in another window never says so here.
@@ -87,8 +88,9 @@ class _LauncherShellState extends State<LauncherShell> {
     }
   }
 
-  /// Out of a text field: the keys come back to the launcher.
+  /// Out of a text field: the keys come back to the launcher. Glass's window follows the look.
   void _modelChanged() {
+    widget.model.applyBackdrop();
     if (widget.model.editingRow == null && !_focus.hasPrimaryFocus && mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && widget.model.editingRow == null && !_focus.hasPrimaryFocus) _focus.requestFocus();
@@ -243,8 +245,10 @@ class _LauncherShellState extends State<LauncherShell> {
                     builder: (context, _) => LookScope(
                       glass: model.look == LookStyle.glass,
                       solid: model.solidGlass,
-                      child: ColoredBox(
-                        color: model.look.deep,
+                      seeThrough: model.glassWindow.seeThrough,
+                      child: _WindowBase(
+                        window: model.glassWindow,
+                        deep: model.look.deep,
                         child: Stack(
                           fit: StackFit.expand,
                           children: [
@@ -316,6 +320,22 @@ class _LauncherShellState extends State<LauncherShell> {
         ),
       ),
     );
+  }
+}
+
+/// Under everything: the look's deep color, or in Glass's see-through window the tint over the
+/// desktop the system shows behind it.
+class _WindowBase extends StatelessWidget {
+  const _WindowBase({required this.window, required this.deep, required this.child});
+
+  final GlassWindow window;
+  final Color deep;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!window.seeThrough) return ColoredBox(color: deep, child: child);
+    return CustomPaint(painter: GlassTintPainter(window.tint), child: child);
   }
 }
 

@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'ui/soloud_audio.dart';
+import 'core/desktop/desktop.dart';
 import 'core/desktop/linux_desktop.dart';
+import 'core/desktop/window_backdrop.dart';
 import 'core/desktop/windows_desktop.dart';
 import 'core/gamepad/linux_pads.dart';
 import 'core/gamepad/windows_pads.dart';
@@ -22,6 +24,11 @@ import 'ui/theme.dart';
 Future<void> main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
   final options = LaunchOptions.parse(arguments);
+  final DesktopWindows desktop = Platform.isWindows ? WindowsDesktop() : LinuxDesktop();
+  final WindowBackdrop backdrop = switch (desktop) {
+    final LinuxDesktop linux => LinuxBackdrop(linux),
+    _ => Platform.isWindows ? WindowsBackdrop() : const NoBackdrop(),
+  };
   final model = AppModel(
     paths: AppPaths.forSystem(HostSystem.current),
     services: LauncherServices(
@@ -47,7 +54,8 @@ Future<void> main(List<String> arguments) async {
         signingKeys: ReleaseSigning.trustedKeys,
       ),
       pads: () => Platform.isWindows ? WindowsPadSource() : LinuxPadSource(),
-      desktop: Platform.isWindows ? WindowsDesktop() : LinuxDesktop(),
+      desktop: desktop,
+      backdrop: backdrop,
     ),
   );
   // An update left for this launch (Later) goes in first: its installer opens the launcher again.
@@ -79,10 +87,13 @@ class AnyPS5App extends StatelessWidget {
       theme: ThemeData(
         brightness: Brightness.dark,
         fontFamily: AppText.family,
-        scaffoldBackgroundColor: Colors.black,
+        // The launcher paints its own base (LauncherShell): clear here, so Glass's see-through
+        // window shows the desktop.
+        scaffoldBackgroundColor: Colors.transparent,
         splashFactory: NoSplash.splashFactory,
       ),
       home: Scaffold(
+        backgroundColor: Colors.transparent,
         body: LauncherShell(model: model, time: time, now: now),
       ),
     );

@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../core/desktop/window_backdrop.dart';
 import 'theme.dart';
 
 /// The Glass look's recipe: frosted ice over a cold background. Every surface is layered glass
@@ -118,9 +119,125 @@ abstract final class GlassRecipe {
       over(const Color(0xFFFFFFFF), sheenFrom, over(base, baseOpacity, backdrop));
 }
 
-/// How the interface below is drawn: the Glass look, and whether its glass is solid.
+/// The Glass look's window: see-through to the desktop and the windows behind it (blurred by the
+/// system where it blurs), under a navy tint that keeps the text readable whatever is back
+/// there. The macOS launcher keeps the same numbers.
+class GlassWindow {
+  const GlassWindow._(this.seeThrough, this.tint, this.blurred);
+
+  static const opaque = GlassWindow._(false, 1, false);
+
+  /// Lets the desktop through (else the window is opaque, as in the other looks).
+  final bool seeThrough;
+
+  /// The navy tint's opacity over the desktop.
+  final double tint;
+
+  /// The system blurs what is behind the window.
+  final bool blurred;
+
+  /// Settings → Appearance → Glass Transparency when it has not been moved, in percent.
+  static const defaultTransparency = 90;
+
+  /// The least tint over a blurred desktop: white text keeps WCAG AA (4.5:1) and 70 % white text
+  /// 3:1 over a pure white desktop (a white window behind, a snowy wallpaper), counting nothing
+  /// for the blur, so the screen behind never has to be read.
+  static final double tintFloor = () {
+    const white = Color(0xFFFFFFFF);
+    bool reads(double tint) {
+      final behind = GlassRecipe.over(GlassRecipe.layer, tint, white);
+      return Contrast.ratio(white, behind) >= 4.5 && Contrast.ratio(GlassRecipe.over(white, 0.7, behind), behind) >= 3;
+    }
+
+    var steps = 0;
+    while (!reads(steps / 100)) {
+      steps++;
+    }
+    return steps / 100;
+  }();
+
+  /// Over a desktop the system does not blur, its detail stays sharp behind the text: more tint.
+  static const sharpFloor = 0.8;
+
+  /// The tint at [transparency] percent: 100 is the floor, 0 a solid pane.
+  static double tintAt(int transparency, {bool blurred = true}) {
+    final floor = blurred ? tintFloor : sharpFloor;
+    final fraction = transparency.clamp(0, 100) / 100;
+    return floor + (1 - floor) * (1 - fraction);
+  }
+
+  /// See-through in Glass where the system can show the desktop, unless its surfaces are solid
+  /// (Reduce Transparency, a slow GPU) or the slider is at 0 %.
+  static GlassWindow make({
+    required bool glass,
+    required bool solid,
+    required int? transparency,
+    required BackdropKind kind,
+  }) {
+    final percent = transparency ?? defaultTransparency;
+    if (!glass || solid || !kind.seeThrough || percent <= 0) return opaque;
+    return GlassWindow._(true, tintAt(percent, blurred: kind.blurs), kind.blurs);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is GlassWindow && other.seeThrough == seeThrough && other.tint == tint && other.blurred == blurred;
+
+  @override
+  int get hashCode => Object.hash(seeThrough, tint, blurred);
+}
+
+/// The bottom of Glass's see-through window, over the desktop the system shows: the navy tint,
+/// deeper where the hero text and the hints sit (the lower left), light from the top left, a
+/// breath of cyan at the bottom and the still frost.
+class GlassTintPainter extends CustomPainter {
+  const GlassTintPainter(this.tint);
+
+  final double tint;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    canvas.drawRect(rect, Paint()..color = GlassRecipe.layer.withValues(alpha: tint));
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.bottomLeft,
+          end: Alignment.topRight,
+          colors: [GlassRecipe.layer.withValues(alpha: 0.28), GlassRecipe.layer.withValues(alpha: 0)],
+          stops: const [0, 0.55],
+        ).createShader(rect),
+    );
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(-0.76, -1.2),
+          radius: 1.2,
+          colors: [const Color(0xFFFFFFFF).withValues(alpha: 0.07), const Color(0x00FFFFFF)],
+        ).createShader(rect),
+    );
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [GlassRecipe.cyan.withValues(alpha: 0), GlassRecipe.cyan.withValues(alpha: 0.03)],
+        ).createShader(rect),
+    );
+    FrostGrain.paint(canvas, rect, 0.03);
+  }
+
+  @override
+  bool shouldRepaint(GlassTintPainter oldDelegate) => oldDelegate.tint != tint;
+}
+
+/// How the interface below is drawn: the Glass look, whether its glass is solid, and whether the
+/// window lets the desktop through.
 class LookScope extends InheritedWidget {
-  const LookScope({super.key, required this.glass, required this.solid, required super.child});
+  const LookScope({super.key, required this.glass, required this.solid, this.seeThrough = false, required super.child});
 
   /// The Glass look is in use.
   final bool glass;
@@ -128,10 +245,14 @@ class LookScope extends InheritedWidget {
   /// Surfaces are drawn without transparency or blur (Reduce Transparency, a slow GPU).
   final bool solid;
 
+  /// Glass's window shows the desktop behind it (GlassWindow).
+  final bool seeThrough;
+
   static LookScope? _of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<LookScope>();
 
   static bool isGlass(BuildContext context) => _of(context)?.glass ?? false;
   static bool isSolid(BuildContext context) => _of(context)?.solid ?? false;
+  static bool isSeeThrough(BuildContext context) => _of(context)?.seeThrough ?? false;
 
   /// The ink for words on [accent]: in Glass, and on the light Ice accent anywhere, it follows
   /// the fill's lightness; the older looks keep [otherwise], as they were drawn.
@@ -142,7 +263,8 @@ class LookScope extends InheritedWidget {
   static Color focusedInk(BuildContext context) => isGlass(context) ? GlassRecipe.ink : Colors.black;
 
   @override
-  bool updateShouldNotify(LookScope oldWidget) => oldWidget.glass != glass || oldWidget.solid != solid;
+  bool updateShouldNotify(LookScope oldWidget) =>
+      oldWidget.glass != glass || oldWidget.solid != solid || oldWidget.seeThrough != seeThrough;
 }
 
 /// The frost grain shader (shaders/frost.frag), loaded once.

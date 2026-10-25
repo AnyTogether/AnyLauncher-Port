@@ -5,6 +5,25 @@ release when it is made.
 
 ## Next release
 
+### System fonts for every game
+
+Games that ask for the console's system fonts get them without anything to set up: Noto Sans,
+Noto Sans Mono, Thai and Arabic come with the launcher (5.5 MB), and Japanese, Chinese and
+Korean (Noto Sans CJK, 100 MB) download the first time a game needs them. A game started in
+Japanese, Korean or Chinese waits for them, with the download in a toast; a game seen asking
+for them in its log gets them in the background, and its next start waits for them. (Some
+games, Astro's Playroom among them, stop at start-up without system fonts.)
+**Settings → Fonts** shows which font each script gets and from where, downloads or removes
+the CJK fonts, and takes a folder of your own (the console's fonts, say): its files come first
+and the launcher's fill in what it lacks. The Noto fonts are under the SIL Open Font License
+1.1, shipped beside them.
+
+### Hidden trophies
+
+In the trophy list, △ / Y (or O, or a click on **Show**) shows a hidden trophy's name,
+description and icon until the list closes; △ again hides it. **Settings → Behaviour → Always
+Show Hidden Trophies** shows them all.
+
 ### Controllers in the launcher
 
 A controller moves through the launcher as on the console, on Windows and Linux: the D-pad or

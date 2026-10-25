@@ -210,4 +210,6 @@ Downloaded engines: `~/.local/share/AnyPS5/Toolkits`, `%LOCALAPPDATA%\AnyPS5\Too
 ## License
 
 GPL-2.0, as the AnyPS5-ARM launcher it is ported from (see `LICENSE`). LibAtrac9 in
-`native/atrac9` is MIT (`native/atrac9/LICENSE`), as is `flutter_soloud`.
+`native/atrac9` is MIT (`native/atrac9/LICENSE`), as is `flutter_soloud`. The Noto fonts in
+`assets/system-fonts` and the Noto Sans CJK fonts the launcher downloads are under the SIL Open
+Font License 1.1 (`assets/system-fonts/OFL.txt`; the CJK licence is saved beside them).

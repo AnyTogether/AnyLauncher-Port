@@ -56,15 +56,27 @@ static void my_application_activate(GApplication* application) {
   gtk_window_set_icon_name(window, "anyps5-desktop");
   gtk_window_set_default_size(window, 1600, 900);
 
+  // The Glass look's see-through window: an RGBA visual where the screen composites, so the
+  // pixels Flutter leaves transparent show the desktop. The launcher reads ANYPS5_RGBA_VISUAL
+  // and keeps the window opaque without it (no compositor: transparent pixels would be black).
+  gboolean rgba = FALSE;
+  GdkScreen* rgba_screen = gtk_window_get_screen(window);
+  GdkVisual* rgba_visual = gdk_screen_get_rgba_visual(rgba_screen);
+  if (rgba_visual != nullptr && gdk_screen_is_composited(rgba_screen)) {
+    gtk_widget_set_visual(GTK_WIDGET(window), rgba_visual);
+    gtk_widget_set_app_paintable(GTK_WIDGET(window), TRUE);
+    g_setenv("ANYPS5_RGBA_VISUAL", "1", TRUE);
+    rgba = TRUE;
+  }
+
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
 
   FlView* view = fl_view_new(project);
   GdkRGBA background_color;
-  // Background defaults to black, override it here if necessary, e.g. #00000000
-  // for transparent.
-  gdk_rgba_parse(&background_color, "#000000");
+  // Clear with an RGBA visual: every look but Glass's see-through window paints over all of it.
+  gdk_rgba_parse(&background_color, rgba ? "#00000000" : "#000000");
   fl_view_set_background_color(view, &background_color);
   gtk_widget_show(GTK_WIDGET(view));
   gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));

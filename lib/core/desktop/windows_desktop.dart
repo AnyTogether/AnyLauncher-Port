@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:ffi';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
 import 'desktop.dart';
+import 'window_backdrop.dart';
 
 // user32, gdi32 and kernel32, as far as the launcher needs them. Every handle is an IntPtr.
 typedef _H = IntPtr;
@@ -545,4 +547,125 @@ class WindowsDesktop implements DesktopWindows {
     width = height * 16 / 9;
   }
   return (width: width.round() + frameWidth, height: height.round() + frameHeight);
+}
+
+/// The launcher window's see-through backdrop on Windows, through DWM called from Dart: on
+/// Windows 11 22H2 and later the Acrylic system backdrop (what is behind the window, blurred and
+/// tinted by DWM, the title bar included, with the frame extended over the client area), before
+/// it the accent policy's acrylic blur behind. Either way the pixels Flutter leaves transparent
+/// show the backdrop, and the window's frame is dark. DWM draws Acrylic only while
+/// the window is active; an inactive window gets the system's solid fallback, as every Windows
+/// app's acrylic does. (Both paths were checked on Windows 11 25H2, the accent one by
+/// ANYPS5_BACKDROP=accent.)
+class WindowsBackdrop implements WindowBackdrop {
+  WindowsBackdrop({Map<String, String>? environment}) : _environment = environment ?? Platform.environment;
+
+  final Map<String, String> _environment;
+  late final _Win32 _w = _Win32();
+
+  @override
+  late final BackdropKind kind = () {
+    try {
+      return windowsBackdropKind(_build(), override: _environment['ANYPS5_BACKDROP']);
+    } on Object {
+      return BackdropKind.none;
+    }
+  }();
+
+  late final _Dwm? _dwm = () {
+    try {
+      return _Dwm();
+    } on Object {
+      return null;
+    }
+  }();
+
+  /// The OS build (26200 is 11 25H2), from RtlGetVersion: GetVersionEx lies to unmanifested apps.
+  static int _build() => using((arena) {
+    final info = arena<Uint32>(276 ~/ 4); // RTL_OSVERSIONINFOW
+    info[0] = 276;
+    final rtlGetVersion = DynamicLibrary.open('ntdll.dll')
+        .lookupFunction<Int32 Function(Pointer<Uint32>), int Function(Pointer<Uint32>)>('RtlGetVersion');
+    return rtlGetVersion(info) == 0 ? info[3] : 0;
+  });
+
+  /// The runner's top-level window in this process, shown or not yet.
+  int _window() => using((arena) {
+    final owner = arena<Uint32>();
+    final className = 'FLUTTER_RUNNER_WIN32_WINDOW'.toNativeUtf16(allocator: arena);
+    final pid = _w.getCurrentProcessId();
+    var window = 0;
+    for (var guard = 0; guard < 1000; guard++) {
+      window = _w.findWindowEx(0, window, className, nullptr);
+      if (window == 0) return 0;
+      _w.getWindowThreadProcessId(window, owner);
+      if (owner.value == pid) return window;
+    }
+    return 0;
+  });
+
+  @override
+  bool apply({required bool seeThrough}) {
+    final dwm = _dwm;
+    if (dwm == null || kind == BackdropKind.none) return true;
+    final window = _window();
+    if (window == 0) return false;
+    return using((arena) {
+      final value = arena<Int32>();
+      // The frame (title bar and borders) in its dark colors, over the dark glass.
+      value.value = 1;
+      dwm.setAttribute(window, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, value, 4);
+      // The system backdrop shows where the frame is extended over the client area. The accent
+      // policy's blur needs the frame left alone: extended, DWM paints its frame black over it.
+      final margins = arena<Int32>(4);
+      for (var i = 0; i < 4; i++) {
+        margins[i] = seeThrough && kind == BackdropKind.acrylic ? -1 : 0;
+      }
+      dwm.extendFrame(window, margins);
+      if (kind == BackdropKind.acrylic) {
+        value.value = seeThrough ? 3 /* DWMSBT_TRANSIENTWINDOW */ : 1 /* DWMSBT_NONE */;
+        return dwm.setAttribute(window, 38 /* DWMWA_SYSTEMBACKDROP_TYPE */, value, 4) == 0;
+      }
+      // ACCENT_POLICY: state, flags, gradient color (AABBGGRR), animation id.
+      final accent = arena<Int32>(4);
+      accent[0] = seeThrough ? 4 /* ACCENT_ENABLE_ACRYLICBLURBEHIND */ : 0 /* ACCENT_DISABLED */;
+      accent[1] = 2;
+      // Barely any tint of its own: the launcher draws the Glass navy over it.
+      accent[2] = 0x011C1004;
+      accent[3] = 0;
+      // WINDOWCOMPOSITIONATTRIBDATA: attribute, (padding), data pointer, data size.
+      final data = arena<Uint8>(24);
+      data.cast<Uint32>().value = 19; // WCA_ACCENT_POLICY
+      (data + 8).cast<IntPtr>().value = accent.address;
+      (data + 16).cast<IntPtr>().value = 16;
+      return dwm.setComposition?.call(window, data) != 0;
+    });
+  }
+}
+
+/// dwmapi, and user32's SetWindowCompositionAttribute (undocumented, present since Windows 7).
+final class _Dwm {
+  _Dwm() {
+    final dwm = DynamicLibrary.open('dwmapi.dll');
+    setAttribute = dwm
+        .lookupFunction<
+          Int32 Function(IntPtr, Uint32, Pointer<Int32>, Uint32),
+          int Function(int, int, Pointer<Int32>, int)
+        >('DwmSetWindowAttribute');
+    extendFrame = dwm.lookupFunction<Int32 Function(IntPtr, Pointer<Int32>), int Function(int, Pointer<Int32>)>(
+      'DwmExtendFrameIntoClientArea',
+    );
+    try {
+      setComposition = DynamicLibrary.open('user32.dll')
+          .lookupFunction<Int32 Function(IntPtr, Pointer<Uint8>), int Function(int, Pointer<Uint8>)>(
+            'SetWindowCompositionAttribute',
+          );
+    } on ArgumentError {
+      setComposition = null;
+    }
+  }
+
+  late final int Function(int, int, Pointer<Int32>, int) setAttribute;
+  late final int Function(int, Pointer<Int32>) extendFrame;
+  late final int Function(int, Pointer<Uint8>)? setComposition;
 }

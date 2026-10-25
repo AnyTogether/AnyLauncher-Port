@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 import 'desktop.dart';
+import 'window_backdrop.dart';
 
 /// Which kind of Linux desktop session this is.
 enum LinuxSession { x11, wayland, none }
@@ -165,6 +166,20 @@ final class _Xlib {
           int Function(Pointer<Void>, int, Pointer<Void>, Pointer<Uint8>, int, int, int, int, int, int)
         >('XPutImage');
     flush = x11.lookupFunction<Int32 Function(Pointer<Void>), int Function(Pointer<Void>)>('XFlush');
+    getSelectionOwner = x11
+        .lookupFunction<UnsignedLong Function(Pointer<Void>, UnsignedLong), int Function(Pointer<Void>, int)>(
+          'XGetSelectionOwner',
+        );
+    changeProperty = x11
+        .lookupFunction<
+          Int32 Function(Pointer<Void>, UnsignedLong, UnsignedLong, UnsignedLong, Int32, Int32, Pointer<Uint8>, Int32),
+          int Function(Pointer<Void>, int, int, int, int, int, Pointer<Uint8>, int)
+        >('XChangeProperty');
+    deleteProperty = x11
+        .lookupFunction<
+          Int32 Function(Pointer<Void>, UnsignedLong, UnsignedLong),
+          int Function(Pointer<Void>, int, int)
+        >('XDeleteProperty');
     if (xext != null) {
       try {
         shapeCombineRectangles = xext
@@ -216,6 +231,9 @@ final class _Xlib {
   createImage;
   late final int Function(Pointer<Void>, int, Pointer<Void>, Pointer<Uint8>, int, int, int, int, int, int) putImage;
   late final int Function(Pointer<Void>) flush;
+  late final int Function(Pointer<Void>, int) getSelectionOwner;
+  late final int Function(Pointer<Void>, int, int, int, int, int, Pointer<Uint8>, int) changeProperty;
+  late final int Function(Pointer<Void>, int, int) deleteProperty;
   void Function(Pointer<Void>, int, int, int, int, Pointer<Void>, int, int, int)? shapeCombineRectangles;
 
   /// XDestroyImage is a macro: the image's own destroy function, at offset 96 of XImage.
@@ -561,4 +579,68 @@ class LinuxDesktop implements DesktopWindows {
 
   @override
   void dispose() {}
+}
+
+/// The launcher window's see-through backdrop on Linux. The runner gives the window an RGBA
+/// visual where the screen composites (and says so in ANYPS5_RGBA_VISUAL), so the pixels Flutter
+/// leaves transparent show the desktop. On X11 a compositing manager must own _NET_WM_CM_Sn; KWin
+/// (KDE Plasma) also blurs behind the window when it carries _KDE_NET_WM_BLUR_BEHIND_REGION
+/// (empty: the whole window). GNOME, other compositors and Wayland show the desktop unblurred.
+class LinuxBackdrop implements WindowBackdrop {
+  LinuxBackdrop(this._desktop, {Map<String, String>? environment}) : _environment = environment ?? Platform.environment;
+
+  final LinuxDesktop _desktop;
+  final Map<String, String> _environment;
+
+  @override
+  late final BackdropKind kind = () {
+    final session = _desktop.session;
+    var compositor = false;
+    var kwinBlur = false;
+    if (session == LinuxSession.x11) {
+      _desktop._withDisplay(
+        (x, display) => using((arena) {
+          final screen = x.defaultScreen(display);
+          final selection = x.internAtom(display, '_NET_WM_CM_S$screen'.toNativeUtf8(allocator: arena), 0);
+          compositor = selection != 0 && x.getSelectionOwner(display, selection) != 0;
+          final blur = x.internAtom(display, _blurAtom.toNativeUtf8(allocator: arena), 1);
+          final supported = _desktop._property(x, display, arena, x.rootWindow(display, screen), '_NET_SUPPORTED');
+          kwinBlur = blur != 0 && (supported?.contains(blur) ?? false);
+          return true;
+        }),
+      );
+    }
+    return linuxBackdropKind(
+      wayland: session == LinuxSession.wayland,
+      x11: session == LinuxSession.x11,
+      rgbaVisual: _environment['ANYPS5_RGBA_VISUAL'] == '1',
+      compositor: compositor,
+      kwinBlur: kwinBlur,
+      override: _environment['ANYPS5_BACKDROP'],
+    );
+  }();
+
+  static const _blurAtom = '_KDE_NET_WM_BLUR_BEHIND_REGION';
+
+  @override
+  bool apply({required bool seeThrough}) {
+    // Transparency alone needs nothing from the window: Flutter leaves its pixels clear.
+    if (kind != BackdropKind.kwinBlur) return true;
+    return _desktop._withDisplay(
+          (x, display) => using((arena) {
+            final window = _desktop._windowOf(x, display, pid);
+            if (window == 0) return false;
+            final atom = x.internAtom(display, _blurAtom.toNativeUtf8(allocator: arena), 0);
+            if (seeThrough) {
+              // No rectangles: blur behind the whole window. XA_CARDINAL, 32-bit, replace.
+              x.changeProperty(display, window, atom, 6, 32, 0, arena<Uint8>(4), 0);
+            } else {
+              x.deleteProperty(display, window, atom);
+            }
+            x.flush(display);
+            return true;
+          }),
+        ) ??
+        false;
+  }
 }

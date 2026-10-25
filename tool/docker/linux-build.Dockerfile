@@ -7,7 +7,7 @@ FROM debian:bookworm-slim
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      ca-certificates clang cmake curl git libgtk-3-dev ninja-build pkg-config unzip xz-utils file \
+      ca-certificates clang cmake curl git libgtk-3-dev libsdl2-2.0-0 ninja-build pkg-config unzip xz-utils file \
  && rm -rf /var/lib/apt/lists/*
 
 ARG FLUTTER_VERSION=3.47.1

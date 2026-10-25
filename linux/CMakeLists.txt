@@ -112,6 +112,17 @@ install(DIRECTORY "${NATIVE_ASSETS_DIR}"
    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
    COMPONENT Runtime)
 
+# SDL2 for the controllers (third_party/SDL2/README.md): the build machine's, copied into the
+# bundle's lib/ when it has one (the AppImage then carries it); otherwise the system's is used.
+find_file(SDL2_RUNTIME NAMES libSDL2-2.0.so.0
+  PATHS /usr/lib/x86_64-linux-gnu /usr/lib64 /usr/lib /usr/local/lib NO_DEFAULT_PATH)
+if(SDL2_RUNTIME)
+  get_filename_component(SDL2_REAL "${SDL2_RUNTIME}" REALPATH)
+  install(FILES "${SDL2_REAL}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" RENAME "libSDL2-2.0.so.0" COMPONENT Runtime)
+  install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/SDL2/LICENSE.txt" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    RENAME "SDL2-LICENSE.txt" COMPONENT Runtime)
+endif()
+
 # Fully re-copy the assets directory on each build to avoid having stale files
 # from a previous install.
 set(FLUTTER_ASSET_DIR_NAME "flutter_assets")

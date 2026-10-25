@@ -42,7 +42,7 @@ Architecture: amd64
 Maintainer: Utku Halis <personal@utkuhalis.com.tr>
 Installed-Size: $size
 Depends: $depends
-Recommends: libsecret-tools
+Recommends: libsecret-tools, libsdl2-2.0-0
 Homepage: https://github.com/utkuhalis/AnyPS5-Desktop
 Description: PS5-style launcher for AnyPS5
  Finds PS5 game dumps in a games folder, unlocks them with the AnyPS5 toolkit

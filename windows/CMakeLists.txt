@@ -107,6 +107,31 @@ install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)
 
+# SDL2 for the controllers (third_party/SDL2/README.md): the official runtime, downloaded once
+# into the build folder and checked against its SHA-256, beside the executable with its licence.
+set(SDL2_VERSION "2.32.10")
+set(SDL2_ZIP "${CMAKE_BINARY_DIR}/SDL2-${SDL2_VERSION}-win32-x64.zip")
+set(SDL2_DIR "${CMAKE_BINARY_DIR}/SDL2-${SDL2_VERSION}")
+if(NOT EXISTS "${SDL2_DIR}/SDL2.dll")
+  file(DOWNLOAD
+    "https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}/SDL2-${SDL2_VERSION}-win32-x64.zip"
+    "${SDL2_ZIP}"
+    EXPECTED_HASH SHA256=6cf9706eefd0a4a06dc764007934d428afaf029fabdd408a9e646048c91e18fb
+    TLS_VERIFY ON
+    STATUS SDL2_DOWNLOAD)
+  list(GET SDL2_DOWNLOAD 0 SDL2_DOWNLOAD_CODE)
+  if(SDL2_DOWNLOAD_CODE EQUAL 0)
+    file(ARCHIVE_EXTRACT INPUT "${SDL2_ZIP}" DESTINATION "${SDL2_DIR}" PATTERNS SDL2.dll README-SDL.txt)
+  else()
+    message(WARNING "SDL2 could not be downloaded (${SDL2_DOWNLOAD}): controllers fall back to XInput and winmm")
+  endif()
+endif()
+if(EXISTS "${SDL2_DIR}/SDL2.dll")
+  install(FILES "${SDL2_DIR}/SDL2.dll" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
+  install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/SDL2/LICENSE.txt" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    RENAME "SDL2-LICENSE.txt" COMPONENT Runtime)
+endif()
+
 # The MSVC runtime (msvcp140.dll, vcruntime140.dll, vcruntime140_1.dll) beside the executable,
 # so the launcher starts on a PC without the Visual C++ Redistributable. The UCRT is part of
 # Windows 10 and later and stays out.

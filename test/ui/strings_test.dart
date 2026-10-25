@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:anyps5_desktop/ui/strings.dart';
+import 'package:anyps5_desktop/ui/strings_family.dart';
 import 'package:anyps5_desktop/ui/strings_table.dart';
 import 'package:anyps5_desktop/ui/strings_together.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -46,6 +47,10 @@ void main() {
     T.language = Language.turkish;
     expect(T.format('gamesFound', [4]), '4 oyun bulundu');
     expect(T.format('updateDownloading', [42]), 'İndiriliyor… %42');
+  });
+
+  test('the family texts cover the same keys in both languages', () {
+    expect(familyEnglish.keys.toSet(), familyTurkish.keys.toSet());
   });
 
   test('the tables cover the same keys', () {

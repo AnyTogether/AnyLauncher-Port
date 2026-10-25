@@ -19,6 +19,23 @@ class RunningGame {
 
   /// Asks the game to end (SIGTERM on Linux, TerminateProcess on Windows).
   bool stop() => process.kill();
+
+  /// Asks the game to close as closing its window would, so it can save first: SIGTERM on
+  /// Linux, taskkill without /F on Windows (which sends its windows WM_CLOSE).
+  Future<void> close() async {
+    if (!Platform.isWindows) {
+      process.kill(ProcessSignal.sigterm);
+      return;
+    }
+    try {
+      await Process.run('taskkill', ['/PID', '$pid', '/T']);
+    } on ProcessException {
+      // The kill after the grace period still ends it.
+    }
+  }
+
+  /// Ends the game at once (SIGKILL, TerminateProcess).
+  bool kill() => process.kill(ProcessSignal.sigkill);
 }
 
 /// Starts installed games.

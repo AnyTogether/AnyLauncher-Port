@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/audio/tones.dart';
+import '../core/family/family_rules.dart' show TitleVerdict;
 import '../core/game_library.dart';
 import 'app_model.dart';
 import 'background.dart';
@@ -434,6 +435,7 @@ class GameTile extends StatelessWidget {
     final dim = ColoredBox(color: Colors.black.withValues(alpha: 0.42));
     return switch (state) {
       Locked() => [dim, badge(Icons.lock_rounded)],
+      FamilyLocked() => [dim, badge(Icons.family_restroom_rounded)],
       Unreadable() => [dim, badge(Icons.block_rounded)],
       Failed() => [dim, badge(Icons.warning_rounded)],
       Installing(:final overall) => [
@@ -495,6 +497,11 @@ class StateLabel extends StatelessWidget {
     final dim = Colors.white.withValues(alpha: 0.75);
     final (icon, text, tint) = switch (state) {
       Locked() => (Icons.lock_rounded, T.text('locked'), dim),
+      FamilyLocked(:final verdict) => (
+        Icons.family_restroom_rounded,
+        T.text(verdict == TitleVerdict.unknown ? 'familyNotRated' : 'familyAgeLocked'),
+        Palette.warning,
+      ),
       Unreadable() => (Icons.block_rounded, T.text('unreadableDump'), Palette.danger),
       Queued() => (Icons.schedule_rounded, T.text('queued'), dim),
       Installing(:final step) => (Icons.downloading_rounded, InstallSpan.title(step), accent),
@@ -541,6 +548,7 @@ class HeroInfo extends StatelessWidget {
       Installing() || Queued() => (T.text('cancel'), Icons.close_rounded),
       Starting() => (T.text('starting'), Icons.hourglass_top_rounded),
       Running() => (T.text('running'), Icons.play_circle_outline_rounded),
+      FamilyLocked() => (T.text('familyAskParent'), Icons.family_restroom_rounded),
     };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

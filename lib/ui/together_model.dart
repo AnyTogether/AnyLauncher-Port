@@ -8,6 +8,7 @@ import '../core/game_library.dart';
 import '../core/host.dart';
 import '../core/remote/remote_protocol.dart';
 import '../core/together/account.dart';
+import '../core/together/family.dart';
 import '../core/together/friends.dart';
 import '../core/together/hub.dart';
 import '../core/together/people.dart';
@@ -25,6 +26,7 @@ import '../core/together/token_store.dart';
 import '../core/trophies.dart';
 import '../core/game_settings.dart';
 import 'app_model.dart';
+import 'family_gate.dart';
 import 'strings.dart';
 import 'voice_webrtc.dart';
 
@@ -84,6 +86,9 @@ class TogetherModel {
 
   /// Play sessions and trophies on their way to the server.
   late final TogetherSync sync;
+
+  /// Family limits: the kept status, play time, age ratings, asking a parent.
+  late final FamilyGate family = FamilyGate(this);
   late final StreamSubscription<TogetherEvent> _ready;
   Timer? _flush;
 
@@ -152,6 +157,7 @@ class TogetherModel {
 
   /// The session from the last run, then whatever follows from being signed in.
   Future<void> start() async {
+    family.load();
     await account.restore();
     _accountChanged();
   }
@@ -184,6 +190,7 @@ class TogetherModel {
       }
       flushSoon();
     }
+    family.signedInChanged();
     _followGame();
   }
 
@@ -213,8 +220,16 @@ class TogetherModel {
 
   /// A game played for a while: the session goes to AnyTogether, or waits until it can.
   void recordPlay(Game game, DateTime start, DateTime end, {String exit = 'normal'}) {
+    family.played(start, end, reported: signedIn && TogetherSync.titleIdPattern.hasMatch(game.titleId));
     if (!signedIn) return;
-    sync.recordSession(titleId: game.titleId, gameName: game.name, startedAt: start, endedAt: end, exit: exit);
+    sync.recordSession(
+      titleId: game.titleId,
+      gameName: game.name,
+      startedAt: start,
+      endedAt: end,
+      exit: exit,
+      ageLevels: game.ageLevels,
+    );
     flushSoon();
   }
 
@@ -257,6 +272,7 @@ class TogetherModel {
   void gameChanged() => _followGame();
 
   void _followGame() {
+    family.followGame();
     followGameSession();
     final running = app.running;
     final since = running == null ? null : DateTime.tryParse(app.preferences.lastPlayed[running.$1.id] ?? '');
@@ -382,6 +398,7 @@ class TogetherModel {
   /// Another server: a session belongs to one server, so this one is signed out first.
   Future<void> useServer(String text) async {
     if (forcedServer != null) return;
+    if (family.serverLocked) return app.show(T.text('familyServerLocked'));
     final url = TogetherServer.address(text.trim().isEmpty ? account.base.toString() : text);
     if (url == null) return app.show(T.text('togetherServerInvalid'));
     if (url == account.base) return;
@@ -400,11 +417,20 @@ class TogetherModel {
   Future<void> askFriend() async {
     final handle = Friends.clean(friendHandle);
     if (handle.isEmpty) return;
+    // A parent approves whom the child befriends: they are asked instead.
+    if (family.friendsThroughParent) {
+      friendHandle = '';
+      return family.askToAddFriend(handle);
+    }
     try {
       final now = await hub.friends.add(handle);
       friendHandle = '';
       app.show(T.format(now ? 'friendsNowFriends' : 'friendsRequestSent', [handle]));
     } on TogetherProblem catch (problem) {
+      if (familyFeature(problem) == 'friend_requests' && family.restricted) {
+        friendHandle = '';
+        return family.askToAddFriend(handle);
+      }
       app.show(problem.status == 404 ? T.format('friendsNoOne', [handle]) : message(problem));
     } on Object catch (error) {
       app.show(message(error));
@@ -521,7 +547,11 @@ class TogetherModel {
           hint: '@handle',
         ),
       ),
-      PanelRow(id: 'friends-ask', title: T.text('friendsSendRequest'), kind: ActionRow(() => unawaited(askFriend()))),
+      PanelRow(
+        id: 'friends-ask',
+        title: T.text(family.friendsThroughParent ? 'familyAskFriend' : 'friendsSendRequest'),
+        kind: ActionRow(() => unawaited(askFriend())),
+      ),
       if (friends.loaded && friends.friends.isEmpty)
         PanelRow(
           id: 'friends-none',
@@ -574,11 +604,12 @@ class TogetherModel {
             () => unawaited(joinFriendGame(game.sessionId, titleId: game.titleId, host: friend.person.displayName)),
           ),
         ),
-      PanelRow(
-        id: 'friend-message',
-        title: T.text('friendsMessage'),
-        kind: ActionRow(() => unawaited(messageFriend(friend.person))),
-      ),
+      if (family.messagesAllowed)
+        PanelRow(
+          id: 'friend-message',
+          title: T.text('friendsMessage'),
+          kind: ActionRow(() => unawaited(messageFriend(friend.person))),
+        ),
       if (hub.parties.party case final Party party when !party.has(friend.person.id) && !party.full)
         PanelRow(
           id: 'friend-party',
@@ -612,6 +643,7 @@ class TogetherModel {
           title: T.text('togetherOnline'),
           kind: InfoRow(connected ? T.text('togetherConnected') : T.text('togetherConnecting')),
         ),
+        ?family.settingsRow(),
         PanelRow(
           id: 'together-profile',
           title: T.text('profileMine'),
@@ -633,6 +665,7 @@ class TogetherModel {
       ];
     }
     final rows = [
+      ?family.settingsRow(),
       PanelRow(id: 'together-intro', title: T.text('togetherIntro'), kind: InfoRow(T.text('togetherIntroDetail'))),
     ];
     switch (account.step) {
@@ -707,6 +740,16 @@ class TogetherModel {
   }
 
   List<PanelRow> _serverRows() {
+    if (family.serverLocked) {
+      return [
+        PanelRow(
+          id: 'together-server',
+          title: T.text('togetherServer'),
+          detail: T.text('familyServerLocked'),
+          kind: InfoRow(account.base.toString()),
+        ),
+      ];
+    }
     final forced = forcedServer;
     if (forced != null) {
       return [
@@ -739,6 +782,9 @@ class TogetherModel {
 
   /// What to tell the user about a failed call.
   String message(Object error) {
+    if (isFamilyRestriction(error)) {
+      return FamilyGate.restrictedText(familyFeature(error), side: familySide(error));
+    }
     if (error is TogetherProblem) {
       return switch (error.code) {
         'code_invalid' => T.text('togetherCodeWrong'),
@@ -761,6 +807,9 @@ class TogetherModel {
       case 'live.ready':
         // Back online: whatever waited goes up.
         flushSoon();
+      case 'family.updated':
+        // A parent changed the limits or gave extra time.
+        unawaited(family.refresh());
       case 'message.created':
         _messageArrived(data);
       case 'party.invite':
@@ -797,6 +846,7 @@ class TogetherModel {
   }
 
   void dispose() {
+    family.dispose();
     talkWatch?.stop();
     talkWatch?.reader.close();
     hub.voice.removeListener(_voiceChanged);

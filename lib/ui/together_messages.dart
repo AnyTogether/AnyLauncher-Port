@@ -222,6 +222,8 @@ extension TogetherMessages on TogetherModel {
     app.show(
       error is TogetherProblem && error.code == 'link_blocked'
           ? T.text('messagesLinkBlocked')
+          : isFamilyRestriction(error)
+          ? FamilyGate.restrictedText(familyFeature(error), side: familySide(error))
           : T.text('messagesFailed'),
     );
   }

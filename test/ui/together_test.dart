@@ -346,7 +346,8 @@ void main() {
       await until(() => server.playSessions.isNotEmpty);
       expect(server.playSessions.values.single['titleId'], 'PPSA01001');
       expect(server.playSessions.values.single['exit'], 'killed');
-      expect(model.together.sync.isEmpty, isTrue);
+      // The server keeps the session before its answer reaches the outbox.
+      await until(() => model.together.sync.isEmpty);
     });
   });
 
@@ -462,7 +463,7 @@ void main() {
       expect(rowIds(), contains('friend-party'));
       (model.panelCategories().single.rows.firstWhere((row) => row.id == 'friend-party').kind as ActionRow).run();
       await until(() => server.callsTo('parties/${together.hub.parties.party!.id}/invites').isNotEmpty);
-      expect(model.toast, 'Ana is invited');
+      await until(() => model.toast == 'Ana is invited');
 
       model.open(Layer.party);
       await together.joinVoice();

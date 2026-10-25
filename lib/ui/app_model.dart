@@ -11,6 +11,7 @@ import '../core/audio/interface_sounds.dart';
 import '../core/audio/theme_music.dart';
 import '../core/audio/tones.dart';
 import '../core/controls.dart';
+import '../core/family/family_rules.dart' show TitleVerdict;
 import '../core/game_library.dart';
 import '../core/game_process.dart';
 import '../core/game_settings.dart';
@@ -177,6 +178,12 @@ class Running extends GameState {
   const Running();
 }
 
+/// A parent's family settings keep the game from the child: too old a rating, or none known.
+class FamilyLocked extends GameState {
+  const FamilyLocked(this.verdict);
+  final TitleVerdict verdict;
+}
+
 /// Each install step's share of the whole, for one overall bar.
 abstract final class InstallSpan {
   static (double, double) of(InstallStep step) => switch (step) {
@@ -242,6 +249,9 @@ enum Layer {
   messages,
   party,
   profile,
+
+  /// Family limits: today's play time, asking a parent for more.
+  family,
 }
 
 /// A settings row the panels draw and the keyboard moves through.
@@ -663,6 +673,7 @@ class AppModel extends ChangeNotifier {
   GameState stateOf(Game game) {
     if (running?.$1 == game) return const Running();
     if (starting == game) return const Starting();
+    if (together.family.ageLock(game) case final FamilyLocked lock) return lock;
     final current = progress[game.id];
     if (current != null) return Installing(current.$1, current.$2);
     if (queue.contains(game.id)) return const Queued();
@@ -719,6 +730,8 @@ class AppModel extends ChangeNotifier {
         show(T.text('unreadableDump'));
       case Starting() || Running():
         break;
+      case FamilyLocked():
+        unawaited(together.family.askToPlay(game));
     }
   }
 
@@ -884,6 +897,8 @@ class AppModel extends ChangeNotifier {
   Future<void> play(Game game) async {
     final folder = root;
     if (folder == null || starting != null || running != null) return;
+    final allowed = together.family.beforePlay(game);
+    if (!(allowed is bool ? allowed : await allowed) || starting != null || running != null) return;
     final settings = currentSettings(game);
     final inputFile = p.join(paths.inputFilesFolder, '${game.slug}.ini');
     var written = true;
@@ -1133,7 +1148,8 @@ class AppModel extends ChangeNotifier {
           Layer.updateChoice ||
           Layer.friends ||
           Layer.friendOptions ||
-          Layer.party:
+          Layer.party ||
+          Layer.family:
         _panelCommand(command);
         return;
       case null:
@@ -1240,6 +1256,8 @@ class AppModel extends ChangeNotifier {
         return [PanelCategory(id: 'friends', title: T.text('friendsTitle'), rows: together.friendRows())];
       case Layer.party:
         return [PanelCategory(id: 'party', title: T.text('partyTitle'), rows: together.partyRows())];
+      case Layer.family:
+        return [PanelCategory(id: 'family', title: T.text('familyTitle'), rows: together.family.rows())];
       case Layer.friendOptions:
         return [
           PanelCategory(
@@ -2046,7 +2064,7 @@ class AppModel extends ChangeNotifier {
             name: game.name,
             state: switch (stateOf(game)) {
               Installed(:final outdated) => outdated ? RemoteGameState.update : RemoteGameState.installed,
-              Locked() || Failed() => RemoteGameState.locked,
+              Locked() || Failed() || FamilyLocked() => RemoteGameState.locked,
               Queued() || Installing() => RemoteGameState.installing,
               Starting() => RemoteGameState.starting,
               Running() => RemoteGameState.running,

@@ -144,6 +144,9 @@ extension TogetherParty on TogetherModel {
   List<PanelRow> voiceRows(Party party) {
     final voice = hub.voice;
     final key = talkKeyName;
+    if (!family.voiceAllowed && !voice.active) {
+      return [PanelRow(id: 'voice-off', title: T.text('familyNoVoice'), kind: InfoRow(T.text('familyNoVoiceDetail')))];
+    }
     if (!voice.active) {
       final others = party.inCall.where((id) => id != user?.id).length;
       return [

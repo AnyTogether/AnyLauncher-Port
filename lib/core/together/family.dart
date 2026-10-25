@@ -72,6 +72,14 @@ bool isFamilyRestriction(Object error) =>
 /// The family feature [error] was refused for (friend_requests, messages, voice_chat, share_play,
 /// public_matchmaking, profile_visibility, discovery, communities, media_sharing, age_rating,
 /// family), or null.
+/// Whose family limit refused [error]: "self" (the asker's own) or "other" (the other person's,
+/// such as a friend request to a restricted child); null when the server did not say.
+String? familySide(Object error) {
+  if (!isFamilyRestriction(error)) return null;
+  final side = (error as TogetherProblem).extra['side'];
+  return side is String ? side : null;
+}
+
 String? familyFeature(Object error) {
   if (!isFamilyRestriction(error)) return null;
   final feature = (error as TogetherProblem).extra['feature'];

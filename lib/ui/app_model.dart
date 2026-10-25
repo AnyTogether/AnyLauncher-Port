@@ -11,6 +11,8 @@ import '../core/audio/audio_out.dart';
 import '../core/audio/interface_sounds.dart';
 import '../core/audio/theme_music.dart';
 import '../core/audio/tones.dart';
+import '../core/controllers/pad_info.dart';
+import '../core/controllers/troubleshooter.dart';
 import '../core/controls.dart';
 import '../core/crash_report.dart' show Diagnosis, SystemInfo;
 import '../core/desktop_notice.dart';
@@ -44,6 +46,7 @@ import '../core/together/token_store.dart';
 import '../core/together/voice_mesh.dart';
 import '../core/trophies.dart';
 import 'components.dart';
+import 'controllers_model.dart';
 import 'crash_model.dart';
 import 'engine_model.dart';
 import 'fonts_model.dart';
@@ -94,6 +97,12 @@ class Preferences {
     ..steamUser = json['steamUser'] as String?
     ..steamGames = json['steamGames'] == true
     ..steamFullscreen = json['steamFullscreen'] as bool? ?? true
+    ..controllerLight = json['controllerLight'] as String?
+    ..confirmCircle = json['confirmCircle'] == true
+    ..stickDeadzone = switch (json['stickDeadzone']) {
+      final num percent => percent.toInt().clamp(0, StickDeadzone.maximum),
+      _ => 0,
+    }
     ..cjkGames = {
       for (final id in json['cjkGames'] as List<dynamic>? ?? const <dynamic>[])
         if (id is String) id,
@@ -161,6 +170,12 @@ class Preferences {
   bool steamGames = false;
   bool steamFullscreen = true;
 
+  /// Settings › Controllers: the light bar's colour (PadLight's name; null for the theme's
+  /// accent), Circle confirming instead of Cross, and the sticks' dead zone in percent.
+  String? controllerLight;
+  bool confirmCircle = false;
+  int stickDeadzone = 0;
+
   /// The title IDs of games seen asking for Japanese, Chinese or Korean fonts: their next start
   /// waits for those to download.
   Set<String> cjkGames = {};
@@ -194,6 +209,9 @@ class Preferences {
     'steamUser': steamUser,
     'steamGames': steamGames,
     'steamFullscreen': steamFullscreen,
+    'controllerLight': controllerLight,
+    'confirmCircle': confirmCircle,
+    'stickDeadzone': stickDeadzone,
     'cjkGames': cjkGames.toList()..sort(),
   };
 
@@ -353,6 +371,9 @@ enum Layer {
   /// Before an unlock that would copy the game's files: how much and why, the two ways to link
   /// instead (the games folder on the dump's drive, Windows' Developer Mode), copying anyway.
   copyWarning,
+
+  /// Settings › Controllers › Test Buttons and Sticks.
+  controllerTest,
 }
 
 /// A settings row the panels draw and the keyboard moves through.
@@ -496,6 +517,7 @@ class LauncherServices {
     this.decodeSong,
     this.armEngineReleases,
     this.pads,
+    this.systemProbe,
     this.desktop,
     this.backdrop,
     this.renderTrophyCard,
@@ -539,6 +561,10 @@ class LauncherServices {
   /// Where controller input comes from (XInput and winmm on Windows, evdev on Linux); none when
   /// not given.
   final PadSource Function()? pads;
+
+  /// What the controller troubleshooter asks the system (running programs, drivers, Steam's
+  /// setting, permissions); nothing asked when not given.
+  final SystemProbe Function()? systemProbe;
 
   /// The game's window, its picture and the trophy card over it; nothing when not given.
   final DesktopWindows? desktop;
@@ -757,6 +783,8 @@ class AppModel extends ChangeNotifier {
     _padLog?.call('window ${value ? 'in front' : 'behind'} (Flutter)');
     if (!value) _gate?.close();
     if (value) updates.activated();
+    // A game may have changed the light bars: the launcher's colour again.
+    if (value) controllers.applyLights();
     // Back in front: a toolkit rebuilt meanwhile is read again.
     if (value) _forgetDiskFacts();
     // Something copied in while the launcher was away shows at once.
@@ -782,12 +810,62 @@ class AppModel extends ChangeNotifier {
   PadSource? _pads;
   PadNavigator? _navigator;
   PadGate? _gate;
+  DeadzoneStage? _deadzone;
+
+  /// Settings › Controllers: the controllers, their log, lights and troubleshooter.
+  late final ControllersModel controllers = ControllersModel(this);
+
+  /// The motors of whatever controllers are read now.
+  PadRumble? get padMotors => _pads?.motors;
+
+  /// Started from Steam: Steam's virtual controller stands for the real one.
+  bool get launchedFromSteam => steamLaunch.fromSteam;
+
+  /// The accent as red, green and blue (0 to 255), for the light bars' Theme Colour.
+  (int, int, int) get accentRgb {
+    final color = accentChoice.color;
+    return ((color.r * 255).round(), (color.g * 255).round(), (color.b * 255).round());
+  }
+
+  /// A controller connect or disconnect: the debug log (ANYPS5_PAD_LOG) and the console.
+  void padLogLine(String line) {
+    _padLog?.call(line);
+    debugPrint('[anyps5-launcher] $line');
+  }
+
+  /// The controller settings that act at once: Circle confirming, the dead zone, the hints.
+  void _applyPadPreferences() {
+    _navigator?.circleConfirms = preferences.confirmCircle;
+    _deadzone?.percent = preferences.stickDeadzone;
+    Hint.circleConfirms = preferences.confirmCircle;
+  }
+
+  void openControllerTest() {
+    unawaited(controllers.probe());
+    open(Layer.controllerTest);
+  }
+
+  /// Back from the controller test to Settings › Controllers, where it was opened from.
+  void closeControllerTest() {
+    open(Layer.settings, cue: Cue.back);
+    final categories = panelCategories();
+    final index = categories.indexWhere((category) => category.id == 'controllers');
+    if (index < 0) return;
+    panelCategory = index;
+    panelRow = categories[index].rows.indexWhere((row) => row.id == 'padTest').clamp(0, categories[index].rows.length - 1);
+    _changed();
+  }
 
   /// Whether the launcher is in front: Flutter says its window has the focus and, where the
   /// desktop can tell (Windows, X11), the window in front is the launcher's. The controller is
   /// read whichever window is in front, so this is what keeps a game's pad out of the launcher;
   /// Flutter's focus report alone let the presses through on Windows while a game was played.
-  bool get launcherInFront => active && (desktop.launcherFocused() ?? true);
+  bool get launcherInFront {
+    // Steam's Game Mode (gamescope) may report no active window at all: with no game running
+    // the launcher is what is on screen.
+    if (steamLaunch.gameMode && running == null && starting == null) return true;
+    return active && (desktop.launcherFocused() ?? true);
+  }
 
   /// A line for the controller's debug log: ANYPS5_PAD_LOG names a file to add them to.
   late final void Function(String line)? _padLog = () {
@@ -816,7 +894,11 @@ class AppModel extends ChangeNotifier {
     _navigator = navigator;
     final gate = PadGate(navigator.handle, inFront: () => launcherInFront, log: _padLog);
     _gate = gate;
-    _pads = source..start(gate.handle);
+    final deadzone = DeadzoneStage(gate.handle);
+    _deadzone = deadzone;
+    _applyPadPreferences();
+    _pads = source..start(deadzone.handle);
+    controllers.attach(source);
     if (_padLog case final log?) {
       log('pad: reading ${source.description}');
       // For the log, what the desktop says as it changes, controller or not.
@@ -850,6 +932,9 @@ class AppModel extends ChangeNotifier {
     if (mapped != Command.home && !launcherInFront) return;
     haptics.padInUse = true;
     _pulses.pad = _navigator?.lastPad;
+    controllers.used(_navigator?.lastPad);
+    // The controller test takes the pads' buttons: only PS acts (a held Circle leaves it).
+    if (overlay == Layer.controllerTest && mapped != Command.home) return;
     if (editingRow != null) return;
     if (capturing != null && mapped != Command.back) return;
     if (overlay == Layer.settings && (mapped == Command.previousGame || mapped == Command.nextGame)) {
@@ -1176,6 +1261,7 @@ class AppModel extends ChangeNotifier {
 
   void savePreferences() {
     if (persist) preferences.save(paths.preferencesFile);
+    _applyPadPreferences();
     _changed();
   }
 
@@ -1560,7 +1646,11 @@ class AppModel extends ChangeNotifier {
     if (folder == null || starting != null || running != null) return;
     final allowed = together.family.beforePlay(game);
     if (!(allowed is bool ? allowed : await allowed) || starting != null || running != null) return;
-    final settings = currentSettings(game);
+    var settings = currentSettings(game);
+    // Settings › Controllers › Stick Dead Zone, for a game that set none of its own.
+    if (preferences.stickDeadzone > 0) {
+      settings = settings.copyWith(tuning: StickDeadzone.tuning(settings.tuning, preferences.stickDeadzone));
+    }
     final inputFile = p.join(paths.inputFilesFolder, '${game.slug}.ini');
     var written = true;
     try {
@@ -1612,6 +1702,8 @@ class AppModel extends ChangeNotifier {
         logFile: logFile,
         system: system,
         traced: traced,
+        // The controllers at the start, in the log a crash report reads.
+        notes: [for (final line in controllers.reportLines) '[anyps5-launcher] controllers: $line'],
       );
       starting = null;
       running = (game, run);
@@ -1915,6 +2007,10 @@ class AppModel extends ChangeNotifier {
         return;
       case Layer.crashReport:
         crash.command(command);
+        return;
+      case Layer.controllerTest:
+        // Only the keyboard and the mouse get here (the pads' buttons are being tried).
+        if (command == Command.back) closeControllerTest();
         return;
       case Layer.gallery:
         _galleryCommand(command);
@@ -2412,6 +2508,7 @@ class AppModel extends ChangeNotifier {
         ],
       ),
       PanelCategory(id: 'steam', title: T.text('steam'), rows: steam.settingsRows()),
+      PanelCategory(id: 'controllers', title: T.text('padTitle'), rows: controllers.rows()),
       PanelCategory(
         id: 'about',
         title: T.text('about'),

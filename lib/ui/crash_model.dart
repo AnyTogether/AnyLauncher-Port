@@ -169,6 +169,7 @@ class CrashModel {
       traced: last?.traced,
       started: last?.started,
       ended: last?.ended,
+      controllers: app.controllers.reportLines,
     );
     final built = await _buildAway(input);
     if (!identical(current, state)) return;
@@ -357,9 +358,11 @@ class _ReportInput {
     required this.traced,
     required this.started,
     required this.ended,
+    this.controllers = const [],
   });
 
   final String logFile;
+  final List<String> controllers;
   final String unlockFile;
   final String gameName;
   final String titleId;
@@ -408,6 +411,7 @@ _Built _build(_ReportInput input) {
     started: input.started,
     ended: input.ended,
     unlockLog: GameLog.read(input.unlockFile),
+    controllers: input.controllers,
   );
   return (
     report: report,

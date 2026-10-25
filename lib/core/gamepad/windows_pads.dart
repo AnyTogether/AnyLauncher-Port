@@ -29,9 +29,13 @@ typedef _JoyConfigChanged = int Function(int flags);
 /// plugged in later is found. XInput pads' motors give the launcher's pulses (XInputSetState);
 /// winmm has no force feedback, so a PlayStation pad read through it stays still.
 class WindowsPadSource implements PadSource, PadRumble, PadInventory {
-  WindowsPadSource({this.every = const Duration(milliseconds: 16)});
+  WindowsPadSource({this.every = const Duration(milliseconds: 16), this.steam = false});
 
   final Duration every;
+
+  /// Started from Steam: with an XInput pad there (Steam's virtual one), the PlayStation pads it
+  /// stands for are not also read through winmm.
+  final bool steam;
   static const _rescan = Duration(seconds: 2);
   static const _sonyVendor = 0x054C;
 
@@ -149,6 +153,15 @@ class WindowsPadSource implements PadSource, PadRumble, PadInventory {
     final getPos = _joyGetPosEx;
     final info = _joyInfo;
     if (getPos == null || info == null) return;
+    if (steam && _xinputConnected.isNotEmpty) {
+      for (final id in [..._sony.keys]) {
+        _sony.remove(id);
+        _sonyProducts.remove(id);
+        _gone('winmm$id');
+        _changed?.call();
+      }
+      return;
+    }
     if (rescan) _findSony();
     for (final entry in _sony.entries.toList()) {
       final id = entry.key;

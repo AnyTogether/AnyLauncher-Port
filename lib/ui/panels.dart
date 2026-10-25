@@ -225,15 +225,25 @@ class PanelView extends StatelessWidget {
                       if (categories.length > 1) ...[
                         SizedBox(
                           width: 250 * scale,
-                          child: Column(
-                            children: [
-                              for (var index = 0; index < categories.length; index++)
-                                _CategoryTab(
-                                  title: categories[index].title,
-                                  selected: index == model.panelCategory,
-                                  onTap: () => model.selectCategory(index),
-                                ),
-                            ],
+                          // Many categories in a short window: the list shrinks a little to fit
+                          // rather than losing its last ones.
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.topLeft,
+                            child: SizedBox(
+                              width: 250 * scale,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  for (var index = 0; index < categories.length; index++)
+                                    _CategoryTab(
+                                      title: categories[index].title,
+                                      selected: index == model.panelCategory,
+                                      onTap: () => model.selectCategory(index),
+                                    ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                         SizedBox(width: 28 * scale),

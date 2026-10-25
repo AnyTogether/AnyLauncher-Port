@@ -10,6 +10,7 @@ import '../core/together/levels.dart';
 import 'app_model.dart';
 import 'compare_view.dart';
 import 'components.dart';
+import 'controller_test_view.dart';
 import 'crash_report_view.dart';
 import 'drag_pan.dart';
 import 'glass.dart';
@@ -296,6 +297,7 @@ class _LauncherShellState extends State<LauncherShell> {
                                           Layer.library => LibraryGrid(model: model),
                                           Layer.log => LogView(model: model),
                                           Layer.crashReport => CrashReportView(model: model),
+                                          Layer.controllerTest => ControllerTestView(model: model),
                                           Layer.trophies => TrophyView(model: model),
                                           Layer.gallery => GalleryView(model: model),
                                           Layer.messages => WithBackPill(

@@ -55,6 +55,7 @@ abstract final class GameProcess {
     DateTime Function()? clock,
     bool traced = false,
     int logCap = GameLog.cap,
+    List<String> notes = const [],
   }) async {
     final host = system ?? HostSystem.current;
     final executable = p.join(installed, host.executableName);
@@ -66,6 +67,10 @@ abstract final class GameProcess {
     final log = CappedLog(logFile, cap: logCap);
     final started = (clock ?? DateTime.now)();
     log.writeln(GameLog.startLine(started, p.basename(installed), traced: traced));
+    // The launcher's own lines for this start (the controllers connected), after its start line.
+    for (final note in notes) {
+      log.writeln(note);
+    }
     final Process process;
     try {
       process = await Process.start(executable, arguments, workingDirectory: installed, environment: environment);

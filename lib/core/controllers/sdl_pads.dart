@@ -83,7 +83,11 @@ class SdlPadSource implements PadSource, PadRumble, PadInventory {
     this.steam = false,
     bool Function()? remapperRunning,
     this.platformDriver = 'SDL',
+    this.steamTookOver,
   }) : _remapper = remapperRunning ?? (() => false);
+
+  /// The controllers Steam Input took over, left to its virtual pad (SteamLaunch.skipPhysicalPad).
+  final bool Function(int vendor, int product)? steamTookOver;
 
   final SdlBackend backend;
   final Duration every;
@@ -184,7 +188,7 @@ class SdlPadSource implements PadSource, PadRumble, PadInventory {
         }
       }
     }
-    final visible = PadDuplicates.visible(_open.values.toList(), steam: steam, remapper: _remapper());
+    final visible = PadDuplicates.visible(_open.values.toList(), steam: steam, remapper: _remapper(), steamTookOver: steamTookOver);
     if (changed || visible.length != _visible.length) {
       // A pad hidden as a duplicate lets go of what it held.
       for (final pad in _visible) {

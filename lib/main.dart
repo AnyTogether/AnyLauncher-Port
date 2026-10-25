@@ -10,8 +10,8 @@ import 'core/desktop/desktop.dart';
 import 'core/desktop/linux_desktop.dart';
 import 'core/desktop/window_backdrop.dart';
 import 'core/desktop/windows_desktop.dart';
-import 'core/gamepad/linux_pads.dart';
-import 'core/gamepad/windows_pads.dart';
+import 'core/controllers/pad_reader.dart';
+import 'core/controllers/troubleshooter.dart';
 import 'core/app_update.dart';
 import 'core/host.dart';
 import 'core/release_signing.dart';
@@ -54,7 +54,9 @@ Future<void> main(List<String> arguments) async {
         repository: ArmToolkitPackage.repository,
         signingKeys: ReleaseSigning.trustedKeys,
       ),
-      pads: () => Platform.isWindows ? WindowsPadSource() : LinuxPadSource(),
+      // SDL2 (beside the launcher on Windows, the system's on Linux), else XInput and winmm or evdev.
+      pads: () => PadReader.open(arguments: arguments),
+      systemProbe: () => HostProbe(HostSystem.current),
       desktop: desktop,
       backdrop: backdrop,
     ),

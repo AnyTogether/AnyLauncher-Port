@@ -1,4 +1,5 @@
 import '../gamepad/pad_navigation.dart';
+import '../steam/steam_launch.dart';
 import 'pad_info.dart';
 
 /// SDL2's game controller numbers as the launcher's: buttons by place, its controller types as
@@ -132,18 +133,28 @@ abstract final class PadDuplicates {
   /// a real wired Xbox 360 pad has the same numbers, so it is told only while one runs).
   static bool isXbox360(PadInfo pad) => pad.vendor == PadKind.microsoft && pad.product == xbox360Product;
 
-  /// Launched from Steam (SteamAppId or SteamGameId in the environment, or --steam).
+  /// Launched from Steam (a shortcut's --steam, SteamGameId or SteamAppId): SteamLaunch's reading.
   static bool launchedFromSteam(Map<String, String> environment, List<String> arguments) =>
-      arguments.contains('--steam') ||
-      (environment['SteamAppId']?.isNotEmpty ?? false) ||
-      (environment['SteamGameId']?.isNotEmpty ?? false);
+      SteamLaunch.detect(arguments, environment).fromSteam;
 
   /// The pads to listen to: from Steam, its virtual pads stand for the real ones (the physical
   /// pads are left out while a virtual one is there); with DS4Windows or DualSenseX running, a
   /// PlayStation pad the launcher reads itself wins over the virtual Xbox 360 pad it is turned
   /// into (with HidHide hiding the real one, the virtual pad is all there is, and it stays).
-  static List<PadInfo> visible(List<PadInfo> pads, {required bool steam, required bool remapper}) {
+  static List<PadInfo> visible(
+    List<PadInfo> pads, {
+    required bool steam,
+    required bool remapper,
+    bool Function(int vendor, int product)? steamTookOver,
+  }) {
     var shown = pads;
+    // The real controllers Steam Input said it took over (SDL_GAMECONTROLLER_IGNORE_DEVICES).
+    if (steamTookOver != null) {
+      shown = [
+        for (final pad in shown)
+          if (pad.vendor == null || pad.product == null || !steamTookOver(pad.vendor!, pad.product!)) pad,
+      ];
+    }
     if (steam && shown.any(isSteamVirtual)) shown = [for (final pad in shown) if (isSteamVirtual(pad)) pad];
     if (remapper && shown.any((pad) => pad.kind.isPlayStation && !pad.virtual)) {
       shown = [for (final pad in shown) if (!isXbox360(pad)) pad];

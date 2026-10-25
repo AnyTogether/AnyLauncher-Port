@@ -440,6 +440,7 @@ class SessionReport {
     this.started,
     this.ended,
     this.unlockLog,
+    this.controllers = const [],
   }) : created = created ?? DateTime.now(),
        diagnosis = stoppedByUser ? null : Diagnosis.read(session, exitCode: exitCode);
 
@@ -475,6 +476,9 @@ class SessionReport {
 
   /// What the last unlock of the game printed.
   final String? unlockLog;
+
+  /// The controllers connected and the last connects and disconnects (PadLog.report).
+  final List<String> controllers;
   final Diagnosis? diagnosis;
 
   /// The log lines the copied text and the panel carry; the saved file has the whole start.
@@ -565,6 +569,7 @@ class SessionReport {
       '',
       'Settings: ${settings.reportSummary}',
       if (traced) 'Detailed logging: ${TraceMode.environment.entries.map((e) => '${e.key}=${e.value}').join(' ')}',
+      if (controllers.isNotEmpty) ...['', 'Controllers:', for (final line in controllers) '  $line'],
     ];
     final crash = Diagnosis.crashLines(session);
     if (crash.isNotEmpty) {
@@ -682,7 +687,15 @@ class IssueDraft {
       IssueField('reason', 'What happened', [report.reason, ...crash].join('\n')),
       IssueField('system', 'System', report.systemInfo.line),
       IssueField('versions', 'Versions', report.versionsLine),
-      IssueField('settings', 'Game settings', '${report.settings.reportSummary}\nSession: ${report.sessionLine}'),
+      IssueField(
+        'settings',
+        'Game settings',
+        [
+          report.settings.reportSummary,
+          'Session: ${report.sessionLine}',
+          if (report.controllers.firstOrNull case final controller?) 'Controller: $controller',
+        ].join('\n'),
+      ),
     ];
     return _fit(
       repository: launcherRepository,

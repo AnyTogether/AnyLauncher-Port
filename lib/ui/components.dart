@@ -586,6 +586,18 @@ class _PressableState extends State<Pressable> {
 class Hint extends StatelessWidget {
   const Hint({super.key, required this.keys, required this.label, this.glyph, this.action});
 
+  /// Settings › Controllers › Confirm Button is Circle: the hints show ○ to select and ✕ to go
+  /// back (AppModel sets it).
+  static bool circleConfirms = false;
+
+  PadGlyph? get _shownGlyph => !circleConfirms
+      ? glyph
+      : switch (glyph) {
+          PadGlyph.cross => PadGlyph.circle,
+          PadGlyph.circle => PadGlyph.cross,
+          final other => other,
+        };
+
   final String keys;
   final PadGlyph? glyph;
   final String label;
@@ -626,7 +638,7 @@ class Hint extends StatelessWidget {
                       ' / ',
                       style: AppText.display(12 * scale, weight: FontWeight.w700, color: color),
                     ),
-                    PadGlyphIcon(glyph!, size: 12 * scale, color: color),
+                    PadGlyphIcon(_shownGlyph!, size: 12 * scale, color: color),
                   ],
                 ],
               ),

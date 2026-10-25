@@ -6,9 +6,11 @@ import '../core/audio/tones.dart';
 import '../core/family/family_rules.dart' show TitleVerdict;
 import '../core/game_library.dart';
 import '../core/update_notice.dart' show SelfApply;
+import '../core/controllers/troubleshooter.dart';
 import 'app_model.dart';
 import 'background.dart';
 import 'components.dart';
+import 'controller_test_view.dart' show PadStatusPill;
 import 'drag_pan.dart';
 import 'glass.dart';
 import 'level_badge.dart';
@@ -370,6 +372,11 @@ class TopBar extends StatelessWidget {
           badge: together.partyBadge,
         ),
         SizedBox(width: 22 * scale),
+        // A controller running out of battery says so here (and in Settings › Controllers).
+        if (PadTroubleshooter.statusLine(model.controllers.pads) case final line?) ...[
+          PadStatusPill(text: line),
+          SizedBox(width: 12 * scale),
+        ],
         PhoneIndicator(model: model),
         SizedBox(width: 22 * scale),
         Stack(

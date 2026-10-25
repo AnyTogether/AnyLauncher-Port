@@ -1,3 +1,4 @@
+import 'strings_controllers.dart';
 import 'strings_family.dart';
 import 'strings_fonts.dart';
 import 'strings_steam.dart';
@@ -222,6 +223,7 @@ abstract final class T {
             ? _turkish[key] ??
                   togetherTurkish[key] ??
                   updatesTurkish[key] ??
+                  controllersTurkish[key] ??
                   familyTurkish[key] ??
                   fontsTurkish[key] ??
                   steamTurkish[key] ??
@@ -230,6 +232,7 @@ abstract final class T {
         _english[key] ??
         togetherEnglish[key] ??
         updatesEnglish[key] ??
+        controllersEnglish[key] ??
         familyEnglish[key] ??
         fontsEnglish[key] ??
         steamEnglish[key] ??

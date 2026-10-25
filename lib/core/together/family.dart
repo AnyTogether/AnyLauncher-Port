@@ -49,10 +49,14 @@ class FamilyClient {
       _ask({'kind': 'add_friend', 'handle': Friends.clean(handle), 'note': ?_note(note)});
 
   /// Today's limit was reached (the server tells the parents once a day).
-  Future<void> limitReached({String? titleId}) =>
-      account.call('POST', 'me/family/limit-reached', {'titleId': ?_title(titleId)});
+  /// (Awaited inside, so the future is a `Future<void>`: a catchError with no value works on it.)
+  Future<void> limitReached({String? titleId}) async {
+    await account.call('POST', 'me/family/limit-reached', {'titleId': ?_title(titleId)});
+  }
 
-  Future<void> _ask(Map<String, dynamic> body) => account.call('POST', 'me/family/requests', body);
+  Future<void> _ask(Map<String, dynamic> body) async {
+    await account.call('POST', 'me/family/requests', body);
+  }
 
   static final _titleId = RegExp(r'^[A-Z]{4}[0-9]{5}$');
 

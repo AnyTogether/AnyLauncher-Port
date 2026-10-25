@@ -24,6 +24,15 @@ In the trophy list, △ / Y (or O, or a click on **Show**) shows a hidden trophy
 description and icon until the list closes; △ again hides it. **Settings → Behaviour → Always
 Show Hidden Trophies** shows them all.
 
+### Party join codes and a Discord link
+
+A party's leader can make a join code (**Party → Make a join code**), shown as XXXX-XXXX, and
+copy it or its link for people who are not friends yet. Whoever has it asks to join; the
+leader lets them in or turns them down, and a yes is an invite they answer. **New code** and
+**Stop the code** replace or end it. **Party → Join with a code** shows whose party a code opens
+and asks to join it. The leader can also set the party's Discord link; everyone in the party
+gets **Open in Discord**.
+
 ### Controllers in the launcher
 
 A controller moves through the launcher as on the console, on Windows and Linux: the D-pad or

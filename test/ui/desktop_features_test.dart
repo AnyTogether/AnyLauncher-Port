@@ -35,6 +35,13 @@ class FakeDesktop implements DesktopWindows {
     return true;
   }
 
+  /// Whether the launcher's window is the one in front, as the desktop sees it (null: it cannot
+  /// tell).
+  bool? focused;
+
+  @override
+  bool? launcherFocused() => focused;
+
   @override
   Future<bool> applyDisplay(int pid, {required bool fullscreen, required int windowSize}) async {
     calls.add('display ${fullscreen ? 'fullscreen' : '$windowSize%'}');
@@ -92,6 +99,9 @@ class FakePads implements PadSource, PadRumble {
     send!(PadButtonEvent('pad', button, down: true));
     send!(PadButtonEvent('pad', button, down: false));
   }
+
+  void hold(PadButton button) => send!(PadButtonEvent('pad', button, down: true));
+  void release(PadButton button) => send!(PadButtonEvent('pad', button, down: false));
 }
 
 void main() {
@@ -153,6 +163,58 @@ void main() {
       expect(desktop.calls, ['raise']);
     });
 
+    test('a game in front keeps the pad out of the launcher, even while Flutter says it has the focus', () {
+      // What happened on Windows: the launcher still thought it was in front behind the game,
+      // and Cross in the game pressed what the launcher had focused.
+      expect(model.active, isTrue);
+      desktop.focused = false;
+      final selected = model.selected;
+      pads.press(PadButton.r1);
+      pads.press(PadButton.dpadRight);
+      pads.press(PadButton.south);
+      pads.press(PadButton.north);
+      expect(model.selected, selected);
+      expect(model.overlay, isNull);
+      expect(model.focus, HomeFocus.tiles);
+      expect(desktop.calls, isEmpty);
+      pads.press(PadButton.guide);
+      expect(desktop.calls, ['raise'], reason: 'PS still brings the launcher in front');
+    });
+
+    test('back in front, what was held in the game waits to be let go', () {
+      desktop.focused = false;
+      pads.hold(PadButton.north);
+      pads.hold(PadButton.dpadDown);
+      desktop.focused = true;
+      pads.release(PadButton.north);
+      pads.release(PadButton.dpadDown);
+      expect(model.overlay, isNull, reason: 'Triangle went down in the game: letting go of it opens nothing');
+      expect(model.focus, HomeFocus.tiles);
+      pads.press(PadButton.north);
+      expect(model.overlay, Layer.gameSettings, reason: 'a new press counts');
+    });
+
+    test('the PS press that brought the launcher in front does not act in it again', () {
+      model.open(Layer.settings);
+      desktop.focused = false;
+      pads.hold(PadButton.guide);
+      expect(desktop.calls, ['raise']);
+      desktop.focused = true;
+      pads.release(PadButton.guide);
+      expect(model.overlay, Layer.settings, reason: 'PS in front closes a layer; letting go of it does not');
+      expect(desktop.calls, ['raise']);
+    });
+
+    test('a desktop that cannot tell leaves it to Flutter\'s focus', () {
+      desktop.focused = null;
+      final selected = model.selected;
+      pads.press(PadButton.r1);
+      expect(model.selected, selected + 1);
+      model.setActive(false);
+      pads.press(PadButton.r1);
+      expect(model.selected, selected + 1);
+    });
+
     test('while a game runs, PS goes from the game to the launcher and back', () async {
       final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
       final installed = Installer.installedFolder(orbit, model.root!);
@@ -176,10 +238,12 @@ void main() {
     late Fixture fixture;
     late AppModel model;
     late FakePads pads;
+    late FakeDesktop desktop;
 
     setUp(() {
       pads = FakePads();
-      fixture = makeFixture(pads: () => pads);
+      desktop = FakeDesktop();
+      fixture = makeFixture(pads: () => pads, desktop: desktop);
       model = fixture.model..startPads();
     });
 
@@ -228,6 +292,21 @@ void main() {
       model.haptics.enabled = false;
       pads.press(PadButton.east);
       expect(await felt(), isEmpty);
+    });
+
+    test('no pulse with a game in front, even while Flutter says the launcher has the focus', () async {
+      pads.press(PadButton.north);
+      pads.press(PadButton.east);
+      await felt();
+      desktop.focused = false;
+      model.vibrate(HapticCue.trophy);
+      model.vibrate(HapticCue.ring);
+      pads.press(PadButton.south);
+      pads.press(PadButton.dpadLeft);
+      expect(await felt(), isEmpty, reason: 'the game owns the pad');
+      desktop.focused = true;
+      pads.press(PadButton.north);
+      expect(await felt(), isNotEmpty, reason: 'back in front, the pad pulses again');
     });
 
     test('Controller Vibration is a Behaviour setting, on by default, kept', () {

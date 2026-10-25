@@ -370,6 +370,29 @@ class LinuxDesktop implements DesktopWindows {
   @override
   Future<bool> raiseLauncher() => _activate(pid);
 
+  /// A display connection kept for [launcherFocused], which is asked at every controller event.
+  Pointer<Void>? _focusDisplay;
+
+  /// On X11, whether the window the window manager says is active (_NET_ACTIVE_WINDOW) is this
+  /// process's (its _NET_WM_PID); the trophy card is override-redirect and never active. Null on
+  /// Wayland or without a window manager that says.
+  @override
+  bool? launcherFocused() {
+    final x = _x;
+    if (x == null) return null;
+    final display = _focusDisplay ??= x.openDisplay(nullptr);
+    if (display == nullptr) return null;
+    return using((arena) {
+      final root = x.rootWindow(display, x.defaultScreen(display));
+      final active = _property(x, display, arena, root, '_NET_ACTIVE_WINDOW');
+      if (active == null) return null;
+      if (active.isEmpty || active.first == 0) return false;
+      final pids = _property(x, display, arena, active.first, '_NET_WM_PID');
+      if (pids == null || pids.isEmpty) return false;
+      return pids.first == pid;
+    });
+  }
+
   @override
   Future<bool> focusGame(int pid) => _activate(pid);
 
@@ -578,7 +601,11 @@ class LinuxDesktop implements DesktopWindows {
   }
 
   @override
-  void dispose() {}
+  void dispose() {
+    final display = _focusDisplay;
+    _focusDisplay = null;
+    if (display != null && display != nullptr) _x?.closeDisplay(display);
+  }
 }
 
 /// The launcher window's see-through backdrop on Linux. The runner gives the window an RGBA

@@ -831,8 +831,24 @@ String byteText(int? bytes) {
   return unit == 0 ? '$bytes B' : '${value.toStringAsFixed(value >= 100 ? 0 : 1)} ${units[unit]}';
 }
 
+/// Whether the focus was last moved by the pointer (a hover or a click), which [KeepVisible]
+/// leaves where it is; the launcher's shell gives it.
+class PointerFocus extends InheritedWidget {
+  const PointerFocus({super.key, required this.value, required super.child});
+
+  final bool value;
+
+  static bool of(BuildContext context) => context.getInheritedWidgetOfExactType<PointerFocus>()?.value ?? false;
+
+  @override
+  bool updateShouldNotify(PointerFocus oldWidget) => false;
+}
+
 /// Scrolls its child into view whenever [active] turns true, so a keyboard focus that moves
-/// down a long list stays on screen.
+/// down a long list stays on screen. A focus the pointer moved ([PointerFocus]) never scrolls:
+/// the row under the mouse is already in view, and a list that scrolled to it would slide
+/// another row under the mouse, which would take the focus and scroll again (the list chased
+/// the pointer).
 class KeepVisible extends StatefulWidget {
   const KeepVisible({super.key, required this.active, required this.child});
 
@@ -847,7 +863,7 @@ class _KeepVisibleState extends State<KeepVisible> {
   @override
   void didUpdateWidget(KeepVisible oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.active && !oldWidget.active) {
+    if (widget.active && !oldWidget.active && !PointerFocus.of(context)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         Scrollable.ensureVisible(

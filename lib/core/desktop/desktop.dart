@@ -56,6 +56,12 @@ abstract class DesktopWindows {
   /// The game's window in front again, with the keyboard.
   Future<bool> focusGame(int pid);
 
+  /// Whether one of the launcher's own windows is the one in front (has the keyboard): false
+  /// while a game's window or any other program's is, and for the trophy card, which never takes
+  /// input. Asked at each controller event, so it is quick. Null where this desktop cannot tell
+  /// (Wayland, tests): then the window focus Flutter reports is all there is.
+  bool? launcherFocused();
+
   /// For an engine that does not read ANYPS5_FULLSCREEN and ANYPS5_WINDOW_SIZE (upstream's):
   /// once the game's window opens, sizes it to [windowSize] percent of its screen, or presses
   /// F11 for it (upstream's own full-screen key). Returns whether it could.
@@ -86,6 +92,8 @@ class NoDesktop implements DesktopWindows {
   Future<bool> raiseLauncher() async => false;
   @override
   Future<bool> focusGame(int pid) async => false;
+  @override
+  bool? launcherFocused() => null;
   @override
   Future<bool> applyDisplay(int pid, {required bool fullscreen, required int windowSize}) async => false;
   @override

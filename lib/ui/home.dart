@@ -9,6 +9,7 @@ import '../core/update_notice.dart' show SelfApply;
 import 'app_model.dart';
 import 'background.dart';
 import 'components.dart';
+import 'drag_pan.dart';
 import 'glass.dart';
 import 'level_badge.dart';
 import 'panels.dart' show PersonAvatar;
@@ -530,82 +531,157 @@ class TileRow extends StatelessWidget {
     final gap = 16 * scale;
     final label = 300 * scale;
     final leading = 64 * scale;
-    return SizedBox(
-      height: large + 10 * scale,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          for (var index = 0; index < model.games.length; index++)
-            ...() {
-              final game = model.games[index];
-              final selected = index == model.selected;
-              final offset = index - model.selected;
-              final x = offset < 0
-                  ? leading + offset * (small + gap)
-                  : offset == 0
-                  ? leading
-                  : leading + large + gap + label + (offset - 1) * (small + gap);
-              final size = selected ? large : small;
-              return [
-                AnimatedPositioned(
-                  key: ValueKey('tile-${game.id}'),
-                  duration: Motion.layout,
-                  curve: Motion.settle,
-                  left: x,
-                  top: selected ? 0 : (large - small) * 0.18,
-                  width: size,
-                  height: size,
-                  child: AnimatedOpacity(
+    return _TileDrag(
+      model: model,
+      step: small + gap,
+      child: SizedBox(
+        height: large + 10 * scale,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            for (var index = 0; index < model.games.length; index++)
+              ...() {
+                final game = model.games[index];
+                final selected = index == model.selected;
+                final offset = index - model.selected;
+                final x = offset < 0
+                    ? leading + offset * (small + gap)
+                    : offset == 0
+                    ? leading
+                    : leading + large + gap + label + (offset - 1) * (small + gap);
+                final size = selected ? large : small;
+                return [
+                  AnimatedPositioned(
+                    key: ValueKey('tile-${game.id}'),
                     duration: Motion.layout,
-                    opacity: offset < 0 ? 0 : 1,
-                    // A click selects at once (a GestureDetector with a double tap would wait to
-                    // see whether a second click comes); a second click plays.
-                    child: Pressable(
-                      key: ValueKey('tile-press-${game.id}'),
-                      onTap: () {
-                        if (model.selected != index) model.sounds.play(Cue.move);
-                        model.select(index);
-                      },
-                      onDoubleTap: () {
-                        model.select(index);
-                        model.primaryAction(game);
-                      },
-                      builder: (context, _) => GameTile(
-                        model: model,
-                        game: game,
-                        size: size,
-                        focused: selected && model.focus.isTiles && model.overlay == null,
+                    curve: Motion.settle,
+                    left: x,
+                    top: selected ? 0 : (large - small) * 0.18,
+                    width: size,
+                    height: size,
+                    child: AnimatedOpacity(
+                      duration: Motion.layout,
+                      opacity: offset < 0 ? 0 : 1,
+                      // A click selects at once (a GestureDetector with a double tap would wait to
+                      // see whether a second click comes); a second click plays.
+                      child: Pressable(
+                        key: ValueKey('tile-press-${game.id}'),
+                        onTap: () {
+                          if (model.selected != index) model.sounds.play(Cue.move);
+                          model.select(index);
+                        },
+                        onDoubleTap: () {
+                          model.select(index);
+                          model.primaryAction(game);
+                        },
+                        builder: (context, _) => GameTile(
+                          model: model,
+                          game: game,
+                          size: size,
+                          focused: selected && model.focus.isTiles && model.overlay == null,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                if (selected)
-                  Positioned(
-                    key: ValueKey('label-${game.id}'),
-                    left: leading + large + gap * 1.4,
-                    top: large * 0.32,
-                    width: label - gap,
-                    child: Legible(
-                      softness: 12,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            game.nameFor([T.language.code]),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppText.display(22 * scale, weight: FontWeight.w600),
-                          ),
-                          SizedBox(height: 6 * scale),
-                          StateLabel(model: model, state: model.stateOf(game)),
-                        ],
+                  if (selected)
+                    Positioned(
+                      key: ValueKey('label-${game.id}'),
+                      left: leading + large + gap * 1.4,
+                      top: large * 0.32,
+                      width: label - gap,
+                      child: Legible(
+                        softness: 12,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              game.nameFor([T.language.code]),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppText.display(22 * scale, weight: FontWeight.w600),
+                            ),
+                            SizedBox(height: 6 * scale),
+                            StateLabel(model: model, state: model.stateOf(game)),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-              ];
-            }(),
-        ],
+                ];
+              }(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The tile row dragged with the mouse: every tile's width dragged moves the selection one game
+/// (left for the next, as a finger drags), the row leaning a little after the pointer meanwhile;
+/// let go fast, it carries on a few games, as a list glides.
+class _TileDrag extends StatefulWidget {
+  const _TileDrag({required this.model, required this.step, required this.child});
+
+  final AppModel model;
+
+  /// The pixels one game takes in the row.
+  final double step;
+  final Widget child;
+
+  @override
+  State<_TileDrag> createState() => _TileDragState();
+}
+
+class _TileDragState extends State<_TileDrag> {
+  /// Dragged since the selection last moved.
+  double _pending = 0;
+  bool _dragging = false;
+
+  /// How far a fast release carries on: the distance a quarter of a second at that speed covers.
+  static const _glide = 0.25;
+  static const _maxGlide = 8;
+
+  void _update(DragUpdateDetails details) {
+    final step = widget.step;
+    var pending = _pending + (details.primaryDelta ?? details.delta.dx);
+    while (pending <= -step) {
+      pending += step;
+      widget.model.moveSelection(1);
+    }
+    while (pending >= step) {
+      pending -= step;
+      widget.model.moveSelection(-1);
+    }
+    setState(() => _pending = pending);
+  }
+
+  void _end(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    final games = (-velocity * _glide / widget.step).round().clamp(-_maxGlide, _maxGlide);
+    if (games != 0) widget.model.moveSelection(games);
+    _settle();
+  }
+
+  void _settle() => setState(() {
+    _dragging = false;
+    _pending = 0;
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DragPanRegion(
+      axis: Axis.horizontal,
+      canPan: () => widget.model.games.length > 1,
+      onStart: (_) => setState(() => _dragging = true),
+      onUpdate: _update,
+      onEnd: _end,
+      onCancel: _settle,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(end: _dragging ? _pending * 0.4 : 0),
+        duration: _dragging ? Duration.zero : Motion.layout,
+        curve: Motion.settle,
+        builder: (context, lean, child) => Transform.translate(offset: Offset(lean, 0), child: child),
+        child: widget.child,
       ),
     );
   }

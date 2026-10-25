@@ -265,6 +265,19 @@ class WindowsDesktop implements DesktopWindows {
     return _bringToFront(windowOf(pid));
   }
 
+  late final Pointer<Uint32> _frontOwner = calloc<Uint32>();
+
+  /// The window in front belongs to this process (and is not the card, which never takes input).
+  /// A few microseconds: asked at every controller event.
+  @override
+  bool? launcherFocused() {
+    final front = _w.getForegroundWindow();
+    // No window in front (a switch going on, the lock screen): not the launcher.
+    if (front == 0 || (front == _card && _card != 0)) return false;
+    _w.getWindowThreadProcessId(front, _frontOwner);
+    return _frontOwner.value == _w.getCurrentProcessId();
+  }
+
   /// Waits for the game's first window: a game can take a while to open it.
   Future<int> _waitForWindow(int pid, {Duration timeout = const Duration(minutes: 3)}) async {
     final end = DateTime.now().add(timeout);

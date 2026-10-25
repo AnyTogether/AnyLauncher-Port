@@ -19,6 +19,7 @@ import '../core/desktop/window_backdrop.dart';
 import '../core/font_download.dart';
 import '../core/family/family_rules.dart' show TitleVerdict;
 import '../core/gamepad/feel.dart';
+import '../core/gamepad/pad_gate.dart';
 import '../core/gamepad/pad_navigation.dart';
 import '../core/game_library.dart';
 import '../core/game_log.dart';
@@ -631,11 +632,18 @@ class AppModel extends ChangeNotifier {
   void _cueAsked(Cue cue) {
     if (cue != Cue.hover) _lastCue = feelNow;
     final haptic = HapticCue.forSound(cue.name);
-    if (haptic != null) haptics.play(haptic, now: feelNow);
+    if (haptic != null) _pulse(haptic);
   }
 
   /// A pulse told on its own: a trophy, an invitation, an error.
-  void vibrate(HapticCue cue) => haptics.play(cue, now: feelNow);
+  void vibrate(HapticCue cue) => _pulse(cue);
+
+  /// A pulse, only while the launcher is in front: asked of the desktop each time, as Flutter's
+  /// own report of the window's focus is not enough on its own (see [launcherInFront]).
+  void _pulse(HapticCue cue) {
+    haptics.launcherInFront = launcherInFront;
+    haptics.play(cue, now: feelNow);
+  }
 
   /// The keyboard or the mouse was used: the controller on the desk stays still.
   void usedKeyboard() => haptics.padInUse = false;
@@ -660,6 +668,11 @@ class AppModel extends ChangeNotifier {
   /// A command from the keys or a controller: handled, and a direction that did nothing bumps
   /// (once per press, once in a hold that reaches the end).
   void command(Command command, {bool repeat = false}) {
+    if (pointerFocus) {
+      // The keys or the pad move the focus from here: the lists follow it again.
+      pointerFocus = false;
+      notifyListeners();
+    }
     final mark = _focusMark();
     final asked = sounds.requests;
     handle(command);
@@ -677,13 +690,23 @@ class AppModel extends ChangeNotifier {
   /// The pointer arrived on a control, tile, row or card: the quiet tick, when [HoverGate] lets
   /// it.
   void hoverArrived(Object id, {required double x, required double y, required bool buttonsDown}) {
-    final allowed = preferences.sounds && active && preferences.onboarded;
+    // Not while a list is dragged or still gliding after one: rows passing under the pointer
+    // are not arrivals.
+    final allowed = preferences.sounds && active && preferences.onboarded && !panning;
     if (_hover.arrive(id, x: x, y: y, now: feelNow, lastCue: _lastCue, buttonsDown: buttonsDown, allowed: allowed)) {
       sounds.play(Cue.hover);
     }
   }
 
   void hoverLeft(Object id) => _hover.leave(id);
+
+  /// A list is being dragged with the mouse, or still gliding after it: no hover ticks.
+  bool panning = false;
+
+  /// The focus was last moved by the pointer (a row hovered or clicked), not by the keys or a
+  /// controller: the lists stay where they are ([KeepVisible] scrolls only for the keys and the
+  /// pad, so a list never chases the mouse).
+  bool pointerFocus = false;
 
   late final AudioOut _audio = services.audio?.call() ?? const SilentAudio();
 
@@ -713,8 +736,11 @@ class AppModel extends ChangeNotifier {
   void setActive(bool value) {
     if (active == value) return;
     active = value;
-    // Behind a game (or any other window) the pad is the game's: the motors stop at once.
+    // Behind a game (or any other window) the pad is the game's: the motors stop at once, and a
+    // direction held on it lets go.
     haptics.launcherInFront = value;
+    _padLog?.call('window ${value ? 'in front' : 'behind'} (Flutter)');
+    if (!value) _gate?.close();
     if (value) updates.activated();
     // Back in front: a toolkit rebuilt meanwhile is read again.
     if (value) _forgetDiskFacts();
@@ -740,16 +766,56 @@ class AppModel extends ChangeNotifier {
 
   PadSource? _pads;
   PadNavigator? _navigator;
+  PadGate? _gate;
 
-  /// Reads the controllers: their moves become the same commands as the keys.
+  /// Whether the launcher is in front: Flutter says its window has the focus and, where the
+  /// desktop can tell (Windows, X11), the window in front is the launcher's. The controller is
+  /// read whichever window is in front, so this is what keeps a game's pad out of the launcher;
+  /// Flutter's focus report alone let the presses through on Windows while a game was played.
+  bool get launcherInFront => active && (desktop.launcherFocused() ?? true);
+
+  /// A line for the controller's debug log: ANYPS5_PAD_LOG names a file to add them to.
+  late final void Function(String line)? _padLog = () {
+    final path = (services.environment ?? Platform.environment)['ANYPS5_PAD_LOG'];
+    if (path == null || path.isEmpty) return null;
+    return (String line) {
+      try {
+        File(path).writeAsStringSync(
+          '${DateTime.now().toIso8601String()} $line (focus ${active ? 'resumed' : 'inactive'}, '
+          'desktop ${desktop.launcherFocused()})\n',
+          mode: FileMode.append,
+        );
+      } on FileSystemException {
+        // The log is a help, never a reason to stop.
+      }
+    };
+  }();
+
+  /// Reads the controllers: their moves become the same commands as the keys, while the
+  /// launcher is in front ([PadGate]).
   void startPads() {
     if (_pads != null) return;
     final source = services.pads?.call();
     if (source == null) return;
     final navigator = PadNavigator(padCommand);
     _navigator = navigator;
-    _pads = source..start(navigator.handle);
+    final gate = PadGate(navigator.handle, inFront: () => launcherInFront, log: _padLog);
+    _gate = gate;
+    _pads = source..start(gate.handle);
+    if (_padLog case final log?) {
+      log('pad: reading ${source.description}');
+      // For the log, what the desktop says as it changes, controller or not.
+      bool? said;
+      _focusWatch = Timer.periodic(const Duration(milliseconds: 500), (_) {
+        final now = desktop.launcherFocused();
+        if (now == said) return;
+        said = now;
+        log('desktop: launcher ${now == null ? 'cannot tell' : (now ? 'in front' : 'behind')}');
+      });
+    }
   }
+
+  Timer? _focusWatch;
 
   /// A controller command. With the launcher behind a game (or another window) only PS/Guide
   /// counts: it brings the launcher in front, as on the Mac.
@@ -766,7 +832,7 @@ class AppModel extends ChangeNotifier {
       PadCommand.nextGame => Command.nextGame,
       PadCommand.home => Command.home,
     };
-    if (!active && mapped != Command.home) return;
+    if (mapped != Command.home && !launcherInFront) return;
     haptics.padInUse = true;
     _pulses.pad = _navigator?.lastPad;
     if (editingRow != null) return;
@@ -1757,11 +1823,12 @@ class AppModel extends ChangeNotifier {
     if (!preferences.onboarded) return _onboardingCommand(command);
     if (command == Command.home) {
       // PS/Guide: from the game to the launcher and back; behind another window, to the front.
+      final front = launcherInFront;
       if (running case (_, final RunningGame run)) {
-        unawaited(active ? desktop.focusGame(run.pid) : desktop.raiseLauncher());
+        unawaited(front ? desktop.focusGame(run.pid) : desktop.raiseLauncher());
         return;
       }
-      if (!active) {
+      if (!front) {
         unawaited(desktop.raiseLauncher());
         return;
       }
@@ -2667,6 +2734,7 @@ class AppModel extends ChangeNotifier {
     final rows = _currentRows;
     if (index < 0 || index >= rows.length || !rows[index].focusable) return;
     panelRow = index;
+    pointerFocus = true;
     handle(Command.select);
   }
 
@@ -2674,6 +2742,7 @@ class AppModel extends ChangeNotifier {
   void stepRow(int index, int delta) {
     final rows = _currentRows;
     if (index < 0 || index >= rows.length || !rows[index].focusable) return;
+    pointerFocus = true;
     if (panelRow != index) {
       panelRow = index;
       _changed();
@@ -2681,11 +2750,12 @@ class AppModel extends ChangeNotifier {
     handle(delta < 0 ? Command.left : Command.right);
   }
 
-  /// The pointer moved over a row: the focus follows it, quietly.
+  /// The pointer moved over a row: the focus follows it, quietly, and the list stays put.
   void hoverRow(int index) {
     final rows = _currentRows;
     if (index == panelRow || index < 0 || index >= rows.length || !rows[index].focusable) return;
     panelRow = index;
+    pointerFocus = true;
     _changed();
   }
 
@@ -2693,6 +2763,7 @@ class AppModel extends ChangeNotifier {
   void hoverLibrary(int index) {
     if (index == libraryIndex || index < 0 || index >= games.length) return;
     libraryIndex = index;
+    pointerFocus = true;
     _changed();
   }
 
@@ -2700,6 +2771,7 @@ class AppModel extends ChangeNotifier {
   void hoverTrophy(int index) {
     if (index == trophyIndex || index < 0) return;
     trophyIndex = index;
+    pointerFocus = true;
     _changed();
   }
 
@@ -3094,6 +3166,7 @@ class AppModel extends ChangeNotifier {
     _toastTimer?.cancel();
     _pulses.stop();
     _pads?.stop();
+    _focusWatch?.cancel();
     _navigator?.dispose();
     _installer?.cancel();
     engine.cancel();

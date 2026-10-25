@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../core/desktop/window_backdrop.dart';
+import 'components.dart' show LayoutScale;
 import 'theme.dart';
 
 /// The Glass look's recipe: frosted ice over a cold background. Every surface is layered glass
@@ -120,8 +121,10 @@ abstract final class GlassRecipe {
 }
 
 /// The Glass look's window: see-through to the desktop and the windows behind it (blurred by the
-/// system where it blurs), under a navy tint that keeps the text readable whatever is back
-/// there. The macOS launcher keeps the same numbers.
+/// system where it blurs) under a light navy tint, so the wallpaper's colors glow through. The
+/// text is kept readable where it sits, not by darkening the whole window: on plates (a soft dark
+/// plate behind bare text, the cards' and buttons' own glass), each dark enough on its own. The
+/// macOS launcher keeps the same numbers.
 class GlassWindow {
   const GlassWindow._(this.seeThrough, this.tint, this.blurred);
 
@@ -139,13 +142,20 @@ class GlassWindow {
   /// Settings → Appearance → Glass Transparency when it has not been moved, in percent.
   static const defaultTransparency = 90;
 
-  /// The least tint over a blurred desktop: white text keeps WCAG AA (4.5:1) and 70 % white text
-  /// 3:1 over a pure white desktop (a white window behind, a snowy wallpaper), counting nothing
-  /// for the blur, so the screen behind never has to be read.
-  static final double tintFloor = () {
+  /// The tint at 100 % over a blurred desktop: a breath of navy, so the glass still reads blue.
+  static const minimumTint = 0.04;
+
+  /// Over a desktop the system does not blur, its detail stays sharp: more tint calms it.
+  static const sharpMinimumTint = 0.3;
+
+  /// The least a plate under text lays over the desktop: white text keeps WCAG AA (4.5:1) and
+  /// 70 % white text 3:1 over a pure white desktop (a white window behind, a snowy wallpaper),
+  /// counting nothing for the window's tint or the blur, so the screen behind never has to be
+  /// read.
+  static final double plateFloor = () {
     const white = Color(0xFFFFFFFF);
-    bool reads(double tint) {
-      final behind = GlassRecipe.over(GlassRecipe.layer, tint, white);
+    bool reads(double plate) {
+      final behind = GlassRecipe.over(GlassRecipe.layer, plate, white);
       return Contrast.ratio(white, behind) >= 4.5 && Contrast.ratio(GlassRecipe.over(white, 0.7, behind), behind) >= 3;
     }
 
@@ -156,12 +166,12 @@ class GlassWindow {
     return steps / 100;
   }();
 
-  /// Over a desktop the system does not blur, its detail stays sharp behind the text: more tint.
-  static const sharpFloor = 0.8;
+  /// The plates' core as drawn: over the floor, for a soft plate's fading edge.
+  static const plateOpacity = 0.62;
 
-  /// The tint at [transparency] percent: 100 is the floor, 0 a solid pane.
+  /// The tint at [transparency] percent: 100 is the minimum, 0 a solid pane.
   static double tintAt(int transparency, {bool blurred = true}) {
-    final floor = blurred ? tintFloor : sharpFloor;
+    final floor = blurred ? minimumTint : sharpMinimumTint;
     final fraction = transparency.clamp(0, 100) / 100;
     return floor + (1 - floor) * (1 - fraction);
   }
@@ -187,9 +197,9 @@ class GlassWindow {
   int get hashCode => Object.hash(seeThrough, tint, blurred);
 }
 
-/// The bottom of Glass's see-through window, over the desktop the system shows: the navy tint,
-/// deeper where the hero text and the hints sit (the lower left), light from the top left, a
-/// breath of cyan at the bottom and the still frost.
+/// The bottom of Glass's see-through window, over the desktop the system shows: the light navy
+/// tint, light from the top left, a breath of cyan at the bottom and the still frost. No veil:
+/// the text reads on its plates (Legible, the glass).
 class GlassTintPainter extends CustomPainter {
   const GlassTintPainter(this.tint);
 
@@ -199,16 +209,6 @@ class GlassTintPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
     canvas.drawRect(rect, Paint()..color = GlassRecipe.layer.withValues(alpha: tint));
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.bottomLeft,
-          end: Alignment.topRight,
-          colors: [GlassRecipe.layer.withValues(alpha: 0.28), GlassRecipe.layer.withValues(alpha: 0)],
-          stops: const [0, 0.55],
-        ).createShader(rect),
-    );
     canvas.drawRect(
       rect,
       Paint()
@@ -232,6 +232,48 @@ class GlassTintPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(GlassTintPainter oldDelegate) => oldDelegate.tint != tint;
+}
+
+/// Bare text on Glass's see-through window (a title, the clock, the hints): a soft dark plate
+/// behind it, dark enough at its core for the text on its own over a white desktop
+/// (GlassWindow.plateFloor), fading out beyond it. Elsewhere nothing changes.
+class Legible extends StatelessWidget {
+  const Legible({super.key, this.softness = 18, required this.child});
+
+  final double softness;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!LookScope.isSeeThrough(context)) return child;
+    final soft = softness * LayoutScale.of(context);
+    // A plate reaching 1.8 soft past the text, blurred with a sigma of 1.15 soft: its edge is
+    // halved, under the text it is still over 0.94 of its fill.
+    final reach = soft * 1.8;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned(
+          left: -reach,
+          top: -reach,
+          right: -reach,
+          bottom: -reach,
+          child: IgnorePointer(
+            child: ImageFiltered(
+              imageFilter: ui.ImageFilter.blur(sigmaX: soft * 1.15, sigmaY: soft * 1.15, tileMode: TileMode.decal),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: GlassRecipe.layer.withValues(alpha: GlassWindow.plateOpacity + 0.04),
+                  borderRadius: BorderRadius.circular(reach),
+                ),
+              ),
+            ),
+          ),
+        ),
+        child,
+      ],
+    );
+  }
 }
 
 /// How the interface below is drawn: the Glass look, whether its glass is solid, and whether the
@@ -340,6 +382,8 @@ class IceSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final solid = LookScope.isSolid(context);
+    // On the see-through window a surface is a plate that its text reads on alone.
+    final base = LookScope.isSeeThrough(context) ? math.max(opacity, GlassWindow.plateOpacity) : opacity;
     return TweenAnimationBuilder<double>(
       tween: Tween(end: focused ? 1 : 0),
       duration: Motion.focus,
@@ -347,7 +391,7 @@ class IceSurface extends StatelessWidget {
       child: Container(width: width, height: height, constraints: constraints, padding: padding, child: child),
       builder: (context, t, content) {
         Widget body = CustomPaint(
-          painter: _IceFill(radius: radius, focus: t, solid: solid, opacity: opacity, hover: hover, sheen: sheen),
+          painter: _IceFill(radius: radius, focus: t, solid: solid, opacity: base, hover: hover, sheen: sheen),
           foregroundPainter: rim == 0 && t == 0 ? null : _IceRim(radius: radius, focus: t, strength: rim),
           child: content,
         );

@@ -143,7 +143,10 @@ class HomeView extends StatelessWidget {
               ),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 64 * scale, vertical: 28 * scale),
-              child: const Align(alignment: Alignment.centerRight, child: HintBar()),
+              child: const Align(
+                alignment: Alignment.centerRight,
+                child: Legible(softness: 14, child: HintBar()),
+              ),
             ),
           ],
         ],
@@ -326,7 +329,10 @@ class TopBar extends StatelessWidget {
 
     return Row(
       children: [
-        Text(T.text('games'), style: AppText.display(24 * scale, weight: FontWeight.w600)),
+        Legible(
+          softness: 14,
+          child: Text(T.text('games'), style: AppText.display(24 * scale, weight: FontWeight.w600)),
+        ),
         if (model.scanning) ...[
           SizedBox(width: 16 * scale),
           SizedBox(
@@ -407,28 +413,41 @@ class TopBar extends StatelessWidget {
           ],
         ),
         SizedBox(width: 10 * scale),
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              name,
-              style: AppText.display(16 * scale, weight: FontWeight.w500, color: Colors.white.withValues(alpha: 0.9)),
-            ),
-            if (offline)
-              Text(
-                T.text('presenceAppearing'),
-                style: AppText.display(
-                  12 * scale,
-                  weight: FontWeight.w500,
-                  color: Colors.white.withValues(alpha: 0.55),
-                ),
+        // The name, the level and the clock share one plate.
+        Legible(
+          softness: 12,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: AppText.display(
+                      16 * scale,
+                      weight: FontWeight.w500,
+                      color: Colors.white.withValues(alpha: 0.9),
+                    ),
+                  ),
+                  if (offline)
+                    Text(
+                      T.text('presenceAppearing'),
+                      style: AppText.display(
+                        12 * scale,
+                        weight: FontWeight.w500,
+                        color: Colors.white.withValues(alpha: 0.55),
+                      ),
+                    ),
+                ],
               ),
-          ],
+              if (level != null) ...[SizedBox(width: 10 * scale), LevelBadgeView(level: level, size: 30 * scale)],
+              SizedBox(width: 22 * scale),
+              Clock(now: now),
+            ],
+          ),
         ),
-        if (level != null) ...[SizedBox(width: 10 * scale), LevelBadgeView(level: level, size: 30 * scale)],
-        SizedBox(width: 22 * scale),
-        Clock(now: now),
       ],
     );
   }
@@ -566,18 +585,22 @@ class TileRow extends StatelessWidget {
                     left: leading + large + gap * 1.4,
                     top: large * 0.32,
                     width: label - gap,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          game.nameFor([T.language.code]),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppText.display(22 * scale, weight: FontWeight.w600),
-                        ),
-                        SizedBox(height: 6 * scale),
-                        StateLabel(model: model, state: model.stateOf(game)),
-                      ],
+                    child: Legible(
+                      softness: 12,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            game.nameFor([T.language.code]),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.display(22 * scale, weight: FontWeight.w600),
+                          ),
+                          SizedBox(height: 6 * scale),
+                          StateLabel(model: model, state: model.stateOf(game)),
+                        ],
+                      ),
                     ),
                   ),
               ];
@@ -766,15 +789,18 @@ class HeroInfo extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          game.nameFor([T.language.code]),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: AppText.display(
-            58 * scale,
-            weight: FontWeight.w300,
-            height: 1.08,
-          ).copyWith(shadows: [Shadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 12)]),
+        Legible(
+          softness: 26,
+          child: Text(
+            game.nameFor([T.language.code]),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppText.display(
+              58 * scale,
+              weight: FontWeight.w300,
+              height: 1.08,
+            ).copyWith(shadows: [Shadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 12)]),
+          ),
         ),
         SizedBox(height: 22 * scale),
         Row(
@@ -814,48 +840,54 @@ class HeroInfo extends StatelessWidget {
             ),
             SizedBox(width: 26 * scale),
             if (state is Installing)
-              SizedBox(
-                width: 340 * scale,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          InstallSpan.title(state.step),
-                          style: AppText.display(
-                            15 * scale,
-                            weight: FontWeight.w500,
-                            color: Colors.white.withValues(alpha: 0.85),
+              Legible(
+                softness: 12,
+                child: SizedBox(
+                  width: 340 * scale,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            InstallSpan.title(state.step),
+                            style: AppText.display(
+                              15 * scale,
+                              weight: FontWeight.w500,
+                              color: Colors.white.withValues(alpha: 0.85),
+                            ),
                           ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          '${(state.overall * 100).round()}%',
-                          style: AppText.display(
-                            15 * scale,
-                            weight: FontWeight.w600,
-                            color: Colors.white.withValues(alpha: 0.85),
+                          const Spacer(),
+                          Text(
+                            '${(state.overall * 100).round()}%',
+                            style: AppText.display(
+                              15 * scale,
+                              weight: FontWeight.w600,
+                              color: Colors.white.withValues(alpha: 0.85),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 8 * scale),
-                    if (state.step.name == 'relink' && state.fraction == 0)
-                      IndeterminateLine(color: accent)
-                    else
-                      ProgressLine(fraction: state.overall, color: accent),
-                  ],
+                        ],
+                      ),
+                      SizedBox(height: 8 * scale),
+                      if (state.step.name == 'relink' && state.fraction == 0)
+                        IndeterminateLine(color: accent)
+                      else
+                        ProgressLine(fraction: state.overall, color: accent),
+                    ],
+                  ),
                 ),
               )
             else if (state is Failed)
               ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: 520 * scale),
-                child: Text(
-                  state.message,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppText.display(14 * scale, color: Palette.danger),
+                child: Legible(
+                  softness: 12,
+                  child: Text(
+                    state.message,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.display(14 * scale, color: Palette.danger),
+                  ),
                 ),
               ),
           ],
@@ -955,18 +987,36 @@ class EmptyLibrary extends StatelessWidget {
             color: Colors.white.withValues(alpha: 0.8),
           ),
           SizedBox(height: 18 * scale),
-          Text(
-            T.text(model.scanning ? 'scanning' : 'emptyLibraryTitle'),
-            style: AppText.display(34 * scale, weight: FontWeight.w300),
+          Legible(
+            softness: 16,
+            child: Text(
+              T.text(model.scanning ? 'scanning' : 'emptyLibraryTitle'),
+              style: AppText.display(34 * scale, weight: FontWeight.w300),
+            ),
           ),
           SizedBox(height: 12 * scale),
-          Text(
-            T.text('emptyLibraryText'),
-            style: AppText.display(17 * scale, color: Colors.white.withValues(alpha: 0.65)),
+          Legible(
+            softness: 12,
+            child: Text(
+              T.text('emptyLibraryText'),
+              style: AppText.display(
+                17 * scale,
+                color: Colors.white.withValues(alpha: LookScope.isSeeThrough(context) ? 0.75 : 0.65),
+              ),
+            ),
           ),
           if (folder != null) ...[
             SizedBox(height: 12 * scale),
-            Text(folder, style: AppText.display(13 * scale, color: Colors.white.withValues(alpha: 0.45))),
+            Legible(
+              softness: 10,
+              child: Text(
+                folder,
+                style: AppText.display(
+                  13 * scale,
+                  color: Colors.white.withValues(alpha: LookScope.isSeeThrough(context) ? 0.7 : 0.45),
+                ),
+              ),
+            ),
           ],
           SizedBox(height: 28 * scale),
           ConsoleButton(

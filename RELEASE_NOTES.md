@@ -6,8 +6,9 @@ release when it is made.
 ## Next release
 
 - **Glass, a new theme.** The launcher's window turns see-through: your desktop and the
-  windows behind it show through, blurred and tinted so the text stays readable over any
-  wallpaper, like a Windows 11 Acrylic window. Every card, button and panel on it is a pane of
+  windows behind it show through, blurred under a light tint so the wallpaper's colors glow,
+  like a Windows 11 Acrylic window; the text sits on soft dark plates and panes of glass, so it
+  reads over any wallpaper. Every card, button and panel on it is a pane of
   frosted glass with a rim of light, and the focused one turns into a bright ice chip with a
   glint that runs across it (not with reduced animations). It comes with a new **Ice** accent.
   Pick it in **Settings → Appearance → Theme** or on the first start. **Glass Transparency**

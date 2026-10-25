@@ -8,6 +8,7 @@ import 'package:anyps5_desktop/core/together/profiles.dart';
 import 'package:anyps5_desktop/core/trophies.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/background.dart';
+import 'package:anyps5_desktop/ui/components.dart' show LayoutScale;
 import 'package:anyps5_desktop/ui/glass.dart';
 import 'package:anyps5_desktop/ui/home.dart';
 import 'package:anyps5_desktop/ui/launcher.dart';
@@ -506,29 +507,76 @@ void main() {
       Color(0xFF000000),
     ];
 
-    test('the tint floor is the Mac\'s, and the slider runs from a solid pane down to it', () {
-      expect(GlassWindow.tintFloor, 0.57);
+    test('the tint is light, the Mac\'s: the slider runs from a solid pane down to a breath of navy', () {
       expect(GlassWindow.tintAt(0), 1);
-      expect(GlassWindow.tintAt(100), GlassWindow.tintFloor);
-      expect(GlassWindow.tintAt(400), GlassWindow.tintFloor);
-      expect(GlassWindow.tintAt(100, blurred: false), GlassWindow.sharpFloor);
+      expect(GlassWindow.tintAt(100), GlassWindow.minimumTint);
+      expect(GlassWindow.tintAt(400), GlassWindow.minimumTint);
+      expect(GlassWindow.tintAt(100, blurred: false), GlassWindow.sharpMinimumTint);
       expect(GlassWindow.tintAt(40), greaterThan(GlassWindow.tintAt(60)));
       expect(GlassWindow.defaultTransparency, 90);
+      // By default most of the desktop's light comes through.
+      expect(GlassWindow.tintAt(GlassWindow.defaultTransparency), lessThan(0.15));
     });
 
-    test('text reads over any desktop at every slider step, blurred or not, with no help from the blur', () {
+    test('text reads on its plates over any desktop at every slider step, with no help from the tint or the blur', () {
+      expect(GlassWindow.plateFloor, 0.57, reason: 'the Mac\'s floor');
+      expect(GlassWindow.plateOpacity, greaterThanOrEqualTo(GlassWindow.plateFloor));
       for (final blurred in [true, false]) {
         for (var percent = 0; percent <= 100; percent += 10) {
           final tint = GlassWindow.tintAt(percent, blurred: blurred);
           for (final desktop in desktops) {
             final behind = GlassRecipe.over(GlassRecipe.layer, tint, desktop);
             final what = '$percent % over $desktop, blurred $blurred';
-            expect(Contrast.ratio(white, behind), greaterThanOrEqualTo(4.5), reason: what);
-            expect(Contrast.ratio(GlassRecipe.over(white, 0.7, behind), behind), greaterThanOrEqualTo(3), reason: what);
-            expect(Contrast.ratio(white, GlassRecipe.surfaceOver(behind)), greaterThanOrEqualTo(4.5), reason: what);
+            final plates = [
+              // A soft plate behind bare text, at its least.
+              GlassRecipe.over(GlassRecipe.layer, GlassWindow.plateFloor, behind),
+              // A card, a button, a pill: glass raised to a plate.
+              GlassRecipe.over(
+                white,
+                GlassRecipe.sheenFrom,
+                GlassRecipe.over(GlassRecipe.base, GlassWindow.plateOpacity, behind),
+              ),
+            ];
+            for (final plate in plates) {
+              expect(Contrast.ratio(white, plate), greaterThanOrEqualTo(4.5), reason: what);
+              expect(Contrast.ratio(GlassRecipe.over(white, 0.7, plate), plate), greaterThanOrEqualTo(3), reason: what);
+            }
           }
         }
       }
+    });
+
+    testWidgets('on the see-through window bare text gets its plate and glass is raised to one; not elsewhere', (
+      tester,
+    ) async {
+      Future<List<double>> plates(bool seeThrough) async {
+        await tester.pumpWidget(
+          LayoutScale(
+            scale: 1,
+            child: LookScope(
+              glass: true,
+              solid: false,
+              seeThrough: seeThrough,
+              child: const Directionality(
+                textDirection: TextDirection.ltr,
+                child: Legible(child: Text('Games')),
+              ),
+            ),
+          ),
+        );
+        return [
+          for (final box in tester.widgetList<DecoratedBox>(
+            find.descendant(of: find.byType(ImageFiltered), matching: find.byType(DecoratedBox)),
+          ))
+            (box.decoration as BoxDecoration).color!.a,
+        ];
+      }
+
+      expect(await plates(false), isEmpty);
+      final core = await plates(true);
+      expect(core, hasLength(1));
+      // At its least, 0.94 of the fill reaches the text: still over the floor.
+      expect(core.single * 0.94, greaterThanOrEqualTo(GlassWindow.plateFloor));
     });
 
     test('only Glass, where the system can, with transparency left, lets the desktop through', () {

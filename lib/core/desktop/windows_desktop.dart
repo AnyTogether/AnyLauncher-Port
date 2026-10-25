@@ -628,6 +628,7 @@ class WindowsBackdrop implements WindowBackdrop {
       }
       // ACCENT_POLICY: state, flags, gradient color (AABBGGRR), animation id.
       final accent = arena<Int32>(4);
+      // (The plain blur, ACCENT_ENABLE_BLURBEHIND, draws black on Windows 11 25H2: not used.)
       accent[0] = seeThrough ? 4 /* ACCENT_ENABLE_ACRYLICBLURBEHIND */ : 0 /* ACCENT_DISABLED */;
       accent[1] = 2;
       // Barely any tint of its own: the launcher draws the Glass navy over it.

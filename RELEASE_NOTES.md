@@ -5,6 +5,55 @@ release when it is made.
 
 ## Next release
 
+### Controllers in the launcher
+
+A controller moves through the launcher as on the console, on Windows and Linux: the D-pad or
+the left stick moves (held, it repeats), Cross/A selects, Circle/B goes back, Triangle/Y or
+Options opens a game's options, L1 and R1 go to the game before or after, and **PS/Guide**
+brings the launcher in front of the game and takes you back to it. Xbox and other XInput pads
+and PlayStation pads (DualSense, DualShock 4) work on Windows; any pad the kernel gives a
+joystick on Linux. Several at once, and pads plugged in later, are picked up by themselves.
+
+### Trophies while you play
+
+- A PS5-style card drops in at the top of the screen when the game earns a trophy, with the
+  trophy sound, above the game and without taking its keyboard, mouse or controller. On Linux
+  under X11 it is a card too; under Wayland it is a desktop notification.
+- At that moment the launcher keeps a picture of the game in `Pictures/AnyPS5/<game>/`. The
+  trophy list shows it beside the trophy, and **Game settings → Screenshots** shows every
+  picture of the game, F12 ones included. (Wayland lets no program read another's window: no
+  picture there.)
+
+### Full screen and window size work with upstream's engine
+
+Upstream's engine reads neither choice: it opens at 60% of the screen and switches with F11.
+The launcher now does it for it: once the game's window opens it sizes it, or presses F11 for
+full screen; the setting says so. **Settings → AnyPS5 Engine → Engine** also offers the
+**AnyPS5-ARM engine**, which opens at your size or full screen by itself and takes the phone
+controller. It downloads from AnyPS5-ARM's signed GitHub releases and is checked against their
+signed checksums.
+
+### The mouse and the keyboard
+
+- Every panel has a **Close/Back** button, closes when you click beside it, and the right mouse
+  button is Back everywhere, as Esc is.
+- The **‹ ›** of a choice and the **− +** of a number are buttons of their own; **←** now always
+  goes to the option before (it went to the next one on rows of two). Rows, tabs, tiles and
+  buttons light up under the pointer, and the focus follows the pointer without fighting the
+  keys.
+- The key hints at the bottom are buttons: click **Enter**, **Esc**, **O**, **Q** or **E**.
+- A click on a game selects it at once (it used to wait to see whether a second click came);
+  a double click plays or unlocks it, in the library too. The wheel moves between games on the
+  home screen.
+- Smoother screens: layers open and close within 200 ms, the background holds still under them
+  (the blur is no longer worked out again on every frame), pictures load away from the
+  interface, and nothing reads the disk while a screen is drawn.
+
+### Game music
+
+Games with a theme song (`sce_sys/snd0.at9`, as Hollow Knight: Silksong's dump has it) play it
+on the home screen; games without one stay quiet.
+
 ### Sounds
 
 The launcher was silent; it now sounds like the macOS launcher.

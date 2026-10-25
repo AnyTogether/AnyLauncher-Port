@@ -30,7 +30,15 @@ works as a controller (the protocol in section 12.4 of the
     `anyps5-input.ini`
   - `remote/` the phone server (WebSocket 47700, pairing, UDP pad relay, cable frames), an
     mDNS responder for `_anyps5-remote._tcp`, the adb cable tunnel
-  - `trophies.dart`, `save_backup.dart`
+  - `trophies.dart`, `save_backup.dart`, `screenshots.dart` (a game's F12 and trophy pictures,
+    a small PNG encoder)
+  - `gamepad/` controllers as launcher commands (`pad_navigation.dart`: the mapping, repeat on
+    hold, several pads), read with XInput and winmm on Windows (`windows_pads.dart`) and evdev
+    on Linux (`linux_pads.dart`), through FFI
+  - `desktop/` the game's window and the trophy card over it: Win32 through FFI on Windows
+    (foreground, F11 and window size for upstream's engine, the window's picture, a layered
+    click-through topmost card), Xlib on Linux X11 (override-redirect card, XGetImage), a
+    desktop notification on Wayland
   - `audio/` the interface sounds (the macOS launcher's tones, synthesized sample for sample),
     a game's theme song (`snd0.at9` decoded with LibAtrac9 through FFI) and the music's fades
 - `native/atrac9/` LibAtrac9 (MIT), built by `hook/build.dart` into a small shared library
@@ -106,9 +114,17 @@ toolkit/
 
 Some environment variables the launcher passes exist only in the fork's engine
 (`ANYPS5_FULLSCREEN`, `ANYPS5_WINDOW_SIZE`, `ANYPS5_OVERLAY_STYLE`, `ANYPS5_FRAME_GEN`,
-`ANYPS5_REMOTE_PAD*`); with upstream's libraries they are ignored. The phone controller needs
-the fork's `ANYPS5_REMOTE_PAD` bridge, which is POSIX-only today (Linux works, Windows needs a
-Winsock port of `RemotePad.cpp`).
+`ANYPS5_REMOTE_PAD*`); with upstream's libraries they are ignored. For full screen and window
+size the launcher stands in: with upstream's engine (which opens at 60% of the screen and
+switches with F11) it sizes the game's window once it opens, or presses F11 for it.
+
+Settings → AnyPS5 Engine → *Engine* switches to the **AnyPS5-ARM engine**: the fork's toolkit,
+built for Windows (and Linux, when published) and attached to
+[AnyPS5-ARM's releases](https://github.com/utkuhalis/AnyPS5-ARM/releases) as one archive,
+`AnyPS5-toolkit-<windows|linux>-<commit>.zip` (relinker, `libs/`, `version.txt`). The launcher
+takes it from the newest release that has one, checks it against the release's signed
+`SHA256SUMS`, and keeps it as `Toolkits/arm-<commit>` with `version.txt` `arm-<commit>`. That
+engine reads the variables above itself, including the phone controller's bridge.
 
 On Linux the launcher reads the glibc version the engine's libraries ask for (their ELF version
 needs) and compares it with the system's: upstream v0.1.3's Linux libraries need glibc 2.38

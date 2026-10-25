@@ -229,6 +229,44 @@ Mode (in Game Mode Steam is the whole session and cannot be closed); Flatpak Ste
 the home folder, so keep the AppImage there. `anyps5_tool steam status|add|remove` does the same
 from the command line, without the artwork.
 
+## Controllers & troubleshooting
+
+The launcher reads controllers through **SDL2**, the library the engine reads them with in
+games: `SDL2.dll` ships beside the launcher on Windows (downloaded at build time and checked
+against its SHA-256, `third_party/SDL2`); Linux uses the system's `libSDL2-2.0.so.0`, which the
+AppImage carries. DualSense and DualShock 4 work over USB and Bluetooth with their motors, light
+bar and player lights (SDL's HIDAPI driver); Xbox pads through XInput / Windows.Gaming.Input;
+Switch Pro, 8BitDo and every pad in SDL's mapping database; the DualShock 3 on Linux, and on
+Windows once a driver such as DsHidMini shows it. Pads can come and go at any time, several at
+once; the one used last is **Player 1** (the launcher's vibration, Player 1's light). Without
+SDL2 the launcher falls back to XInput and winmm (Windows) or evdev (Linux), and PlayStation
+pads then do not vibrate. While a game is in front only PS / Guide reaches the launcher.
+
+**Settings → Controllers** lists the pads (family, USB or Bluetooth, battery and charging where
+the pad says), **Test Buttons and Sticks** (a live drawing of the pad: every button, both sticks
+inside the dead zone's ring, the triggers; hold Circle or B, or press Esc, to leave), **Test
+Vibration**, **Light Bar** (the theme's accent or a colour, DualSense and DualShock 4),
+**Confirm Button** (Circle confirms, as on Japanese consoles; the hints follow) and **Stick Dead
+Zone** (for the launcher and for every game that sets none of its own). A controller running out
+of battery shows in the top bar.
+
+The **troubleshooter** under it says what it finds, each with what to do:
+
+| Finding | What it looks at |
+| --- | --- |
+| Steam's PlayStation controller support is on | `steam.exe` / `steam` running and `SteamController_PSSupport` in Steam's `config/config.vdf`: outside its games Steam turns the pad into a mouse and presses land twice |
+| Started from Steam | `--steam`, `SteamGameId`/`SteamAppId`: Steam's virtual pad (28de:11ff) is read and the pads Steam took over (`SDL_GAMECONTROLLER_IGNORE_DEVICES`) are left to it |
+| DS4Windows / DualSenseX running | their processes: the real PlayStation pad is read and the virtual Xbox 360 pad made of it is ignored |
+| HidHide, ViGEmBus installed | their services: HidHide may hide the pad; select the row to copy the launcher's path for its applications list |
+| A pad cannot be read (Linux) | `/dev/input/event*` the user may not open: `sudo usermod -aG input "$USER"`, copied by selecting the row |
+| PlayStation pads without vibration (Linux) | `/dev/hidraw*` closed: a udev rule to copy (`/etc/udev/rules.d/70-anyps5-controllers.rules`) |
+| SDL2 missing, a pad without a layout, a low battery, nothing connected | the cable, Bluetooth pairing and the DualShock 3 driver tips |
+
+Every connect and disconnect is logged with the pad's family, connection and driver; crash
+reports carry the controllers at the start and the recent log (and the game's log has them after
+its start line). `anyps5_tool pads [--sdl <library>] [--seconds <n>]` prints what SDL2 sees and
+the troubleshooter's findings without the window.
+
 ## Installed games
 
 `<games folder>/.AnyPS5/Games/<TITLE>-<hash>/` holds `app.elf`/`app.exe`, `libs/`, `app0/`
@@ -267,4 +305,5 @@ Downloaded engines: `~/.local/share/AnyPS5/Toolkits`, `%LOCALAPPDATA%\AnyPS5\Too
 GPL-2.0, as the AnyPS5-ARM launcher it is ported from (see `LICENSE`). LibAtrac9 in
 `native/atrac9` is MIT (`native/atrac9/LICENSE`), as is `flutter_soloud`. The Noto fonts in
 `assets/system-fonts` and the Noto Sans CJK fonts the launcher downloads are under the SIL Open
-Font License 1.1 (`assets/system-fonts/OFL.txt`; the CJK licence is saved beside them).
+Font License 1.1 (`assets/system-fonts/OFL.txt`; the CJK licence is saved beside them). SDL2 is
+under the zlib license (`third_party/SDL2/LICENSE.txt`, shipped as `SDL2-LICENSE.txt`).

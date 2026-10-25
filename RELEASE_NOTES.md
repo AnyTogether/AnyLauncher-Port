@@ -16,6 +16,17 @@ release when it is made.
   and pictures. On a Steam Deck, add it from Desktop Mode. `--fullscreen` opens the launcher
   over the whole screen; `--play <title ID>` starts a game at once.
 
+- **Controllers that just work, and a screen for them.** Controllers are read through SDL2,
+  shipped with the launcher: DualSense and DualShock 4 over USB and Bluetooth (and now they
+  vibrate on Windows too), Xbox, Switch Pro, 8BitDo and more, plugged in or paired at any time,
+  several at once; the one used last is Player 1. **Settings → Controllers** lists them with
+  USB or Bluetooth and their battery, tests every button and stick live and the vibration, sets
+  the light bar's colour, lets Circle confirm (Japanese layout) and sets a stick dead zone for
+  the launcher and your games. Its **troubleshooter** finds what keeps a pad away: Steam's
+  PlayStation support, DS4Windows, DualSenseX, HidHide, Linux input permissions (with the
+  command to copy), and gives the Bluetooth and cable tips. Started from Steam, Steam's virtual
+  pad is used and the real one left to Steam. Crash reports now list the controllers.
+
 ## 0.1.6
 
 - **Glass, a new theme.** The launcher's window turns see-through: your desktop and the

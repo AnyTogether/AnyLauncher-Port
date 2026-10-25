@@ -1,10 +1,12 @@
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:path/path.dart' as p;
 
-/// The free space on the volume of a folder: GetDiskFreeSpaceExW on Windows, `df` elsewhere.
+/// The free space on the volume of a folder: GetDiskFreeSpaceExW on Windows, statvfs(3) on 64-bit
+/// Linux, `df` elsewhere (or where statvfs cannot be called).
 abstract final class FreeSpace {
   /// The bytes free to this user where [path] is (or would be: its nearest existing parent),
   /// null when the system does not say.
@@ -16,10 +18,48 @@ abstract final class FreeSpace {
       folder = parent;
     }
     try {
-      return Platform.isWindows ? _windows(folder) : _posix(folder);
+      if (Platform.isWindows) return _windows(folder);
+      if (Platform.isLinux) return _statvfs(folder) ?? _posix(folder);
+      return _posix(folder);
     } on Object {
       return null;
     }
+  }
+
+  /// The bytes free to an unprivileged user from statvfs(3) (f_bavail × f_frsize), null where it
+  /// fails or this is not a 64-bit glibc/musl layout.
+  static int? _statvfs(String folder) {
+    if (sizeOf<IntPtr>() != 8) return null;
+    final call = DynamicLibrary.process()
+        .lookupFunction<Int32 Function(Pointer<Utf8>, Pointer<Uint8>), int Function(Pointer<Utf8>, Pointer<Uint8>)>(
+          'statvfs',
+        );
+    final path = folder.toNativeUtf8();
+    final buffer = calloc<Uint8>(statvfsBytes);
+    try {
+      if (call(path, buffer) != 0) return null;
+      return parseStatvfs(Uint8List.fromList(buffer.asTypedList(statvfsBytes)));
+    } finally {
+      calloc.free(path);
+      calloc.free(buffer);
+    }
+  }
+
+  /// Room for struct statvfs, larger than any 64-bit Linux layout (112 bytes on glibc).
+  static const statvfsBytes = 256;
+
+  /// The available bytes in a 64-bit Linux struct statvfs: f_bsize, f_frsize, f_blocks, f_bfree,
+  /// f_bavail, each eight bytes in that order; f_frsize is the unit of the counts (f_bsize where a
+  /// file system leaves it 0).
+  static int? parseStatvfs(Uint8List bytes) {
+    if (bytes.length < 40) return null;
+    final data = ByteData.sublistView(bytes);
+    final blockSize = data.getUint64(0, Endian.host);
+    final fragmentSize = data.getUint64(8, Endian.host);
+    final available = data.getUint64(32, Endian.host);
+    final unit = fragmentSize != 0 ? fragmentSize : blockSize;
+    if (unit == 0) return null;
+    return available * unit;
   }
 
   static int? _windows(String folder) {

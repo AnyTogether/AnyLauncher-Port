@@ -5,13 +5,18 @@ import 'dart:math';
 
 import 'package:path/path.dart' as p;
 
+import 'package:crypto/crypto.dart';
+
 import 'binary.dart';
 import 'file_links.dart';
+import 'free_space.dart';
 import 'game_library.dart';
 import 'game_settings.dart';
 import 'host.dart';
+import 'process_control.dart';
 import 'self_unwrap.dart';
 import 'toolkit.dart';
+import 'unlock_space.dart';
 
 /// What an installed game records about itself (anyps5-install.json beside its executable).
 class InstallRecord {
@@ -71,12 +76,15 @@ enum InstallStep { unwrap, relink, copy, layout, finish }
 /// What unlocking a game will do with its files, known before it starts: link them to the dump
 /// or copy [bytes] of them.
 class InstallPlan {
-  const InstallPlan(this.mode, this.bytes);
+  const InstallPlan(this.mode, this.bytes, {this.space});
 
   final LinkMode mode;
 
   /// The size of the game's files, which a copy duplicates.
   final int bytes;
+
+  /// What the unlock writes on the games folder's drive, when the toolkit was known.
+  final UnlockSpace? space;
 
   bool get copies => mode == LinkMode.copy;
 }
@@ -105,7 +113,9 @@ class Installer {
     this.linkMode,
     this.resolution,
     DateTime Function()? clock,
-  }) : _clock = clock ?? DateTime.now;
+    int? Function(String folder)? freeSpace,
+  }) : _clock = clock ?? DateTime.now,
+       freeSpace = freeSpace ?? FreeSpace.of;
 
   final Game game;
   final Toolkit toolkit;
@@ -122,8 +132,53 @@ class Installer {
   final String? resolution;
   final DateTime Function() _clock;
 
+  /// The free bytes where the games folder is (FreeSpace.of); replaceable in tests.
+  final int? Function(String folder) freeSpace;
+
   bool _cancelled = false;
   Process? _running;
+  bool _background = false;
+  bool _paused = false;
+  Completer<void>? _resumed;
+
+  /// A background unlock (a new game prepared on its own): the relinker runs at the lowest
+  /// priority, so a game or anything the user does comes first. Set to false while it runs (the
+  /// user asked to play it), it goes back to normal where the system lets it.
+  bool get background => _background;
+  set background(bool value) {
+    _background = value;
+    final pid = _running?.pid;
+    if (pid != null) value ? ProcessControl.lower(pid) : ProcessControl.normal(pid);
+  }
+
+  bool get paused => _paused;
+
+  /// Stops the unlock where it is (a game started): the relinker is suspended, the launcher's
+  /// own steps wait at their next file.
+  void pause() {
+    if (_paused) return;
+    _paused = true;
+    _resumed = Completer<void>();
+    final pid = _running?.pid;
+    if (pid != null) ProcessControl.suspend(pid);
+  }
+
+  void resume() {
+    if (!_paused) return;
+    _paused = false;
+    final pid = _running?.pid;
+    if (pid != null) ProcessControl.resume(pid);
+    _resumed?.complete();
+    _resumed = null;
+  }
+
+  /// Waits while paused; throws when cancelled.
+  Future<void> _gate() async {
+    while (_paused && !_cancelled) {
+      await (_resumed?.future ?? Future<void>.value());
+    }
+    _checkCancelled();
+  }
 
   static const recordName = 'anyps5-install.json';
 
@@ -163,15 +218,134 @@ class Installer {
   }
 
   /// Removes an installed game and everything it wrote; links to the dump go, never what they
-  /// point to.
-  static void uninstall(Game game, String root) => _delete(installedFolder(game, root));
+  /// point to. The relinker's kept output goes too.
+  static void uninstall(Game game, String root) {
+    _delete(installedFolder(game, root));
+    _delete(keptRelink(game, root));
+  }
 
   /// How [game]'s files will reach app0 in the games folder [root], tried the way the install
-  /// tries it, and their size when they will be copied.
-  static InstallPlan plan(Game game, String root, {int? knownSize}) {
-    final mode = FileLinks.probe(p.join(game.folder, 'eboot.bin'), p.join(root, GameLibrary.storeName, 'Games'));
-    if (mode != LinkMode.copy) return InstallPlan(mode, 0);
-    return InstallPlan(mode, knownSize ?? payloadSize(game.folder));
+  /// tries it, and their size when they will be copied. With [toolkit], also what the whole
+  /// unlock writes on the drive ([InstallPlan.space]).
+  static InstallPlan plan(Game game, String root, {int? knownSize, Toolkit? toolkit, String? resolution}) {
+    final games = p.join(root, GameLibrary.storeName, 'Games');
+    final mode = FileLinks.probe(p.join(game.folder, 'eboot.bin'), games);
+    final bytes = mode == LinkMode.copy ? knownSize ?? payloadSize(game.folder) : 0;
+    if (toolkit == null) return InstallPlan(mode, bytes);
+    return InstallPlan(
+      mode,
+      bytes,
+      space: space(game, root, toolkit, copied: bytes, resolution: resolution),
+    );
+  }
+
+  /// What unlocking [game] with [toolkit] writes on the drive of the games folder [root] (see
+  /// UnlockSpace); [copied] is the size of the game's files when they are copied.
+  static UnlockSpace space(Game game, String root, Toolkit toolkit, {int copied = 0, String? resolution}) {
+    int size(String path) {
+      try {
+        return File(path).lengthSync();
+      } on FileSystemException {
+        return 0;
+      }
+    }
+
+    final found = modules(game.folder);
+    final executables = [
+      'eboot.bin',
+      ...found,
+    ].fold(0, (sum, relative) => sum + size(p.join(game.folder, p.joinAll(relative.split('/')))));
+    final games = p.join(root, GameLibrary.storeName, 'Games');
+    final libraryFiles = toolkit.libraryFiles;
+    var libraries = 0;
+    if (libraryFiles.isNotEmpty && FileLinks.probe(libraryFiles.first, games) != LinkMode.hard) {
+      libraries = libraryFiles.fold(0, (sum, file) => sum + size(file));
+    }
+    final links = keepsOutput(root);
+    int? kept;
+    if (links) {
+      final key = relinkKey(game, toolkit, found, _patchText(toolkit, game, resolution).$1);
+      final reusable = reusableRelink(game, root, key);
+      if (reusable != null) kept = GameLibrary.size(reusable);
+    }
+    return UnlockSpace(
+      executables: executables,
+      libraries: libraries,
+      copied: copied,
+      linksOutput: links,
+      keptRelink: kept,
+    );
+  }
+
+  /// Where the relinker's output of a game is kept for the next unlock, in the store.
+  static String keptRelink(Game game, String root) =>
+      p.join(root, GameLibrary.storeName, 'Relinked', p.basename(installedFolder(game, root)));
+
+  /// Whether the store keeps the relinker's output: where hard links work in it, so the installed
+  /// game links to the kept files instead of holding a second copy.
+  static bool keepsOutput(String root) {
+    final store = p.join(root, GameLibrary.storeName);
+    try {
+      Directory(store).createSync(recursive: true);
+      final sample = File(p.join(store, '.anyps5-link-sample-$pid'))..writeAsStringSync('');
+      try {
+        return FileLinks.probe(sample.path, store) == LinkMode.hard;
+      } finally {
+        _delete(sample.path);
+      }
+    } on FileSystemException {
+      return false;
+    }
+  }
+
+  /// What the relinker's output depends on: the toolkit, the system, the patches (with the
+  /// resolution in them), the module folders, and the dump's executable and modules (path, size
+  /// and modification time of each). Unlocking again with the same key reuses the kept output.
+  static String relinkKey(Game game, Toolkit toolkit, List<String> found, String? patches) {
+    final lines = <String>[
+      'toolkit ${toolkit.version}',
+      'relinker ${toolkit.relinker}',
+      'system ${toolkit.system.name} ${toolkit.system.relinkerOptions.join(' ')}',
+      'modules ${moduleDirectories(found).join(' ')}',
+      'patches ${patches == null ? '-' : sha256.convert(utf8.encode(patches))}',
+    ];
+    for (final relative in ['eboot.bin', ...found]) {
+      final path = p.join(game.folder, p.joinAll(relative.split('/')));
+      for (final file in [path, '$path.esbak']) {
+        final stat = File(file).statSync();
+        if (stat.type == FileSystemEntityType.notFound) {
+          if (file == path) return '';
+          continue;
+        }
+        lines.add('${p.relative(file, from: game.folder)} ${stat.size} ${stat.modified.microsecondsSinceEpoch}');
+      }
+    }
+    return lines.join('\n');
+  }
+
+  /// The kept relinker output of [game] when its key is [key], null when there is none or it was
+  /// made from something else.
+  static String? reusableRelink(Game game, String root, String key) {
+    if (key.isEmpty) return null;
+    final kept = keptRelink(game, root);
+    try {
+      if (File(p.join(kept, 'key.txt')).readAsStringSync() != key) return null;
+    } on FileSystemException {
+      return null;
+    }
+    return Directory(p.join(kept, 'out')).existsSync() ? p.join(kept, 'out') : null;
+  }
+
+  /// The title's patch file as the relinker gets it (the chosen resolution written in), and the
+  /// resolution applied; nulls when the toolkit has no patches for it.
+  static (String?, String?) _patchText(Toolkit toolkit, Game game, String? resolution) {
+    final patches = toolkit.patchFile(game.titleId);
+    if (patches == null) return (null, null);
+    final text = File(patches).readAsStringSync();
+    if (resolution != null && ResolutionPatch.supports(text) && ResolutionPatch.parse(resolution) != null) {
+      return (ResolutionPatch.apply(text, resolution), resolution);
+    }
+    return (text, null);
   }
 
   /// The size of the files an install lays into app0 from [source] (the store left out).
@@ -210,7 +384,12 @@ class Installer {
 
   void cancel() {
     _cancelled = true;
-    _running?.kill();
+    final running = _running;
+    running?.kill();
+    // A suspended relinker only gets the termination when it goes on.
+    if (running != null && _paused) ProcessControl.resume(running.pid);
+    _resumed?.complete();
+    _resumed = null;
   }
 
   void _checkCancelled() {
@@ -234,82 +413,101 @@ class Installer {
     final store = p.join(root, GameLibrary.storeName);
     final work = p.join(store, 'Work', '${DateTime.now().microsecondsSinceEpoch}-${Random().nextInt(1 << 32)}');
     final partial = '$installed.partial';
+    // 0. The room it takes, before anything is written.
+    await _gate();
+    final mode = linkMode ?? FileLinks.probe(p.join(game.folder, 'eboot.bin'), p.join(store, 'Games'));
+    final copied = mode == LinkMode.copy ? payloadSize(game.folder) : 0;
+    final needs = space(game, root, toolkit, copied: copied, resolution: resolution);
+    final shortage = needs.shortage(free: freeSpace(root), folder: root);
+    if (shortage != null) throw shortage;
     try {
-      // 1. The executable and every guest module as plain ELF files, in the dump's layout.
-      _progress(InstallStep.unwrap, 0);
-      final source = p.join(work, 'source');
-      Directory(source).createSync(recursive: true);
       final found = modules(game.folder);
-      final inputs = ['eboot.bin', ...found];
-      for (var index = 0; index < inputs.length; index++) {
-        _checkCancelled();
-        final relative = inputs[index];
-        final target = p.join(source, p.joinAll(relative.split('/')));
-        Directory(p.dirname(target)).createSync(recursive: true);
-        _unwrap(p.join(game.folder, p.joinAll(relative.split('/'))), target);
-        _progress(InstallStep.unwrap, (index + 1) / inputs.length);
-        await _yield();
-      }
-
-      // 2. The relinker turns them into the host's executable and guest modules.
-      _progress(InstallStep.relink, 0);
-      final relinked = p.join(work, 'out');
-      Directory(relinked).createSync(recursive: true);
-      final executable = p.join(relinked, system.executableName);
-      final estimate = RelinkProgress();
-      final patches = toolkit.patchFile(game.titleId);
-      String? appliedResolution;
-      final patchOptions = <String>[];
-      if (patches != null) {
-        var text = File(patches).readAsStringSync();
-        final chosen = resolution;
-        if (chosen != null && ResolutionPatch.supports(text) && ResolutionPatch.parse(chosen) != null) {
-          text = ResolutionPatch.apply(text, chosen);
-          appliedResolution = chosen;
+      final (patchText, appliedResolution) = _patchText(toolkit, game, resolution);
+      final key = relinkKey(game, toolkit, found, patchText);
+      final keeps = needs.linksOutput;
+      String relinked;
+      final reusable = keeps ? reusableRelink(game, root, key) : null;
+      if (reusable != null) {
+        // Nothing the relinker depends on changed since the last unlock: its output is reused.
+        _log('${game.titleId}: the executable, modules and patches are unchanged, the relinked ones are reused');
+        relinked = reusable;
+        _progress(InstallStep.unwrap, 1);
+        _progress(InstallStep.relink, 1);
+      } else {
+        // 1. The executable and every guest module as plain ELF files, in the dump's layout.
+        _progress(InstallStep.unwrap, 0);
+        final source = p.join(work, 'source');
+        Directory(source).createSync(recursive: true);
+        final inputs = ['eboot.bin', ...found];
+        for (var index = 0; index < inputs.length; index++) {
+          await _gate();
+          final relative = inputs[index];
+          final target = p.join(source, p.joinAll(relative.split('/')));
+          Directory(p.dirname(target)).createSync(recursive: true);
+          _unwrap(p.join(game.folder, p.joinAll(relative.split('/'))), target);
+          _progress(InstallStep.unwrap, (index + 1) / inputs.length);
+          await _yield();
         }
-        final copy = p.join(work, 'relinker-patches.toml');
-        File(copy).writeAsStringSync(text);
-        patchOptions.addAll(['--patches', copy]);
-        _log(
-          '${game.titleId}: patches from ${p.basename(patches)}'
-          '${appliedResolution == null ? '' : ', resolution $appliedResolution'}',
+
+        // 2. The relinker turns them into the host's executable and guest modules.
+        _progress(InstallStep.relink, 0);
+        final output = p.join(work, 'out');
+        Directory(output).createSync(recursive: true);
+        final executable = p.join(output, system.executableName);
+        final estimate = RelinkProgress();
+        final patchOptions = <String>[];
+        if (patchText != null) {
+          final copy = p.join(work, 'relinker-patches.toml');
+          File(copy).writeAsStringSync(patchText);
+          patchOptions.addAll(['--patches', copy]);
+          _log(
+            '${game.titleId}: patches from ${game.titleId}.toml'
+            '${appliedResolution == null ? '' : ', resolution $appliedResolution'}',
+          );
+        }
+        await _runTool(
+          toolkit.relinker,
+          [
+            ...system.relinkerOptions,
+            ...patchOptions,
+            for (final directory in moduleDirectories(found)) ...['--module-dir', directory],
+            'eboot.bin',
+            executable,
+          ],
+          workingDirectory: source,
+          status: (segment) {
+            final fraction = estimate.read(segment);
+            if (fraction != null) _progress(InstallStep.relink, fraction);
+          },
         );
+        if (!File(executable).existsSync()) throw InstallError('relinker wrote no executable');
+        relinked = keeps ? _keep(output, key) : output;
+        _progress(InstallStep.relink, 1);
       }
-      await _runTool(
-        toolkit.relinker,
-        [
-          ...system.relinkerOptions,
-          ...patchOptions,
-          for (final directory in moduleDirectories(found)) ...['--module-dir', directory],
-          'eboot.bin',
-          executable,
-        ],
-        workingDirectory: source,
-        status: (segment) {
-          final fraction = estimate.read(segment);
-          if (fraction != null) _progress(InstallStep.relink, fraction);
-        },
-      );
+      final executable = p.join(relinked, system.executableName);
       if (!File(executable).existsSync()) throw InstallError('relinker wrote no executable');
-      _progress(InstallStep.relink, 1);
+      // Kept output is hard linked in (nothing writes to it); output in the work folder is copied.
+      final outputMode = relinked == reusable || (keeps && p.isWithin(store, relinked) && !p.isWithin(work, relinked))
+          ? LinkMode.hard
+          : LinkMode.copy;
 
       // 3. The game's files, linked (or copied where no link works), with the relinked modules
-      // copied over them.
-      _checkCancelled();
+      // over them.
+      await _gate();
       _delete(partial);
       final app0 = p.join(partial, 'app0');
       Directory(app0).createSync(recursive: true);
-      await _linkTree(game.folder, app0, (fraction) => _progress(InstallStep.copy, fraction));
+      await _linkTree(game.folder, app0, mode, (fraction) => _progress(InstallStep.copy, fraction));
       final guestModules = p.join(relinked, 'app0');
       if (Directory(guestModules).existsSync()) {
-        await copyTree(guestModules, app0, LinkMode.copy, isCancelled: () => _cancelled);
+        await copyTree(guestModules, app0, outputMode, isCancelled: () => _cancelled, gate: _gate);
       }
 
       // 4. The executable, the libraries, the launch script and the record.
-      _checkCancelled();
+      await _gate();
       _progress(InstallStep.layout, 0);
       final placed = p.join(partial, system.executableName);
-      File(executable).copySync(placed);
+      FileLinks.place(executable, placed, outputMode);
       await _makeExecutable(placed);
       final libraries = p.join(partial, 'libs');
       Directory(libraries).createSync(recursive: true);
@@ -438,11 +636,8 @@ class Installer {
     }
   }
 
-  Future<void> _linkTree(String source, String target, void Function(double) progress) async {
-    var mode = linkMode;
-    if (mode == null) {
-      final sample = File(p.join(source, 'eboot.bin'));
-      mode = FileLinks.probe(sample.path, target);
+  Future<void> _linkTree(String source, String target, LinkMode mode, void Function(double) progress) async {
+    if (linkMode == null) {
       if (mode != LinkMode.hard) {
         _log(
           mode == LinkMode.symbolic
@@ -453,7 +648,31 @@ class Installer {
         );
       }
     }
-    await copyTree(source, target, mode, isCancelled: () => _cancelled, progress: progress);
+    await copyTree(source, target, mode, isCancelled: () => _cancelled, progress: progress, gate: _gate);
+  }
+
+  /// Moves the relinker's output into the store for the next unlock (a rename on the same drive)
+  /// and returns where it is now; where that fails, it stays in the work folder.
+  String _keep(String output, String key) {
+    final kept = keptRelink(game, root);
+    _delete(kept);
+    try {
+      Directory(kept).createSync(recursive: true);
+      Directory(output).renameSync(p.join(kept, 'out'));
+      File(p.join(kept, 'key.txt')).writeAsStringSync(key);
+      return p.join(kept, 'out');
+    } on FileSystemException {
+      final moved = p.join(kept, 'out');
+      if (Directory(moved).existsSync() && !Directory(output).existsSync()) {
+        try {
+          Directory(moved).renameSync(output);
+        } on FileSystemException {
+          return moved;
+        }
+      }
+      _delete(kept);
+      return output;
+    }
   }
 
   /// The files of [source] in [target], folder by folder, each placed as [mode] says; the store
@@ -464,6 +683,7 @@ class Installer {
     LinkMode mode, {
     bool Function()? isCancelled,
     void Function(double)? progress,
+    Future<void> Function()? gate,
   }) async {
     final base = p.normalize(p.absolute(source));
     final files = <(String, String, int)>[];
@@ -490,7 +710,10 @@ class Installer {
       FileLinks.place(path, destination, mode);
       done += size;
       progress?.call(total == 0 ? 1 : done / total);
-      if (index % 64 == 63) await _yield();
+      if (index % 64 == 63) {
+        await _yield();
+        await gate?.call();
+      }
     }
     progress?.call(1);
   }
@@ -524,6 +747,8 @@ class Installer {
     }
     _running = process;
     if (_cancelled) process.kill();
+    if (_background) ProcessControl.lower(process.pid);
+    if (_paused) ProcessControl.suspend(process.pid);
     final collector = OutputCollector(log: _log, status: status);
     final out = process.stdout.forEach(collector.add);
     final err = process.stderr.forEach(collector.add);

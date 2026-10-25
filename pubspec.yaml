@@ -34,6 +34,9 @@ flutter:
     - shaders/background.frag
   assets:
     - assets/fonts/Figtree-OFL.txt
+    # The Noto fonts games get in place of the console's system fonts (SIL Open Font License
+    # 1.1, OFL.txt beside them). The engine reads them from disk, from data/flutter_assets.
+    - assets/system-fonts/
   fonts:
     - family: Figtree
       fonts:

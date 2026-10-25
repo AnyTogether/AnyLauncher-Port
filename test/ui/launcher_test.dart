@@ -1,8 +1,10 @@
 import 'dart:io';
 
 import 'package:anyps5_desktop/core/controls.dart';
+import 'package:anyps5_desktop/core/font_download.dart';
 import 'package:anyps5_desktop/core/installer.dart';
 import 'package:anyps5_desktop/core/remote/remote_server.dart';
+import 'package:anyps5_desktop/core/system_fonts.dart';
 import 'package:anyps5_desktop/core/toolkit_download.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/launcher.dart';
@@ -153,6 +155,17 @@ void main() {
       await expectLater(shell, matchesGoldenFile('goldens/settings_engine.png'));
     });
 
+    testWidgets('settings: fonts', (tester) async {
+      fixture = makeFixture(builtInFonts: p.absolute(SystemFonts.assetFolder), cjkFonts: FontArchive.notoSansCjk);
+      final model = fixture.model;
+      model.open(Layer.settings);
+      model.selectCategory(model.panelCategories().indexWhere((category) => category.id == 'fonts'));
+      await pumpLauncher(tester, model);
+      expect(find.text('Noto Sans · Built in'), findsOneWidget);
+      expect(find.text('Download Japanese, Chinese and Korean Now'), findsOneWidget);
+      await expectLater(shell, matchesGoldenFile('goldens/settings_fonts.png'));
+    });
+
     testWidgets('trophies', (tester) async {
       fixture = makeFixture(theme: 1);
       final model = fixture.model;
@@ -213,7 +226,8 @@ void main() {
       expect(model.look, LookStyle.aurora);
       await press(tester, LogicalKeyboardKey.keyE);
       expect(model.panelCategory, 1);
-      // Library, the AnyPS5 engine, AnyTogether and the phones, then the language.
+      // Library, the AnyPS5 engine, the fonts, AnyTogether and the phones, then the language.
+      await press(tester, LogicalKeyboardKey.keyE);
       await press(tester, LogicalKeyboardKey.keyE);
       await press(tester, LogicalKeyboardKey.keyE);
       await press(tester, LogicalKeyboardKey.keyE);

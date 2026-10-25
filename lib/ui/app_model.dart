@@ -13,6 +13,7 @@ import '../core/audio/theme_music.dart';
 import '../core/audio/tones.dart';
 import '../core/controls.dart';
 import '../core/desktop/desktop.dart';
+import '../core/font_download.dart';
 import '../core/family/family_rules.dart' show TitleVerdict;
 import '../core/gamepad/pad_navigation.dart';
 import '../core/game_library.dart';
@@ -35,6 +36,7 @@ import '../core/together/voice_mesh.dart';
 import '../core/trophies.dart';
 import 'components.dart';
 import 'engine_model.dart';
+import 'fonts_model.dart';
 import 'strings.dart';
 import 'theme.dart';
 import 'together_model.dart';
@@ -64,6 +66,11 @@ class Preferences {
     ..soundVolume = (json['soundVolume'] as num?)?.toInt()
     ..musicVolume = (json['musicVolume'] as num?)?.toInt()
     ..engineSource = json['engineSource'] as String? ?? 'upstream'
+    ..fontsFolder = json['fontsFolder'] as String?
+    ..cjkGames = {
+      for (final id in json['cjkGames'] as List<dynamic>? ?? const <dynamic>[])
+        if (id is String) id,
+    }
     ..lastPlayed = {
       for (final entry in (json['lastPlayed'] as Map<String, dynamic>? ?? const {}).entries)
         entry.key: entry.value as String,
@@ -102,6 +109,13 @@ class Preferences {
   /// with the phone controller, full screen and window size).
   String engineSource = 'upstream';
 
+  /// A folder of the user's own fonts (the console's, say) games get first; null for none.
+  String? fontsFolder;
+
+  /// The title IDs of games seen asking for Japanese, Chinese or Korean fonts: their next start
+  /// waits for those to download.
+  Set<String> cjkGames = {};
+
   Map<String, Object?> toJson() => {
     'language': language,
     'theme': theme,
@@ -122,6 +136,8 @@ class Preferences {
     'musicVolume': musicVolume,
     'lastPlayed': lastPlayed,
     'engineSource': engineSource,
+    'fontsFolder': fontsFolder,
+    'cjkGames': cjkGames.toList()..sort(),
   };
 
   static Preferences load(String file) {
@@ -399,7 +415,21 @@ class LauncherServices {
     this.pads,
     this.desktop,
     this.renderTrophyCard,
+    this.cjkFonts,
+    this.fontClient,
+    this.builtInFonts,
   });
+
+  /// The Japanese, Chinese and Korean fonts downloaded when a game needs them (Noto Sans CJK
+  /// from GitHub); none in tests without a fake, which then download nothing.
+  final FontArchive? cjkFonts;
+
+  /// The HTTP client that downloads them; dart:io's by default.
+  final HttpClient Function()? fontClient;
+
+  /// The folder of the fonts that come with the launcher; found beside the executable (its
+  /// Flutter assets) when not given.
+  final String? builtInFonts;
 
   /// Where AnyPS5-ARM's engine is read from (its signed GitHub releases); none in tests without
   /// a fake.
@@ -575,6 +605,9 @@ class AppModel extends ChangeNotifier {
   /// The AnyPS5 engine downloaded from upstream: versions, the download, the one in use.
   late final EngineModel engine = EngineModel(this);
   late final LauncherUpdateModel updates = LauncherUpdateModel(this);
+
+  /// The system fonts games get: the folder put together for them, the CJK download.
+  late final FontsModel fonts = FontsModel(this);
 
   /// The text row the cursor is in, by id; null while the keys move through the launcher.
   String? editingRow;
@@ -1115,27 +1148,32 @@ class AppModel extends ChangeNotifier {
     } on FileSystemException {
       // Screenshots go nowhere then.
     }
-    final environment = {
-      ...settings.environment(
-        launcherLanguage: T.language.consoleLanguage,
-        inputFile: written ? inputFile : null,
-        screenshots: paths.pictures,
-        fonts: Directory(paths.fontsFolder).existsSync() ? paths.fontsFolder : null,
-        shaderCacheFolder: paths.shaderCache(game.slug),
-      ),
-      ...?remote?.bridgeEnvironment,
-      // The engine's online bridge reads the AnyTogether game session there.
-      if (together.signedIn) 'ANYPS5_TOGETHER_SESSION': together.hub.games.bridgeFile,
-    };
     sounds.play(Cue.select);
     starting = game;
     preferences.lastPlayed[game.id] = DateTime.now().toIso8601String();
     savePreferences();
+    final logFile = paths.logFile(game.titleId);
     try {
+      // A game in Japanese, Korean or Chinese waits for those fonts; every game gets the folder
+      // the fonts are put together in.
+      final systemFonts = await fonts.prepare(game, settings.language ?? T.language.consoleLanguage);
+      final environment = {
+        ...settings.environment(
+          launcherLanguage: T.language.consoleLanguage,
+          inputFile: written ? inputFile : null,
+          screenshots: paths.pictures,
+          fonts: systemFonts,
+          shaderCacheFolder: paths.shaderCache(game.slug),
+        ),
+        ...?remote?.bridgeEnvironment,
+        // The engine's online bridge reads the AnyTogether game session there.
+        if (together.signedIn) 'ANYPS5_TOGETHER_SESSION': together.hub.games.bridgeFile,
+      };
+      fonts.watch(game, logFile);
       final run = await GameProcess.start(
         installed: Installer.installedFolder(game, folder),
         environment: environment,
-        logFile: paths.logFile(game.titleId),
+        logFile: logFile,
         system: system,
       );
       starting = null;
@@ -1151,6 +1189,7 @@ class AppModel extends ChangeNotifier {
       together.gameChanged();
       _changed();
       final code = await run.exitCode;
+      fonts.ended();
       together.recordPlay(game, began, DateTime.now(), exit: _stopped ? 'killed' : (code == 0 ? 'normal' : 'crashed'));
       _trophyWatch?.cancel();
       _loadTrophies(game);
@@ -1160,6 +1199,7 @@ class AppModel extends ChangeNotifier {
       _changed();
     } on Object catch (error) {
       starting = null;
+      fonts.ended();
       show('${T.text('startFailed')}: $error');
       _changed();
     }
@@ -1651,6 +1691,7 @@ class AppModel extends ChangeNotifier {
         ],
       ),
       PanelCategory(id: 'engine', title: T.text('engine'), rows: engine.settingsRows()),
+      PanelCategory(id: 'fonts', title: T.text('fonts'), rows: fonts.settingsRows()),
       PanelCategory(id: 'together', title: 'AnyTogether', rows: together.settingsRows()),
       PanelCategory(
         id: 'phone',
@@ -2495,6 +2536,7 @@ class AppModel extends ChangeNotifier {
     _navigator?.dispose();
     _installer?.cancel();
     engine.cancel();
+    fonts.dispose();
     together.dispose();
     music.dispose();
     unawaited(stopPhoneServer());

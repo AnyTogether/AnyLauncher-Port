@@ -82,7 +82,16 @@ class AppPaths {
   String get gameSettingsFolder => p.join(config, 'games');
   String get inputFilesFolder => p.join(config, 'input');
   String get pairedDevicesFile => p.join(config, 'RemoteDevices.json');
+
+  /// A fonts folder of the user's own at a fixed place (the first Desktop releases' only one);
+  /// used as theirs when it exists and they chose no other.
   String get fontsFolder => p.join(config, 'fonts');
+
+  /// The launcher's own fonts beside its toolkits (local, not roaming, on Windows): the
+  /// downloaded Japanese, Chinese and Korean ones, and the folder games are given, put together
+  /// from those, the built-in ones and the user's.
+  String get downloadedFonts => p.join(p.dirname(toolkits), 'Fonts', 'Downloaded');
+  String get gameFonts => p.join(p.dirname(toolkits), 'Fonts', 'Games');
   String get backupsFolder => p.join(config, 'Backups');
   String logFile(String titleId) => p.join(logs, '$titleId.log');
   String shaderCache(String slug) => p.join(cache, slug, 'shader_cache');

@@ -1,4 +1,5 @@
 import 'strings_family.dart';
+import 'strings_fonts.dart';
 import 'strings_table.dart';
 import 'strings_together.dart';
 import 'strings_updates.dart';
@@ -217,12 +218,18 @@ abstract final class T {
   static String text(String key) {
     final turkish = language == Language.turkish;
     return (turkish
-            ? _turkish[key] ?? togetherTurkish[key] ?? updatesTurkish[key] ?? familyTurkish[key] ?? turkishTable[key]
+            ? _turkish[key] ??
+                  togetherTurkish[key] ??
+                  updatesTurkish[key] ??
+                  familyTurkish[key] ??
+                  fontsTurkish[key] ??
+                  turkishTable[key]
             : null) ??
         _english[key] ??
         togetherEnglish[key] ??
         updatesEnglish[key] ??
         familyEnglish[key] ??
+        fontsEnglish[key] ??
         englishTable[key] ??
         key;
   }

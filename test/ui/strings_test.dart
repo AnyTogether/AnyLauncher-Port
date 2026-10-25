@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:anyps5_desktop/ui/strings_family.dart';
+import 'package:anyps5_desktop/ui/strings_fonts.dart';
 import 'package:anyps5_desktop/ui/strings_table.dart';
 import 'package:anyps5_desktop/ui/strings_together.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -51,6 +52,15 @@ void main() {
 
   test('the family texts cover the same keys in both languages', () {
     expect(familyEnglish.keys.toSet(), familyTurkish.keys.toSet());
+  });
+
+  test('the font and hidden trophy texts cover the same keys in both languages', () {
+    expect(fontsEnglish.keys.toSet(), fontsTurkish.keys.toSet());
+    T.language = Language.turkish;
+    expect(T.format('fontsCjkDownloading', [42]), 'İniyor… %42');
+    expect(T.text('fontsBuiltIn'), 'Yerleşik');
+    T.language = Language.english;
+    expect(T.format('fontsCjkDownloading', [42]), 'Downloading… 42%');
   });
 
   test('the tables cover the same keys', () {

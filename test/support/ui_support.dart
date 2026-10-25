@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:anyps5_desktop/core/audio/atrac9.dart';
 import 'package:anyps5_desktop/core/audio/audio_out.dart';
 import 'package:anyps5_desktop/core/desktop/desktop.dart';
+import 'package:anyps5_desktop/core/font_download.dart';
 import 'package:anyps5_desktop/core/gamepad/pad_navigation.dart';
 import 'package:anyps5_desktop/core/host.dart';
 import 'package:anyps5_desktop/core/release_signing.dart';
@@ -131,6 +132,8 @@ Fixture makeFixture({
   String? glibc,
   AudioOut? audio,
   Future<PlayableSong?> Function(String path)? decodeSong,
+  FontArchive? cjkFonts,
+  String? builtInFonts,
 }) {
   final opened = <Uri>[];
   final temp = temporaryFolder('ui');
@@ -188,6 +191,8 @@ Fixture makeFixture({
       hostGlibc: () => glibc,
       audio: audio == null ? null : () => audio,
       decodeSong: decodeSong,
+      cjkFonts: cjkFonts,
+      builtInFonts: builtInFonts,
     ),
   );
   model.rescan();

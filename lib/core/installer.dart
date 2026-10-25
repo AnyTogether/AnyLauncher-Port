@@ -68,6 +68,19 @@ class InstallCancelled implements Exception {
 /// The steps of an install, in order.
 enum InstallStep { unwrap, relink, copy, layout, finish }
 
+/// What unlocking a game will do with its files, known before it starts: link them to the dump
+/// or copy [bytes] of them.
+class InstallPlan {
+  const InstallPlan(this.mode, this.bytes);
+
+  final LinkMode mode;
+
+  /// The size of the game's files, which a copy duplicates.
+  final int bytes;
+
+  bool get copies => mode == LinkMode.copy;
+}
+
 /// Unlocks a game for Windows or Linux: unwraps its executable and modules, relinks them with the
 /// upstream relinker for the host, and lays the game out as upstream's runtime layout says:
 ///
@@ -149,8 +162,51 @@ class Installer {
     }
   }
 
-  /// Removes an installed game and everything it wrote.
+  /// Removes an installed game and everything it wrote; links to the dump go, never what they
+  /// point to.
   static void uninstall(Game game, String root) => _delete(installedFolder(game, root));
+
+  /// How [game]'s files will reach app0 in the games folder [root], tried the way the install
+  /// tries it, and their size when they will be copied.
+  static InstallPlan plan(Game game, String root, {int? knownSize}) {
+    final mode = FileLinks.probe(p.join(game.folder, 'eboot.bin'), p.join(root, GameLibrary.storeName, 'Games'));
+    if (mode != LinkMode.copy) return InstallPlan(mode, 0);
+    return InstallPlan(mode, knownSize ?? payloadSize(game.folder));
+  }
+
+  /// The size of the files an install lays into app0 from [source] (the store left out).
+  static int payloadSize(String source) {
+    var total = 0;
+    try {
+      final base = p.normalize(p.absolute(source));
+      for (final entry in Directory(base).listSync(recursive: true, followLinks: true)) {
+        if (entry is! File) continue;
+        if (p.split(p.relative(entry.path, from: base)).first == GameLibrary.storeName) continue;
+        total += entry.lengthSync();
+      }
+    } on FileSystemException {
+      // What could be read counts.
+    }
+    return total;
+  }
+
+  /// The first file of an installed game's app0 that links to a dump file no longer there,
+  /// relative to app0; null when every link holds (or the game was hard linked or copied).
+  static Future<String?> brokenLink(String installed) async {
+    final app0 = p.join(installed, 'app0');
+    final eboot = p.join(app0, 'eboot.bin');
+    // A game linked to its dump has its eboot.bin linked like every other file.
+    if (FileSystemEntity.typeSync(eboot, followLinks: false) != FileSystemEntityType.link) return null;
+    if (FileLinks.isBroken(eboot)) return 'eboot.bin';
+    try {
+      await for (final entry in Directory(app0).list(recursive: true, followLinks: false)) {
+        if (entry is Link && FileLinks.isBroken(entry.path)) return p.relative(entry.path, from: app0);
+      }
+    } on FileSystemException {
+      return null;
+    }
+    return null;
+  }
 
   void cancel() {
     _cancelled = true;
@@ -391,7 +447,9 @@ class Installer {
         _log(
           mode == LinkMode.symbolic
               ? '${game.titleId}: the store is on another volume than the dump, so the game links to it'
-              : '${game.titleId}: the store cannot link to the dump, so the game is copied',
+              : '${game.titleId}: the store cannot link to the dump (another volume without symbolic links: '
+                    'on Windows turn Developer Mode on, or keep the games folder on the dump\'s drive), '
+                    'so the game is copied',
         );
       }
     }

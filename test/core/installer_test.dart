@@ -286,6 +286,131 @@ void main() {
     });
   });
 
+  group('links across volumes', () {
+    // Another volume than the dump's: no hard links. What Windows does there depends on
+    // Developer Mode (or an elevated launcher): symbolic links, else nothing but copies.
+    final symbolic = LinkCalls(hardLink: (_, _) => false, symbolicLink: FileLinks.system.symbolicLink);
+    final neither = LinkCalls(hardLink: (_, _) => false, symbolicLink: (_, _) => false);
+    tearDown(() => FileLinks.calls = FileLinks.system);
+
+    test('the probe takes a symbolic link where no hard link works, a copy only where neither does', () {
+      final sample = File(p.join(temp.path, 'dump', 'eboot.bin'))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('eboot');
+      final target = p.join(temp.path, 'store');
+      expect(FileLinks.probe(sample.path, target), LinkMode.hard);
+      FileLinks.calls = symbolic;
+      expect(FileLinks.probe(sample.path, target), LinkMode.symbolic);
+      FileLinks.calls = neither;
+      expect(FileLinks.probe(sample.path, target), LinkMode.copy);
+      // A link made but not readable through (Windows refusing to follow it) is no link.
+      FileLinks.calls = LinkCalls(
+        hardLink: (_, _) => false,
+        symbolicLink: (_, created) => FileLinks.system.symbolicLink(p.join(temp.path, 'nowhere'), created),
+      );
+      expect(FileLinks.probe(sample.path, target), LinkMode.copy);
+      // The probe leaves nothing behind, and the dump is untouched.
+      expect(Directory(target).listSync(), isEmpty);
+      expect(sample.readAsStringSync(), 'eboot');
+    });
+
+    test('across volumes the game links to the dump: its files take no space, the relinked ones are real', () async {
+      FileLinks.calls = symbolic;
+      final game = makeGame();
+      final lines = <String>[];
+      final installed = await Installer(
+        game: game,
+        toolkit: Toolkit(toolkitFolder),
+        root: root,
+        onLog: lines.add,
+      ).run();
+      final app0 = p.join(installed, 'app0');
+      for (final file in ['eboot.bin', 'data/level1.bin', 'sce_sys/param.json', 'sce_module/libgame.sprx']) {
+        final path = p.join(app0, p.joinAll(file.split('/')));
+        expect(FileSystemEntity.typeSync(path, followLinks: false), FileSystemEntityType.link, reason: file);
+        expect(Link(path).targetSync(), p.join(game.folder, p.joinAll(file.split('/'))), reason: file);
+      }
+      expect(File(p.join(app0, 'data', 'level1.bin')).readAsStringSync(), 'level data');
+      // The relinked module is a file of the game's own, the dump's module untouched.
+      final relinked = p.join(app0, 'sce_module', 'libgame.prx');
+      expect(FileSystemEntity.typeSync(relinked, followLinks: false), FileSystemEntityType.file);
+      expect(File(relinked).readAsStringSync(), 'relinked module');
+      expect(File(p.join(game.folder, 'sce_module', 'libgame.sprx')).readAsBytesSync(), typicalSelf(seed: 2));
+      expect(lines, contains(contains('links to it')));
+      expect(await Installer.brokenLink(installed), isNull);
+    });
+
+    test('installing again and uninstalling never write through a link into the dump', () async {
+      FileLinks.calls = symbolic;
+      final game = makeGame();
+      // A module of the dump under the name the relinked one gets: app0 links to it first.
+      final moduleInDump = File(p.join(game.folder, 'sce_module', 'libgame.prx'))..writeAsBytesSync([...elfHead, 9]);
+      final installed = await Installer(game: game, toolkit: Toolkit(toolkitFolder), root: root).run();
+      // The relinked module took the place of the link to the dump's module.
+      final placed = p.join(installed, 'app0', 'sce_module', 'libgame.prx');
+      expect(FileSystemEntity.typeSync(placed, followLinks: false), FileSystemEntityType.file);
+      expect(File(placed).readAsStringSync(), 'relinked module');
+      expect(moduleInDump.readAsBytesSync(), [...elfHead, 9]);
+      // Placing over a link replaces the link, not what it points to.
+      final level = p.join(installed, 'app0', 'data', 'level1.bin');
+      final patched = File(p.join(temp.path, 'patched.bin'))..writeAsStringSync('patched');
+      FileLinks.place(patched.path, level, LinkMode.copy);
+      expect(File(level).readAsStringSync(), 'patched');
+      expect(File(p.join(game.folder, 'data', 'level1.bin')).readAsStringSync(), 'level data');
+      await Installer(game: game, toolkit: Toolkit(toolkitFolder), root: root).run();
+      expect(FileSystemEntity.typeSync(level, followLinks: false), FileSystemEntityType.link);
+      Installer.uninstall(game, root);
+      expect(Directory(installed).existsSync(), isFalse);
+      expect(File(p.join(game.folder, 'data', 'level1.bin')).readAsStringSync(), 'level data');
+      expect(File(p.join(game.folder, 'eboot.bin')).readAsBytesSync(), typicalSelf());
+      expect(moduleInDump.readAsBytesSync(), [...elfHead, 9]);
+    });
+
+    test('a dump moved or emptied after the install is found before the game starts', () async {
+      FileLinks.calls = symbolic;
+      final game = makeGame();
+      final installed = await Installer(game: game, toolkit: Toolkit(toolkitFolder), root: root).run();
+      File(p.join(game.folder, 'data', 'level1.bin')).deleteSync();
+      expect(await Installer.brokenLink(installed), p.join('data', 'level1.bin'));
+      Directory(game.folder).renameSync('${game.folder}-moved');
+      expect(await Installer.brokenLink(installed), 'eboot.bin');
+      // Hard linked and copied games keep their files whatever happens to the dump.
+      FileLinks.calls = FileLinks.system;
+      final other = makeGame();
+      final hard = await Installer(game: other, toolkit: Toolkit(toolkitFolder), root: root).run();
+      Directory(other.folder).deleteSync(recursive: true);
+      expect(await Installer.brokenLink(hard), isNull);
+    });
+
+    test('the plan says up front when the files would be copied and how much', () {
+      final game = makeGame();
+      expect(Installer.plan(game, root).mode, LinkMode.hard);
+      FileLinks.calls = symbolic;
+      expect(Installer.plan(game, root).copies, isFalse);
+      FileLinks.calls = neither;
+      final plan = Installer.plan(game, root);
+      expect(plan.copies, isTrue);
+      expect(plan.bytes, Installer.payloadSize(game.folder));
+      expect(plan.bytes, greaterThan(0));
+      expect(Installer.plan(game, root, knownSize: 42).bytes, 42);
+    });
+
+    test('where neither link works the game is copied, and says why', () async {
+      FileLinks.calls = neither;
+      final game = makeGame();
+      final lines = <String>[];
+      final installed = await Installer(
+        game: game,
+        toolkit: Toolkit(toolkitFolder),
+        root: root,
+        onLog: lines.add,
+      ).run();
+      final level = p.join(installed, 'app0', 'data', 'level1.bin');
+      expect(FileSystemEntity.typeSync(level, followLinks: false), FileSystemEntityType.file);
+      expect(lines, contains(contains('Developer Mode')));
+    });
+  });
+
   group('starting', () {
     test('the game starts in its folder with the environment, its output appended to the log', () async {
       final game = makeGame();

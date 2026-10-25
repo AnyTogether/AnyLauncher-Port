@@ -78,6 +78,16 @@ Future<int> runCli(
       _glibcWarning(toolkit, host, env, output);
       final game = GameLibrary.inspect(arguments[1]);
       if (game == null) return fail('not a game folder: ${arguments[1]}');
+      final plan = Installer.plan(game, arguments[2]);
+      if (plan.copies) {
+        output.writeln(
+          'note: ${(plan.bytes / 1e9).toStringAsFixed(1)} GB will be copied: the games folder cannot link to the dump '
+          '(${host == HostSystem.windows ? 'another drive, and Windows makes symbolic links only with Developer Mode on' : 'a file system without links'}). '
+          'Keep the games folder on the dump\'s drive${host == HostSystem.windows ? ', or turn on Developer Mode in Settings > System > For developers' : ''}.',
+        );
+      } else {
+        output.writeln('files: ${plan.mode.name} links to the dump');
+      }
       final paths = AppPaths.forSystem(host, environment: env);
       final settings = GameSettingsStore(paths.gameSettingsFolder).load(game.slug);
       final started = DateTime.now();
@@ -109,6 +119,9 @@ Future<int> runCli(
       if (game == null) return fail('not a game folder: ${arguments[1]}');
       final installed = Installer.installedFolder(game, arguments[2]);
       if (Installer.record(installed, system: host) == null) return fail('not installed: ${game.titleId}');
+      if (await Installer.brokenLink(installed) case final String missing) {
+        return fail("the game's dump moved ($missing is gone): unlock it again or put the dump back");
+      }
       final paths = AppPaths.forSystem(host, environment: env);
       final settings = GameSettingsStore(paths.gameSettingsFolder).load(game.slug);
       final inputFile = p.join(paths.inputFilesFolder, '${game.slug}.ini');

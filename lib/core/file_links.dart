@@ -9,19 +9,37 @@ enum LinkMode {
   /// A hard link: no space taken, the game sees a real file. Needs the same volume.
   hard,
 
-  /// A symbolic link to the dump's file (POSIX only; Windows needs privileges for them).
+  /// A symbolic link to the dump's file: no space taken, works across volumes. Windows makes
+  /// them without administrator rights only with Developer Mode on.
   symbolic,
 
   /// A full copy, where neither link works.
   copy,
 }
 
-/// Hard links through the system call, which dart:io does not offer: link(2) on POSIX,
-/// CreateHardLinkW on Windows.
-abstract final class FileLinks {
-  static final bool Function(String existing, String created) _hardLink = _load();
+/// The system calls that make links, replaceable in tests (a Windows without Developer Mode, a
+/// store on another volume than the dump).
+class LinkCalls {
+  const LinkCalls({required this.hardLink, required this.symbolicLink});
 
-  static bool Function(String, String) _load() {
+  /// Makes `created` a hard link to `existing`; false when the system refuses.
+  final bool Function(String existing, String created) hardLink;
+
+  /// Makes `created` a symbolic link to the file `existing` (an absolute path); false when the
+  /// system refuses.
+  final bool Function(String existing, String created) symbolicLink;
+}
+
+/// Links through the system calls, which dart:io does not offer: link(2) on POSIX,
+/// CreateHardLinkW and CreateSymbolicLinkW on Windows.
+abstract final class FileLinks {
+  /// This system's own calls.
+  static final LinkCalls system = LinkCalls(hardLink: _loadHardLink(), symbolicLink: _loadSymbolicLink());
+
+  /// The calls links are made with; [system] unless a test put others in.
+  static LinkCalls calls = system;
+
+  static bool Function(String, String) _loadHardLink() {
     try {
       if (Platform.isWindows) {
         final kernel = DynamicLibrary.open('kernel32.dll');
@@ -60,6 +78,45 @@ abstract final class FileLinks {
     }
   }
 
+  /// SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE: with Developer Mode on, no administrator
+  /// rights are needed (Windows 10 1703 and later).
+  static const _allowUnprivileged = 0x2;
+
+  static bool Function(String, String) _loadSymbolicLink() {
+    if (!Platform.isWindows) {
+      return (existing, created) {
+        try {
+          Link(created).createSync(existing);
+          return true;
+        } on FileSystemException {
+          return false;
+        }
+      };
+    }
+    try {
+      final kernel = DynamicLibrary.open('kernel32.dll');
+      final create = kernel
+          .lookupFunction<
+            Uint8 Function(Pointer<Utf16>, Pointer<Utf16>, Uint32),
+            int Function(Pointer<Utf16>, Pointer<Utf16>, int)
+          >('CreateSymbolicLinkW');
+      return (existing, created) {
+        final link = _windowsPath(created).toNativeUtf16();
+        final target = _windowsTarget(existing).toNativeUtf16();
+        try {
+          if (create(link, target, _allowUnprivileged) != 0) return true;
+          // Windows 10 before 1703 refuses the flag; an elevated launcher needs none.
+          return create(link, target, 0) != 0;
+        } finally {
+          calloc.free(link);
+          calloc.free(target);
+        }
+      };
+    } on Object {
+      return (_, _) => false;
+    }
+  }
+
   /// An absolute Windows path in the \\?\ form, which is not limited to 260 characters.
   static String _windowsPath(String path) {
     final absolute = p.windows.normalize(p.windows.absolute(path));
@@ -68,9 +125,21 @@ abstract final class FileLinks {
     return '\\\\?\\$absolute';
   }
 
+  /// A symbolic link's target: the plain absolute path (what dir and Explorer show), the \\?\
+  /// form only where it is too long for that.
+  static String _windowsTarget(String path) {
+    final absolute = p.windows.normalize(p.windows.absolute(path));
+    return absolute.length < 248 ? absolute : _windowsPath(absolute);
+  }
+
   /// Makes [created] a hard link to [existing]; false when the system refuses (another volume,
   /// a file system without links).
-  static bool hardLink(String existing, String created) => _hardLink(existing, created);
+  static bool hardLink(String existing, String created) => calls.hardLink(existing, created);
+
+  /// Makes [created] a symbolic link to the file [existing]; false when the system refuses
+  /// (Windows without Developer Mode or administrator rights, a file system without links).
+  static bool symbolicLink(String existing, String created) =>
+      calls.symbolicLink(File(existing).absolute.path, created);
 
   /// Puts [source] at [destination] the way [mode] says, replacing what is there. Something at
   /// the destination is removed first, never written through: it may be a link to the dump.
@@ -82,7 +151,9 @@ abstract final class FileLinks {
           throw FileSystemException('cannot hard link', destination);
         }
       case LinkMode.symbolic:
-        Link(destination).createSync(File(source).absolute.path);
+        if (!symbolicLink(source, destination)) {
+          throw FileSystemException('cannot make a symbolic link', destination);
+        }
       case LinkMode.copy:
         File(source).copySync(destination);
     }
@@ -103,15 +174,31 @@ abstract final class FileLinks {
     }
   }
 
-  /// The best mode from [source] files into [target]: a hard link where one works, else a
-  /// symbolic link on POSIX, else a copy. Tried with a real file of the source.
+  /// Whether [path] is a symbolic link whose target is gone (the dump moved or was deleted).
+  static bool isBroken(String path) {
+    if (FileSystemEntity.typeSync(path, followLinks: false) != FileSystemEntityType.link) return false;
+    try {
+      final target = Link(path).targetSync();
+      final resolved = p.isAbsolute(target) ? target : p.join(p.dirname(path), target);
+      return FileSystemEntity.typeSync(resolved) == FileSystemEntityType.notFound;
+    } on FileSystemException {
+      return true;
+    }
+  }
+
+  /// The best mode from [sampleFile]'s folder into [targetFolder]: a hard link where one works
+  /// (the same volume), else a symbolic link where one can be made and read through, else a
+  /// copy. Tried with a real file of the source.
   static LinkMode probe(String sampleFile, String targetFolder) {
     Directory(targetFolder).createSync(recursive: true);
     final probe = p.join(targetFolder, '.anyps5-link-probe-$pid');
     try {
       remove(probe);
       if (hardLink(sampleFile, probe)) return LinkMode.hard;
-      if (!Platform.isWindows) return LinkMode.symbolic;
+      remove(probe);
+      if (symbolicLink(sampleFile, probe) && _readable(probe, sampleFile)) return LinkMode.symbolic;
+      return LinkMode.copy;
+    } on FileSystemException {
       return LinkMode.copy;
     } finally {
       try {
@@ -119,6 +206,17 @@ abstract final class FileLinks {
       } on FileSystemException {
         // Left behind at worst; the next install removes it.
       }
+    }
+  }
+
+  /// Whether the link at [probe] reads as [sample] does (a link Windows will not follow, one
+  /// to a remote volume with that evaluation off, does not).
+  static bool _readable(String probe, String sample) {
+    try {
+      if (FileSystemEntity.typeSync(probe, followLinks: false) != FileSystemEntityType.link) return false;
+      return File(probe).lengthSync() == File(sample).lengthSync();
+    } on FileSystemException {
+      return false;
     }
   }
 }

@@ -5,6 +5,29 @@ release when it is made.
 
 ## Next release
 
+### Crash reports and detailed logging
+
+When a game stops on an error (not when you close it), the launcher shows its crash report:
+why it stopped (the engine's crash report, a signal or exception, an abort, the exit code), the
+system, the engine, the GPU and the end of the log. From there:
+
+- **Save crash_log.txt** asks where to save the report with the whole log of that start and
+  the last unlock's output.
+- **Copy Report** puts the report and the last 200 log lines on the clipboard, for Discord.
+- **Open an Issue** first shows exactly what will be shared, then opens a pre-filled bug report
+  on the engine's GitHub (boykopovar/AnyPS5, or AnyPS5-ARM when its engine is in use), or
+  **Report a Launcher Bug** on AnyPS5-Desktop. Your home folder, user and computer names,
+  e-mail addresses and AnyTogether tokens are taken out of everything, and the link stays
+  within GitHub's length.
+
+The same report is in a game's options as **Last Session's Report**. **Detailed Logging
+(Trace)** in a game's options starts it with the engine's trace switches every time; **Play
+with Detailed Logging** does it once; starting the launcher with `--trace` does it for every
+game until it closes. Game logs no longer grow without end: a log over 32 MB is set aside
+before a start, and one passing 256 MB while the game runs starts again.
+
+## 0.1.3
+
 ### System fonts for every game
 
 Games that ask for the console's system fonts get them without anything to set up: Noto Sans,

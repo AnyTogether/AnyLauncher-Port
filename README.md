@@ -28,6 +28,9 @@ works as a controller (the protocol in section 12.4 of the
     checksum-checked downloads, safe unpacking, one toolkit folder per version
   - `game_settings.dart`, `controls.dart` per-game choices, the game environment and
     `anyps5-input.ini`
+  - `game_log.dart`, `crash_report.dart` capped per-game logs, detailed logging (the engine's
+    trace switches), the crash report of a game's last start with personal details taken out,
+    and the pre-filled GitHub issue for it
   - `remote/` the phone server (WebSocket 47700, pairing, UDP pad relay, cable frames), an
     mDNS responder for `_anyps5-remote._tcp`, the adb cable tunnel
   - `trophies.dart`, `save_backup.dart`, `screenshots.dart` (a game's F12 and trophy pictures,
@@ -193,7 +196,16 @@ copies on Windows otherwise, with the relinked modules copied over), `anyps5-ins
 data stay with it and move into a new install.
 
 Settings and paired phones: `~/.config/AnyPS5` (Linux), `%APPDATA%\AnyPS5` (Windows).
-Logs: `~/.local/state/AnyPS5/logs`, `%LOCALAPPDATA%\AnyPS5\Logs`.
+Logs: `~/.local/state/AnyPS5/logs`, `%LOCALAPPDATA%\AnyPS5\Logs`: `<TITLE>.log` per game (set
+aside as `<TITLE>.previous.log` past 32 MB before a start, started again past 256 MB while the
+game runs, the earlier part in `<TITLE>.earlier.log`) and `<TITLE>-unlock.log`, the last
+unlock's output. A game that stops on an error offers its crash report (also in the game's
+options: **Last Session's Report**): **Save crash_log.txt**, **Copy Report** and **Open an
+Issue**, which shows what it shares, then opens the engine's bug form (boykopovar/AnyPS5, or
+AnyPS5-ARM for its engine) or this launcher's crash form pre-filled. **Detailed Logging** in a
+game's options, **Play with Detailed Logging**, `AnyPS5 --trace` (every start of that run) and
+`anyps5_tool play <game> <games> --trace` start the engine with its trace switches
+(`APS5_LOG_SYNC`, `APS5_TRACE_EXIT`, `APS5_TRACE_MEMORY`, … see `TraceMode`).
 Downloaded engines: `~/.local/share/AnyPS5/Toolkits`, `%LOCALAPPDATA%\AnyPS5\Toolkits`.
 
 ## Packages

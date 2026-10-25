@@ -250,3 +250,24 @@ FakeRelease upstreamRelease(String version, {bool flat = false, int librarySize 
     'INPUT_MAPPING.md': utf8.encode('# Input\n'),
   });
 }
+
+/// An AnyPS5-ARM release with the Windows and Linux engines as their CI uploads them:
+/// `AnyPS5-toolkit-<system>-<commit>.zip` holding relinker[.exe], libs/ and version.txt.
+FakeRelease armRelease(String tag, String commit, {bool windows = true, bool linux = true}) {
+  final libs = {'libs/libkernel.prx': filler('kernel$commit'), 'libs/libSceVideoOut.prx': filler('video$commit')};
+  return FakeRelease(tag, {
+    'AnyPS5-macOS.zip': filler('mac$tag'),
+    if (windows)
+      'AnyPS5-toolkit-windows-$commit.zip': zipOf({
+        'relinker.exe': [0x4D, 0x5A, ...filler('exe$commit', 300)],
+        'version.txt': utf8.encode('arm-$commit\n'),
+        ...libs,
+        'libs/libwinpthread-1.dll': filler('pthread'),
+      }),
+    if (linux)
+      'AnyPS5-toolkit-linux-$commit.tar.gz': tarGzOf({
+        'AnyPS5-toolkit/relinker': utf8.encode('#!/bin/sh\necho arm\n'),
+        for (final entry in libs.entries) 'AnyPS5-toolkit/${entry.key}': entry.value,
+      }),
+  });
+}

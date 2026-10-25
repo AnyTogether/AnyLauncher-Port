@@ -162,6 +162,53 @@ class ToolkitPackage {
   String get toolkitVersion => ToolkitStore.versionText(version);
 }
 
+/// The AnyPS5-ARM engine for one system, as AnyPS5-ARM's releases carry it: one archive,
+/// `AnyPS5-toolkit-<windows|linux>-<commit>.zip` (or .tar.gz), holding the whole toolkit (the
+/// relinker, libs/, version.txt). Built from AnyPS5-ARM's tree, it reads what upstream's engine
+/// does not: the phone controller, ANYPS5_FULLSCREEN and ANYPS5_WINDOW_SIZE. Its toolkit folder
+/// and version.txt are `arm-<commit>`.
+class ArmToolkitPackage extends ToolkitPackage {
+  ArmToolkitPackage({required super.release, required this.archive, required this.commit})
+    : super(relinker: archive, libraries: archive);
+
+  static const repository = 'utkuhalis/AnyPS5-ARM';
+  static final _name = RegExp(r'^AnyPS5-toolkit-(windows|linux)-([0-9a-f]{7,40})\.(zip|tar\.gz)$');
+
+  final ReleaseAsset archive;
+  final String commit;
+
+  @override
+  String get version => 'arm-$commit';
+
+  @override
+  int get size => archive.size;
+
+  @override
+  bool get verified => archive.sha256 != null;
+
+  @override
+  String get toolkitVersion => version;
+
+  /// The newest of [releases] (newest first) that carries the engine for [system].
+  static ArmToolkitPackage? find(List<UpstreamRelease> releases, HostSystem system) {
+    final wanted = system == HostSystem.windows ? 'windows' : 'linux';
+    for (final release in releases) {
+      final matches = [
+        for (final asset in release.assets)
+          if (_name.firstMatch(asset.name) case final match? when match.group(1) == wanted) (asset, match.group(2)!),
+      ];
+      if (matches.isEmpty) continue;
+      // The zip first on Windows, the .tar.gz first on Linux.
+      matches.sort((a, b) {
+        int rank(ReleaseAsset asset) => asset.name.endsWith(system == HostSystem.windows ? '.zip' : '.tar.gz') ? 0 : 1;
+        return rank(a.$1).compareTo(rank(b.$1));
+      });
+      return ArmToolkitPackage(release: release, archive: matches.first.$1, commit: matches.first.$2);
+    }
+    return null;
+  }
+}
+
 /// Orders upstream versions: 0.1.10 after 0.1.9, a release after its own pre-release.
 int compareVersions(String a, String b) {
   List<int> numbers(String version) {
@@ -651,16 +698,19 @@ class ToolkitStore {
       client: client,
       onProgress: (received) => onProgress?.call(ToolkitProgress(ToolkitPhase.download, received, total)),
     );
-    await AssetDownload.fetch(
-      package.libraries.url,
-      librariesFile,
-      size: package.libraries.size,
-      sha256: librariesSha256,
-      cancel: cancel,
-      client: client,
-      onProgress: (received) =>
-          onProgress?.call(ToolkitProgress(ToolkitPhase.download, package.relinker.size + received, total)),
-    );
+    // An AnyPS5-ARM package is one archive: fetched once above.
+    if (package is! ArmToolkitPackage) {
+      await AssetDownload.fetch(
+        package.libraries.url,
+        librariesFile,
+        size: package.libraries.size,
+        sha256: librariesSha256,
+        cancel: cancel,
+        client: client,
+        onProgress: (received) =>
+            onProgress?.call(ToolkitProgress(ToolkitPhase.download, package.relinker.size + received, total)),
+      );
+    }
     cancel?._check();
     onProgress?.call(ToolkitProgress(ToolkitPhase.unpack, total, total));
     final staging = p.join(root, '.staging-$version');
@@ -669,7 +719,11 @@ class ToolkitStore {
     try {
       await SafeUnpack.unpack(librariesFile, raw);
       cancel?._check();
-      layOut(raw, staging, relinker: relinkerFile, version: version);
+      if (package is ArmToolkitPackage) {
+        layOutWhole(raw, staging, version: package.toolkitVersion);
+      } else {
+        layOut(raw, staging, relinker: relinkerFile, version: version);
+      }
       final toolkit = Toolkit(staging, system: system);
       final problem = toolkit.problem;
       if (problem != null) {
@@ -722,6 +776,31 @@ class ToolkitStore {
     File(relinker).copySync(relinkerPath);
     if (!Platform.isWindows) Process.runSync('chmod', ['755', relinkerPath]);
     File(p.join(folder, 'version.txt')).writeAsStringSync('${versionText(version)}\n');
+    if (Directory(raw).existsSync()) Directory(raw).deleteSync(recursive: true);
+  }
+
+  /// Lays out an archive that is a whole toolkit (AnyPS5-ARM's): the folder in [raw] that holds
+  /// the relinker beside libs/ becomes [folder], and version.txt says [version].
+  void layOutWhole(String raw, String folder, {required String version}) {
+    final relinkers =
+        Directory(raw)
+            .listSync(recursive: true, followLinks: false)
+            .whereType<File>()
+            .where((file) => p.basename(file.path) == system.relinkerName)
+            .where((file) => Directory(p.join(p.dirname(file.path), 'libs')).existsSync())
+            .toList()
+          ..sort((a, b) => a.path.length.compareTo(b.path.length));
+    if (relinkers.isEmpty) {
+      throw ToolkitFailure(ToolkitFailureKind.badLayout, 'the archive has no ${system.relinkerName} beside libs/');
+    }
+    final base = p.dirname(relinkers.first.path);
+    for (final entity in Directory(base).listSync(followLinks: false)) {
+      final name = p.basename(entity.path);
+      if (name == '.unpacked' || name == 'version.txt') continue;
+      entity.renameSync(p.join(folder, name));
+    }
+    if (!Platform.isWindows) Process.runSync('chmod', ['755', p.join(folder, system.relinkerName)]);
+    File(p.join(folder, 'version.txt')).writeAsStringSync('$version\n');
     if (Directory(raw).existsSync()) Directory(raw).deleteSync(recursive: true);
   }
 

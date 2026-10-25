@@ -5,7 +5,16 @@ release when it is made.
 
 ## Next release
 
-Nothing yet.
+- **Play from Steam and the Steam Deck.** **Settings → Steam → Add to Steam** puts AnyPS5 in
+  your Steam library as a non-Steam game, with artwork in the Cosmic look (cover, wide capsule,
+  hero, logo and icon), tagged **AnyPS5**, so Big Picture, Steam Input and the Steam Deck's Game
+  Mode start it like any other game. **Add My Games Too** gives every unlocked game its own
+  entry with its own art that starts straight into the game; the launcher closes when the game
+  ends so Steam sees it end. Steam has to be closed while its shortcuts are written: the
+  launcher offers **Close Steam and Add**, keeps a backup (`shortcuts.vdf.anyps5-backup`) and
+  never touches anyone else's shortcuts; **Remove from Steam** takes out only AnyPS5's entries
+  and pictures. On a Steam Deck, add it from Desktop Mode. `--fullscreen` opens the launcher
+  over the whole screen; `--play <title ID>` starts a game at once.
 
 ## 0.1.6
 

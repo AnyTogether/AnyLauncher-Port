@@ -199,6 +199,36 @@ The session (an access token and a refresh token) is kept per system:
   Calling libsecret through FFI would tie the launcher to GLib and D-Bus at start; the command
   keeps it optional.
 
+## Play from Steam / Steam Deck
+
+**Settings → Steam → Add to Steam** adds AnyPS5 to the Steam library as a non-Steam game, so
+Big Picture, Steam Input and the Steam Deck's Game Mode start it like any other game. It finds
+Steam where it installs itself (Windows: `HKCU\Software\Valve\Steam` `SteamPath`, else
+`C:\Program Files (x86)\Steam`; Linux: `~/.steam/steam`, `~/.local/share/Steam`, Flatpak
+`~/.var/app/com.valvesoftware.Steam/.local/share/Steam`) and the account signed in last
+(`config/loginusers.vdf`; a choice when there are several), then writes
+`userdata/<id>/config/shortcuts.vdf`:
+
+- **AnyPS5**: the AppImage (`$APPIMAGE`) or the installed executable, started with
+  `--steam --fullscreen` (**Open Full Screen from Steam** turns the second off), tagged
+  `AnyPS5`, overlay on.
+- With **Add My Games Too**, one entry per unlocked game started with
+  `--steam --play <title ID>`: the game starts at once and the launcher closes when it ends
+  normally (a crash keeps it open on the report).
+- Artwork in `config/grid`, named after each shortcut's ID (the CRC-32 of the quoted program
+  and the name, top bit set, written into the shortcut so Steam uses it): `<id>p.png` 600×900,
+  `<id>.png` 920×430, `<id>_hero.png` 1920×620, `<id>_logo.png`, `<id>_icon.png`, drawn by the
+  launcher in the Cosmic look, a game's from its `sce_sys/pic0.png` and `icon0.png`.
+
+Steam writes its own copy of `shortcuts.vdf` when it exits, so the launcher writes only while
+Steam is closed: with Steam open it offers **Close Steam and Add** (`steam -shutdown`). The
+file is read and written back to the byte with only AnyPS5's entries changed, after a copy to
+`shortcuts.vdf.anyps5-backup`. **Remove from Steam** takes out only AnyPS5's entries (tagged
+`AnyPS5` and started with `--steam`) and their pictures. On a Steam Deck, add it in Desktop
+Mode (in Game Mode Steam is the whole session and cannot be closed); Flatpak Steam only sees
+the home folder, so keep the AppImage there. `anyps5_tool steam status|add|remove` does the same
+from the command line, without the artwork.
+
 ## Installed games
 
 `<games folder>/.AnyPS5/Games/<TITLE>-<hash>/` holds `app.elf`/`app.exe`, `libs/`, `app0/`

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:anyps5_desktop/core/desktop/window_backdrop.dart';
 import 'package:anyps5_desktop/core/together/profiles.dart';
 import 'package:anyps5_desktop/core/trophies.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
@@ -13,6 +14,7 @@ import 'package:anyps5_desktop/ui/launcher.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:anyps5_desktop/ui/theme.dart';
 import 'package:anyps5_desktop/ui/trophy_card.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -492,6 +494,305 @@ void main() {
     }
   });
 
+  group('the see-through window', () {
+    const white = Color(0xFFFFFFFF);
+    // Whatever is behind the window: a white page, a yellow, a cyan, a coral, a grey, black.
+    const desktops = [
+      Color(0xFFFFFFFF),
+      Color(0xFFFFFF00),
+      Color(0xFF00FFFF),
+      Color(0xFFFF6650),
+      Color(0xFF808080),
+      Color(0xFF000000),
+    ];
+
+    test('the tint floor is the Mac\'s, and the slider runs from a solid pane down to it', () {
+      expect(GlassWindow.tintFloor, 0.57);
+      expect(GlassWindow.tintAt(0), 1);
+      expect(GlassWindow.tintAt(100), GlassWindow.tintFloor);
+      expect(GlassWindow.tintAt(400), GlassWindow.tintFloor);
+      expect(GlassWindow.tintAt(100, blurred: false), GlassWindow.sharpFloor);
+      expect(GlassWindow.tintAt(40), greaterThan(GlassWindow.tintAt(60)));
+      expect(GlassWindow.defaultTransparency, 90);
+    });
+
+    test('text reads over any desktop at every slider step, blurred or not, with no help from the blur', () {
+      for (final blurred in [true, false]) {
+        for (var percent = 0; percent <= 100; percent += 10) {
+          final tint = GlassWindow.tintAt(percent, blurred: blurred);
+          for (final desktop in desktops) {
+            final behind = GlassRecipe.over(GlassRecipe.layer, tint, desktop);
+            final what = '$percent % over $desktop, blurred $blurred';
+            expect(Contrast.ratio(white, behind), greaterThanOrEqualTo(4.5), reason: what);
+            expect(Contrast.ratio(GlassRecipe.over(white, 0.7, behind), behind), greaterThanOrEqualTo(3), reason: what);
+            expect(Contrast.ratio(white, GlassRecipe.surfaceOver(behind)), greaterThanOrEqualTo(4.5), reason: what);
+          }
+        }
+      }
+    });
+
+    test('only Glass, where the system can, with transparency left, lets the desktop through', () {
+      GlassWindow make({
+        bool glass = true,
+        bool solid = false,
+        int? transparency,
+        BackdropKind kind = BackdropKind.acrylic,
+      }) => GlassWindow.make(glass: glass, solid: solid, transparency: transparency, kind: kind);
+      expect(make().seeThrough, isTrue);
+      expect(make().tint, GlassWindow.tintAt(90));
+      expect(make().blurred, isTrue);
+      expect(make(kind: BackdropKind.transparent).tint, GlassWindow.tintAt(90, blurred: false));
+      expect(make(glass: false), GlassWindow.opaque);
+      expect(make(solid: true), GlassWindow.opaque);
+      expect(make(transparency: 0), GlassWindow.opaque);
+      expect(make(kind: BackdropKind.none), GlassWindow.opaque);
+    });
+
+    test('Windows: Acrylic from 11 22H2, the accent policy\'s acrylic before, nothing before 10 1803', () {
+      expect(windowsBackdropKind(26200), BackdropKind.acrylic);
+      expect(windowsBackdropKind(22621), BackdropKind.acrylic);
+      expect(windowsBackdropKind(22000), BackdropKind.accentAcrylic);
+      expect(windowsBackdropKind(19045), BackdropKind.accentAcrylic);
+      expect(windowsBackdropKind(17134), BackdropKind.accentAcrylic);
+      expect(windowsBackdropKind(16299), BackdropKind.none);
+      expect(windowsBackdropKind(26200, override: 'accent'), BackdropKind.accentAcrylic);
+      expect(windowsBackdropKind(26200, override: 'off'), BackdropKind.none);
+      expect(windowsBackdropKind(26200, override: 'kwin'), BackdropKind.acrylic);
+      expect(windowsBackdropKind(26200, override: 'nonsense'), BackdropKind.acrylic);
+    });
+
+    test(
+      'Linux: KWin\'s blur on X11 where it is offered, the bare desktop elsewhere, nothing without a compositor',
+      () {
+        BackdropKind kind({
+          bool wayland = false,
+          bool x11 = true,
+          bool rgba = true,
+          bool compositor = true,
+          bool kwin = false,
+          String? override,
+        }) => linuxBackdropKind(
+          wayland: wayland,
+          x11: x11,
+          rgbaVisual: rgba,
+          compositor: compositor,
+          kwinBlur: kwin,
+          override: override,
+        );
+        expect(kind(kwin: true), BackdropKind.kwinBlur);
+        expect(kind(), BackdropKind.transparent);
+        expect(kind(compositor: false), BackdropKind.none);
+        expect(kind(wayland: true, x11: false, compositor: false), BackdropKind.transparent);
+        expect(kind(rgba: false, kwin: true), BackdropKind.none);
+        expect(kind(x11: false), BackdropKind.none);
+        expect(kind(kwin: true, override: 'transparent'), BackdropKind.transparent);
+        expect(kind(kwin: true, override: 'none'), BackdropKind.none);
+      },
+    );
+
+    test('the transparency and the picture behind are kept, garbage read as the default', () {
+      final temp = temporaryFolder('glass-window');
+      addTearDown(() => temp.deleteSync(recursive: true));
+      final file = p.join(temp.path, 'preferences.json');
+      final saved = Preferences()
+        ..theme = 3
+        ..glassTransparency = 40
+        ..glassArtwork = true;
+      File(file).writeAsStringSync(jsonEncode(saved.toJson()));
+      final back = Preferences.fromJson(jsonDecode(File(file).readAsStringSync()) as Map<String, dynamic>);
+      expect(back.glassTransparency, 40);
+      expect(back.glassArtwork, isTrue);
+      final garbage = Preferences.fromJson({'theme': 3, 'glassTransparency': 'lots', 'glassArtwork': 'yes'});
+      expect(garbage.glassTransparency, isNull);
+      expect(garbage.glassArtwork, isFalse);
+      expect(Preferences.fromJson({'glassTransparency': 250}).glassTransparency, 100);
+    });
+
+    test('the window follows the look: see-through in Glass, opaque again for another look or Reduce Transparency', () {
+      final backdrop = _FakeBackdrop(BackdropKind.acrylic);
+      final fixture = makeFixture(theme: 3, backdrop: backdrop);
+      addTearDown(fixture.dispose);
+      final model = fixture.model;
+      expect(model.glassWindow.seeThrough, isTrue);
+      model.applyBackdrop();
+      model.applyBackdrop();
+      expect(backdrop.calls, [true], reason: 'applied once, not again while nothing changed');
+      model.preferences.reduceTransparency = true;
+      model.applyBackdrop();
+      expect(backdrop.calls, [true, false]);
+      model.preferences.reduceTransparency = false;
+      model.preferences.theme = 0;
+      model.applyBackdrop();
+      model.preferences.theme = 3;
+      model.applyBackdrop();
+      expect(backdrop.calls, [true, false, true]);
+      // A GPU too slow for Glass: the window goes opaque with its surfaces.
+      model.glassTooSlow();
+      model.applyBackdrop();
+      expect(backdrop.calls.last, isFalse);
+    });
+
+    test('the slider at 0 % is a solid pane: an opaque window and solid surfaces', () {
+      final backdrop = _FakeBackdrop(BackdropKind.acrylic);
+      final fixture = makeFixture(theme: 3, backdrop: backdrop);
+      addTearDown(fixture.dispose);
+      final model = fixture.model..preferences.glassTransparency = 0;
+      expect(model.solidGlass, isTrue);
+      expect(model.glassWindow.seeThrough, isFalse);
+      // Where the window could never be see-through, 0 % changes nothing.
+      final plain = makeFixture(theme: 3);
+      addTearDown(plain.dispose);
+      plain.model.preferences.glassTransparency = 0;
+      expect(plain.model.solidGlass, isFalse);
+    });
+
+    test('before its window shows, the backdrop is tried again', () {
+      fakeAsync((async) {
+        final backdrop = _FakeBackdrop(BackdropKind.acrylic)..found = false;
+        final fixture = makeFixture(theme: 3, backdrop: backdrop);
+        fixture.model.applyBackdrop();
+        expect(backdrop.calls, [true]);
+        backdrop.found = true;
+        async.elapse(const Duration(milliseconds: 300));
+        expect(backdrop.calls, [true, true]);
+        async.elapse(const Duration(seconds: 2));
+        expect(backdrop.calls, [true, true]);
+        fixture.dispose();
+      });
+    });
+
+    test('the settings offer the transparency and the picture behind only where the window can be see-through', () {
+      List<String> rows(AppModel model) => model.panelCategories().first.rows.map((row) => row.id).toList();
+      final glass = makeFixture(theme: 3, backdrop: _FakeBackdrop(BackdropKind.kwinBlur));
+      addTearDown(glass.dispose);
+      glass.model.open(Layer.settings);
+      expect(
+        rows(glass.model),
+        containsAllInOrder(['theme', 'transparency', 'glassTransparency', 'accent', 'glassArtwork']),
+      );
+      expect(rows(glass.model), isNot(contains('artwork')));
+      final row = glass.model.panelCategories().first.rows.firstWhere((row) => row.id == 'glassTransparency');
+      expect(row.detail, T.text('glassTransparencyDetail'));
+      expect((row.kind as StepperRow).value, 90);
+      (row.kind as StepperRow).set(30);
+      expect(glass.model.preferences.glassTransparency, 30);
+      expect(glass.model.glassWindow.tint, GlassWindow.tintAt(30));
+      (row.kind as StepperRow).set(90);
+      expect(glass.model.preferences.glassTransparency, isNull, reason: 'the default is kept as no choice');
+      final sharp = makeFixture(theme: 3, backdrop: _FakeBackdrop(BackdropKind.transparent));
+      addTearDown(sharp.dispose);
+      sharp.model.open(Layer.settings);
+      expect(
+        sharp.model.panelCategories().first.rows.firstWhere((row) => row.id == 'glassTransparency').detail,
+        T.text('glassTransparencySharp'),
+      );
+      final opaque = makeFixture(theme: 3);
+      addTearDown(opaque.dispose);
+      opaque.model.open(Layer.settings);
+      expect(rows(opaque.model), isNot(contains('glassTransparency')));
+      expect(rows(opaque.model), contains('artwork'));
+      final cosmic = makeFixture(backdrop: _FakeBackdrop(BackdropKind.acrylic));
+      addTearDown(cosmic.dispose);
+      cosmic.model.open(Layer.settings);
+      expect(rows(cosmic.model), isNot(contains('glassTransparency')));
+    });
+
+    group('screens over a mock desktop', () {
+      late Fixture fixture;
+      int indexOf(AppModel model, String titleId) => model.games.indexWhere((game) => game.titleId == titleId);
+      tearDown(() => fixture.dispose());
+
+      // A colourful wallpaper, blurred and dimmed as Acrylic roughly does: a mock, labelled so.
+      final wallpaper = png(320, 180, (x, y) {
+        double blob(double cx, double cy, double r) =>
+            math.max(0, 1 - math.sqrt(math.pow(x - cx, 2) + math.pow(y - cy, 2)) / r);
+        final pink = blob(60, 40, 120),
+            blue = blob(260, 30, 130),
+            green = blob(220, 170, 110),
+            gold = blob(40, 170, 90);
+        int channel(double base, List<double> parts) =>
+            (base + parts.fold(0.0, (sum, part) => sum + part)).round().clamp(0, 255);
+        return channel(40, [255 * pink, 40 * blue, 60 * green, 250 * gold]) << 24 |
+            channel(30, [60 * pink, 140 * blue, 220 * green, 190 * gold]) << 16 |
+            channel(80, [200 * pink, 255 * blue, 120 * green, 40 * gold]) << 8 |
+            0xFF;
+      });
+
+      Widget desktop(Widget app) => Directionality(
+        textDirection: TextDirection.ltr,
+        child: RepaintBoundary(
+          key: const ValueKey('desktop'),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ImageFiltered(
+                imageFilter: ui.ImageFilter.blur(sigmaX: 40, sigmaY: 40, tileMode: TileMode.mirror),
+                child: ColorFiltered(
+                  colorFilter: const ColorFilter.matrix([
+                    0.8, 0, 0, 0, 8, //
+                    0, 0.8, 0, 0, 8, //
+                    0, 0, 0.8, 0, 12, //
+                    0, 0, 0, 1, 0,
+                  ]),
+                  child: Image.memory(wallpaper, fit: BoxFit.cover),
+                ),
+              ),
+              app,
+              const Positioned(
+                left: 16,
+                bottom: 14,
+                child: ColoredBox(
+                  color: Color(0xFFFFD60A),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    child: Text(
+                      'MOCK · desktop drawn by the test, blurred by Flutter, not the system\'s Acrylic',
+                      style: TextStyle(color: Color(0xFF000000), fontSize: 13, fontFamily: AppText.family),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      Future<void> shoot(WidgetTester tester, String name) =>
+          expectLater(find.byKey(const ValueKey('desktop')), matchesGoldenFile('goldens/$name.png'));
+
+      testWidgets('home over the desktop, an installed game selected', (tester) async {
+        fixture = makeFixture(theme: 3, backdrop: _FakeBackdrop(BackdropKind.acrylic));
+        final model = fixture.model;
+        model.select(indexOf(model, 'PPSA01001'));
+        await pumpLauncher(tester, model, wrap: desktop);
+        // No look background and no picture: the desktop is Glass's background.
+        expect(find.byType(ThemeBackground), findsNothing);
+        expect(find.byType(GameArtwork), findsNothing);
+        await shoot(tester, 'glass_window_home');
+      });
+
+      testWidgets('the picture behind, laid over the desktop', (tester) async {
+        fixture = makeFixture(theme: 3, backdrop: _FakeBackdrop(BackdropKind.acrylic));
+        final model = fixture.model..preferences.glassArtwork = true;
+        model.select(indexOf(model, 'PPSA01001'));
+        await pumpLauncher(tester, model, wrap: desktop);
+        expect(find.byType(GameArtwork), findsOneWidget);
+        await shoot(tester, 'glass_window_artwork');
+      });
+
+      testWidgets('settings, appearance, the transparency focused', (tester) async {
+        fixture = makeFixture(theme: 3, backdrop: _FakeBackdrop(BackdropKind.acrylic));
+        final model = fixture.model;
+        model.open(Layer.settings);
+        model.panelRow = model.panelCategories().first.rows.indexWhere((row) => row.id == 'glassTransparency');
+        await pumpLauncher(tester, model, wrap: desktop);
+        expect(find.text('Glass Transparency'), findsOneWidget);
+        expect(find.text('Show Game Art Behind'), findsOneWidget);
+        await shoot(tester, 'glass_window_settings');
+      });
+    });
+  });
+
   testWidgets('the onboarding offers Glass beside the other looks', (tester) async {
     final fixture = makeFixture(onboarded: false, withToolkit: false);
     addTearDown(fixture.dispose);
@@ -506,4 +807,21 @@ void main() {
     expect(find.text('Glass'), findsOneWidget);
     expect(tester.takeException(), isNull, reason: 'four cards fit the row');
   });
+}
+
+/// A window backdrop that remembers what it was asked; [found] false acts as a window not shown
+/// yet.
+class _FakeBackdrop implements WindowBackdrop {
+  _FakeBackdrop(this.kind);
+
+  @override
+  final BackdropKind kind;
+  final List<bool> calls = [];
+  bool found = true;
+
+  @override
+  bool apply({required bool seeThrough}) {
+    calls.add(seeThrough);
+    return found;
+  }
 }

@@ -6,6 +6,7 @@ import 'package:anyps5_desktop/core/audio/atrac9.dart';
 import 'package:anyps5_desktop/core/audio/audio_out.dart';
 import 'package:anyps5_desktop/core/crash_report.dart';
 import 'package:anyps5_desktop/core/desktop/desktop.dart';
+import 'package:anyps5_desktop/core/desktop/window_backdrop.dart';
 import 'package:anyps5_desktop/core/font_download.dart';
 import 'package:anyps5_desktop/core/gamepad/pad_navigation.dart';
 import 'package:anyps5_desktop/core/host.dart';
@@ -131,6 +132,7 @@ Fixture makeFixture({
   Uri? armEngine,
   List<ReleaseKey>? armKeys,
   DesktopWindows? desktop,
+  WindowBackdrop? backdrop,
   PadSource Function()? pads,
   Future<RgbaImage> Function(Trophy trophy, double scale)? renderTrophyCard,
   String? glibc,
@@ -198,6 +200,7 @@ Fixture makeFixture({
           ? null
           : GitHubReleases(api: armEngine, repository: ArmToolkitPackage.repository, signingKeys: armKeys),
       desktop: desktop,
+      backdrop: backdrop,
       pads: pads,
       renderTrophyCard: renderTrophyCard,
       hostGlibc: () => glibc,
@@ -229,7 +232,13 @@ Fixture makeFixture({
 }
 
 /// Renders the launcher at 1600x900 with the background and clock held still.
-Future<void> pumpLauncher(WidgetTester tester, AppModel model, {Size size = const Size(1600, 900)}) async {
+/// [wrap] puts something around the app (a mock desktop behind Glass's see-through window).
+Future<void> pumpLauncher(
+  WidgetTester tester,
+  AppModel model, {
+  Size size = const Size(1600, 900),
+  Widget Function(Widget app)? wrap,
+}) async {
   ArtworkImage.readSynchronously = true;
   await tester.runAsync(() async {
     await loadFonts();
@@ -238,7 +247,8 @@ Future<void> pumpLauncher(WidgetTester tester, AppModel model, {Size size = cons
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
-  await tester.pumpWidget(AnyPS5App(model: model, time: 120, now: DateTime(2026, 10, 24, 21, 30)));
+  final app = AnyPS5App(model: model, time: 120, now: DateTime(2026, 10, 24, 21, 30));
+  await tester.pumpWidget(wrap == null ? app : wrap(app));
   await settle(tester);
 }
 

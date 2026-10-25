@@ -5,9 +5,10 @@ import 'levels.dart';
 import 'notifier.dart';
 import 'socket.dart';
 
-/// The signed-in user's own side of AnyTogether that the lists do not carry: their trophy level
-/// and whether they appear offline. Read from /me when the socket is ready; `level.up` and
-/// `presence.mode` keep it current, the second from the user's other devices.
+/// The signed-in user's own side of AnyTogether that the lists do not carry: their trophy level,
+/// whether they appear offline and whether they send read receipts. Read from /me when the socket
+/// is ready; `level.up`, `presence.mode` and `messages.settings` keep it current, the last two
+/// from the user's other devices.
 class SelfProfile with Notifier {
   SelfProfile({required this.account, required this.socket}) {
     _events = socket.events.listen(_event);
@@ -25,8 +26,13 @@ class SelfProfile with Notifier {
 
   /// Friends see this user as offline; everything else keeps working.
   bool appearOffline = false;
+
+  /// Others see when this user has read their messages (and this user sees theirs); on unless
+  /// turned off.
+  bool readReceipts = true;
   bool loaded = false;
   int _changing = 0;
+  int _changingReceipts = 0;
 
   Future<void> refresh() async {
     final json = await account.call('GET', 'me');
@@ -36,6 +42,7 @@ class SelfProfile with Notifier {
       if (profile.containsKey('trophyLevel')) level = TrophyLevel.fromJson(profile['trophyLevel']);
       // Not while a change of ours is on its way: that answer decides.
       if (_changing == 0) appearOffline = profile['appearOffline'] == true;
+      if (_changingReceipts == 0) readReceipts = profile['readReceipts'] != false;
     }
     loaded = true;
     notifyListeners();
@@ -60,9 +67,28 @@ class SelfProfile with Notifier {
     }
   }
 
+  /// Read receipts on or off: shown at once, turned back (and thrown) when the server says no.
+  Future<void> setReadReceipts(bool on) async {
+    final before = readReceipts;
+    readReceipts = on;
+    _changingReceipts++;
+    notifyListeners();
+    try {
+      final answer = await account.call('PATCH', 'me/read-receipts', {'readReceipts': on});
+      if (answer['readReceipts'] is bool) readReceipts = answer['readReceipts'] as bool;
+    } on Object {
+      readReceipts = before;
+      rethrow;
+    } finally {
+      _changingReceipts--;
+      notifyListeners();
+    }
+  }
+
   void clear() {
     level = null;
     appearOffline = false;
+    readReceipts = true;
     loaded = false;
     notifyListeners();
   }
@@ -81,6 +107,10 @@ class SelfProfile with Notifier {
         if (higher) onLevelUp?.call(badge);
         // The points and the way to the next level.
         unawaited(refresh().catchError((Object _) {}));
+      case 'messages.settings':
+        if (data['readReceipts'] is! bool) return;
+        readReceipts = data['readReceipts'] as bool;
+        notifyListeners();
       case 'presence.mode':
         if (data['appearOffline'] is! bool) return;
         appearOffline = data['appearOffline'] as bool;

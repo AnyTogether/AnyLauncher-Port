@@ -106,37 +106,76 @@ class FakeTogether {
   final Map<String, Map<String, dynamic>> joinPreviews = {};
   int _ids = 0;
 
-  /// A conversation with [others] (cards), and its messages as [texts] by author id.
+  /// A conversation with [others] (cards), and its messages as [texts] by author id; each other
+  /// member's receipt (read and delivered up to nothing yet; delivered only in a direct one).
   Map<String, dynamic> conversation(
     String id,
     List<Map<String, dynamic>> others, {
     List<(String, String)> texts = const [],
     int readSeq = 0,
+    String updatedAt = '2026-10-24T20:00:00Z',
+    bool pinned = false,
   }) {
     final members = [card(me['id'] as String, me['handle'] as String, me['displayName'] as String), ...others];
     final messages = threads[id] = [
       for (var index = 0; index < texts.length; index++) _message(id, index + 1, texts[index].$1, texts[index].$2),
     ];
+    final direct = others.length == 1;
     return conversations[id] = {
       'id': id,
-      'kind': others.length > 1 ? 'group' : 'direct',
+      'kind': direct ? 'direct' : 'group',
       'title': null,
       'members': members,
       'lastSeq': messages.length,
       'readSeq': readSeq,
       'lastMessage': messages.isEmpty ? null : messages.last,
-      'updatedAt': '2026-10-24T20:00:00Z',
+      'updatedAt': updatedAt,
+      'pinned': pinned,
+      'muted': false,
+      'receipts': [
+        for (final other in others) {'userId': other['userId'], 'readSeq': 0, 'deliveredSeq': direct ? 0 : null},
+      ],
     };
   }
 
-  Map<String, dynamic> _message(String conversation, int seq, String author, String text, {String? id}) => {
-    'id': id ?? 'm-$conversation-$seq',
-    'conversationId': conversation,
-    'seq': seq,
-    'authorId': author,
-    'text': text,
-    'createdAt': '2026-10-24T20:${seq.toString().padLeft(2, '0')}:00Z',
-  };
+  /// When the messages were sent: the minute is their place, so a test can make one fresh.
+  String Function(int seq) messageTime = (seq) => '2026-10-24T20:${seq.toString().padLeft(2, '0')}:00Z';
+
+  Map<String, dynamic> _message(String conversation, int seq, String author, String text, {String? id, int? replyTo}) =>
+      {
+        'id': id ?? 'm-$conversation-$seq',
+        'conversationId': conversation,
+        'seq': seq,
+        'authorId': author,
+        'kind': 'text',
+        'text': text,
+        'caption': null,
+        'replyTo': replyTo,
+        'editedAt': null,
+        'editCount': 0,
+        'reactions': <Map<String, dynamic>>[],
+        'deletedAt': null,
+        'createdAt': messageTime(seq),
+      };
+
+  /// The others' messages after the user's read mark that are still there, as the server counts.
+  int unreadIn(Map<String, dynamic> conversation) => [
+    for (final message in threads[conversation['id']] ?? const <Map<String, dynamic>>[])
+      if (message['authorId'] != me['id'] &&
+          message['deletedAt'] == null &&
+          (message['seq'] as int) > (conversation['readSeq'] as int))
+        message,
+  ].length;
+
+  /// The reactions a message has now, in the API's order, from who reacted with what.
+  final Map<String, Map<String, Set<String>>> _reacted = {};
+  static const reactionOrder = ['like', 'love', 'laugh', 'wow', 'sad', 'fire', 'gg'];
+
+  List<Map<String, dynamic>> _reactions(String messageId) => [
+    for (final name in reactionOrder)
+      if (_reacted[messageId]?[name] case final Set<String> who when who.isNotEmpty)
+        {'reaction': name, 'count': who.length, 'userIds': who.toList()},
+  ];
 
   /// A message from someone else, as the gateway brings it.
   void receive(String conversation, String author, String text) {
@@ -445,13 +484,23 @@ class FakeTogether {
     }
     switch ((call.method, call.path)) {
       case ('GET', 'me/conversations'):
-        return (200, {'conversations': conversations.values.toList()});
+        final list = [
+          for (final conversation in conversations.values) {...conversation, 'unread': unreadIn(conversation)},
+        ]..sort((a, b) => (b['pinned'] == true ? 1 : 0) - (a['pinned'] == true ? 1 : 0));
+        return (200, {'conversations': list});
       case ('GET', 'me/conversations/unread'):
         var unread = 0;
+        var having = 0;
         for (final conversation in conversations.values) {
-          unread += (conversation['lastSeq'] as int) - (conversation['readSeq'] as int);
+          final count = unreadIn(conversation);
+          unread += count;
+          if (count > 0) having++;
         }
-        return (200, {'messages': unread});
+        return (200, {'conversations': having, 'messages': unread});
+      case ('PATCH', 'me/read-receipts'):
+        if (call.body['readReceipts'] is! bool) return problem(400, 'bad_request');
+        me['readReceipts'] = call.body['readReceipts'];
+        return (200, {'readReceipts': me['readReceipts']});
       case ('POST', 'conversations'):
         final other = (call.body['members'] as List<dynamic>).single as String;
         final existing = conversations.values.where(
@@ -607,13 +656,69 @@ class FakeTogether {
       if (call.method == 'GET') return (200, {'messages': messages, 'more': false});
       final text = call.body['text'] as String;
       if (text.contains('blocked.example')) return problem(400, 'link_blocked', 'That link is blocked');
-      final message = _message(id, messages.length + 1, me['id'] as String, text, id: call.body['clientId'] as String?);
+      final message = _message(
+        id,
+        messages.length + 1,
+        me['id'] as String,
+        text,
+        id: call.body['clientId'] as String?,
+        replyTo: call.body['replyTo'] as int?,
+      );
       messages.add(message);
       conversations[id]!
         ..['lastSeq'] = messages.length
         ..['readSeq'] = messages.length
         ..['lastMessage'] = message;
       return (201, message);
+    }
+    final one = RegExp(r'^conversations/([^/]+)/messages/(\d+)(/reactions/([a-z]+))?$').firstMatch(call.path);
+    if (one != null) {
+      final id = one.group(1)!;
+      final seq = int.parse(one.group(2)!);
+      final message = threads[id]?.where((m) => m['seq'] == seq).firstOrNull;
+      if (message == null) return problem(404, 'not_found');
+      final reaction = one.group(4);
+      if (reaction != null) {
+        if (!reactionOrder.contains(reaction)) return problem(400, 'bad_request');
+        final who = (_reacted[message['id'] as String] ??= {})[reaction] ??= {};
+        if (call.method == 'PUT') who.add(me['id'] as String);
+        if (call.method == 'DELETE') who.remove(me['id']);
+        message['reactions'] = _reactions(message['id'] as String);
+        return (200, {'conversationId': id, 'seq': seq, 'reactions': message['reactions']});
+      }
+      if (message['authorId'] != me['id']) return problem(403, 'forbidden');
+      if (call.method == 'PATCH') {
+        if ((message['editCount'] as int) >= 20) return problem(409, 'edit_limit');
+        message
+          ..['text'] = call.body['text']
+          ..['editedAt'] = '2026-10-24T21:00:00Z'
+          ..['editCount'] = (message['editCount'] as int) + 1;
+        return (200, message);
+      }
+      if (call.method == 'DELETE') {
+        message
+          ..['text'] = null
+          ..['deletedAt'] = '2026-10-24T21:00:00Z'
+          ..['reactions'] = <Map<String, dynamic>>[];
+        return (204, null);
+      }
+    }
+    final mark = RegExp(r'^conversations/([^/]+)/(delivered|pin|mute)$').firstMatch(call.path);
+    if (mark != null) {
+      final conversation = conversations[mark.group(1)];
+      if (conversation == null) return problem(404, 'not_found');
+      switch ((call.method, mark.group(2))) {
+        case ('POST', 'delivered'):
+          return (204, null);
+        case ('PUT', 'pin'):
+          final pinned = conversations.values.where((c) => c['pinned'] == true && c != conversation).length;
+          if (call.body['pinned'] == true && pinned >= 5) return problem(409, 'full');
+          conversation['pinned'] = call.body['pinned'];
+          return (200, {...conversation, 'unread': unreadIn(conversation)});
+        case ('PUT', 'mute'):
+          conversation['muted'] = call.body['muted'];
+          return (200, {...conversation, 'unread': unreadIn(conversation)});
+      }
     }
     final read = RegExp(r'^conversations/([^/]+)/read$').firstMatch(call.path);
     if (call.method == 'POST' && read != null) {

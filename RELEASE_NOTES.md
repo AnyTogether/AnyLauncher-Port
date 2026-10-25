@@ -53,6 +53,20 @@ release when it is made.
   checking, up to date, downloading with its percent, or ready.
 - **Hidden trophies.** Checked: a hidden trophy you earned always shows its name; only unearned
   hidden ones are masked.
+- **Controller presses no longer reach the launcher while you play.** The controller is read
+  whichever window is in front, and on Windows the launcher could believe it was still in front
+  behind the game, so Cross in the game also pressed what the launcher had focused. Now, while a
+  game (or any other program) is in front, the launcher takes nothing from the controller but
+  the PS/Guide button, which brings it in front as before; no vibration either. Back in front, a
+  button still held from the game does nothing until you let go of it and press it again, and a
+  stick still pushed moves nothing until it comes back to the middle.
+- **Lists no longer follow the mouse; scroll with the wheel or drag.** Moving the mouse over a
+  row still highlights it, but the list no longer scrolls to it (it used to slide away under the
+  pointer). Scroll with the wheel or the touchpad, or hold the left button and drag, as on a
+  phone or an Android emulator: lists, the library and the game tiles on the home screen follow
+  the pointer and glide on when you let go fast; a drag never clicks what it started on, and a
+  click that moves a few pixels is still a click. The arrow keys and the controller scroll the
+  focused row into view as before.
 
 ## 0.1.5
 

@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
@@ -7,6 +5,7 @@ import '../core/controls.dart';
 import '../core/trophies.dart';
 import 'app_model.dart';
 import 'components.dart';
+import 'glass.dart';
 import 'level_badge.dart';
 import 'home.dart';
 import 'strings.dart';
@@ -130,26 +129,21 @@ class _Scrim extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-        child: ColoredBox(
-          color: Colors.black.withValues(alpha: opacity),
-          child: onTapOutside == null
-              ? child
-              : Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    GestureDetector(
-                      key: const ValueKey('scrim-outside'),
-                      behavior: HitTestBehavior.opaque,
-                      onTap: onTapOutside,
-                    ),
-                    child,
-                  ],
+    return LayerScrim(
+      opacity: opacity,
+      child: onTapOutside == null
+          ? child
+          : Stack(
+              fit: StackFit.expand,
+              children: [
+                GestureDetector(
+                  key: const ValueKey('scrim-outside'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onTapOutside,
                 ),
-        ),
-      ),
+                child,
+              ],
+            ),
     );
   }
 }
@@ -269,6 +263,35 @@ class _CategoryTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
+    if (LookScope.isGlass(context)) {
+      // Glass: the chosen category is a pane of ice set into the panel; the others are words.
+      return Pressable(
+        onTap: onTap,
+        pressScale: 0.985,
+        builder: (context, hovering) => Padding(
+          padding: EdgeInsets.only(bottom: 6 * scale),
+          child: IceSurface(
+            radius: 12 * scale,
+            backdrop: false,
+            shadow: false,
+            hover: hovering,
+            opacity: selected ? 0.3 : 0,
+            rim: selected ? 0.8 : (hovering ? 0.3 : 0),
+            sheen: selected || hovering,
+            width: double.infinity,
+            padding: EdgeInsets.symmetric(horizontal: 18 * scale, vertical: 14 * scale),
+            child: Text(
+              title,
+              style: AppText.display(
+                17 * scale,
+                weight: selected ? FontWeight.w600 : FontWeight.w400,
+                color: Colors.white.withValues(alpha: selected ? 1 : (hovering ? 0.9 : 0.72)),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return Pressable(
       onTap: onTap,
       pressScale: 0.985,
@@ -353,8 +376,12 @@ class _RowView extends StatelessWidget {
     final scale = LayoutScale.of(context);
     final kind = row.kind;
     final destructive = kind is ActionRow && kind.destructive;
-    final titleColor = focused ? Colors.black : (destructive ? Palette.danger : Colors.white);
-    final detailColor = focused ? Colors.black.withValues(alpha: 0.6) : Colors.white.withValues(alpha: 0.55);
+    final glass = LookScope.isGlass(context);
+    final ink = LookScope.focusedInk(context);
+    final titleColor = focused ? ink : (destructive ? Palette.danger : Colors.white);
+    final detailColor = focused
+        ? ink.withValues(alpha: glass ? 0.68 : 0.6)
+        : Colors.white.withValues(alpha: glass ? 0.72 : 0.55);
     final accent = model.accentChoice.color;
     Widget value() {
       final style = AppText.display(16 * scale, weight: FontWeight.w600, color: titleColor);
@@ -394,9 +421,7 @@ class _RowView extends StatelessWidget {
             alignment: value ? Alignment.centerRight : Alignment.centerLeft,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20 * scale),
-              color: value
-                  ? accent
-                  : (focused ? Colors.black.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.18)),
+              color: value ? accent : (focused ? ink.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.18)),
             ),
             child: Container(
               width: 20 * scale,
@@ -429,7 +454,7 @@ class _RowView extends StatelessWidget {
           );
         case KeysRow(:final sources, :final capturing):
           if (capturing) {
-            return Text(T.text('pressKey'), style: style.copyWith(color: focused ? Colors.black : accent));
+            return Text(T.text('pressKey'), style: style.copyWith(color: focused ? ink : accent));
           }
           return Wrap(
             spacing: 6 * scale,
@@ -440,7 +465,7 @@ class _RowView extends StatelessWidget {
                   padding: EdgeInsets.symmetric(horizontal: 9 * scale, vertical: 4 * scale),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(7 * scale),
-                    color: focused ? Colors.black.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.12),
+                    color: focused ? ink.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.12),
                   ),
                   child: Text(
                     Controls.label(source, turkish: T.language == Language.turkish),
@@ -462,68 +487,91 @@ class _RowView extends StatelessWidget {
     }
 
     final info = kind is InfoRow && kind.text.isNotEmpty ? kind.text : null;
+    Widget content() => Row(
+      children: [
+        if (row.person != null) ...[
+          PersonAvatar(person: row.person!, size: 44 * scale, focused: focused),
+          SizedBox(width: 16 * scale),
+        ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    row.title,
+                    style: AppText.display(17 * scale, weight: FontWeight.w500, color: titleColor),
+                  ),
+                  if (row.glyph != null) ...[
+                    SizedBox(width: 8 * scale),
+                    PadGlyphIcon(row.glyph!, size: 15 * scale, color: titleColor),
+                  ],
+                  if (row.level != null) ...[
+                    SizedBox(width: 10 * scale),
+                    LevelBadgeView(level: row.level!, size: 24 * scale),
+                  ],
+                ],
+              ),
+              if (row.detail != null || info != null) ...[
+                SizedBox(height: 4 * scale),
+                Text(
+                  info ?? row.detail!,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.display(13 * scale, color: detailColor),
+                ),
+              ],
+            ],
+          ),
+        ),
+        SizedBox(width: 18 * scale),
+        value(),
+      ],
+    );
+
     return Pressable(
       onTap: row.focusable ? onTap : null,
       onHover: row.focusable ? onHover : null,
       pressScale: 0.99,
-      builder: (context, hovering) => AnimatedContainer(
-        duration: Motion.focus,
-        curve: Motion.settle,
-        margin: EdgeInsets.only(bottom: 6 * scale),
-        padding: EdgeInsets.symmetric(horizontal: 20 * scale, vertical: 14 * scale),
-        decoration: BoxDecoration(
-          color: focused ? Colors.white : Colors.white.withValues(alpha: row.focusable ? (hovering ? 0.12 : 0.06) : 0),
-          borderRadius: BorderRadius.circular(14 * scale),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.white.withValues(alpha: focused ? 0.22 : 0),
-              blurRadius: 16 * scale,
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            if (row.person != null) ...[
-              PersonAvatar(person: row.person!, size: 44 * scale, focused: focused),
-              SizedBox(width: 16 * scale),
-            ],
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        row.title,
-                        style: AppText.display(17 * scale, weight: FontWeight.w500, color: titleColor),
-                      ),
-                      if (row.glyph != null) ...[
-                        SizedBox(width: 8 * scale),
-                        PadGlyphIcon(row.glyph!, size: 15 * scale, color: titleColor),
-                      ],
-                      if (row.level != null) ...[
-                        SizedBox(width: 10 * scale),
-                        LevelBadgeView(level: row.level!, size: 24 * scale),
-                      ],
-                    ],
+      builder: (context, hovering) => glass
+          // Glass: rows are thin panes inside the panel's ice (no blur of their own); the
+          // focused one is the bright chip. Wide rows do not grow: the chip and its glow say it.
+          ? Padding(
+              padding: EdgeInsets.only(bottom: 6 * scale),
+              child: IceSurface(
+                radius: 14 * scale,
+                focused: focused,
+                backdrop: false,
+                shadow: false,
+                sweep: true,
+                hover: hovering && row.focusable,
+                opacity: row.focusable ? 0.16 : 0,
+                rim: row.focusable ? 0.45 : 0,
+                sheen: row.focusable,
+                padding: EdgeInsets.symmetric(horizontal: 20 * scale, vertical: 14 * scale),
+                child: content(),
+              ),
+            )
+          : AnimatedContainer(
+              duration: Motion.focus,
+              curve: Motion.settle,
+              margin: EdgeInsets.only(bottom: 6 * scale),
+              padding: EdgeInsets.symmetric(horizontal: 20 * scale, vertical: 14 * scale),
+              decoration: BoxDecoration(
+                color: focused
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: row.focusable ? (hovering ? 0.12 : 0.06) : 0),
+                borderRadius: BorderRadius.circular(14 * scale),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.white.withValues(alpha: focused ? 0.22 : 0),
+                    blurRadius: 16 * scale,
                   ),
-                  if (row.detail != null || info != null) ...[
-                    SizedBox(height: 4 * scale),
-                    Text(
-                      info ?? row.detail!,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppText.display(13 * scale, color: detailColor),
-                    ),
-                  ],
                 ],
               ),
+              child: content(),
             ),
-            SizedBox(width: 18 * scale),
-            value(),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -540,7 +588,7 @@ class _StepArrow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
-    final ink = focused ? Colors.black : Colors.white;
+    final ink = focused ? LookScope.focusedInk(context) : Colors.white;
     return Pressable(
       onTap: enabled ? onTap : null,
       pressScale: 0.88,
@@ -839,16 +887,12 @@ class TrophyView extends StatelessWidget {
                                 final earned = trophy.unlocked != null;
                                 final secret = model.isSecret(trophy);
                                 final revealable = model.canReveal(trophy);
-                                final color = focused ? Colors.black : Colors.white;
-                                return AnimatedContainer(
-                                  duration: Motion.focus,
-                                  curve: Motion.settle,
+                                final color = focused ? LookScope.focusedInk(context) : Colors.white;
+                                return PaneRow(
+                                  focused: focused,
+                                  radius: 14 * scale,
                                   margin: EdgeInsets.only(bottom: 8 * scale),
                                   padding: EdgeInsets.all(14 * scale),
-                                  decoration: BoxDecoration(
-                                    color: focused ? Colors.white : Colors.white.withValues(alpha: 0.06),
-                                    borderRadius: BorderRadius.circular(14 * scale),
-                                  ),
                                   child: Row(
                                     children: [
                                       Container(
@@ -967,7 +1011,7 @@ class _RevealChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
-    final ink = focused ? Colors.black : Colors.white;
+    final ink = focused ? LookScope.focusedInk(context) : Colors.white;
     return Semantics(
       button: true,
       child: Pressable(
@@ -1061,7 +1105,7 @@ class _RowTextFieldState extends State<RowTextField> {
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
-    final color = widget.focused ? Colors.black : Colors.white;
+    final color = widget.focused ? LookScope.focusedInk(context) : Colors.white;
     final editing = widget.model.editingRow == widget.row.id;
     return AnimatedContainer(
       duration: Motion.focus,
@@ -1083,7 +1127,7 @@ class _RowTextFieldState extends State<RowTextField> {
           widget.kind.submit?.call();
           widget.model.stopEditing();
         },
-        cursorColor: widget.focused ? Colors.black : widget.model.accentChoice.color,
+        cursorColor: widget.focused ? LookScope.focusedInk(context) : widget.model.accentChoice.color,
         style: AppText.display(16 * scale, weight: FontWeight.w500, color: color),
         decoration: InputDecoration.collapsed(
           hintText: widget.kind.hint,

@@ -56,7 +56,11 @@ class Preferences {
 
   factory Preferences.fromJson(Map<String, dynamic> json) => Preferences()
     ..language = json['language'] as String? ?? 'en'
-    ..theme = (json['theme'] as num?)?.toInt() ?? 0
+    // A look this launcher does not know (or garbage) is Cosmic; the rest of the file still counts.
+    ..theme = switch (json['theme']) {
+      final num index => LookStyle.fromIndex(index.toInt()).index,
+      _ => LookStyle.cosmic.index,
+    }
     ..accent = json['accent'] as String?
     ..profileName = json['profileName'] as String? ?? 'Player'
     ..gamesFolder = json['gamesFolder'] as String?
@@ -64,6 +68,7 @@ class Preferences {
     ..onboarded = json['onboarded'] as bool? ?? false
     ..gameArtwork = json['gameArtwork'] as bool? ?? true
     ..reducedMotion = json['reducedMotion'] as bool? ?? false
+    ..reduceTransparency = json['reduceTransparency'] == true
     ..phoneServer = json['phoneServer'] as bool? ?? true
     ..togetherServer = json['togetherServer'] as String?
     ..friendsJoin = json['friendsJoin'] as bool? ?? true
@@ -94,6 +99,9 @@ class Preferences {
   bool onboarded = false;
   bool gameArtwork = true;
   bool reducedMotion = false;
+
+  /// Glass draws its surfaces solid, without the blur behind them.
+  bool reduceTransparency = false;
   bool phoneServer = true;
 
   /// Another AnyTogether server than AnyTogether's own; null for that one.
@@ -142,6 +150,7 @@ class Preferences {
     'onboarded': onboarded,
     'gameArtwork': gameArtwork,
     'reducedMotion': reducedMotion,
+    'reduceTransparency': reduceTransparency,
     'phoneServer': phoneServer,
     'togetherServer': togetherServer,
     'friendsJoin': friendsJoin,
@@ -948,7 +957,22 @@ class AppModel extends ChangeNotifier {
   String? remoteError;
   RemoteMessage? _toldLibrary;
 
-  LookStyle get look => LookStyle.values[preferences.theme.clamp(0, LookStyle.values.length - 1)];
+  LookStyle get look => LookStyle.fromIndex(preferences.theme);
+
+  /// Glass gave up its blur this run: the GPU took too long to draw it (RasterWatch).
+  bool glassFallback = false;
+
+  /// Glass surfaces drawn solid: asked for, or the GPU too slow for the blur.
+  bool get solidGlass => preferences.reduceTransparency || glassFallback;
+
+  /// The GPU fell behind drawing Glass: its surfaces turn solid for the rest of the run, once
+  /// said in a toast.
+  void glassTooSlow() {
+    if (glassFallback || look != LookStyle.glass) return;
+    glassFallback = true;
+    if (!preferences.reduceTransparency) show(T.text('glassFallback'));
+    notifyListeners();
+  }
 
   Accent get accentChoice =>
       Accent.values.firstWhere((accent) => accent.name == preferences.accent, orElse: () => look.defaultAccent);
@@ -1538,10 +1562,10 @@ class AppModel extends ChangeNotifier {
     await previous;
     try {
       final scale = desktop.cardScale(pid);
-      final card = await (services.renderTrophyCard ?? (trophy, scale) => TrophyCard.render(trophy, scale: scale))(
-        trophy,
-        scale,
-      );
+      final render =
+          services.renderTrophyCard ??
+          (trophy, scale) => TrophyCard.render(trophy, scale: scale, glass: look == LookStyle.glass);
+      final card = await render(trophy, scale);
       if (!await desktop.showCard(card, pid: pid)) {
         await desktop.notify(
           T.text('trophyEarned'),
@@ -2030,13 +2054,24 @@ class AppModel extends ChangeNotifier {
           PanelRow(
             id: 'theme',
             title: T.text('theme'),
-            kind: ChoiceRow([for (final style in LookStyle.values) style.title], preferences.theme, (index) {
+            kind: ChoiceRow([for (final style in LookStyle.values) style.title], look.index, (index) {
               preferences
                 ..theme = index
                 ..accent = null;
               savePreferences();
             }),
           ),
+          // Only Glass has transparency to reduce.
+          if (look == LookStyle.glass)
+            PanelRow(
+              id: 'transparency',
+              title: T.text('reduceTransparency'),
+              detail: T.text('reduceTransparencyDetail'),
+              kind: ToggleRow(preferences.reduceTransparency, (value) {
+                preferences.reduceTransparency = value;
+                savePreferences();
+              }),
+            ),
           PanelRow(
             id: 'accent',
             title: T.text('accent'),
@@ -2626,7 +2661,7 @@ class AppModel extends ChangeNotifier {
 
   int _defaultChoice(int step) => switch (step) {
     0 => T.language.index,
-    1 => preferences.theme,
+    1 => look.index,
     2 => preferences.gamesFolder == null ? 0 : 1,
     _ => toolkit == null ? 0 : 2,
   };

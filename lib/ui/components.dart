@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import 'glass.dart';
 import 'strings.dart';
 import 'theme.dart';
 
@@ -31,6 +32,15 @@ class Glass extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (LookScope.isGlass(context)) {
+      // A darker panel (a full panel, a toast floating over anything) keeps more of its navy.
+      return IceSurface(
+        radius: radius,
+        padding: padding,
+        opacity: math.min(GlassRecipe.floatingOpacity, GlassRecipe.baseOpacity + math.max(0, opacity - 0.38) * 1.15),
+        child: child,
+      );
+    }
     final shape = BorderRadius.circular(radius);
     return ClipRRect(
       borderRadius: shape,
@@ -62,6 +72,7 @@ class FocusRing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final glass = LookScope.isGlass(context);
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -77,7 +88,9 @@ class FocusRing extends StatelessWidget {
               duration: Motion.focus,
               curve: Motion.settle,
               child: CustomPaint(
-                painter: _RingPainter(radius: radius + width * 1.6, width: width),
+                painter: glass
+                    ? _IceRingPainter(radius: radius + width * 1.6, width: width)
+                    : _RingPainter(radius: radius + width * 1.6, width: width),
               ),
             ),
           ),
@@ -117,6 +130,43 @@ class _RingPainter extends CustomPainter {
   bool shouldRepaint(_RingPainter oldDelegate) => oldDelegate.radius != radius || oldDelegate.width != width;
 }
 
+/// Glass's focus ring: a thinner ring of ice, white at the top and cyan below, in an icy glow.
+class _IceRingPainter extends CustomPainter {
+  _IceRingPainter({required this.radius, required this.width});
+  final double radius;
+  final double width;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final ring = RRect.fromRectAndRadius((Offset.zero & size).deflate(width / 2), Radius.circular(radius));
+    final rect = Offset.zero & size;
+    canvas
+      ..drawRRect(
+        ring,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = width * 2.5
+          ..color = GlassRecipe.cyan.withValues(alpha: GlassRecipe.glowOpacity)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.outer, GlassRecipe.glowBlur / 2),
+      )
+      ..drawRRect(
+        ring,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = width * 0.8
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomRight,
+            colors: [Colors.white, Colors.white.withValues(alpha: 0.85), GlassRecipe.cyan],
+            stops: const [0, 0.5, 1],
+          ).createShader(rect),
+      );
+  }
+
+  @override
+  bool shouldRepaint(_IceRingPainter oldDelegate) => oldDelegate.radius != radius || oldDelegate.width != width;
+}
+
 /// A console button: translucent until focused, then solid white.
 class ConsoleButton extends StatefulWidget {
   const ConsoleButton({
@@ -150,10 +200,26 @@ class _ConsoleButtonState extends State<ConsoleButton> {
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
     final focused = widget.focused;
-    final foreground = focused ? Colors.black : (widget.destructive ? Palette.danger : Colors.white);
+    final glass = LookScope.isGlass(context);
+    final foreground = focused ? LookScope.focusedInk(context) : (widget.destructive ? Palette.danger : Colors.white);
     final fill = focused
         ? Colors.white
         : Colors.white.withValues(alpha: widget.prominent ? 0.2 : (_hovering ? 0.16 : 0.1));
+    final constraints = BoxConstraints(minWidth: widget.minWidth * scale, minHeight: 54 * scale);
+    final padding = EdgeInsets.symmetric(horizontal: (widget.title.isEmpty ? 18 : 30) * scale);
+    final content = Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (widget.icon != null) Icon(widget.icon, size: 20 * scale, color: foreground),
+        if (widget.icon != null && widget.title.isNotEmpty) SizedBox(width: 10 * scale),
+        if (widget.title.isNotEmpty)
+          Text(
+            widget.title,
+            style: AppText.display(19 * scale, weight: FontWeight.w600, color: foreground),
+          ),
+      ],
+    );
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (event) {
@@ -170,39 +236,38 @@ class _ConsoleButtonState extends State<ConsoleButton> {
         onTapUp: (_) => setState(() => _pressed = false),
         onTap: widget.onPressed,
         child: AnimatedScale(
-          scale: _pressed ? 0.97 : (focused ? 1.05 : 1),
+          scale: _pressed ? 0.97 : (focused ? (glass ? GlassRecipe.focusScale : 1.05) : 1),
           duration: _pressed ? const Duration(milliseconds: 90) : Motion.focus,
           curve: Motion.settle,
-          child: AnimatedContainer(
-            duration: Motion.focus,
-            curve: Motion.settle,
-            constraints: BoxConstraints(minWidth: widget.minWidth * scale, minHeight: 54 * scale),
-            padding: EdgeInsets.symmetric(horizontal: (widget.title.isEmpty ? 18 : 30) * scale),
-            decoration: BoxDecoration(
-              color: fill,
-              borderRadius: BorderRadius.circular(14 * scale),
-              border: Border.all(color: Colors.white.withValues(alpha: focused ? 0 : 0.12)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.white.withValues(alpha: focused ? 0.28 : 0),
-                  blurRadius: 18 * scale,
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (widget.icon != null) Icon(widget.icon, size: 20 * scale, color: foreground),
-                if (widget.icon != null && widget.title.isNotEmpty) SizedBox(width: 10 * scale),
-                if (widget.title.isNotEmpty)
-                  Text(
-                    widget.title,
-                    style: AppText.display(19 * scale, weight: FontWeight.w600, color: foreground),
+          child: glass
+              // Glass: a pane of frosted ice that becomes a bright ice chip when focused.
+              ? IceSurface(
+                  radius: 14 * scale,
+                  focused: focused,
+                  hover: _hovering || widget.prominent,
+                  sweep: true,
+                  constraints: constraints,
+                  padding: padding,
+                  child: content,
+                )
+              : AnimatedContainer(
+                  duration: Motion.focus,
+                  curve: Motion.settle,
+                  constraints: constraints,
+                  padding: padding,
+                  decoration: BoxDecoration(
+                    color: fill,
+                    borderRadius: BorderRadius.circular(14 * scale),
+                    border: Border.all(color: Colors.white.withValues(alpha: focused ? 0 : 0.12)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: focused ? 0.28 : 0),
+                        blurRadius: 18 * scale,
+                      ),
+                    ],
                   ),
-              ],
-            ),
-          ),
+                  child: content,
+                ),
         ),
       ),
     );
@@ -628,40 +693,52 @@ class BackPill extends StatelessWidget {
       label: T.text(close ? 'close' : 'back'),
       child: Pressable(
         onTap: onTap,
-        builder: (context, hovering) => AnimatedContainer(
-          key: const ValueKey('back-pill'),
-          duration: Motion.focus,
-          curve: Motion.settle,
-          padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 9 * scale),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: hovering ? 0.22 : 0.1),
-            borderRadius: BorderRadius.circular(30 * scale),
-            border: Border.all(color: Colors.white.withValues(alpha: hovering ? 0.3 : 0.12)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                close ? Icons.close_rounded : Icons.arrow_back_rounded,
-                size: 17 * scale,
-                color: Colors.white.withValues(alpha: hovering ? 1 : 0.85),
+        builder: (context, hovering) => LookScope.isGlass(context)
+            ? IceSurface(
+                key: const ValueKey('back-pill'),
+                radius: 30 * scale,
+                hover: hovering,
+                backdrop: false,
+                shadow: false,
+                padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 9 * scale),
+                child: _backContent(scale, hovering),
+              )
+            : AnimatedContainer(
+                key: const ValueKey('back-pill'),
+                duration: Motion.focus,
+                curve: Motion.settle,
+                padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 9 * scale),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: hovering ? 0.22 : 0.1),
+                  borderRadius: BorderRadius.circular(30 * scale),
+                  border: Border.all(color: Colors.white.withValues(alpha: hovering ? 0.3 : 0.12)),
+                ),
+                child: _backContent(scale, hovering),
               ),
-              SizedBox(width: 8 * scale),
-              Text(
-                T.text(close ? 'close' : 'back'),
-                style: AppText.display(15 * scale, weight: FontWeight.w600, color: Colors.white),
-              ),
-              SizedBox(width: 10 * scale),
-              Text(
-                'Esc',
-                style: AppText.display(12 * scale, weight: FontWeight.w700, color: Colors.white.withValues(alpha: 0.5)),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
+
+  Widget _backContent(double scale, bool hovering) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(
+        close ? Icons.close_rounded : Icons.arrow_back_rounded,
+        size: 17 * scale,
+        color: Colors.white.withValues(alpha: hovering ? 1 : 0.85),
+      ),
+      SizedBox(width: 8 * scale),
+      Text(
+        T.text(close ? 'close' : 'back'),
+        style: AppText.display(15 * scale, weight: FontWeight.w600, color: Colors.white),
+      ),
+      SizedBox(width: 10 * scale),
+      Text(
+        'Esc',
+        style: AppText.display(12 * scale, weight: FontWeight.w700, color: Colors.white.withValues(alpha: 0.5)),
+      ),
+    ],
+  );
 }
 
 /// A full-screen layer with its way out for the mouse in the top right corner.

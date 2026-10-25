@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../core/desktop/desktop.dart';
 import '../core/trophies.dart';
+import 'glass.dart';
 import 'panels.dart';
 import 'strings.dart';
 import 'theme.dart';
@@ -19,7 +20,9 @@ abstract final class TrophyCard {
   static const height = 140.0;
   static const _margin = 24.0;
 
-  static Future<RgbaImage> render(Trophy trophy, {double scale = 1}) async {
+  /// [glass] draws it as a pane of the Glass look's ice: there is nothing behind a window of
+  /// its own to blur, so the ice is a deep navy, with the sheen, the frost and the rim of light.
+  static Future<RgbaImage> render(Trophy trophy, {double scale = 1, bool glass = false}) async {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     canvas.scale(scale);
@@ -34,18 +37,22 @@ abstract final class TrophyCard {
         ..color = Colors.black.withValues(alpha: 0.5)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
     );
-    canvas.drawRRect(card, Paint()..color = const Color(0xF0121212));
-    canvas.drawRRect(
-      card.deflate(0.5),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [grade.withValues(alpha: 0.6), Colors.white.withValues(alpha: 0.08)],
-        ).createShader(card.outerRect),
-    );
+    if (glass) {
+      _ice(canvas, card, grade);
+    } else {
+      canvas.drawRRect(card, Paint()..color = const Color(0xF0121212));
+      canvas.drawRRect(
+        card.deflate(0.5),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [grade.withValues(alpha: 0.6), Colors.white.withValues(alpha: 0.08)],
+          ).createShader(card.outerRect),
+      );
+    }
     // The picture, with its glow.
     final iconRect = Rect.fromLTWH(card.left + 16, card.center.dy - 30, 60, 60);
     canvas.drawCircle(
@@ -96,6 +103,85 @@ abstract final class TrophyCard {
     } finally {
       image.dispose();
     }
+  }
+
+  /// The card as Glass's ice: navy deepening downwards with a cold light in the top corner,
+  /// the sheen, a faint wash of the grade's colour by the picture, the frost, and the rim.
+  static void _ice(Canvas canvas, RRect card, Color grade) {
+    final rect = card.outerRect;
+    canvas
+      ..drawRRect(
+        card,
+        Paint()
+          ..shader = const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xF2122C44), Color(0xF5081726)],
+          ).createShader(rect),
+      )
+      ..save()
+      ..clipRRect(card)
+      ..drawCircle(
+        rect.topRight + const Offset(-60, -10),
+        150,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [GlassRecipe.cyan.withValues(alpha: 0.16), GlassRecipe.cyan.withValues(alpha: 0)],
+          ).createShader(Rect.fromCircle(center: rect.topRight + const Offset(-60, -10), radius: 150)),
+      )
+      ..drawCircle(
+        Offset(rect.left + 46, rect.center.dy),
+        90,
+        Paint()
+          ..shader = RadialGradient(colors: [grade.withValues(alpha: 0.12), grade.withValues(alpha: 0)])
+              .createShader(Rect.fromCircle(center: Offset(rect.left + 46, rect.center.dy), radius: 90)),
+      )
+      ..drawRect(
+        rect,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withValues(alpha: GlassRecipe.sheenFrom),
+              Colors.white.withValues(alpha: GlassRecipe.sheenTo),
+            ],
+          ).createShader(rect),
+      );
+    FrostGrain.paint(canvas, rect, GlassRecipe.grain);
+    canvas
+      ..restore()
+      ..drawRRect(
+        card.deflate(0.5),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withValues(alpha: GlassRecipe.rimTop),
+              Colors.white.withValues(alpha: GlassRecipe.rimMiddle),
+              GlassRecipe.cyan.withValues(alpha: GlassRecipe.rimBottom + 0.1),
+            ],
+            stops: const [0, 0.5, 1],
+          ).createShader(rect),
+      )
+      ..drawRRect(
+        card.deflate(1.5),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.white.withValues(alpha: GlassRecipe.specular),
+              Colors.white.withValues(alpha: 0),
+            ],
+            stops: [0, 20 / rect.height],
+          ).createShader(rect),
+      );
   }
 
   static Future<ui.Image?> _decode(Uint8List? png) async {

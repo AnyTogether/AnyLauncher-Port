@@ -1,0 +1,729 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+
+import 'theme.dart';
+
+/// The Glass look's recipe: frosted ice over a cold background. Every surface is layered glass
+/// (a blur of what is behind it, a navy base for contrast, a sheen, a rim of refracted light,
+/// a still frost grain and a soft shadow); the focused one turns into a bright ice chip. The
+/// macOS launcher draws the same numbers.
+abstract final class GlassRecipe {
+  /// The blur behind surfaces, and behind full-screen layers.
+  static const surfaceBlur = 20.0;
+  static const layerBlur = 30.0;
+
+  /// The navy under the glass that keeps white text readable, and how much of it.
+  static const base = Color(0xFF06121F);
+  static const baseOpacity = 0.48;
+
+  /// Floating surfaces over anything (toasts) keep up to this much.
+  static const floatingOpacity = 0.8;
+
+  /// The sheen across a surface, top left to bottom right, ending in a breath of cyan.
+  static const sheenFrom = 0.09;
+  static const sheenTo = 0.03;
+  static const sheenCyan = 0.045;
+
+  /// The rim's light: white at the top, fading, then a cold cyan at the bottom right.
+  static const cyan = Color.fromRGBO(153, 230, 255, 1);
+  static const rimTop = 0.55;
+  static const rimMiddle = 0.12;
+  static const rimBottom = 0.25;
+
+  /// The line of light just inside the top edge.
+  static const specular = 0.25;
+
+  /// The frost's strength over a surface.
+  static const grain = 0.035;
+
+  /// The shadow under a surface.
+  static const shadowOpacity = 0.35;
+  static const shadowBlur = 24.0;
+  static const shadowOffset = 12.0;
+
+  /// The focused element: a bright frosted ice chip (white at the top, a pale ice at the
+  /// bottom) with dark ink and an icy glow.
+  static const chipFrom = 0.97;
+  static const chipTo = 0.88;
+  static const chipIce = Color(0xFFDBF0FF);
+  static const ink = Contrast.darkInk;
+  static const glowOpacity = 0.35;
+  static const glowBlur = 18.0;
+  static const focusScale = 1.04;
+  static const sweep = Duration(milliseconds: 600);
+
+  /// Surfaces with no transparency (Reduce Transparency, or a GPU too slow for the blur).
+  static const solid = Color(0xFF0A1A2A);
+
+  /// Full-screen layers (settings, library, profile…): a frosted navy, lit a little from the
+  /// top left.
+  static const layer = Color(0xFF04101C);
+  static const layerOpacity = 0.62;
+  static const layerLight = 0.075;
+
+  /// The selected game's picture, frosted: decoded small, blurred, a little more saturated,
+  /// its colors pulled towards ice (a cool gradient in the `color` blend mode, which keeps each
+  /// pixel's lightness), under a navy veil.
+  static const artworkBlur = 24.0;
+  static const artworkWidth = 480;
+  static const artworkSaturation = 1.3;
+  static const iceTop = Color(0xFFDBF0FF);
+  static const iceBottom = Color(0xFF528FD1);
+  static const iceOpacity = 0.32;
+
+  /// The veil: navy everywhere, more from the left edge (to 0 at 80 % across) and from the
+  /// bottom (from half way down), where the hero text and the cards sit.
+  static const veil = 0.42;
+  static const veilLeft = [0.5, 0.18, 0.0];
+  static const veilLeftStops = [0.0, 0.45, 0.8];
+  static const veilBottom = 0.72;
+
+  /// How much navy the veil lays at [x], [y] (fractions of the screen).
+  static double veilAt(double x, double y) {
+    double left;
+    if (x <= veilLeftStops[1]) {
+      left = veilLeft[0] + (veilLeft[1] - veilLeft[0]) * x / veilLeftStops[1];
+    } else if (x <= veilLeftStops[2]) {
+      left = veilLeft[1] + (veilLeft[2] - veilLeft[1]) * (x - veilLeftStops[1]) / (veilLeftStops[2] - veilLeftStops[1]);
+    } else {
+      left = 0;
+    }
+    final bottom = y <= 0.5 ? 0.0 : veilBottom * (y - 0.5) / 0.5;
+    return 1 - (1 - veil) * (1 - left) * (1 - bottom);
+  }
+
+  /// Saturation [artworkSaturation], as a color matrix.
+  static List<double> get saturation {
+    const s = artworkSaturation;
+    const r = 0.2126, g = 0.7152, b = 0.0722;
+    return [
+      r * (1 - s) + s, g * (1 - s), b * (1 - s), 0, 0, //
+      r * (1 - s), g * (1 - s) + s, b * (1 - s), 0, 0, //
+      r * (1 - s), g * (1 - s), b * (1 - s) + s, 0, 0, //
+      0, 0, 0, 1, 0,
+    ];
+  }
+
+  /// The frosted picture's brightest possible pixel: white (the `color` blend keeps lightness).
+  static const artworkCeiling = Color(0xFFFFFFFF);
+
+  /// [top] at [opacity] over the opaque [bottom].
+  static Color over(Color top, double opacity, Color bottom) => Color.lerp(bottom, top.withValues(alpha: 1), opacity)!;
+
+  /// What an unfocused surface looks like over the opaque [backdrop], at its brightest (the
+  /// top-left corner of the sheen); the blur only averages the backdrop, so it never brightens it.
+  static Color surfaceOver(Color backdrop) =>
+      over(const Color(0xFFFFFFFF), sheenFrom, over(base, baseOpacity, backdrop));
+}
+
+/// How the interface below is drawn: the Glass look, and whether its glass is solid.
+class LookScope extends InheritedWidget {
+  const LookScope({super.key, required this.glass, required this.solid, required super.child});
+
+  /// The Glass look is in use.
+  final bool glass;
+
+  /// Surfaces are drawn without transparency or blur (Reduce Transparency, a slow GPU).
+  final bool solid;
+
+  static LookScope? _of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<LookScope>();
+
+  static bool isGlass(BuildContext context) => _of(context)?.glass ?? false;
+  static bool isSolid(BuildContext context) => _of(context)?.solid ?? false;
+
+  /// The ink for words on [accent]: in Glass, and on the light Ice accent anywhere, it follows
+  /// the fill's lightness; the older looks keep [otherwise], as they were drawn.
+  static Color inkOnAccent(BuildContext context, Color accent, Color otherwise) =>
+      isGlass(context) || accent == Accent.ice.color ? Contrast.inkOn(accent) : otherwise;
+
+  /// The ink of a focused element: Glass's navy, black elsewhere.
+  static Color focusedInk(BuildContext context) => isGlass(context) ? GlassRecipe.ink : Colors.black;
+
+  @override
+  bool updateShouldNotify(LookScope oldWidget) => oldWidget.glass != glass || oldWidget.solid != solid;
+}
+
+/// The frost grain shader (shaders/frost.frag), loaded once.
+abstract final class FrostGrain {
+  static Future<ui.FragmentProgram?>? _loading;
+  static ui.FragmentProgram? _program;
+
+  static Future<void> preload() => _loading ??= () async {
+    try {
+      return _program = await ui.FragmentProgram.fromAsset('shaders/frost.frag');
+    } on Object {
+      return null;
+    }
+  }();
+
+  /// Paints the grain over [rect] at [strength]; nothing until the shader has loaded.
+  static void paint(Canvas canvas, Rect rect, double strength) {
+    final program = _program;
+    if (program == null) {
+      preload();
+      return;
+    }
+    final shader = program.fragmentShader()..setFloat(0, strength);
+    canvas.drawRect(rect, Paint()..shader = shader);
+    shader.dispose();
+  }
+}
+
+/// A surface of frosted ice: the blur of what is behind it, clipped to its shape, then the base,
+/// the sheen, the frost and the rim. [focused] turns it into the bright ice chip (the caller
+/// switches its ink to [GlassRecipe.ink] and scales it); [sweep] runs a sheen across it as it
+/// gains focus. Inside another glass surface, [backdrop] false skips the blur (the panel behind
+/// already frosted it).
+class IceSurface extends StatelessWidget {
+  const IceSurface({
+    super.key,
+    required this.radius,
+    this.child,
+    this.padding,
+    this.focused = false,
+    this.backdrop = true,
+    this.shadow = true,
+    this.sweep = false,
+    this.opacity = GlassRecipe.baseOpacity,
+    this.rim = 1,
+    this.sheen = true,
+    this.hover = false,
+    this.width,
+    this.height,
+    this.constraints,
+  });
+
+  final double radius;
+  final Widget? child;
+  final EdgeInsetsGeometry? padding;
+  final bool focused;
+  final bool backdrop;
+  final bool shadow;
+  final bool sweep;
+  final bool hover;
+
+  /// The navy base's opacity: more for large panels full of text.
+  final double opacity;
+
+  /// How much of the rim shows unfocused (quieter for rows inside a panel), and whether the
+  /// sheen does.
+  final double rim;
+  final bool sheen;
+  final double? width;
+  final double? height;
+  final BoxConstraints? constraints;
+
+  @override
+  Widget build(BuildContext context) {
+    final solid = LookScope.isSolid(context);
+    return TweenAnimationBuilder<double>(
+      tween: Tween(end: focused ? 1 : 0),
+      duration: Motion.focus,
+      curve: Motion.settle,
+      child: Container(width: width, height: height, constraints: constraints, padding: padding, child: child),
+      builder: (context, t, content) {
+        Widget body = CustomPaint(
+          painter: _IceFill(radius: radius, focus: t, solid: solid, opacity: opacity, hover: hover, sheen: sheen),
+          foregroundPainter: rim == 0 && t == 0 ? null : _IceRim(radius: radius, focus: t, strength: rim),
+          child: content,
+        );
+        if (sweep) body = SheenSweep(active: focused, child: body);
+        final clip = ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: backdrop && !solid
+              ? BackdropFilter.grouped(
+                  filter: ui.ImageFilter.blur(sigmaX: GlassRecipe.surfaceBlur, sigmaY: GlassRecipe.surfaceBlur),
+                  child: body,
+                )
+              : body,
+        );
+        if (!shadow && t == 0) return clip;
+        return CustomPaint(
+          painter: _IceHalo(radius: radius, focus: t, shadow: shadow),
+          child: clip,
+        );
+      },
+    );
+  }
+}
+
+/// The base, sheen and frost of a surface, or the ice chip's bright fill when focused.
+class _IceFill extends CustomPainter {
+  _IceFill({
+    required this.radius,
+    required this.focus,
+    required this.solid,
+    required this.opacity,
+    required this.hover,
+    required this.sheen,
+  });
+
+  final double radius;
+  final double focus;
+  final bool solid;
+  final double opacity;
+  final bool hover;
+  final bool sheen;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final shape = RRect.fromRectAndRadius(rect, Radius.circular(radius));
+    final white = Colors.white;
+    if (focus < 1) {
+      if (opacity > 0) {
+        // Solid, a surface is opaque navy; a pane inside a panel stays clear over the panel's.
+        final base = solid && opacity >= GlassRecipe.baseOpacity
+            ? GlassRecipe.solid
+            : GlassRecipe.base.withValues(alpha: opacity);
+        canvas.drawRRect(shape, Paint()..color = base);
+      }
+      if (sheen) {
+        canvas.drawRRect(
+          shape,
+          Paint()
+            ..shader = LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                white.withValues(alpha: GlassRecipe.sheenFrom + (hover ? 0.05 : 0)),
+                white.withValues(alpha: GlassRecipe.sheenTo + (hover ? 0.03 : 0)),
+                GlassRecipe.cyan.withValues(alpha: GlassRecipe.sheenCyan),
+              ],
+            ).createShader(rect),
+        );
+      }
+    }
+    if (focus > 0) {
+      canvas.drawRRect(
+        shape,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              white.withValues(alpha: GlassRecipe.chipFrom * focus),
+              GlassRecipe.chipIce.withValues(alpha: GlassRecipe.chipTo * focus),
+            ],
+          ).createShader(rect),
+      );
+    }
+    canvas
+      ..save()
+      ..clipRRect(shape);
+    FrostGrain.paint(canvas, rect, GlassRecipe.grain);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_IceFill old) =>
+      old.radius != radius ||
+      old.focus != focus ||
+      old.solid != solid ||
+      old.opacity != opacity ||
+      old.hover != hover ||
+      old.sheen != sheen;
+}
+
+/// The rim of refracted light around a surface and the specular line inside its top edge.
+class _IceRim extends CustomPainter {
+  _IceRim({required this.radius, required this.focus, required this.strength});
+
+  final double radius;
+  final double focus;
+  final double strength;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    double lerp(double a, double b) => a * strength + (b - a * strength) * focus;
+    final white = Colors.white;
+    final edge = RRect.fromRectAndRadius(rect.deflate(0.5), Radius.circular(math.max(0, radius - 0.5)));
+    canvas
+      // White light from above: top to bottom whatever the shape (a diagonal across a wide
+      // row would run mostly sideways).
+      ..drawRRect(
+        edge,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              white.withValues(alpha: lerp(GlassRecipe.rimTop, 1)),
+              white.withValues(alpha: lerp(GlassRecipe.rimMiddle, 0.6)),
+              white.withValues(alpha: lerp(0.04, 0.35)),
+            ],
+            stops: const [0, 0.45, 1],
+          ).createShader(rect),
+      )
+      // And the cold light it bends into the bottom right corner.
+      ..drawRRect(
+        edge,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..shader = RadialGradient(
+            center: Alignment.bottomRight,
+            radius: 1,
+            colors: [
+              GlassRecipe.cyan.withValues(alpha: lerp(GlassRecipe.rimBottom, 0.85)),
+              GlassRecipe.cyan.withValues(alpha: 0),
+            ],
+          ).createShader(Rect.fromCircle(center: rect.bottomRight, radius: math.max(size.height * 1.4, 36))),
+      );
+    if (size.height <= 4) return;
+    // Just inside the top edge, following the corners' curve and gone by the middle.
+    final reach = math.min(1.0, math.max(radius, 8) / size.height);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect.deflate(1.5), Radius.circular(math.max(0, radius - 1.5))),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            white.withValues(alpha: lerp(GlassRecipe.specular, 0.9)),
+            white.withValues(alpha: 0),
+          ],
+          stops: [0, reach],
+        ).createShader(rect),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_IceRim old) => old.radius != radius || old.focus != focus || old.strength != strength;
+}
+
+/// The shadow under a surface (outside its shape only, so the glass is not darkened through)
+/// and, focused, its icy glow.
+class _IceHalo extends CustomPainter {
+  _IceHalo({required this.radius, required this.focus, required this.shadow});
+
+  final double radius;
+  final double focus;
+  final bool shadow;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final shape = RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(radius));
+    final outside = Path()
+      ..fillType = PathFillType.evenOdd
+      ..addRect((Offset.zero & size).inflate(80))
+      ..addRRect(shape);
+    canvas
+      ..save()
+      ..clipPath(outside);
+    if (shadow) {
+      canvas.drawRRect(
+        shape.shift(const Offset(0, GlassRecipe.shadowOffset)),
+        Paint()
+          ..color = Colors.black.withValues(alpha: GlassRecipe.shadowOpacity * (1 - 0.3 * focus))
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, GlassRecipe.shadowBlur / 2),
+      );
+    }
+    if (focus > 0) {
+      canvas.drawRRect(
+        shape,
+        Paint()
+          ..color = GlassRecipe.cyan.withValues(alpha: GlassRecipe.glowOpacity * focus)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, GlassRecipe.glowBlur / 2),
+      );
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_IceHalo old) => old.radius != radius || old.focus != focus || old.shadow != shadow;
+}
+
+/// A band of light that sweeps once across its child when [active] turns on: the glint of a
+/// pane catching the light. Not with reduced motion.
+class SheenSweep extends StatefulWidget {
+  const SheenSweep({super.key, required this.active, required this.child});
+
+  final bool active;
+  final Widget child;
+
+  @override
+  State<SheenSweep> createState() => _SheenSweepState();
+}
+
+class _SheenSweepState extends State<SheenSweep> with SingleTickerProviderStateMixin {
+  late final AnimationController _run = AnimationController(vsync: this, duration: GlassRecipe.sweep);
+
+  @override
+  void didUpdateWidget(SheenSweep oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active && !Motion.reduced) {
+      _run.forward(from: 0);
+    } else if (!widget.active) {
+      _run.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _run.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _run,
+      child: widget.child,
+      builder: (context, child) => CustomPaint(
+        foregroundPainter: _run.isAnimating ? _SweepPainter(Curves.easeOut.transform(_run.value)) : null,
+        child: child,
+      ),
+    );
+  }
+}
+
+class _SweepPainter extends CustomPainter {
+  _SweepPainter(this.progress);
+
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    // The band's centre crosses from beyond the left edge to beyond the right one; it fades in
+    // and out so it never pops at either end.
+    final centre = -0.35 + 1.7 * progress;
+    final strength = math.sin(math.pi * progress) * 0.32;
+    final band = 0.16;
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..blendMode = BlendMode.plus
+        ..shader = LinearGradient(
+          begin: const Alignment(-1, -0.6),
+          end: const Alignment(1, 0.6),
+          colors: [
+            Colors.white.withValues(alpha: 0),
+            Colors.white.withValues(alpha: strength),
+            Colors.white.withValues(alpha: 0),
+          ],
+          stops: [(centre - band).clamp(0.0, 1.0), centre.clamp(0.0, 1.0), (centre + band).clamp(0.0, 1.0)],
+        ).createShader(rect),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_SweepPainter old) => old.progress != progress;
+}
+
+/// A full-screen layer over the home screen: blurred and darkened, as it always was; in Glass a
+/// frosted navy with a faint light along its top and the frost over it.
+class LayerScrim extends StatelessWidget {
+  const LayerScrim({super.key, required this.opacity, required this.child});
+
+  final double opacity;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!LookScope.isGlass(context)) {
+      return ClipRect(
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+          child: ColoredBox(
+            color: Colors.black.withValues(alpha: opacity),
+            child: child,
+          ),
+        ),
+      );
+    }
+    final solid = LookScope.isSolid(context);
+    return ClipRect(
+      child: BackdropFilter(
+        enabled: !solid,
+        filter: ui.ImageFilter.blur(sigmaX: GlassRecipe.layerBlur, sigmaY: GlassRecipe.layerBlur),
+        child: CustomPaint(
+          painter: _LayerPainter(solid ? 0.94 : math.max(GlassRecipe.layerOpacity, opacity)),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _LayerPainter extends CustomPainter {
+  _LayerPainter(this.opacity);
+
+  final double opacity;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    canvas
+      ..drawRect(rect, Paint()..color = GlassRecipe.layer.withValues(alpha: opacity))
+      ..drawRect(
+        rect,
+        Paint()
+          ..shader = RadialGradient(
+            center: Alignment.topLeft,
+            radius: 1.1,
+            colors: [
+              Colors.white.withValues(alpha: GlassRecipe.layerLight),
+              Colors.white.withValues(alpha: 0),
+            ],
+          ).createShader(rect),
+      );
+    FrostGrain.paint(canvas, rect, 0.03);
+  }
+
+  @override
+  bool shouldRepaint(_LayerPainter old) => old.opacity != opacity;
+}
+
+/// The navy veil over the frosted game picture, darker where the words are.
+class ArtworkScrim extends StatelessWidget {
+  const ArtworkScrim({super.key});
+
+  @override
+  Widget build(BuildContext context) => const CustomPaint(painter: _ArtworkScrimPainter(), size: Size.infinite);
+}
+
+class _ArtworkScrimPainter extends CustomPainter {
+  const _ArtworkScrimPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    const navy = GlassRecipe.layer;
+    canvas
+      ..drawRect(rect, Paint()..color = navy.withValues(alpha: GlassRecipe.veil))
+      ..drawRect(
+        rect,
+        Paint()
+          ..shader = LinearGradient(
+            colors: [for (final alpha in GlassRecipe.veilLeft) navy.withValues(alpha: alpha)],
+            stops: GlassRecipe.veilLeftStops,
+          ).createShader(rect),
+      )
+      ..drawRect(
+        rect,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              navy.withValues(alpha: 0),
+              navy.withValues(alpha: GlassRecipe.veilBottom),
+            ],
+            stops: const [0.5, 1],
+          ).createShader(rect),
+      );
+    FrostGrain.paint(canvas, rect, 0.03);
+  }
+
+  @override
+  bool shouldRepaint(_ArtworkScrimPainter oldDelegate) => false;
+}
+
+/// Watches how long frames take on the GPU and gives up on the blur when it is too slow: if
+/// most frames of two windows in a row take over [budget] to draw, [onSlow] runs (once).
+class RasterWatch {
+  RasterWatch({
+    required this.onSlow,
+    this.budget = const Duration(milliseconds: 12),
+    this.window = 90,
+    this.share = 0.6,
+    this.windows = 2,
+  });
+
+  final VoidCallback onSlow;
+  final Duration budget;
+  final int window;
+  final double share;
+  final int windows;
+
+  int _frames = 0;
+  int _slow = 0;
+  int _strikes = 0;
+  bool _done = false;
+
+  bool get tripped => _done;
+
+  /// Counts frames that took [raster] to draw.
+  void add(Iterable<Duration> raster) {
+    for (final duration in raster) {
+      if (_done) return;
+      _frames++;
+      if (duration > budget) _slow++;
+      if (_frames < window) continue;
+      _strikes = _slow >= window * share ? _strikes + 1 : 0;
+      _frames = 0;
+      _slow = 0;
+      if (_strikes >= windows) {
+        _done = true;
+        onSlow();
+      }
+    }
+  }
+
+  /// Starts over, frames before now forgotten (a game ran, the look changed).
+  void reset() {
+    _frames = 0;
+    _slow = 0;
+    _strikes = 0;
+  }
+}
+
+/// A row of a list on a full-screen layer (trophies, a profile's games): a filled rounded box
+/// that turns white when focused, as the older looks draw it; in Glass a thin pane of ice that
+/// turns into the bright chip.
+class PaneRow extends StatelessWidget {
+  const PaneRow({
+    super.key,
+    required this.focused,
+    required this.radius,
+    required this.padding,
+    required this.margin,
+    required this.child,
+  });
+
+  final bool focused;
+  final double radius;
+  final EdgeInsetsGeometry padding;
+  final EdgeInsetsGeometry margin;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (LookScope.isGlass(context)) {
+      return Padding(
+        padding: margin,
+        child: IceSurface(
+          radius: radius,
+          focused: focused,
+          backdrop: false,
+          shadow: false,
+          sweep: true,
+          opacity: 0.16,
+          rim: 0.45,
+          padding: padding,
+          child: child,
+        ),
+      );
+    }
+    return AnimatedContainer(
+      duration: Motion.focus,
+      curve: Motion.settle,
+      margin: margin,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: focused ? Colors.white : Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(radius),
+      ),
+      child: child,
+    );
+  }
+}

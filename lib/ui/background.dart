@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import 'components.dart';
+import 'glass.dart';
 import 'theme.dart';
 
 /// The theme's animated background, drawn by shaders/background.frag (the GLSL form of the macOS
@@ -13,8 +15,8 @@ import 'theme.dart';
 class ThemeBackground extends StatefulWidget {
   const ThemeBackground({super.key, required this.style, this.paused = false, this.time});
 
-  /// Loads the shader ahead of the first background (tests load it outside their fake clock).
-  static Future<void> preload() => _ThemeBackgroundState.preload();
+  /// Loads the shaders ahead of the first background (tests load them outside their fake clock).
+  static Future<void> preload() => Future.wait([_ThemeBackgroundState.preload(), FrostGrain.preload()]);
 
   final LookStyle style;
   final bool paused;
@@ -60,12 +62,45 @@ class _ThemeBackgroundState extends State<ThemeBackground> with SingleTickerProv
         _last = elapsed;
         if (widget.paused) return;
         setState(() => _clock += math.min(0.1, step));
-      })..start();
+      });
+      _follow();
+    }
+  }
+
+  @override
+  void didUpdateWidget(ThemeBackground oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.style != oldWidget.style || widget.paused != oldWidget.paused) _follow();
+  }
+
+  /// Glass drifts so slowly that 20 steps a second look the same as 60 or 120, and every frame
+  /// not drawn is one where the glass over it is not blurred again: a timer moves it instead of
+  /// a ticker. Paused, it stops asking for frames at all.
+  Timer? _slow;
+
+  void _follow() {
+    final ticker = _ticker;
+    if (ticker == null) return;
+    final glass = widget.style == LookStyle.glass;
+    if (glass) {
+      if (ticker.isActive) ticker.stop();
+      _last = Duration.zero;
+    } else if (!ticker.isActive) {
+      ticker.start();
+    }
+    if (glass && !widget.paused) {
+      _slow ??= Timer.periodic(const Duration(milliseconds: 50), (_) {
+        if (mounted) setState(() => _clock += 0.05);
+      });
+    } else {
+      _slow?.cancel();
+      _slow = null;
     }
   }
 
   @override
   void dispose() {
+    _slow?.cancel();
     _ticker?.dispose();
     super.dispose();
   }
@@ -182,6 +217,7 @@ class _GameArtworkState extends State<GameArtwork> with SingleTickerProviderStat
 
   @override
   Widget build(BuildContext context) {
+    if (LookScope.isGlass(context)) return _frosted();
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -215,4 +251,65 @@ class _GameArtworkState extends State<GameArtwork> with SingleTickerProviderStat
       ],
     );
   }
+
+  /// Glass: the picture frosted behind the ice. Decoded small and blurred hard, cooled, kept
+  /// under a ceiling of brightness, under the navy veil; it stays still (drifting, a blur this
+  /// soft only costs frames and shows nothing).
+  Widget _frosted() {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ClipRect(
+          child: ImageFiltered(
+            imageFilter: ui.ImageFilter.blur(
+              sigmaX: GlassRecipe.artworkBlur,
+              sigmaY: GlassRecipe.artworkBlur,
+              tileMode: TileMode.mirror,
+            ),
+            child: Transform.scale(
+              scale: 1.08,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ColorFiltered(
+                    colorFilter: ColorFilter.matrix(GlassRecipe.saturation),
+                    child: ArtworkImage(path: widget.path, cacheWidth: GlassRecipe.artworkWidth),
+                  ),
+                  const CustomPaint(painter: _IceTint()),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const ArtworkScrim(),
+      ],
+    );
+  }
+}
+
+/// The cool gradient laid over the frosted picture in the `color` blend mode: its hue and
+/// saturation, the picture's lightness.
+class _IceTint extends CustomPainter {
+  const _IceTint();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..blendMode = BlendMode.color
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            GlassRecipe.iceTop.withValues(alpha: GlassRecipe.iceOpacity),
+            GlassRecipe.iceBottom.withValues(alpha: GlassRecipe.iceOpacity),
+          ],
+        ).createShader(rect),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_IceTint oldDelegate) => false;
 }

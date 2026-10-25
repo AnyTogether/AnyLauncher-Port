@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 
 import '../core/together/levels.dart';
@@ -7,6 +5,7 @@ import '../core/together/profiles.dart';
 import '../core/trophies.dart';
 import 'app_model.dart';
 import 'components.dart';
+import 'glass.dart';
 import 'level_badge.dart';
 import 'panels.dart';
 import 'strings.dart';
@@ -32,110 +31,105 @@ class ProfileView extends StatelessWidget {
     final totals = page?.totals;
     final level = page?.profile.trophyLevel;
     final appearing = page?.profile.isMe == true && together.appearingOffline;
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-        child: ColoredBox(
-          color: Colors.black.withValues(alpha: 0.64),
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(90 * scale, 64 * scale, 90 * scale, 50 * scale),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 380 * scale,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+    return LayerScrim(
+      opacity: 0.64,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(90 * scale, 64 * scale, 90 * scale, 50 * scale),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 380 * scale,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(T.text('profileTitle'), style: AppText.display(18 * scale, color: muted)),
+                  SizedBox(height: 22 * scale),
+                  PersonAvatar(
+                    person: PanelPerson(
+                      name: name,
+                      avatar: page?.profile.avatar ?? card?.avatar,
+                      status: appearing ? PersonStatus.offline : null,
+                    ),
+                    size: 112 * scale,
+                  ),
+                  SizedBox(height: 20 * scale),
+                  Text(name, style: AppText.display(38 * scale, weight: FontWeight.w300)),
+                  SizedBox(height: 6 * scale),
+                  Row(
                     children: [
-                      Text(T.text('profileTitle'), style: AppText.display(18 * scale, color: muted)),
-                      SizedBox(height: 22 * scale),
-                      PersonAvatar(
-                        person: PanelPerson(
-                          name: name,
-                          avatar: page?.profile.avatar ?? card?.avatar,
-                          status: appearing ? PersonStatus.offline : null,
-                        ),
-                        size: 112 * scale,
+                      Text(
+                        '@$handle',
+                        style: AppText.display(16 * scale, weight: FontWeight.w500, color: muted),
                       ),
-                      SizedBox(height: 20 * scale),
-                      Text(name, style: AppText.display(38 * scale, weight: FontWeight.w300)),
-                      SizedBox(height: 6 * scale),
-                      Row(
-                        children: [
-                          Text(
-                            '@$handle',
-                            style: AppText.display(16 * scale, weight: FontWeight.w500, color: muted),
-                          ),
-                          if (page != null && (page.profile.isMe || page.profile.friendship == 'friends')) ...[
-                            SizedBox(width: 10 * scale),
-                            _Tag(
-                              text: page.profile.isMe ? T.text('profileYou') : T.text('profileFriend'),
-                              color: model.accentChoice.color,
-                            ),
-                          ],
-                          if (page?.profile.country case final String country) ...[
-                            SizedBox(width: 10 * scale),
-                            _Tag(text: country, color: Colors.white),
-                          ],
-                        ],
-                      ),
-                      if (appearing) ...[
-                        SizedBox(height: 10 * scale),
-                        _Tag(text: T.text('presenceAppearing'), color: PersonAvatar.statusColor(PersonStatus.offline)),
-                      ],
-                      if (page?.profile.bio case final String bio) ...[
-                        SizedBox(height: 16 * scale),
-                        Text(
-                          bio,
-                          maxLines: 4,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppText.display(15 * scale, color: Colors.white.withValues(alpha: 0.8), height: 1.4),
+                      if (page != null && (page.profile.isMe || page.profile.friendship == 'friends')) ...[
+                        SizedBox(width: 10 * scale),
+                        _Tag(
+                          text: page.profile.isMe ? T.text('profileYou') : T.text('profileFriend'),
+                          color: model.accentChoice.color,
                         ),
                       ],
-                      if (page?.detailsPrivate == true) ...[
-                        SizedBox(height: 14 * scale),
-                        Text(T.text('profileDetailsPrivate'), style: AppText.display(14 * scale, color: muted)),
-                      ],
-                      if (level != null) ...[
-                        SizedBox(height: 22 * scale),
-                        SizedBox(
-                          width: 368 * scale,
-                          child: LevelCard(level: level, accent: model.accentChoice.color),
-                        ),
-                      ],
-                      SizedBox(height: level != null ? 14 * scale : 30 * scale),
-                      if (totals != null)
-                        Wrap(
-                          spacing: 12 * scale,
-                          runSpacing: 12 * scale,
-                          children: [
-                            _Total(label: T.text('profileGames'), value: '${totals.games}'),
-                            _Total(label: T.text('profileHours'), value: '${totals.seconds ~/ 3600}'),
-                            _Total(label: T.text('profileTrophies'), value: '${totals.trophies}'),
-                            _Total(label: T.text('profilePoints'), value: '${totals.points}'),
-                          ],
-                        ),
-                      if (together.canCompare) ...[
-                        SizedBox(height: 18 * scale),
-                        _CompareButton(focused: together.profileIndex == 0, onTap: together.compareProfile),
+                      if (page?.profile.country case final String country) ...[
+                        SizedBox(width: 10 * scale),
+                        _Tag(text: country, color: Colors.white),
                       ],
                     ],
                   ),
-                ),
-                SizedBox(width: 60 * scale),
-                Expanded(
-                  child: page == null
-                      ? Center(
-                          child: Text(
-                            together.profileFailed ? T.text('profileFailed') : T.text('profileLoading'),
-                            style: AppText.display(18 * scale, color: muted),
-                          ),
-                        )
-                      : _Sections(model: model, page: page),
-                ),
-              ],
+                  if (appearing) ...[
+                    SizedBox(height: 10 * scale),
+                    _Tag(text: T.text('presenceAppearing'), color: PersonAvatar.statusColor(PersonStatus.offline)),
+                  ],
+                  if (page?.profile.bio case final String bio) ...[
+                    SizedBox(height: 16 * scale),
+                    Text(
+                      bio,
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.display(15 * scale, color: Colors.white.withValues(alpha: 0.8), height: 1.4),
+                    ),
+                  ],
+                  if (page?.detailsPrivate == true) ...[
+                    SizedBox(height: 14 * scale),
+                    Text(T.text('profileDetailsPrivate'), style: AppText.display(14 * scale, color: muted)),
+                  ],
+                  if (level != null) ...[
+                    SizedBox(height: 22 * scale),
+                    SizedBox(
+                      width: 368 * scale,
+                      child: LevelCard(level: level, accent: model.accentChoice.color),
+                    ),
+                  ],
+                  SizedBox(height: level != null ? 14 * scale : 30 * scale),
+                  if (totals != null)
+                    Wrap(
+                      spacing: 12 * scale,
+                      runSpacing: 12 * scale,
+                      children: [
+                        _Total(label: T.text('profileGames'), value: '${totals.games}'),
+                        _Total(label: T.text('profileHours'), value: '${totals.seconds ~/ 3600}'),
+                        _Total(label: T.text('profileTrophies'), value: '${totals.trophies}'),
+                        _Total(label: T.text('profilePoints'), value: '${totals.points}'),
+                      ],
+                    ),
+                  if (together.canCompare) ...[
+                    SizedBox(height: 18 * scale),
+                    _CompareButton(focused: together.profileIndex == 0, onTap: together.compareProfile),
+                  ],
+                ],
+              ),
             ),
-          ),
+            SizedBox(width: 60 * scale),
+            Expanded(
+              child: page == null
+                  ? Center(
+                      child: Text(
+                        together.profileFailed ? T.text('profileFailed') : T.text('profileLoading'),
+                        style: AppText.display(18 * scale, color: muted),
+                      ),
+                    )
+                  : _Sections(model: model, page: page),
+            ),
+          ],
         ),
       ),
     );
@@ -265,7 +259,7 @@ class _GameRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
     final local = model.games.where((known) => known.titleId == game.titleId).firstOrNull;
-    final color = focused ? Colors.black : Colors.white;
+    final color = focused ? LookScope.focusedInk(context) : Colors.white;
     final last = game.lastPlayedAt?.toLocal();
     final detail = [
       TogetherProfiles.playTime(game.secondsPlayed),
@@ -274,15 +268,11 @@ class _GameRow extends StatelessWidget {
           '${last.year}-${last.month.toString().padLeft(2, '0')}-${last.day.toString().padLeft(2, '0')}',
         ]),
     ].join(' · ');
-    return AnimatedContainer(
-      duration: Motion.focus,
-      curve: Motion.settle,
+    return PaneRow(
+      focused: focused,
+      radius: 14 * scale,
       margin: EdgeInsets.only(bottom: 8 * scale),
       padding: EdgeInsets.all(12 * scale),
-      decoration: BoxDecoration(
-        color: focused ? Colors.white : Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(14 * scale),
-      ),
       child: Row(
         children: [
           ClipRRect(
@@ -345,21 +335,17 @@ class _TrophyRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
-    final color = focused ? Colors.black : Colors.white;
+    final color = focused ? LookScope.focusedInk(context) : Colors.white;
     final grade = TrophyGrade.values.where((value) => value.name == trophy.grade).firstOrNull ?? TrophyGrade.bronze;
     final rarity = TogetherProfiles.rarity(trophy.rarityLabel);
     final percent = trophy.rarity == null
         ? null
         : '${(trophy.rarity! * 100).toStringAsFixed(trophy.rarity! < 0.1 ? 1 : 0)}%';
-    return AnimatedContainer(
-      duration: Motion.focus,
-      curve: Motion.settle,
+    return PaneRow(
+      focused: focused,
+      radius: 14 * scale,
       margin: EdgeInsets.only(bottom: 8 * scale),
       padding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 12 * scale),
-      decoration: BoxDecoration(
-        color: focused ? Colors.white : Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(14 * scale),
-      ),
       child: Row(
         children: [
           Icon(Icons.emoji_events_rounded, size: 28 * scale, color: TrophyView.gradeColor(grade)),

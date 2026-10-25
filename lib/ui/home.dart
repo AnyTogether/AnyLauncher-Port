@@ -9,6 +9,7 @@ import '../core/update_notice.dart' show SelfApply;
 import 'app_model.dart';
 import 'background.dart';
 import 'components.dart';
+import 'glass.dart';
 import 'level_badge.dart';
 import 'panels.dart' show PersonAvatar;
 import 'strings.dart';
@@ -35,11 +36,18 @@ class Backdrop extends StatelessWidget {
     // Under a layer the background is blurred and darkened: kept still, the blur is not worked
     // out again on every frame, which is what made opening and closing layers stutter.
     final covered = model.overlay != null || model.starting != null;
+    // Glass shows the picture frosted, from a small decode, and still; over the whole screen it
+    // hides the background, which then rests.
+    final glass = model.look == LookStyle.glass;
     if (artwork && time == null) {
       final index = model.selected;
       for (final near in [index - 1, index + 1]) {
         if (near >= 0 && near < model.games.length) {
-          ArtworkImage.warm(context, model.games[near].background, cacheWidth: GameArtwork.cacheWidth);
+          ArtworkImage.warm(
+            context,
+            model.games[near].background,
+            cacheWidth: glass ? GlassRecipe.artworkWidth : GameArtwork.cacheWidth,
+          );
         }
       }
     }
@@ -48,7 +56,7 @@ class Backdrop extends StatelessWidget {
       children: [
         ThemeBackground(
           style: model.look,
-          paused: model.running != null || model.preferences.reducedMotion || covered,
+          paused: model.running != null || model.preferences.reducedMotion || covered || (glass && artwork),
           time: time,
         ),
         RepaintBoundary(
@@ -59,7 +67,7 @@ class Backdrop extends StatelessWidget {
                 ? GameArtwork(
                     key: ValueKey(game!.id),
                     path: game.background!,
-                    animated: !model.preferences.reducedMotion && time == null && !covered,
+                    animated: !model.preferences.reducedMotion && time == null && !covered && !glass,
                   )
                 : const SizedBox.expand(),
           ),
@@ -79,42 +87,45 @@ class HomeView extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
     final game = model.selectedGame;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(64 * scale, 34 * scale, 64 * scale, 0),
-          child: TopBar(model: model, now: now),
-        ),
-        if (model.games.isEmpty)
-          Expanded(child: EmptyLibrary(model: model))
-        else ...[
-          SizedBox(height: 34 * scale),
-          TileRow(model: model),
-          const Spacer(),
-          if (game != null)
-            AnimatedSwitcher(
-              duration: Motion.layout,
-              switchInCurve: Motion.settle,
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: SlideTransition(
-                  position: Tween(begin: const Offset(0, 0.04), end: Offset.zero).animate(animation),
-                  child: child,
+    // Glass's panes on the home screen never overlap: they share one blur of the background.
+    return BackdropGroup(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(64 * scale, 34 * scale, 64 * scale, 0),
+            child: TopBar(model: model, now: now),
+          ),
+          if (model.games.isEmpty)
+            Expanded(child: EmptyLibrary(model: model))
+          else ...[
+            SizedBox(height: 34 * scale),
+            TileRow(model: model),
+            const Spacer(),
+            if (game != null)
+              AnimatedSwitcher(
+                duration: Motion.layout,
+                switchInCurve: Motion.settle,
+                transitionBuilder: (child, animation) => FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: Tween(begin: const Offset(0, 0.04), end: Offset.zero).animate(animation),
+                    child: child,
+                  ),
+                ),
+                child: Padding(
+                  key: ValueKey(game.id),
+                  padding: EdgeInsets.symmetric(horizontal: 72 * scale),
+                  child: HeroInfo(model: model, game: game),
                 ),
               ),
-              child: Padding(
-                key: ValueKey(game.id),
-                padding: EdgeInsets.symmetric(horizontal: 72 * scale),
-                child: HeroInfo(model: model, game: game),
-              ),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 64 * scale, vertical: 28 * scale),
+              child: const Align(alignment: Alignment.centerRight, child: HintBar()),
             ),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 64 * scale, vertical: 28 * scale),
-            child: const Align(alignment: Alignment.centerRight, child: HintBar()),
-          ),
+          ],
         ],
-      ],
+      ),
     );
   }
 }
@@ -218,37 +229,49 @@ class TopBar extends StatelessWidget {
     final name = together.user?.displayName ?? model.preferences.profileName;
     final level = together.signedIn ? together.hub.self.level : null;
     final offline = together.signedIn && together.appearingOffline;
+    final glass = LookScope.isGlass(context);
     Widget iconButton(IconData icon, int index, VoidCallback action, {int badge = 0}) {
       final focused = model.focus == HomeFocus.top(index) && model.overlay == null;
       return Pressable(
         onTap: action,
         builder: (context, hovering) => AnimatedScale(
-          scale: focused ? 1.1 : (hovering ? 1.05 : 1),
+          scale: focused ? (glass ? 1.08 : 1.1) : (hovering ? 1.05 : 1),
           duration: Motion.focus,
           curve: Motion.settle,
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              AnimatedContainer(
-                duration: Motion.focus,
-                width: 44 * scale,
-                height: 44 * scale,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: focused ? Colors.white : Colors.white.withValues(alpha: hovering ? 0.2 : 0.1),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.white.withValues(alpha: focused ? 0.4 : 0),
-                      blurRadius: 10 * scale,
-                    ),
-                  ],
+              if (glass)
+                IceSurface(
+                  radius: 22 * scale,
+                  width: 44 * scale,
+                  height: 44 * scale,
+                  focused: focused,
+                  hover: hovering,
+                  sweep: true,
+                  child: Icon(icon, size: 20 * scale, color: focused ? GlassRecipe.ink : Colors.white),
+                )
+              else
+                AnimatedContainer(
+                  duration: Motion.focus,
+                  width: 44 * scale,
+                  height: 44 * scale,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: focused ? Colors.white : Colors.white.withValues(alpha: hovering ? 0.2 : 0.1),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: focused ? 0.4 : 0),
+                        blurRadius: 10 * scale,
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 20 * scale,
+                    color: focused ? Colors.black : Colors.white.withValues(alpha: 0.9),
+                  ),
                 ),
-                child: Icon(
-                  icon,
-                  size: 20 * scale,
-                  color: focused ? Colors.black : Colors.white.withValues(alpha: 0.9),
-                ),
-              ),
               if (badge > 0)
                 Positioned(
                   right: -4 * scale,
@@ -265,7 +288,11 @@ class TopBar extends StatelessWidget {
                     ),
                     child: Text(
                       badge > 9 ? '9+' : '$badge',
-                      style: AppText.display(11 * scale, weight: FontWeight.w700, color: Colors.black),
+                      style: AppText.display(
+                        11 * scale,
+                        weight: FontWeight.w700,
+                        color: LookScope.inkOnAccent(context, accent, Colors.black),
+                      ),
                     ),
                   ),
                 ),
@@ -333,7 +360,11 @@ class TopBar extends StatelessWidget {
               ),
               child: Text(
                 name.isEmpty ? '?' : name.characters.first.toUpperCase(),
-                style: AppText.display(16 * scale, weight: FontWeight.w700),
+                style: AppText.display(
+                  16 * scale,
+                  weight: FontWeight.w700,
+                  color: LookScope.inkOnAccent(context, accent, Colors.white),
+                ),
               ),
             ),
             // Appearing offline: a grey dot on the picture, as friends see it.
@@ -392,47 +423,55 @@ class PhoneIndicator extends StatelessWidget {
     final scale = LayoutScale.of(context);
     final phones = model.remote?.connectedDevices ?? const [];
     final color = phones.isNotEmpty ? Palette.success : (model.phoneConnecting != null ? Palette.connecting : null);
+    final glass = LookScope.isGlass(context);
+    final padding = EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 8 * scale);
+    final content = _content(scale, phones, color, glass);
+    if (glass) return IceSurface(radius: 20 * scale, padding: padding, child: content);
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 8 * scale),
+      padding: padding,
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(40 * scale),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 9 * scale,
-            height: 9 * scale,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: color,
-              border: color == null
-                  ? Border.all(color: Colors.white.withValues(alpha: 0.45), width: 1.5 * scale)
-                  : null,
-              boxShadow: color == null ? null : [BoxShadow(color: color, blurRadius: 4 * scale)],
-            ),
-          ),
-          SizedBox(width: 8 * scale),
-          Text(
-            phones.length > 1 ? '${phones.length} × mController' : 'mController',
-            style: AppText.display(
-              14 * scale,
-              weight: FontWeight.w600,
-              color: Colors.white.withValues(alpha: color == null ? 0.55 : 0.9),
-            ),
-          ),
-          if (phones.isNotEmpty && model.phoneLatency != null) ...[
-            SizedBox(width: 8 * scale),
-            Text(
-              '${model.phoneLatency!.round()} ms',
-              style: AppText.display(14 * scale, weight: FontWeight.w600, color: Colors.white.withValues(alpha: 0.6)),
-            ),
-          ],
-        ],
-      ),
+      child: content,
     );
   }
+
+  Widget _content(double scale, List<Object?> phones, Color? color, bool glass) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 9 * scale,
+        height: 9 * scale,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color,
+          border: color == null ? Border.all(color: Colors.white.withValues(alpha: 0.45), width: 1.5 * scale) : null,
+          boxShadow: color == null ? null : [BoxShadow(color: color, blurRadius: 4 * scale)],
+        ),
+      ),
+      SizedBox(width: 8 * scale),
+      Text(
+        phones.length > 1 ? '${phones.length} × mController' : 'mController',
+        style: AppText.display(
+          14 * scale,
+          weight: FontWeight.w600,
+          color: Colors.white.withValues(alpha: color == null ? (glass ? 0.9 : 0.55) : 0.9),
+        ),
+      ),
+      if (phones.isNotEmpty && model.phoneLatency != null) ...[
+        SizedBox(width: 8 * scale),
+        Text(
+          '${model.phoneLatency!.round()} ms',
+          style: AppText.display(
+            14 * scale,
+            weight: FontWeight.w600,
+            color: Colors.white.withValues(alpha: glass ? 0.9 : 0.6),
+          ),
+        ),
+      ],
+    ],
+  );
 }
 
 /// The row of game tiles: the selected one is larger, sits at the row's start and carries the
@@ -841,7 +880,8 @@ class InfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
-    final label = Colors.white.withValues(alpha: 0.55);
+    // On Glass the labels are a little brighter: they keep AA contrast over any frosted picture.
+    final label = Colors.white.withValues(alpha: LookScope.isGlass(context) ? 0.72 : 0.55);
     return SizedBox(
       width: 236 * scale,
       height: 96 * scale,

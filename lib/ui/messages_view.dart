@@ -1,10 +1,9 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 
 import '../core/together/messages.dart';
 import 'app_model.dart';
 import 'components.dart';
+import 'glass.dart';
 import 'panels.dart';
 import 'strings.dart';
 import 'theme.dart';
@@ -23,61 +22,56 @@ class MessagesView extends StatelessWidget {
     final together = model.together;
     final targets = together.messageTargets;
     final selected = together.selectedTarget;
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-        child: ColoredBox(
-          color: Colors.black.withValues(alpha: 0.62),
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(80 * scale, 60 * scale, 80 * scale, 50 * scale),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 440 * scale,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(T.text('messagesTitle'), style: AppText.display(40 * scale, weight: FontWeight.w300)),
-                      SizedBox(height: 24 * scale),
-                      Expanded(
-                        child: targets.isEmpty
-                            ? Text(
-                                together.signedIn ? T.text('messagesNone') : T.text('friendsSignIn'),
-                                style: AppText.display(16 * scale, color: Colors.white.withValues(alpha: 0.6)),
-                              )
-                            : SingleChildScrollView(
-                                child: Column(
-                                  children: [
-                                    for (var index = 0; index < targets.length; index++)
-                                      KeepVisible(
-                                        active: index == together.messagesIndex,
-                                        child: _TargetRow(
-                                          model: model,
-                                          target: targets[index],
-                                          selected: index == together.messagesIndex,
-                                          focused: index == together.messagesIndex && !together.messagesInThread,
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                      ),
-                    ],
+    return LayerScrim(
+      opacity: 0.62,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(80 * scale, 60 * scale, 80 * scale, 50 * scale),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 440 * scale,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(T.text('messagesTitle'), style: AppText.display(40 * scale, weight: FontWeight.w300)),
+                  SizedBox(height: 24 * scale),
+                  Expanded(
+                    child: targets.isEmpty
+                        ? Text(
+                            together.signedIn ? T.text('messagesNone') : T.text('friendsSignIn'),
+                            style: AppText.display(16 * scale, color: Colors.white.withValues(alpha: 0.6)),
+                          )
+                        : SingleChildScrollView(
+                            child: Column(
+                              children: [
+                                for (var index = 0; index < targets.length; index++)
+                                  KeepVisible(
+                                    active: index == together.messagesIndex,
+                                    child: _TargetRow(
+                                      model: model,
+                                      target: targets[index],
+                                      selected: index == together.messagesIndex,
+                                      focused: index == together.messagesIndex && !together.messagesInThread,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
                   ),
-                ),
-                SizedBox(width: 36 * scale),
-                Expanded(
-                  child: Glass(
-                    radius: 26 * scale,
-                    opacity: 0.45,
-                    padding: EdgeInsets.all(28 * scale),
-                    child: selected == null ? const SizedBox.expand() : _Thread(model: model, target: selected),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
+            SizedBox(width: 36 * scale),
+            Expanded(
+              child: Glass(
+                radius: 26 * scale,
+                opacity: 0.45,
+                padding: EdgeInsets.all(28 * scale),
+                child: selected == null ? const SizedBox.expand() : _Thread(model: model, target: selected),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -174,7 +168,11 @@ class _TargetRow extends StatelessWidget {
                 ),
                 child: Text(
                   unread > 99 ? '99+' : '$unread',
-                  style: AppText.display(12 * scale, weight: FontWeight.w700, color: Colors.black),
+                  style: AppText.display(
+                    12 * scale,
+                    weight: FontWeight.w700,
+                    color: LookScope.inkOnAccent(context, model.accentChoice.color, Colors.black),
+                  ),
                 ),
               ),
           ],
@@ -298,6 +296,8 @@ class _Bubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Words on the accent: dark ink on a light one (Glass, or the Ice accent).
+    final mineInk = LookScope.inkOnAccent(context, accent, Colors.black);
     final scale = LayoutScale.of(context);
     final text = message.deleted ? T.text('messagesDeleted') : (message.text ?? '');
     final foot = [
@@ -337,7 +337,7 @@ class _Bubble extends StatelessWidget {
                 text,
                 style: AppText.display(
                   16 * scale,
-                  color: mine ? Colors.black : Colors.white.withValues(alpha: message.deleted ? 0.5 : 0.95),
+                  color: mine ? mineInk : Colors.white.withValues(alpha: message.deleted ? 0.5 : 0.95),
                   height: 1.3,
                 ),
               ),
@@ -346,10 +346,7 @@ class _Bubble extends StatelessWidget {
                   padding: EdgeInsets.only(top: 4 * scale),
                   child: Text(
                     foot.join(' · '),
-                    style: AppText.display(
-                      11 * scale,
-                      color: (mine ? Colors.black : Colors.white).withValues(alpha: 0.6),
-                    ),
+                    style: AppText.display(11 * scale, color: (mine ? mineInk : Colors.white).withValues(alpha: 0.6)),
                   ),
                 ),
             ],

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -9,6 +8,7 @@ import '../core/together/profiles.dart';
 import '../core/trophies.dart';
 import 'app_model.dart';
 import 'components.dart';
+import 'glass.dart';
 import 'level_badge.dart';
 import 'panels.dart';
 import 'strings.dart';
@@ -37,27 +37,22 @@ class CompareView extends StatelessWidget {
     final scale = LayoutScale.of(context);
     final together = model.together;
     final inGame = together.compareTitleId != null;
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-        child: ColoredBox(
-          color: Colors.black.withValues(alpha: 0.64),
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(90 * scale, 64 * scale, 90 * scale, 50 * scale),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 380 * scale,
-                  child: inGame ? _GameSide(model: model) : _PeopleSide(model: model),
-                ),
-                SizedBox(width: 60 * scale),
-                Expanded(
-                  child: inGame ? _TrophyList(model: model) : _GameList(model: model),
-                ),
-              ],
+    return LayerScrim(
+      opacity: 0.64,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(90 * scale, 64 * scale, 90 * scale, 50 * scale),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 380 * scale,
+              child: inGame ? _GameSide(model: model) : _PeopleSide(model: model),
             ),
-          ),
+            SizedBox(width: 60 * scale),
+            Expanded(
+              child: inGame ? _TrophyList(model: model) : _GameList(model: model),
+            ),
+          ],
         ),
       ),
     );
@@ -323,7 +318,7 @@ class _ComparedGameRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
     final local = model.games.where((known) => known.titleId == game.titleId).firstOrNull;
-    final ink = focused ? Colors.black : Colors.white;
+    final ink = focused ? LookScope.focusedInk(context) : Colors.white;
     final them = model.together.compareWith?.displayName ?? '';
     Widget side(String label, CompareSide? side, Color color) => Expanded(
       child: Column(
@@ -618,7 +613,7 @@ class _ComparedTrophyRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
-    final ink = focused ? Colors.black : Colors.white;
+    final ink = focused ? LookScope.focusedInk(context) : Colors.white;
     final grade = TrophyGrade.values.where((value) => value.name == trophy.grade).firstOrNull ?? TrophyGrade.bronze;
     final rarity = TogetherProfiles.rarity(trophy.rarityLabel);
     final percent = trophy.rarity == null
@@ -648,15 +643,11 @@ class _ComparedTrophyRow extends StatelessWidget {
               ],
             ),
     );
-    return AnimatedContainer(
-      duration: Motion.focus,
-      curve: Motion.settle,
+    return PaneRow(
+      focused: focused,
+      radius: 14 * scale,
       margin: EdgeInsets.only(bottom: 8 * scale),
       padding: EdgeInsets.fromLTRB(16 * scale, 12 * scale, 16 * scale, 12 * scale),
-      decoration: BoxDecoration(
-        color: focused ? Colors.white : Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(14 * scale),
-      ),
       child: Row(
         children: [
           Icon(Icons.emoji_events_rounded, size: 28 * scale, color: TrophyView.gradeColor(grade)),

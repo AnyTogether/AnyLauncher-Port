@@ -1,11 +1,10 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 
 import '../core/crash_report.dart';
 import '../core/toolkit_download.dart' show ToolkitStore;
 import 'app_model.dart';
 import 'components.dart';
+import 'glass.dart';
 import 'crash_model.dart';
 import 'panels.dart' show PanelRows;
 import 'strings.dart';
@@ -25,44 +24,39 @@ class CrashReportView extends StatelessWidget {
     if (state == null) return const SizedBox.shrink();
     final scale = LayoutScale.of(context);
     final categories = model.panelCategories();
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-        child: ColoredBox(
-          color: Colors.black.withValues(alpha: 0.74),
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 70 * scale, vertical: 52 * scale),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 560 * scale,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _Header(state: state),
-                      SizedBox(height: 22 * scale),
-                      _Reason(model: model, state: state),
-                      if (state.report case final SessionReport report) ...[
-                        SizedBox(height: 18 * scale),
-                        _Facts(report: report),
-                      ],
-                      SizedBox(height: 18 * scale),
-                      Expanded(
-                        child: PanelRows(model: model, rows: categories.isEmpty ? const [] : categories.first.rows),
-                      ),
-                      SizedBox(height: 12 * scale),
-                      const HintBar(options: false, games: false),
-                    ],
+    return LayerScrim(
+      opacity: 0.74,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 70 * scale, vertical: 52 * scale),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 560 * scale,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _Header(state: state),
+                  SizedBox(height: 22 * scale),
+                  _Reason(model: model, state: state),
+                  if (state.report case final SessionReport report) ...[
+                    SizedBox(height: 18 * scale),
+                    _Facts(report: report),
+                  ],
+                  SizedBox(height: 18 * scale),
+                  Expanded(
+                    child: PanelRows(model: model, rows: categories.isEmpty ? const [] : categories.first.rows),
                   ),
-                ),
-                SizedBox(width: 40 * scale),
-                Expanded(
-                  child: _Side(model: model, state: state),
-                ),
-              ],
+                  SizedBox(height: 12 * scale),
+                  const HintBar(options: false, games: false),
+                ],
+              ),
             ),
-          ),
+            SizedBox(width: 40 * scale),
+            Expanded(
+              child: _Side(model: model, state: state),
+            ),
+          ],
         ),
       ),
     );

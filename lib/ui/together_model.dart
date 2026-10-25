@@ -142,6 +142,15 @@ class TogetherModel {
   int messageFocus = 0;
   String draft = '';
 
+  /// Messages: the message the keys are on (counted from the newest; null while they are on
+  /// the quick replies and the field), the menu open over the thread (a message's or a
+  /// conversation's), and what the composer is doing: answering a message (its seq) or editing
+  /// one of the user's.
+  int? messageCursor;
+  MessageMenu? messageMenu;
+  int? replyingTo;
+  ChatMessage? editingMessage;
+
   /// The profile shown: the page once read, the card it was opened with, whether reading failed,
   /// the row the keys are on, and the layer it goes back to.
   ProfilePage? profile;
@@ -219,6 +228,10 @@ class TogetherModel {
       discordDraft = null;
       messagesIndex = 0;
       messagesInThread = false;
+      messageCursor = null;
+      messageMenu = null;
+      replyingTo = null;
+      editingMessage = null;
       profile = null;
       compareWith = null;
       compareGames = null;
@@ -345,6 +358,19 @@ class TogetherModel {
       await hub.self.setAppearOffline(on);
     } on TogetherProblem catch (problem) {
       app.show(problem.status == 404 ? T.text('presenceNotYet') : message(problem));
+    } on Object catch (error) {
+      app.show(message(error));
+    }
+    app.refresh();
+  }
+
+  /// Read receipts on or off: shown at once, turned back with a word when the server cannot; the
+  /// others' receipts change with it, so the conversations are read again.
+  Future<void> setReadReceipts(bool on) async {
+    if (on == hub.self.readReceipts) return;
+    try {
+      await hub.self.setReadReceipts(on);
+      unawaited(hub.messages.refresh().catchError((Object _) {}));
     } on Object catch (error) {
       app.show(message(error));
     }
@@ -732,6 +758,12 @@ class TogetherModel {
             appearingOffline ? 1 : 0,
             (index) => unawaited(setAppearOffline(index == 1)),
           ),
+        ),
+        PanelRow(
+          id: 'together-receipts',
+          title: T.text('readReceipts'),
+          detail: T.text('readReceiptsHint'),
+          kind: ToggleRow(hub.self.readReceipts, (value) => unawaited(setReadReceipts(value))),
         ),
         ?family.settingsRow(),
         PanelRow(

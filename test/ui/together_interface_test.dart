@@ -7,6 +7,7 @@ import 'package:anyps5_desktop/ui/app_model.dart' hide Command, GameState;
 import 'package:anyps5_desktop/ui/app_model.dart' as launcher show Command;
 import 'package:anyps5_desktop/ui/launcher.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
+import 'package:anyps5_desktop/ui/together_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -154,6 +155,108 @@ void main() {
       expect(find.text('Who brings snacks?'), findsNothing);
       expect(find.text('Cem Yılmaz: Who brings snacks?'), findsOneWidget);
       await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_messages.png'));
+    });
+
+    testWidgets('golden: messages with reactions, a reply, the receipt, pinned and muted; then a message\'s menu', (
+      tester,
+    ) async {
+      fixture = makeFixture();
+      model = fixture.model;
+      signedInPreview(model);
+      const ana = Person(id: 'u-ana', handle: 'ana', displayName: 'Ana');
+      const me = Person(id: 'u-me', handle: 'utku', displayName: 'Utku Halis');
+      ChatMessage message(
+        int seq,
+        String author,
+        String? text, {
+        int? replyTo,
+        List<ReactionCount> reactions = const [],
+        bool deleted = false,
+      }) => ChatMessage(
+        id: 'm$seq',
+        conversationId: 'c-ana',
+        seq: seq,
+        authorId: author,
+        text: text,
+        createdAt: DateTime.now(),
+        replyTo: replyTo,
+        reactions: reactions,
+        deleted: deleted,
+      );
+      final thread = [
+        message(
+          1,
+          'u-ana',
+          'Hi! Are you playing Neon Alley tonight?',
+          reactions: const [
+            ReactionCount(name: 'gg', count: 2, userIds: ['u-me', 'u-cem']),
+          ],
+        ),
+        message(2, 'u-ana', null, deleted: true),
+        message(3, 'u-me', 'Yes, after dinner', replyTo: 1),
+        message(4, 'u-ana', 'Great, I will start a party', replyTo: 3),
+        message(5, 'u-me', 'See you there'),
+      ];
+      model.together.hub.messages
+        ..conversations = [
+          Conversation(
+            id: 'c-ana',
+            group: false,
+            title: null,
+            members: const [me, ana],
+            lastSeq: 5,
+            readSeq: 5,
+            lastMessage: thread.last,
+            updatedAt: DateTime.utc(2026, 10, 24),
+            pinned: true,
+            receipts: const [Receipt(userId: 'u-ana', readSeq: 5, deliveredSeq: 5)],
+          ),
+          Conversation(
+            id: 'c-group',
+            group: true,
+            title: 'Friday night',
+            members: const [
+              me,
+              ana,
+              Person(id: 'u-cem', handle: 'cem', displayName: 'Cem Yılmaz'),
+            ],
+            lastSeq: 9,
+            readSeq: 6,
+            unread: 3,
+            muted: true,
+            lastMessage: ChatMessage(
+              id: 'g9',
+              conversationId: 'c-group',
+              seq: 9,
+              authorId: 'u-cem',
+              text: 'Who brings snacks?',
+              createdAt: DateTime.utc(2026, 10, 23),
+            ),
+            updatedAt: DateTime.utc(2026, 10, 23),
+          ),
+        ]
+        ..loaded = true
+        ..openId = 'c-ana'
+        ..thread = thread;
+      model.open(Layer.messages);
+      model.together
+        ..messagesInThread = true
+        ..messageFocus = 5
+        ..replyingTo = 4;
+      await pumpLauncher(tester, model);
+      expect(find.text('Read'), findsOneWidget);
+      expect(find.text('Replying to Ana'), findsOneWidget);
+      expect(find.text('Message removed'), findsOneWidget);
+      await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_messages_actions.png'));
+
+      model.together.replyingTo = null;
+      model.together.focusMessage(thread[2]);
+      model.handle(launcher.Command.select);
+      model.handle(launcher.Command.right);
+      await tester.pumpAndSettle();
+      expect(find.text('Unsend'), findsOneWidget);
+      expect(find.text('Love'), findsOneWidget);
+      await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_messages_menu.png'));
     });
 
     testWidgets('golden: a party, in Turkish, led by Utku with Ana muted in voice, a join code and a request', (

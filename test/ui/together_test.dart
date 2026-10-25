@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:anyps5_desktop/core/installer.dart';
 import 'package:anyps5_desktop/core/together/account.dart';
+import 'package:anyps5_desktop/core/together/messages.dart';
 import 'package:anyps5_desktop/core/together/people.dart';
 import 'package:anyps5_desktop/core/together/profiles.dart';
 import 'package:anyps5_desktop/core/together/token_store.dart';
@@ -77,6 +78,7 @@ void main() {
         'together-user',
         'together-online',
         'together-presence',
+        'together-receipts',
         'together-profile',
         'together-join',
         'together-signout',
@@ -738,6 +740,323 @@ void main() {
       server.partyInvites.add({...invite, 'partyId': 'p-full', 'full': true});
       await together.joinParty('p-full');
       expect(model.toast, 'The party is full');
+    });
+  });
+
+  group('message actions, receipts, pins', () {
+    setUp(() async {
+      server = await FakeTogether.start();
+      server
+        ..friend('u-ana', 'ana', 'Ana', presence: {'state': 'online'})
+        ..friend('u-bora', 'bora', 'Bora')
+        ..friend('u-cem', 'cem', 'Cem');
+      // Sent just now, so the user's own can still be edited.
+      server.messageTime = (seq) => DateTime.now().toUtc().subtract(Duration(seconds: 60 - seq)).toIso8601String();
+      server.conversation(
+        'c-ana',
+        [FakeTogether.card('u-ana', 'ana', 'Ana')],
+        texts: [('u-ana', 'Hi!'), ('u-me', 'Hey'), ('u-ana', 'Playing tonight?')],
+        updatedAt: '2026-10-24T21:00:00Z',
+      );
+      server.conversation(
+        'c-group',
+        [FakeTogether.card('u-ana', 'ana', 'Ana'), FakeTogether.card('u-cem', 'cem', 'Cem')],
+        texts: [('u-me', 'Who is in?'), ('u-cem', 'Me')],
+        readSeq: 1,
+      );
+      server.conversation('c-bora', [FakeTogether.card('u-bora', 'bora', 'Bora')], updatedAt: '2026-10-24T19:00:00Z');
+      fixture = makeFixture(together: server.base);
+      model = fixture.model;
+      model.together.email = 'utku@example.com';
+      await model.together.sendCode();
+      model.together.code = '123456';
+      await model.together.verify();
+      await until(() => model.together.hub.friends.loaded && model.together.hub.messages.loaded);
+    });
+
+    tearDown(() async {
+      model.dispose();
+      await server.close();
+      T.language = Language.english;
+      fixture.dispose();
+    });
+
+    TextRow field() => model.together.draftField.kind as TextRow;
+
+    test('the server counts what is unread; the list keeps its order, pinned first', () async {
+      final messages = model.together.hub.messages;
+      expect(messages.conversations.map((c) => c.id), ['c-ana', 'c-group', 'c-bora']);
+      expect(messages.byId('c-ana')!.unread, 2, reason: "Ana's two, not mine");
+      expect(messages.byId('c-group')!.unread, 1);
+      expect(messages.unread, 3);
+      expect(messages.byId('c-ana')!.receipts!.single.deliveredSeq, 0);
+      expect(messages.byId('c-group')!.receipts!.length, 2);
+    });
+
+    test('a message: react (and take it back), reply; the reactions others add come in', () async {
+      final together = model.together;
+      final messages = together.hub.messages;
+      await together.openMessages();
+      await until(() => messages.thread.length == 3);
+      model.handle(launcher.Command.right);
+      model.handle(launcher.Command.up);
+      expect(together.focusedMessage!.seq, 3);
+      model.handle(launcher.Command.select);
+      expect(together.messageMenuItems, ['react', 'reply'], reason: "Ana's: no edit, no unsend");
+      // 👍 ❤️ 😂: the third.
+      model.handle(launcher.Command.right);
+      model.handle(launcher.Command.right);
+      model.handle(launcher.Command.select);
+      expect(together.messageMenu, isNull);
+      await until(() => messages.thread.last.reactions.isNotEmpty);
+      expect(server.callsTo('conversations/c-ana/messages/3/reactions/laugh', method: 'PUT'), hasLength(1));
+      expect(messages.thread.last.reacted('laugh', 'u-me'), isTrue);
+      expect(messages.byId('c-ana')!.lastMessage!.reactions.single.name, 'laugh');
+
+      // The chip again takes it back.
+      await together.toggleReaction(messages.thread.last, 'laugh');
+      expect(server.callsTo('conversations/c-ana/messages/3/reactions/laugh', method: 'DELETE'), hasLength(1));
+      expect(messages.thread.last.reactions, isEmpty);
+
+      server.push('message.reactions', {
+        'conversationId': 'c-ana',
+        'seq': 3,
+        'reactions': [
+          {
+            'reaction': 'fire',
+            'count': 2,
+            'userIds': ['u-ana', 'u-cem'],
+          },
+        ],
+      });
+      await until(() => messages.thread.last.reactions.isNotEmpty);
+      expect(messages.thread.last.reactions.single.count, 2);
+      expect(messages.byId('c-ana')!.lastMessage!.reactions.single.name, 'fire');
+
+      // Reply: the composer says to whom, Back drops it, the message sent quotes it.
+      model.handle(launcher.Command.select);
+      model.handle(launcher.Command.down);
+      model.handle(launcher.Command.select);
+      expect(together.replyingTo, 3);
+      expect(model.editingRow, 'message-draft');
+      expect(together.composerNote, ('Replying to Ana', 'Playing tonight?'));
+      model.stopEditing();
+      model.handle(launcher.Command.back);
+      expect(together.replyingTo, isNull);
+      expect(together.messagesInThread, isTrue);
+
+      model.handle(launcher.Command.up);
+      model.handle(launcher.Command.select);
+      model.handle(launcher.Command.down);
+      model.handle(launcher.Command.select);
+      field().set('Yes, at nine');
+      field().submit!();
+      model.stopEditing();
+      await until(() => server.threads['c-ana']!.length == 4);
+      expect(server.callsTo('conversations/c-ana/messages', method: 'POST').last.body, {
+        'clientId': messages.thread.last.id,
+        'text': 'Yes, at nine',
+        'replyTo': 3,
+      });
+      expect(together.replyingTo, isNull);
+      await until(() => messages.thread.last.seq == 4);
+      expect(messages.thread.last.replyTo, 3);
+      expect(together.quoteOf(messages.thread.last), ('Ana', 'Playing tonight?'));
+      // A quote of one not loaded, or removed.
+      expect(together.quoteOf(messages.thread.last.copyWith(replyTo: 99)), ('', 'An earlier message'));
+    });
+
+    test('my own message: edit it, the edit limit, unsend it after asking', () async {
+      final together = model.together;
+      final messages = together.hub.messages;
+      await together.openMessages();
+      await until(() => messages.thread.length == 3);
+      model.handle(launcher.Command.right);
+      model.handle(launcher.Command.up);
+      model.handle(launcher.Command.up);
+      expect(together.focusedMessage!.text, 'Hey');
+      model.handle(launcher.Command.select);
+      expect(together.messageMenuItems, ['react', 'reply', 'edit', 'unsend']);
+      model.handle(launcher.Command.down);
+      model.handle(launcher.Command.down);
+      model.handle(launcher.Command.select);
+      expect(together.editingMessage!.seq, 2);
+      expect(together.draft, 'Hey');
+      expect(together.composerNote, ('Edit', 'Hey'));
+      field().set('Hey there');
+      field().submit!();
+      model.stopEditing();
+      await until(() => messages.thread[1].text == 'Hey there');
+      expect(server.callsTo('conversations/c-ana/messages/2', method: 'PATCH').single.body, {'text': 'Hey there'});
+      expect(messages.thread[1].edited, isTrue);
+      expect(messages.thread[1].editCount, 1);
+      expect(together.editingMessage, isNull);
+      expect(together.draft, isEmpty);
+
+      // The server says no more edits.
+      server.answers['PATCH conversations/c-ana/messages/2'] = FakeTogether.problem(409, 'edit_limit');
+      together.startEdit(messages.thread[1]);
+      field().set('Hey there!');
+      field().submit!();
+      model.stopEditing();
+      await until(() => model.toast == "This message can't be edited any more.");
+      expect(messages.thread[1].text, 'Hey there');
+
+      // Unsend: asked first; Cancel keeps it.
+      together.focusMessage(messages.thread[1]);
+      model.handle(launcher.Command.select);
+      model.handle(launcher.Command.down);
+      model.handle(launcher.Command.down);
+      model.handle(launcher.Command.down);
+      model.handle(launcher.Command.select);
+      expect(together.messageMenu!.confirming, isTrue);
+      expect(together.messageMenuItems, ['unsend-confirm', 'cancel']);
+      model.handle(launcher.Command.down);
+      model.handle(launcher.Command.select);
+      expect(together.messageMenu, isNull);
+      expect(server.callsTo('conversations/c-ana/messages/2', method: 'DELETE'), isEmpty);
+      model.handle(launcher.Command.select);
+      for (var i = 0; i < 3; i++) {
+        model.handle(launcher.Command.down);
+      }
+      model.handle(launcher.Command.select);
+      model.handle(launcher.Command.select);
+      await until(() => messages.thread[1].deleted);
+      expect(server.callsTo('conversations/c-ana/messages/2', method: 'DELETE'), hasLength(1));
+      expect(messages.thread[1].text, isNull);
+      // A removed one has nothing to do.
+      model.handle(launcher.Command.select);
+      expect(together.messageMenu, isNull);
+      expect(T.text('messagesDeleted'), 'Message removed');
+    });
+
+    test("receipts: Ana's delivered and read marks, the group's, mine from another device", () async {
+      final together = model.together;
+      final messages = together.hub.messages;
+      await together.openMessages();
+      await until(() => messages.thread.length == 3);
+      final mine = messages.thread[1];
+      expect(together.receiptText(messages.byId('c-ana')!, mine), 'Sent');
+      server.push('conversation.delivered', {'conversationId': 'c-ana', 'userId': 'u-ana', 'upToSeq': 2});
+      await until(() => messages.byId('c-ana')!.receipts!.single.deliveredSeq == 2);
+      expect(together.receiptText(messages.byId('c-ana')!, mine), 'Delivered');
+      server.push('conversation.delivered', {'conversationId': 'c-ana', 'userId': 'u-ana', 'upToSeq': 1});
+      server.push('conversation.read', {'conversationId': 'c-ana', 'userId': 'u-ana', 'upToSeq': 3});
+      await until(() => messages.byId('c-ana')!.receipts!.single.readSeq == 3);
+      expect(messages.byId('c-ana')!.receipts!.single.deliveredSeq, 3, reason: 'read is delivered too, never lower');
+      expect(together.receiptText(messages.byId('c-ana')!, mine), 'Read');
+      expect(together.receiptText(messages.byId('c-ana')!, messages.thread[0]), isNull, reason: "Ana's own");
+      expect(together.receiptFor(messages.byId('c-ana')!)?.seq, 2, reason: 'under my newest one only');
+
+      // The group: seen by some, then everyone.
+      final group = messages.byId('c-group')!;
+      final asked = ChatMessage.fromJson(server.threads['c-group']!.first);
+      expect(together.receiptText(group, asked), 'Sent');
+      server.push('conversation.read', {'conversationId': 'c-group', 'userId': 'u-cem', 'upToSeq': 2});
+      await until(() => together.receiptText(messages.byId('c-group')!, asked) == 'Seen by 1');
+      server.push('conversation.read', {'conversationId': 'c-group', 'userId': 'u-ana', 'upToSeq': 1});
+      await until(() => together.receiptText(messages.byId('c-group')!, asked) == 'Seen by everyone');
+
+      // Read on my phone: the group's count is the server's.
+      final counted = server.callsTo('me/conversations/unread').length;
+      server.conversations['c-group']!['readSeq'] = 2;
+      server.push('conversation.read', {'conversationId': 'c-group', 'userId': 'u-me', 'upToSeq': 2, 'unread': 0});
+      await until(() => messages.byId('c-group')!.unread == 0);
+      expect(messages.byId('c-group')!.readSeq, 2);
+      await until(() => server.callsTo('me/conversations/unread').length > counted);
+      await until(() => messages.unread == 0);
+    });
+
+    test('a removed message I had not read is not unread any more', () async {
+      final messages = model.together.hub.messages;
+      expect(messages.byId('c-group')!.unread, 1);
+      final removed = server.threads['c-group']![1]
+        ..['text'] = null
+        ..['deletedAt'] = '2026-10-24T21:00:00Z';
+      server.conversations['c-group']!['lastMessage'] = removed;
+      server.push('message.deleted', removed);
+      await until(() => messages.byId('c-group')!.unread == 0);
+      expect(messages.byId('c-group')!.lastMessage!.deleted, isTrue);
+      await until(() => messages.unread == 2);
+    });
+
+    test('a direct message that arrives off screen is marked delivered; the open one is read instead', () async {
+      final together = model.together;
+      final messages = together.hub.messages;
+      await together.openMessages();
+      await until(() => messages.openId == 'c-ana' && messages.thread.length == 3);
+      server.receive('c-bora', 'u-bora', 'Yo');
+      await until(() => server.callsTo('conversations/c-bora/delivered').isNotEmpty);
+      expect(server.callsTo('conversations/c-bora/delivered').single.body, {'upToSeq': 1});
+      server.receive('c-group', 'u-cem', 'Anyone?');
+      server.receive('c-ana', 'u-ana', 'Here?');
+      await until(() => server.callsTo('conversations/c-ana/read').any((call) => call.body['upToSeq'] == 4));
+      expect(server.callsTo('conversations/c-group/delivered'), isEmpty, reason: 'groups have no delivered');
+      expect(server.callsTo('conversations/c-ana/delivered'), isEmpty);
+    });
+
+    test('a conversation: pin it to the top (five at most), mute it', () async {
+      final together = model.together;
+      final messages = together.hub.messages;
+      await together.openMessages();
+      model.handle(launcher.Command.down);
+      model.handle(launcher.Command.options);
+      expect(together.messageMenu!.conversationId, 'c-group');
+      expect(together.messageMenuItems, ['pin', 'mute']);
+      expect(together.menuLabel('pin'), 'Pin to top');
+      model.handle(launcher.Command.select);
+      await until(() => messages.byId('c-group')!.pinned);
+      expect(server.callsTo('conversations/c-group/pin').single.body, {'pinned': true});
+      expect(messages.conversations.map((c) => c.id), ['c-group', 'c-ana', 'c-bora']);
+      expect((together.selectedTarget as ConversationTarget).conversation.id, 'c-group', reason: 'the keys follow it');
+
+      // A message elsewhere does not pass a pinned one.
+      server.receive('c-bora', 'u-bora', 'Yo');
+      await until(() => messages.byId('c-bora')!.lastSeq == 1);
+      expect(messages.conversations.map((c) => c.id), ['c-group', 'c-bora', 'c-ana']);
+
+      server.answers['PUT conversations/c-bora/pin'] = FakeTogether.problem(409, 'full');
+      await together.setPinned(messages.byId('c-bora')!, true);
+      expect(model.toast, 'You can pin up to 5 conversations.');
+      expect(messages.byId('c-bora')!.pinned, isFalse);
+
+      // Mute: no word on screen for it any more.
+      together.openConversationMenu(messages.byId('c-group')!);
+      expect(together.menuLabel('pin'), 'Unpin');
+      expect(together.menuLabel('mute'), 'Mute notifications');
+      model.handle(launcher.Command.down);
+      model.handle(launcher.Command.select);
+      await until(() => messages.byId('c-group')!.muted);
+      expect(server.callsTo('conversations/c-group/mute').single.body, {'muted': true});
+      model.handle(launcher.Command.back);
+      expect(model.overlay, isNull);
+      model.toast = null;
+      server.receive('c-group', 'u-cem', 'Quiet one');
+      await until(() => messages.byId('c-group')!.lastSeq == 3);
+      expect(model.toast, isNull);
+      server.receive('c-ana', 'u-ana', 'Loud one');
+      await until(() => model.toast == 'Ana: Loud one');
+    });
+
+    test('read receipts: the setting from the server, changed here and on another device', () async {
+      final together = model.together;
+      server.me['readReceipts'] = false;
+      await together.hub.self.refresh();
+      openTogether();
+      PanelRow row() =>
+          model.panelCategories()[model.panelCategory].rows.firstWhere((r) => r.id == 'together-receipts');
+      expect(row().title, 'Send read receipts');
+      expect(row().detail, startsWith("When off, people don't see"));
+      expect((row().kind as ToggleRow).value, isFalse);
+      (row().kind as ToggleRow).set(true);
+      await until(() => server.callsTo('me/read-receipts').isNotEmpty);
+      expect(server.callsTo('me/read-receipts').single.body, {'readReceipts': true});
+      await until(() => (row().kind as ToggleRow).value);
+      final lists = server.callsTo('me/conversations').length;
+      server.push('messages.settings', {'readReceipts': false});
+      await until(() => !(row().kind as ToggleRow).value);
+      // What the others' receipts show depends on it: the list again.
+      await until(() => server.callsTo('me/conversations').length > lists);
     });
   });
 

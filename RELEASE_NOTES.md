@@ -27,6 +27,15 @@ release when it is made.
   command to copy), and gives the Bluetooth and cable tips. Started from Steam, Steam's virtual
   pad is used and the real one left to Steam. Crash reports now list the controllers.
 
+- **More in Messages.** Pick a message (↑ from the field, or click it) for its menu: react with
+  👍 ❤️ 😂 😮 😢 🔥 or GG, reply (the answer quotes it), edit your own for 15 minutes, or unsend
+  it for everyone after a confirmation; unsent ones read "Message removed". Reactions show as chips
+  under the message, yours lit, and clicking one adds or takes back yours. Under your newest
+  message: Sent, Delivered or Read, and "Seen by" in groups. △ on a conversation pins it to the
+  top (up to five) or mutes it, with a mark in the list; muted ones come in without a notice.
+  **Settings → AnyTogether → Send read receipts** turns read receipts off both ways. Unread counts
+  are now the server's own.
+
 ## 0.1.6
 
 - **Glass, a new theme.** The launcher's window turns see-through: your desktop and the

@@ -56,6 +56,16 @@ static void my_application_activate(GApplication* application) {
   gtk_window_set_icon_name(window, "anyps5-desktop");
   gtk_window_set_default_size(window, 1600, 900);
 
+  // --fullscreen (AnyPS5's Steam shortcuts pass it for Big Picture): the whole screen from
+  // the start. Game Mode's gamescope fills the screen on its own.
+  for (char** argument = self->dart_entrypoint_arguments;
+       argument != nullptr && *argument != nullptr; argument++) {
+    if (g_strcmp0(*argument, "--fullscreen") == 0) {
+      gtk_window_fullscreen(window);
+      break;
+    }
+  }
+
   // The Glass look's see-through window: an RGBA visual where the screen composites, so the
   // pixels Flutter leaves transparent show the desktop. The launcher reads ANYPS5_RGBA_VISUAL
   // and keeps the window opaque without it (no compositor: transparent pixels would be black).

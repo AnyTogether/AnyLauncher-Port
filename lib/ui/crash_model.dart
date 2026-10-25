@@ -16,11 +16,29 @@ import 'together_model.dart' show launcherVersion;
 
 /// What the launcher was started with: `--trace` gives every start of this run detailed logging.
 class LaunchOptions {
-  const LaunchOptions({this.trace = false});
+  const LaunchOptions({this.trace = false, this.steam = false, this.fullscreen = false, this.play});
 
-  factory LaunchOptions.parse(List<String> arguments) => LaunchOptions(trace: arguments.contains('--trace'));
+  factory LaunchOptions.parse(List<String> arguments) {
+    final at = arguments.indexOf('--play');
+    final play = at >= 0 && at + 1 < arguments.length ? arguments[at + 1] : null;
+    return LaunchOptions(
+      trace: arguments.contains('--trace'),
+      steam: arguments.contains('--steam'),
+      fullscreen: arguments.contains('--fullscreen'),
+      play: play == null || play.startsWith('--') ? null : play,
+    );
+  }
 
   final bool trace;
+
+  /// Started by one of AnyPS5's Steam shortcuts.
+  final bool steam;
+
+  /// The window full screen from the start (the runners read it before Flutter does).
+  final bool fullscreen;
+
+  /// The title ID of a game to start at once (a game's Steam shortcut).
+  final String? play;
 }
 
 /// What the launcher knows about a game's last start beyond its log.

@@ -15,6 +15,7 @@ import 'core/gamepad/windows_pads.dart';
 import 'core/app_update.dart';
 import 'core/host.dart';
 import 'core/release_signing.dart';
+import 'core/steam/steam_launch.dart';
 import 'core/toolkit_download.dart';
 import 'ui/app_model.dart';
 import 'ui/crash_model.dart';
@@ -61,6 +62,7 @@ Future<void> main(List<String> arguments) async {
   // An update left for this launch (Later) goes in first: its installer opens the launcher again.
   if (await model.updates.applyPendingAtLaunch()) exit(0);
   model.crash.traceAll = options.trace;
+  model.steamLaunch = SteamLaunch.detect(arguments, Platform.environment);
   unawaited(model.startAudio());
   model.startPads();
   if (model.preferences.onboarded) model.rescan();
@@ -70,6 +72,10 @@ Future<void> main(List<String> arguments) async {
   unawaited(model.engine.startupCheck());
   unawaited(model.updates.startupCheck());
   runApp(AnyPS5App(model: model));
+  // A game's Steam shortcut: straight into the game.
+  if (options.play case final String titleId when model.preferences.onboarded) {
+    unawaited(model.playAtLaunch(titleId, quitAfter: model.steamLaunch.fromSteam));
+  }
 }
 
 class AnyPS5App extends StatelessWidget {

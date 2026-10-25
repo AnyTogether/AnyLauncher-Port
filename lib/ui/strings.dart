@@ -1,5 +1,6 @@
 import 'strings_family.dart';
 import 'strings_fonts.dart';
+import 'strings_steam.dart';
 import 'strings_table.dart';
 import 'strings_together.dart';
 import 'strings_updates.dart';
@@ -223,6 +224,7 @@ abstract final class T {
                   updatesTurkish[key] ??
                   familyTurkish[key] ??
                   fontsTurkish[key] ??
+                  steamTurkish[key] ??
                   turkishTable[key]
             : null) ??
         _english[key] ??
@@ -230,6 +232,7 @@ abstract final class T {
         updatesEnglish[key] ??
         familyEnglish[key] ??
         fontsEnglish[key] ??
+        steamEnglish[key] ??
         englishTable[key] ??
         key;
   }

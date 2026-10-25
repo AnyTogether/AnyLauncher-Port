@@ -96,7 +96,7 @@ enum SteamArt {
   hero('_hero.png', 1920, 620),
 
   /// The name over the hero, transparent around it.
-  logo('_logo.png', 1280, 720),
+  logo('_logo.png', 1280, 340),
 
   /// The small square beside the name in lists, also the shortcut's icon field.
   icon('_icon.png', 256, 256);

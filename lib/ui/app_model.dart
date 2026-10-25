@@ -34,6 +34,7 @@ import '../core/remote/paired_devices.dart';
 import '../core/remote/remote_protocol.dart';
 import '../core/remote/remote_server.dart';
 import '../core/save_backup.dart';
+import '../core/steam/steam_launch.dart';
 import '../core/screenshots.dart';
 import '../core/toolkit.dart';
 import '../core/toolkit_download.dart';
@@ -46,6 +47,7 @@ import 'components.dart';
 import 'crash_model.dart';
 import 'engine_model.dart';
 import 'fonts_model.dart';
+import 'steam_model.dart';
 import 'glass.dart';
 import 'strings.dart';
 import 'theme.dart';
@@ -89,6 +91,9 @@ class Preferences {
     ..fontsFolder = json['fontsFolder'] as String?
     ..showHiddenTrophies = json['showHiddenTrophies'] as bool? ?? false
     ..controllerVibration = json['controllerVibration'] as bool? ?? true
+    ..steamUser = json['steamUser'] as String?
+    ..steamGames = json['steamGames'] == true
+    ..steamFullscreen = json['steamFullscreen'] as bool? ?? true
     ..cjkGames = {
       for (final id in json['cjkGames'] as List<dynamic>? ?? const <dynamic>[])
         if (id is String) id,
@@ -149,6 +154,13 @@ class Preferences {
   /// of a row.
   bool controllerVibration = true;
 
+  /// Settings › Steam: the account the shortcuts go to (`<Steam folder>|<account ID>`; null for
+  /// the one signed in last), each unlocked game its own shortcut too, the launcher full screen
+  /// when Steam starts it.
+  String? steamUser;
+  bool steamGames = false;
+  bool steamFullscreen = true;
+
   /// The title IDs of games seen asking for Japanese, Chinese or Korean fonts: their next start
   /// waits for those to download.
   Set<String> cjkGames = {};
@@ -179,6 +191,9 @@ class Preferences {
     'fontsFolder': fontsFolder,
     'showHiddenTrophies': showHiddenTrophies,
     'controllerVibration': controllerVibration,
+    'steamUser': steamUser,
+    'steamGames': steamGames,
+    'steamFullscreen': steamFullscreen,
     'cjkGames': cjkGames.toList()..sort(),
   };
 
@@ -849,6 +864,13 @@ class AppModel extends ChangeNotifier {
 
   /// The system fonts games get: the folder put together for them, the CJK download.
   late final FontsModel fonts = FontsModel(this);
+
+  /// AnyPS5 and its games in the Steam library (Settings › Steam).
+  late final SteamModel steam = SteamModel(this);
+
+  /// How this launch came from Steam (a shortcut's --steam, SteamGameId, gamescope), and the
+  /// controllers Steam Input took over.
+  SteamLaunch steamLaunch = const SteamLaunch();
 
   /// The crash report of a game's last start, and detailed logging.
   late final CrashModel crash = CrashModel(this);
@@ -1614,6 +1636,12 @@ class AppModel extends ChangeNotifier {
       together.gameChanged();
       crash.ended(game, code, stopped: _stopped);
       _changed();
+      // Started from a Steam shortcut of the game: the launcher goes with it, so Steam sees
+      // the game end. A crash keeps it open on its report.
+      if (_quitAfterGame == game.id) {
+        _quitAfterGame = null;
+        if (code == 0 || _stopped) (services.quit ?? exit)(0);
+      }
     } on Object catch (error) {
       starting = null;
       fonts.ended();
@@ -1783,6 +1811,22 @@ class AppModel extends ChangeNotifier {
     sounds.play(Cue.back);
     _changed();
   }
+
+  /// The game of a Steam shortcut (--play <title ID>), started once the library is read. With
+  /// [quitAfter] (Steam started the launcher) it closes when the game ends normally.
+  Future<void> playAtLaunch(String titleId, {bool quitAfter = false}) async {
+    final wanted = titleId.toUpperCase();
+    final index = games.indexWhere((game) => game.titleId.toUpperCase() == wanted);
+    if (index < 0) return show(T.format('steamPlayMissing', [titleId]));
+    final game = games[index];
+    select(index);
+    if (!records.containsKey(game.id)) return show(T.format('steamPlayLocked', [game.name]));
+    if (quitAfter) _quitAfterGame = game.id;
+    await play(game);
+    if (running?.$1 != game && _quitAfterGame == game.id) _quitAfterGame = null;
+  }
+
+  String? _quitAfterGame;
 
   void select(int index) {
     if (index < 0 || index >= games.length) return;
@@ -2367,6 +2411,7 @@ class AppModel extends ChangeNotifier {
           ),
         ],
       ),
+      PanelCategory(id: 'steam', title: T.text('steam'), rows: steam.settingsRows()),
       PanelCategory(
         id: 'about',
         title: T.text('about'),

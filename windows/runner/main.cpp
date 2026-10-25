@@ -2,6 +2,8 @@
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
 
+#include <algorithm>
+
 #include "flutter_window.h"
 #include "utils.h"
 
@@ -21,6 +23,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
+  // --fullscreen (AnyPS5's Steam shortcuts pass it for Big Picture): a borderless window over
+  // the whole monitor from the start.
+  const bool fullscreen =
+      std::find(command_line_arguments.begin(), command_line_arguments.end(),
+                "--fullscreen") != command_line_arguments.end();
 
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
@@ -31,6 +38,21 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
+  if (fullscreen) {
+    HWND hwnd = window.GetHandle();
+    MONITORINFO monitor{sizeof(MONITORINFO)};
+    if (::GetMonitorInfo(::MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
+                         &monitor)) {
+      ::SetWindowLongPtr(
+          hwnd, GWL_STYLE,
+          (::GetWindowLongPtr(hwnd, GWL_STYLE) & ~WS_OVERLAPPEDWINDOW) |
+              WS_POPUP);
+      const RECT& area = monitor.rcMonitor;
+      ::SetWindowPos(hwnd, HWND_TOP, area.left, area.top,
+                     area.right - area.left, area.bottom - area.top,
+                     SWP_FRAMECHANGED | SWP_NOOWNERZORDER);
+    }
+  }
 
   ::MSG msg;
   while (::GetMessage(&msg, nullptr, 0, 0)) {

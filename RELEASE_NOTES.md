@@ -3,7 +3,7 @@
 Notes for the next GitHub release, written as changes land; the section is copied into the
 release when it is made.
 
-## Next release
+## 0.1.4
 
 ### Crash reports and detailed logging
 

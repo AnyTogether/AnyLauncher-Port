@@ -35,7 +35,7 @@ part 'together_party.dart';
 part 'together_profile.dart';
 
 /// The launcher's version, as AnyTogether hears it.
-const launcherVersion = '0.1.3';
+const launcherVersion = '0.1.4';
 
 /// AnyTogether in the launcher: the account and how it signs in (an email code, a code approved
 /// on the website, or the paired phone), the server it uses, and the rows the settings show for

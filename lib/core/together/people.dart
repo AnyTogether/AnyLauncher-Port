@@ -1,3 +1,5 @@
+import 'levels.dart';
+
 /// Someone on AnyTogether as the API's name cards show them.
 class Person {
   const Person({required this.id, required this.handle, required this.displayName, this.avatar});
@@ -96,10 +98,15 @@ class Presence {
   bool get online => state != PresenceState.offline;
 }
 
-/// A friend and what they are doing.
+/// A friend, what they are doing, and their trophy level (null when they keep their trophies
+/// from this user, or on a server older than levels).
 class Friend {
-  const Friend(this.person, this.presence);
+  const Friend(this.person, this.presence, {this.level});
 
   final Person person;
   final Presence presence;
+  final LevelBadge? level;
+
+  Friend copyWith({Presence? presence, LevelBadge? level}) =>
+      Friend(person, presence ?? this.presence, level: level ?? this.level);
 }

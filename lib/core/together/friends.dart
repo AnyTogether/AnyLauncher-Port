@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'account.dart';
+import 'levels.dart';
 import 'notifier.dart';
 import 'people.dart';
 import 'socket.dart';
@@ -36,6 +37,7 @@ class Friends with Notifier {
         Friend(
           Person.fromJson(json as Map<String, dynamic>),
           Presence.fromJson(json['presence'] as Map<String, dynamic>?),
+          level: LevelBadge.fromJson(json['level']),
         ),
     ]);
     incoming = _people(requests['incoming']);
@@ -98,8 +100,15 @@ class Friends with Notifier {
         final known = friends.indexWhere((friend) => friend.person.id == userId);
         if (known < 0) return;
         final next = [...friends];
-        next[known] = Friend(next[known].person, Presence.fromJson(event.json));
+        next[known] = next[known].copyWith(presence: Presence.fromJson(event.json));
         friends = _sorted(next);
+        notifyListeners();
+      case 'level.up':
+        // A friend went up a level (mine is the profile's).
+        final known = friends.indexWhere((friend) => friend.person.id == event.json['userId']);
+        final level = LevelBadge.fromJson(event.json);
+        if (known < 0 || level == null) return;
+        friends = [...friends]..[known] = friends[known].copyWith(level: level);
         notifyListeners();
     }
   }

@@ -173,6 +173,12 @@ class FakeTogether {
   final Map<String, List<Map<String, dynamic>>> trophyLists = {};
   final Map<String, Set<String>> privateParts = {};
 
+  /// Showcases by handle, the compared games by handle and one game compared by
+  /// "handle/titleId"; `showcase` and `compare` in [privateParts] keep them from the user.
+  final Map<String, Map<String, dynamic>> showcases = {};
+  final Map<String, List<Map<String, dynamic>>> compareLists = {};
+  final Map<String, Map<String, dynamic>> compareViews = {};
+
   /// Game sessions by id, and the invites to the user.
   final Map<String, Map<String, dynamic>> gameSessions = {};
   final List<Map<String, dynamic>> gameInvites = [];
@@ -371,6 +377,10 @@ class FakeTogether {
             'profile': me,
           },
         );
+      case ('PATCH', 'me/presence'):
+        if (call.body['appearOffline'] is! bool) return problem(400, 'bad_request');
+        me['appearOffline'] = call.body['appearOffline'];
+        return (200, {'appearOffline': me['appearOffline']});
       case ('GET', 'me/friends'):
         return (200, {'friends': friends});
       case ('GET', 'me/friends/requests'):
@@ -489,11 +499,35 @@ class FakeTogether {
       case ('GET', 'ice-servers'):
         return (200, {'iceServers': <Object>[], 'expiresAt': null});
     }
-    final user = RegExp(r'^users/([^/?]+)(/library|/trophies)?$').firstMatch(call.path);
+    final compare = RegExp(r'^users/([^/?]+)/trophies/compare(?:\?titleId=([A-Z0-9]+))?$').firstMatch(call.path);
+    if (call.method == 'GET' && compare != null) {
+      final handle = Uri.decodeComponent(compare.group(1)!);
+      if (privateParts[handle]?.contains('compare') == true) {
+        return (
+          403,
+          {
+            'type': 'about:blank',
+            'status': 403,
+            'code': 'forbidden',
+            'title': 'Trophies are private',
+            'details': {'section': 'trophies'},
+          },
+        );
+      }
+      final titleId = compare.group(2);
+      if (titleId == null) return (200, {'games': compareLists[handle] ?? const []});
+      final view = compareViews['$handle/$titleId'];
+      return view == null ? problem(404, 'not_found', 'No such game') : (200, view);
+    }
+    final user = RegExp(r'^users/([^/?]+)(/library|/trophies|/showcase)?$').firstMatch(call.path);
     if (call.method == 'GET' && user != null) {
       final handle = Uri.decodeComponent(user.group(1)!);
       final part = user.group(2)?.substring(1) ?? 'profile';
       if (privateParts[handle]?.contains(part) == true) return problem(403, 'private', 'Private');
+      if (part == 'showcase') {
+        final showcase = showcases[handle];
+        return showcase == null ? problem(404, 'not_found') : (200, showcase);
+      }
       final profile = profiles[handle];
       if (profile == null) return problem(404, 'not_found');
       return switch (part) {

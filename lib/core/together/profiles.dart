@@ -1,4 +1,5 @@
 import 'account.dart';
+import 'levels.dart';
 import 'people.dart';
 
 /// The user's language, then English, then any.
@@ -7,7 +8,8 @@ String? pickName(Map<String, String> names, String language) {
   return names[language] ?? names['en'] ?? names[(names.keys.toList()..sort()).first];
 }
 
-Map<String, String> _names(Object? json) => {
+/// Names per language from the API's `{lang: name}`.
+Map<String, String> namesOf(Object? json) => {
   if (json is Map)
     for (final entry in json.entries)
       if (entry.value is String) entry.key as String: entry.value as String,
@@ -23,6 +25,7 @@ class TogetherProfile {
     this.bio,
     this.country,
     this.friendship = 'none',
+    this.trophyLevel,
   });
 
   factory TogetherProfile.fromJson(Map<String, dynamic> json) => TogetherProfile(
@@ -33,6 +36,7 @@ class TogetherProfile {
     bio: json['bio'] as String?,
     country: json['country'] as String?,
     friendship: json['friendship'] as String? ?? 'none',
+    trophyLevel: TrophyLevel.fromJson(json['trophyLevel']),
   );
 
   final String userId;
@@ -44,6 +48,10 @@ class TogetherProfile {
 
   /// me, friends, none, pending_out (this user asked) or pending_in (they asked).
   final String friendship;
+
+  /// Their trophy level; null when their trophies are kept from this user (or the server is
+  /// older than levels).
+  final TrophyLevel? trophyLevel;
 
   bool get isMe => friendship == 'me';
 }
@@ -64,7 +72,7 @@ class PlayedGame {
 
   factory PlayedGame.fromJson(Map<String, dynamic> json) => PlayedGame(
     titleId: json['titleId'] as String,
-    names: _names(json['names']),
+    names: namesOf(json['names']),
     iconUrl: json['iconUrl'] as String?,
     lastPlayedAt: DateTime.tryParse(json['lastPlayedAt'] as String? ?? ''),
     secondsPlayed: (json['secondsPlayed'] as num? ?? 0).toInt(),
@@ -109,7 +117,7 @@ class EarnedTrophy {
     final texts = json['texts'];
     return EarnedTrophy(
       titleId: json['titleId'] as String,
-      gameNames: _names(json['gameNames']),
+      gameNames: namesOf(json['gameNames']),
       trophyId: (json['trophyId'] as num).toInt(),
       grade: json['grade'] as String? ?? 'bronze',
       hidden: json['hidden'] as bool? ?? false,
@@ -172,6 +180,7 @@ class ProfilePage {
     required this.profile,
     required this.library,
     required this.trophies,
+    this.showcase = const SectionFailed(),
     this.detailsPrivate = false,
   });
 
@@ -181,6 +190,9 @@ class ProfilePage {
   final bool detailsPrivate;
   final Section<List<PlayedGame>> library;
   final Section<List<EarnedTrophy>> trophies;
+
+  /// What they pinned: failed on a server without showcases, which shows nothing.
+  final Section<Showcase> showcase;
 
   /// Games, play time, trophies and points, from the library; null when it is not shown.
   ({int games, int seconds, int trophies, int points})? get totals {
@@ -228,6 +240,9 @@ class Profiles {
           EarnedTrophy.fromJson(trophy as Map<String, dynamic>),
       ];
     });
+    final showcase = _section(
+      () async => Showcase.fromJson(await account.call('GET', 'users/${path(handle)}/showcase')),
+    );
     TogetherProfile profile;
     var detailsPrivate = false;
     try {
@@ -247,8 +262,26 @@ class Profiles {
       detailsPrivate: detailsPrivate,
       library: await library,
       trophies: await trophies,
+      showcase: await showcase,
     );
   }
+
+  /// The games either side has trophies in, both-play first; private when they keep their
+  /// trophies from this user.
+  Future<Section<List<ComparedGame>>> compareGames(String handle) => _section(() async {
+    final json = await account.call('GET', 'users/${path(handle)}/trophies/compare');
+    return [
+      for (final game in json['games'] as List<dynamic>? ?? const [])
+        if (game is Map<String, dynamic>) ComparedGame.fromJson(game),
+    ];
+  });
+
+  /// One game's trophies side by side.
+  Future<Section<TrophyComparison>> compareGame(String handle, String titleId) => _section(
+    () async => TrophyComparison.fromJson(
+      await account.call('GET', 'users/${path(handle)}/trophies/compare?titleId=${Uri.encodeQueryComponent(titleId)}'),
+    ),
+  );
 
   /// A section read: null from [read] or a refusal is private, anything else that fails is
   /// failed. Signing out on the way (a refused refresh) still throws.

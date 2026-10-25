@@ -7,6 +7,7 @@ import 'messages.dart';
 import 'notifier.dart';
 import 'parties.dart';
 import 'profiles.dart';
+import 'self.dart';
 import 'socket.dart';
 import 'voice.dart';
 import 'voice_mesh.dart';
@@ -24,6 +25,7 @@ class TogetherHub with Notifier {
        profiles = Profiles(account) {
     this.socket.addListener(notifyListeners);
     friends = Friends(account: account, socket: this.socket)..addListener(notifyListeners);
+    self = SelfProfile(account: account, socket: this.socket)..addListener(notifyListeners);
     messages = Messages(account: account, socket: this.socket)..addListener(notifyListeners);
     parties = Parties(account: account, socket: this.socket)..addListener(notifyListeners);
     games = GameSessions(account: account, socket: this.socket, bridgeFile: bridgeFile)..addListener(notifyListeners);
@@ -36,6 +38,9 @@ class TogetherHub with Notifier {
   final TogetherAccount account;
   final TogetherSocket socket;
   late final Friends friends;
+
+  /// The user's own trophy level and whether they appear offline.
+  late final SelfProfile self;
   late final Messages messages;
   late final Parties parties;
   late final Voice voice;
@@ -56,6 +61,7 @@ class TogetherHub with Notifier {
     unawaited(voice.leave(tell: false));
     socket.stop();
     friends.clear();
+    self.clear();
     messages.clear();
     parties.clear();
     games.clear();
@@ -66,6 +72,7 @@ class TogetherHub with Notifier {
   void dispose() {
     account.removeListener(_accountChanged);
     friends.dispose();
+    self.dispose();
     messages.dispose();
     voice.dispose();
     parties.dispose();

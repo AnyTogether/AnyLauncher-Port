@@ -1,7 +1,9 @@
 import 'dart:io';
 
 import 'package:anyps5_desktop/core/controls.dart';
+import 'package:anyps5_desktop/core/file_links.dart';
 import 'package:anyps5_desktop/core/font_download.dart';
+import 'package:anyps5_desktop/core/host.dart';
 import 'package:anyps5_desktop/core/installer.dart';
 import 'package:anyps5_desktop/core/remote/remote_server.dart';
 import 'package:anyps5_desktop/core/system_fonts.dart';
@@ -186,6 +188,31 @@ void main() {
   });
 
   group('keyboard', () {
+    testWidgets('an unlock that would copy asks first; Enter and the arrows answer it', (tester) async {
+      FileLinks.calls = LinkCalls(hardLink: (_, _) => false, symbolicLink: (_, _) => false);
+      addTearDown(() => FileLinks.calls = FileLinks.system);
+      fixture = makeFixture(system: HostSystem.windows);
+      final model = fixture.model;
+      model.select(indexOf(model, 'PPSA02002'));
+      model.sizes[model.selectedGame!.id] = 52000000000;
+      await pumpLauncher(tester, model);
+      await press(tester, LogicalKeyboardKey.arrowDown);
+      await press(tester, LogicalKeyboardKey.enter);
+      expect(model.overlay, Layer.copyWarning);
+      expect(find.text(T.text('copyWarningTitle')), findsOneWidget);
+      expect(find.textContaining('52.0 GB'), findsWidgets);
+      expect(find.text(T.text('copyFixFolder')), findsOneWidget);
+      expect(find.text(T.text('copyFixDeveloperMode')), findsOneWidget);
+      expect(find.text(T.text('copyAnyway')), findsOneWidget);
+      expect(tester.takeException(), isNull, reason: 'nothing overflows');
+      await press(tester, LogicalKeyboardKey.arrowDown);
+      await press(tester, LogicalKeyboardKey.enter);
+      expect(fixture.opened, [Uri.parse('ms-settings:developers')]);
+      expect(model.overlay, isNull);
+      expect(find.text(T.text('copyFixDeveloperModeThen')), findsOneWidget);
+      await tester.pump(const Duration(seconds: 5));
+    });
+
     testWidgets('arrows move the tiles and the focus, Escape comes back', (tester) async {
       fixture = makeFixture();
       final model = fixture.model;

@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:anyps5_desktop/core/file_links.dart';
+import 'package:anyps5_desktop/core/host.dart';
 import 'package:anyps5_desktop/core/installer.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
@@ -129,6 +131,85 @@ void main() {
     makeDump(model.root!, 'late', titleId: 'PPSA09009', names: {'en-US': 'Late Arrival'});
     await until(() => model.games.any((game) => game.titleId == 'PPSA09009'));
     expect(model.games, hasLength(5));
+  });
+
+  group('an unlock that would copy', () {
+    // The games folder cannot link to the dump: another drive, Windows without Developer Mode.
+    setUp(() => FileLinks.calls = LinkCalls(hardLink: (_, _) => false, symbolicLink: (_, _) => false));
+    tearDown(() => FileLinks.calls = FileLinks.system);
+
+    List<String> rowIds() => model.panelCategories().single.rows.map((row) => row.id).toList();
+
+    test('asks first, says how much and why, and copies when told to', () async {
+      final stray = model.games[indexOf('PPSA02002')];
+      File(p.join(stray.folder, 'eboot.bin')).writeAsBytesSync(typicalSelf());
+      model.sizes[stray.id] = 31400000000;
+      model.unlock(stray);
+      expect(model.overlay, Layer.copyWarning);
+      expect(model.stateOf(stray), isA<Locked>(), reason: 'nothing starts before the answer');
+      expect(model.panelCategories().single.title, T.text('copyWarningTitle'));
+      expect(rowIds(), ['why', 'sameDrive', 'copyAnyway', 'cancel'], reason: 'no Developer Mode on Linux');
+      final why = model.panelCategories().single.rows.first.kind as InfoRow;
+      expect(why.text, contains('31.4 GB'));
+      // The keyboard and the pad move through it like any panel: the explanation is skipped.
+      expect(model.panelRow, 1);
+      model.handle(Command.down);
+      model.handle(Command.select);
+      expect(model.overlay, isNull);
+      expect(model.stateOf(stray), isA<Installing>());
+      await until(() => model.stateOf(stray) is Installed);
+      final installed = Installer.installedFolder(stray, model.root!);
+      expect(
+        FileSystemEntity.typeSync(p.join(installed, 'app0', 'sce_sys', 'param.json'), followLinks: false),
+        FileSystemEntityType.file,
+      );
+    });
+
+    test('on Windows it offers Developer Mode; the folder choice and cancel start nothing', () {
+      model.dispose();
+      fixture.dispose();
+      fixture = makeFixture(system: HostSystem.windows);
+      model = fixture.model;
+      final stray = model.games[indexOf('PPSA02002')];
+      model.sizes[stray.id] = 52000000000;
+      model.unlock(stray);
+      expect(rowIds(), ['why', 'sameDrive', 'developerMode', 'copyAnyway', 'cancel']);
+      expect((model.panelCategories().single.rows.first.kind as InfoRow).text, contains('Developer Mode'));
+      model.handle(Command.down);
+      model.handle(Command.select);
+      expect(fixture.opened, [Uri.parse('ms-settings:developers')]);
+      expect(model.overlay, isNull);
+      expect(model.toast, T.text('copyFixDeveloperModeThen'));
+      expect(model.stateOf(stray), isA<Locked>());
+      model.unlock(stray);
+      model.handle(Command.select);
+      expect(model.overlay, isNull, reason: 'the games folder was chosen');
+      expect(model.stateOf(stray), isA<Locked>());
+      model.unlock(stray);
+      model.handle(Command.back);
+      expect(model.overlay, isNull);
+      expect(model.stateOf(stray), isA<Locked>());
+      expect(model.queue, isEmpty);
+    });
+
+    test('a small copy goes ahead without asking', () {
+      final stray = model.games[indexOf('PPSA02002')];
+      model.sizes[stray.id] = 6000000;
+      model.unlock(stray);
+      expect(model.overlay, isNull);
+      expect(model.stateOf(stray), isNot(isA<Locked>()));
+    });
+  });
+
+  test('a game whose dump moved away from its links says so instead of starting', () async {
+    final orbit = model.games[indexOf('PPSA01001')];
+    final installed = Installer.installedFolder(orbit, model.root!);
+    Directory(p.join(installed, 'app0')).createSync(recursive: true);
+    Link(p.join(installed, 'app0', 'eboot.bin')).createSync(p.join(model.root!, 'moved-away', 'eboot.bin'));
+    await model.play(orbit);
+    expect(model.toast, T.text('dumpMoved'));
+    expect(model.stateOf(orbit), isA<Installed>());
+    expect(File(model.paths.logFile(orbit.titleId)).existsSync(), isFalse, reason: 'nothing started');
   });
 
   test('uninstalling removes the installed game and keeps the dump', () {

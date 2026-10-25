@@ -139,6 +139,7 @@ Fixture makeFixture({
   FontArchive? cjkFonts,
   String? builtInFonts,
   Future<String?> Function(String suggestedName)? saveFile,
+  HostSystem system = HostSystem.linux,
 }) {
   final opened = <Uri>[];
   final copied = <String>[];
@@ -172,7 +173,7 @@ Fixture makeFixture({
   final model = AppModel(
     paths: AppPaths.forSystem(HostSystem.linux, environment: {'HOME': p.join(temp.path, 'home')}),
     preferences: preferences,
-    system: HostSystem.linux,
+    system: system,
     persist: false,
     services: LauncherServices(
       computerName: 'Desk',

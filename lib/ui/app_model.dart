@@ -298,6 +298,10 @@ enum Layer {
 
   /// A game's last start: why it stopped, crash_log.txt to save, the issue to open.
   crashReport,
+
+  /// Before an unlock that would copy the game's files: how much and why, the two ways to link
+  /// instead (the games folder on the dump's drive, Windows' Developer Mode), copying anyway.
+  copyWarning,
 }
 
 /// A settings row the panels draw and the keyboard moves through.
@@ -1041,10 +1045,34 @@ class AppModel extends ChangeNotifier {
     }
   }
 
-  void unlock(Game game) {
-    if (root == null) return;
+  /// The game an unlock waits for an answer about, and the size of its files that would be
+  /// copied (see [Layer.copyWarning]).
+  ({Game game, int bytes})? copyWarning;
+
+  /// Copies smaller than this go ahead without asking (homebrew, demos).
+  static const copyWarningFrom = 100000000;
+
+  /// Queues [game]'s unlock; when its files would be copied (the games folder cannot link to the
+  /// dump) and [copy] does not say so already, asks first.
+  void unlock(Game game, {bool copy = false}) {
+    final folder = root;
+    if (folder == null) return;
     final kit = toolkit;
     if (kit == null) return show(T.text('noToolkit'));
+    final waiting = queue.contains(game.id) || progress.containsKey(game.id);
+    if (!copy && !waiting) {
+      InstallPlan? plan;
+      try {
+        plan = Installer.plan(game, folder, knownSize: sizes[game.id]);
+      } on FileSystemException {
+        plan = null; // The install says what is wrong.
+      }
+      if (plan != null && plan.copies && plan.bytes >= copyWarningFrom) {
+        copyWarning = (game: game, bytes: plan.bytes);
+        open(Layer.copyWarning);
+        return;
+      }
+    }
     // Unlocked all the same (another glibc may be at hand), but said first.
     if (engine.glibcWarning(kit) case final String warning) show(warning);
     failures.remove(game.id);
@@ -1230,6 +1258,13 @@ class AppModel extends ChangeNotifier {
     }
     sounds.play(Cue.select);
     starting = game;
+    // A game linked to its dump cannot start once the dump moved: said instead of a crash.
+    if (await Installer.brokenLink(Installer.installedFolder(game, folder)) != null) {
+      starting = null;
+      sounds.play(Cue.back);
+      show(T.text('dumpMoved'));
+      return;
+    }
     preferences.lastPlayed[game.id] = DateTime.now().toIso8601String();
     savePreferences();
     final logFile = paths.logFile(game.titleId);
@@ -1588,6 +1623,7 @@ class AppModel extends ChangeNotifier {
       case Layer.settings ||
           Layer.gameSettings ||
           Layer.confirmUninstall ||
+          Layer.copyWarning ||
           Layer.updateChoice ||
           Layer.friends ||
           Layer.friendOptions ||
@@ -1695,6 +1731,10 @@ class AppModel extends ChangeNotifier {
             ],
           ),
         ];
+      case Layer.copyWarning:
+        final warning = copyWarning;
+        if (warning == null) return const [];
+        return [PanelCategory(id: 'copy', title: T.text('copyWarningTitle'), rows: _copyWarningRows(warning))];
       case Layer.friends:
         return [PanelCategory(id: 'friends', title: T.text('friendsTitle'), rows: together.friendRows())];
       case Layer.party:
@@ -1747,6 +1787,59 @@ class AppModel extends ChangeNotifier {
       default:
         return const [];
     }
+  }
+
+  List<PanelRow> _copyWarningRows(({Game game, int bytes}) warning) {
+    final windows = system == HostSystem.windows;
+    final size = byteText(warning.bytes);
+    return [
+      PanelRow(
+        id: 'why',
+        title: warning.game.name,
+        kind: InfoRow(T.format(windows ? 'copyWarningWindows' : 'copyWarningLinux', [size])),
+      ),
+      PanelRow(
+        id: 'sameDrive',
+        title: T.text('copyFixFolder'),
+        detail: T.text('copyFixFolderDetail'),
+        kind: ActionRow(() {
+          closeOverlay();
+          copyWarning = null;
+          unawaited(chooseGamesFolder());
+        }),
+      ),
+      if (windows)
+        PanelRow(
+          id: 'developerMode',
+          title: T.text('copyFixDeveloperMode'),
+          detail: T.text('copyFixDeveloperModeDetail'),
+          kind: ActionRow(() {
+            services.openUrl?.call(Uri.parse('ms-settings:developers'));
+            closeOverlay();
+            copyWarning = null;
+            show(T.text('copyFixDeveloperModeThen'));
+          }),
+        ),
+      PanelRow(
+        id: 'copyAnyway',
+        title: T.text('copyAnyway'),
+        detail: T.format('copyAnywayDetail', [size]),
+        kind: ActionRow(() {
+          closeOverlay();
+          copyWarning = null;
+          unlock(warning.game, copy: true);
+        }),
+      ),
+      PanelRow(
+        id: 'cancel',
+        title: T.text('cancel'),
+        kind: ActionRow(() {
+          closeOverlay();
+          copyWarning = null;
+          if (_playAfterInstall == warning.game.id) _playAfterInstall = null;
+        }),
+      ),
+    ];
   }
 
   List<PanelCategory> _settingsCategories() {

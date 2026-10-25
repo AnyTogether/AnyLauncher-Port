@@ -167,7 +167,14 @@ class PanelView extends StatelessWidget {
     final categories = model.panelCategories();
     if (categories.isEmpty) return const SizedBox.shrink();
     final category = categories[model.panelCategory.clamp(0, categories.length - 1)];
-    final compact = const {Layer.confirmUninstall, Layer.updateChoice, Layer.friendOptions}.contains(model.overlay);
+    final compact = const {
+      Layer.confirmUninstall,
+      Layer.updateChoice,
+      Layer.friendOptions,
+      Layer.copyWarning,
+    }.contains(model.overlay);
+    // The copy warning explains itself before its four choices.
+    final tall = model.overlay == Layer.copyWarning;
     final heading = switch (model.overlay) {
       Layer.settings => T.text('settings'),
       Layer.friends => T.text('friendsTitle'),
@@ -182,7 +189,7 @@ class PanelView extends StatelessWidget {
       child: Center(
         child: SizedBox(
           width: (compact ? 760 : 1180) * scale,
-          height: (compact ? 420 : 720) * scale,
+          height: (compact ? (tall ? 560 : 420) : 720) * scale,
           child: Glass(
             radius: 28 * scale,
             opacity: 0.5,

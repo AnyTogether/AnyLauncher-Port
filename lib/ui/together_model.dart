@@ -60,7 +60,9 @@ class TogetherModel {
     hub.games.onEnded = (host) => app.show(T.format('sessionEnded', [host?.displayName ?? '']));
     hub.parties.onRequest = (person, via) {
       _noticeSound();
-      app.show(T.format(via == 'code' ? 'partyAsksCode' : 'partyAsks', [person.displayName]));
+      app.show(
+        via == 'code' ? T.format('partyAsksCode', [person.displayName]) : T.format('partyAsks', [person.displayName]),
+      );
     };
     hub.parties.onRequestAnswered = (accepted) {
       // A yes is an invite, which says so itself.

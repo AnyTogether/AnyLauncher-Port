@@ -95,7 +95,7 @@ extension TogetherParty on TogetherModel {
             id: 'party-request-${person.id}',
             title: T.format('partyRequestLet', [person.displayName]),
             detail:
-                '@${person.handle} · ${T.text(hub.parties.requestVia[person.id] == 'code' ? 'partyRequestWithCode' : 'partyRequestAsks')}',
+                '@${person.handle} · ${hub.parties.requestVia[person.id] == 'code' ? T.text('partyRequestWithCode') : T.text('partyRequestAsks')}',
             person: TogetherModel.card(person),
             kind: ActionRow(() => unawaited(answerRequest(person, accept: true))),
           ),
@@ -199,12 +199,12 @@ extension TogetherParty on TogetherModel {
       PanelRow(
         id: 'party-code-copy',
         title: T.text('partyCodeCopy'),
-        kind: ActionRow(() => copy(code.shown, 'partyCodeCopied')),
+        kind: ActionRow(() => copy(code.shown, T.text('partyCodeCopied'))),
       ),
       PanelRow(
         id: 'party-code-link',
         title: T.text('partyCodeCopyLink'),
-        kind: ActionRow(() => copy(code.url.toString(), 'partyLinkCopied')),
+        kind: ActionRow(() => copy(code.url.toString(), T.text('partyLinkCopied'))),
       ),
       PanelRow(id: 'party-code-new', title: T.text('partyCodeNew'), kind: ActionRow(() => unawaited(newJoinCode()))),
       PanelRow(
@@ -375,7 +375,7 @@ extension TogetherParty on TogetherModel {
 
   void copy(String text, String said) {
     app.services.copyText?.call(text);
-    app.show(T.text(said));
+    app.show(said);
   }
 
   void openDiscord(String link) {
@@ -389,7 +389,7 @@ extension TogetherParty on TogetherModel {
     try {
       await hub.parties.setDiscord(link.isEmpty ? null : link);
       discordDraft = null;
-      app.show(T.text(link.isEmpty ? 'partyDiscordRemoved' : 'partyDiscordSaved'));
+      app.show(link.isEmpty ? T.text('partyDiscordRemoved') : T.text('partyDiscordSaved'));
     } on TogetherProblem catch (problem) {
       app.show(problem.status == 400 ? T.text('partyDiscordWrong') : message(problem));
     } on Object catch (error) {

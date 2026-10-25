@@ -156,26 +156,40 @@ void main() {
       await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_messages.png'));
     });
 
-    testWidgets('golden: a party, in Turkish, led by Utku with Ana muted in voice', (tester) async {
+    testWidgets('golden: a party, in Turkish, led by Utku with Ana muted in voice, a join code and a request', (
+      tester,
+    ) async {
       fixture = makeFixture(language: Language.turkish);
       model = fixture.model;
       signedInPreview(model);
-      model.together.hub.parties.party = const Party(
+      model.together.hub.parties.party = Party(
         id: 'p1',
         leaderId: 'u-me',
         open: true,
         members: [
-          Person(id: 'u-me', handle: 'utku', displayName: 'Utku Halis'),
-          Person(id: 'u-ana', handle: 'ana', displayName: 'Ana'),
+          const Person(id: 'u-me', handle: 'utku', displayName: 'Utku Halis'),
+          const Person(id: 'u-ana', handle: 'ana', displayName: 'Ana'),
         ],
-        invited: [Person(id: 'u-bora', handle: 'bora', displayName: 'Bora')],
+        invited: [const Person(id: 'u-bora', handle: 'bora', displayName: 'Bora')],
         callId: 'call-1',
         inCall: {'u-ana'},
         muted: {'u-ana'},
+        joinCode: JoinCode(
+          code: 'K7QM3XPA',
+          url: Uri(scheme: 'https', host: 'anytogether.kodla.agency', path: '/join/K7QM3XPA'),
+        ),
+        discord: 'https://discord.gg/anyps5',
+        requests: [const Person(id: 'u-cem', handle: 'cem', displayName: 'Cem')],
       );
+      model.together.hub.parties.requestVia['u-cem'] = 'code';
       model.open(Layer.party);
       await pumpLauncher(tester, model);
       await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_party_tr.png'));
+      // Further down: the join code and the Discord link.
+      model.panelRow = model.panelCategories().single.rows.indexWhere((row) => row.id == 'party-code-new');
+      model.refresh();
+      await tester.pumpAndSettle();
+      await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_party_code_tr.png'));
     });
 
     testWidgets("golden: a friend's profile with games, play time and rare trophies", (tester) async {

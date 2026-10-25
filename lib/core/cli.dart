@@ -14,6 +14,8 @@ import 'remote/paired_devices.dart';
 import 'remote/remote_protocol.dart';
 import 'remote/remote_server.dart';
 import 'self_unwrap.dart';
+import 'steam/steam_install.dart';
+import 'steam/steam_shortcuts.dart';
 import 'toolkit.dart';
 import 'toolkit_download.dart';
 
@@ -28,7 +30,13 @@ const usage = '''usage: anyps5_tool <command>
                                            start an installed game with its saved settings;
                                            --trace turns on the engine's detailed logging
   remote [--allow-all] [--hidden] [--port <port>] [--devices <file>] [--games <folder>]
-                                           the phone server until stopped''';
+                                           the phone server until stopped
+  steam status                             the Steam folders and accounts found, AnyPS5's shortcuts
+  steam add --program <launcher> [--games <folder>] [--fullscreen] [--user <id>] [--close-steam]
+                                           AnyPS5 (and with --games each unlocked game) as non-Steam
+                                           games, without artwork (Settings > Steam draws it)
+  steam remove [--user <id>] [--close-steam]
+                                           takes AnyPS5's shortcuts and pictures out of Steam''';
 
 /// The launcher's pipeline on the command line, for scripted checks on a Windows or Linux
 /// machine without the interface: the same code the launcher runs.
@@ -146,6 +154,8 @@ Future<int> runCli(
       final code = await running.exitCode;
       output.writeln('exit $code');
       return code;
+    case 'steam' when arguments.length >= 2:
+      return _steam(arguments.skip(1).toList(), output, errors, env, host);
     case 'remote':
       return _remote(arguments.skip(1).toList(), output, errors, env, host, until);
     default:
@@ -307,4 +317,103 @@ Future<int> _remote(
   await advertiser?.stop();
   await server.stop();
   return 0;
+}
+
+/// Settings › Steam on the command line.
+Future<int> _steam(
+  List<String> options,
+  StringSink output,
+  StringSink errors,
+  Map<String, String> env,
+  HostSystem host, {
+  SteamControl Function(SteamInstall)? control,
+}) async {
+  String? value(String name) {
+    final at = options.indexOf(name);
+    return at >= 0 && at + 1 < options.length ? options[at + 1] : null;
+  }
+
+  final installs = await SteamLocator.find(system: host, environment: env);
+  if (installs.isEmpty) {
+    errors.writeln('Steam not found');
+    return 2;
+  }
+  final accounts = [
+    for (final install in installs)
+      for (final user in install.users()) (install, user),
+  ];
+  if (options.first == 'status') {
+    for (final install in installs) {
+      final running = await (control ?? (i) => SteamControl(i, system: host))(install).running();
+      output.writeln('steam ${install.root}${install.flatpak ? ' (flatpak)' : ''}${running ? ', running' : ''}');
+      for (final user in install.users()) {
+        final ours = SteamShortcuts(install, user).ours();
+        output.writeln(
+          '  user ${user.id} ${user.label}${user.mostRecent ? ' (signed in last)' : ''}: ${ours.length} AnyPS5 shortcuts',
+        );
+        for (final shortcut in ours) {
+          output.writeln(
+            '    ${ShortcutsFile.appIdOf(shortcut)} ${shortcut.string('AppName')} ${shortcut.string('Exe')} ${shortcut.string('LaunchOptions')}',
+          );
+        }
+      }
+    }
+    return 0;
+  }
+  final wanted = value('--user');
+  final account = wanted == null ? accounts.firstOrNull : accounts.where((entry) => entry.$2.id == wanted).firstOrNull;
+  if (account == null) {
+    errors.writeln(wanted == null ? 'no Steam account has signed in on this computer' : 'no Steam account $wanted');
+    return 2;
+  }
+  final (install, user) = account;
+  final steam = (control ?? (i) => SteamControl(i, system: host))(install);
+  if (await steam.running()) {
+    if (!options.contains('--close-steam')) {
+      errors.writeln('Steam is running: close it first (or pass --close-steam)');
+      return 3;
+    }
+    output.writeln('closing Steam');
+    if (!await steam.shutdown()) {
+      errors.writeln('Steam did not close');
+      return 3;
+    }
+  }
+  final shortcuts = SteamShortcuts(install, user);
+  switch (options.first) {
+    case 'add':
+      final program = value('--program');
+      if (program == null) {
+        errors.writeln(usage);
+        return 2;
+      }
+      final fullscreen = options.contains('--fullscreen');
+      final folder = value('--games');
+      final games = [
+        if (folder != null)
+          for (final game in GameLibrary.scan(folder))
+            if (Installer.record(Installer.installedFolder(game, folder), system: host) != null) game,
+      ];
+      final change = shortcuts.put([
+        SteamEntry(SteamPlan.launcher(program, fullscreen: fullscreen, into: shortcuts)),
+        for (final game in games)
+          SteamEntry(
+            SteamPlan.game(program, name: game.name, titleId: game.titleId, fullscreen: fullscreen, into: shortcuts),
+          ),
+      ]);
+      output.writeln('added ${change.appIds.join(' ')} to ${change.shortcutsFile} (user ${user.id})');
+      if (change.backup != null) output.writeln('backup ${change.backup}');
+      return 0;
+    case 'remove':
+      final change = shortcuts.remove();
+      output.writeln(
+        change.appIds.isEmpty
+            ? 'no AnyPS5 shortcuts in ${change.shortcutsFile}'
+            : 'removed ${change.appIds.join(' ')} and ${change.artFiles.length} pictures',
+      );
+      return 0;
+    default:
+      errors.writeln(usage);
+      return 2;
+  }
 }

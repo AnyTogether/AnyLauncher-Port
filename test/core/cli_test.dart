@@ -123,4 +123,21 @@ void main() {
     stop.complete();
     expect(await running, 0);
   });
+
+  test('steam: status, add and remove in a Steam folder, refused without one', () async {
+    final home = p.join(temp.path, 'home');
+    expect((await run(['steam', 'status'])).$3, contains('Steam not found'));
+    Directory(p.join(home, '.local', 'share', 'Steam', 'userdata', '52079950', 'config')).createSync(recursive: true);
+    expect((await run(['steam', 'add'])).$1, 2, reason: '--program is needed');
+    final added = await run(['steam', 'add', '--program', '/opt/AnyPS5/anyps5_desktop', '--fullscreen']);
+    expect(added.$1, 0, reason: added.$3);
+    expect(added.$2, contains('added '));
+    final status = await run(['steam', 'status']);
+    expect(status.$2, contains('user 52079950 52079950: 1 AnyPS5 shortcuts'));
+    expect(status.$2, contains('AnyPS5 "/opt/AnyPS5/anyps5_desktop" --steam --fullscreen'));
+    final removed = await run(['steam', 'remove']);
+    expect(removed.$2, startsWith('removed '));
+    expect((await run(['steam', 'remove'])).$2, startsWith('no AnyPS5 shortcuts'));
+    expect((await run(['steam', 'remove', '--user', '7'])).$3, contains('no Steam account 7'));
+  });
 }

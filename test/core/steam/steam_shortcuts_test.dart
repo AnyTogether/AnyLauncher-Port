@@ -319,7 +319,7 @@ void main() {
       expect(await control.shutdown(poll: const Duration(milliseconds: 5)), isTrue);
       expect(started, [
         ['steam', '-shutdown'],
-        ['/home/deck/.local/share/Steam/steam.sh', '-shutdown'],
+        [p.join('/home/deck/.local/share/Steam', 'steam.sh'), '-shutdown'],
       ]);
       expect(await control.running(), isFalse);
     });

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -223,7 +224,7 @@ Fixture makeFixture({
   Directory(installed).createSync(recursive: true);
   File(p.join(installed, 'app.elf')).writeAsStringSync('#!/bin/sh\n');
   File(p.join(installed, Installer.recordName)).writeAsStringSync(
-    '{"date":"2026-10-24T12:00:00Z","source":"${orbit.folder}","system":"linux","titleID":"PPSA01001","toolkit":"toolkit-1"}',
+    '{"date":"2026-10-24T12:00:00Z","source":${jsonEncode(orbit.folder)},"system":"linux","titleID":"PPSA01001","toolkit":"toolkit-1"}',
   );
   writeTrophies(orbit.folder, installed: installed, earned: [1, 2]);
   model.rescan();

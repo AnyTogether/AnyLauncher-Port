@@ -94,6 +94,10 @@ class TogetherAccount with Notifier {
   String? _access;
   DateTime _accessExpiry = DateTime.fromMillisecondsSinceEpoch(0);
   String? _refresh;
+
+  /// The tokens held now, taken out of a crash report wherever they appear.
+  List<String> get secrets => [?_access, ?_refresh];
+
   Future<String>? _refreshing;
   int _waiting = 0;
 

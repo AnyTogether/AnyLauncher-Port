@@ -1,0 +1,61 @@
+name: Crash report (Windows/Linux launcher)
+description: A game stopped or crashed in the AnyPS5 launcher on Windows or Linux, and the launcher seems to be at fault.
+title: "Crash: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The launcher fills this form in when you press **Open an Issue → Report a Launcher Bug** after a game stops (or from the game's options → **Last Session's Report**).
+        A crash inside the game itself is usually the engine's: **Open on GitHub** sends the same text to the engine's bug form instead.
+        The launcher has already taken your home folder, user and computer names, e-mail addresses and AnyTogether tokens out of everything below.
+        Please also attach the report it saved with **Save crash_log.txt**: drag the file into the last box.
+  - type: input
+    id: game
+    attributes:
+      label: Game
+      description: Name, title ID and content version.
+      placeholder: Stray (PPSA02100), version 01.000.002
+    validations:
+      required: true
+  - type: textarea
+    id: reason
+    attributes:
+      label: What happened
+      description: Why the game stopped, as the launcher read it from the log and the exit code, and what you were doing.
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: Operating system, processor, memory and the GPU the engine chose.
+      placeholder: Windows 11 Pro 10.0 (Build 22631) · AMD Ryzen 7 5800X · 32 GB · NVIDIA GeForce RTX 3070
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: The launcher, the engine the game was unlocked with, and the engine chosen now.
+      placeholder: Launcher 0.1.4 (Windows) · unlocked with engine upstream-v0.1.3
+    validations:
+      required: true
+  - type: textarea
+    id: settings
+    attributes:
+      label: Game settings
+      description: Resolution, window, V-sync, overlay, language, shader cache, controls and detailed logging.
+  - type: textarea
+    id: log
+    attributes:
+      label: Last log lines
+      description: The end of the game's log. The whole log is in crash_log.txt.
+      render: text
+  - type: textarea
+    id: report
+    attributes:
+      label: Report file
+      description: Drag crash_log.txt here. Turning on Detailed Logging in the game's options (or starting the launcher with --trace) and playing until it stops again gives a much fuller log.
+    validations:
+      required: true

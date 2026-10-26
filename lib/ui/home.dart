@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../core/audio/tones.dart';
 import '../core/family/family_rules.dart' show TitleVerdict;
+import '../core/game_addons.dart';
 import '../core/game_library.dart';
 import '../core/update_notice.dart' show SelfApply;
 import '../core/controllers/troubleshooter.dart';
@@ -1019,11 +1020,82 @@ class HeroInfo extends StatelessWidget {
             InfoCard(
               title: T.text('version'),
               icon: Icons.sell_rounded,
-              child: Text(game.version, style: AppText.display(17 * scale, weight: FontWeight.w600)),
+              child: _VersionText(model: model, game: game),
             ),
+            if (game.addons.isNotEmpty) _AddonsCard(addons: game.addons),
           ],
         ),
       ],
+    );
+  }
+}
+
+/// The game's version; with an update dumped beside it, the update's and whether it is applied.
+class _VersionText extends StatelessWidget {
+  const _VersionText({required this.model, required this.game});
+
+  final AppModel model;
+  final Game game;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final update = game.update;
+    final style = AppText.display(17 * scale, weight: FontWeight.w600);
+    if (update == null) return Text(game.version, style: style);
+    // Two lines in the card's room: tight line heights.
+    final version = Text(update.version, style: style.copyWith(height: 1.0));
+    final applied = model.records[game.id]?.update == update.version;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        version,
+        SizedBox(height: 2 * scale),
+        Text(
+          T.format(applied ? 'updateApplied' : 'updateToApply', [update.shortVersion]),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppText.display(
+            12 * scale,
+            weight: FontWeight.w500,
+            color: applied ? Colors.white.withValues(alpha: 0.5) : model.accentChoice.color,
+          ).copyWith(height: 1.0),
+        ),
+      ],
+    );
+  }
+}
+
+/// The add-ons dumped beside the game: the engine mounts each one the game asks for.
+class _AddonsCard extends StatelessWidget {
+  const _AddonsCard({required this.addons});
+
+  final List<GameAddon> addons;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final shown = addons.length > 2 ? 1 : 2;
+    return InfoCard(
+      title: T.format('addons', [addons.length]),
+      icon: Icons.inventory_2_rounded,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final addon in addons.take(shown))
+            Text(
+              addon.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.display(14 * scale, weight: FontWeight.w600).copyWith(height: 1.0),
+            ),
+          if (addons.length > 2)
+            Text(
+              T.format('addonsMore', [addons.length - 1]),
+              style: AppText.display(12 * scale, weight: FontWeight.w500, color: Colors.white.withValues(alpha: 0.5)).copyWith(height: 1.0),
+            ),
+        ],
+      ),
     );
   }
 }

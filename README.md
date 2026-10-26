@@ -302,6 +302,38 @@ game's options, **Play with Detailed Logging**, `AnyPS5 --trace` (every start of
 (`APS5_LOG_SYNC`, `APS5_TRACE_EXIT`, `APS5_TRACE_MEMORY`, … see `TraceMode`).
 Downloaded engines: `~/.local/share/AnyPS5/Toolkits`, `%LOCALAPPDATA%\AnyPS5\Toolkits`.
 
+## Updates and add-ons (DLC)
+
+Put the dumps of a game's update and add-ons next to the game, in the layout shadPS4 uses:
+
+```
+Games/
+  PPSA01234/                              the game
+  PPSA01234-UPDATE/                       its update (PPSA01234-patch works too)
+  PPSA01234-DLC/
+    EXPANSION0000001/                     one folder per add-on, named by its label
+    UP0000-PPSA01234_00-COSTUMEPACK00002/ or by its content ID
+  UP0000-PPSA01234_00-SOUNDTRACK000003/   or beside the game, named by its content ID
+```
+
+The game's folder name or its title ID goes before `-UPDATE`, `-patch` and `-DLC`, in any case
+(`lib/core/game_addons.dart`). The game page shows **DLC (n)** and **Update v01.004 applied**;
+an update dumped after the unlock says **unlock to apply**, since its `eboot.bin` and modules are
+relinked (saves and trophies stay). At each start the launcher passes `ANYPS5_UPDATE_DIR` and
+`ANYPS5_ADDCONT_DIRS` (`;`-separated on Windows, `:` on Linux): the engine reads the update's
+files in place of the game's and mounts each add-on the game asks for. Only add-ons on the disk
+are reported; nothing contacts PlayStation servers.
+
+## Game Presets
+
+**Settings › Game Presets** sets, once for every game, what the PS5 keeps under that name:
+difficulty, Performance Mode or Resolution Mode, inverted vertical and horizontal view for
+first-person and third-person games, subtitles and the audio language (`lib/core/game_presets.dart`).
+They are kept in `GamePresets.json` in the settings folder, a file of their own so that a profile
+can own one later, and each start passes them as `ANYPS5_GAME_PRESETS` (nothing when none is set),
+which the engine's `sceUserServiceGetGamePresets` answers with. Games that keep their own settings
+use those once changed in the game.
+
 ## Packages
 
 - Windows: `packaging/windows/build-installer.ps1` builds the release and an Inno Setup 6

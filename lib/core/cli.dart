@@ -8,6 +8,7 @@ import 'controllers/troubleshooter.dart';
 import 'game_library.dart';
 import 'glibc.dart';
 import 'game_process.dart';
+import 'game_presets.dart';
 import 'game_settings.dart';
 import 'host.dart';
 import 'installer.dart';
@@ -141,13 +142,17 @@ Future<int> runCli(
       final running = await GameProcess.start(
         installed: installed,
         system: host,
-        environment: settings.environment(
-          launcherLanguage: 1,
-          inputFile: inputFile,
-          screenshots: paths.pictures,
-          shaderCacheFolder: paths.shaderCache(game.slug),
-          trace: trace,
-        ),
+        environment: {
+          ...settings.environment(
+            launcherLanguage: 1,
+            inputFile: inputFile,
+            screenshots: paths.pictures,
+            shaderCacheFolder: paths.shaderCache(game.slug),
+            trace: trace,
+          ),
+          ...game.addonEnvironment,
+          ...GamePresetsStore(paths.gamePresetsFile).load().environment,
+        },
         logFile: paths.logFile(game.titleId),
         traced: trace || settings.trace == true,
       );

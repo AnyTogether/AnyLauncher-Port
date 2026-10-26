@@ -31,6 +31,7 @@ import '../core/gamepad/shortcuts.dart';
 import '../core/game_library.dart';
 import '../core/game_log.dart';
 import '../core/game_process.dart';
+import '../core/game_presets.dart';
 import '../core/game_settings.dart';
 import '../core/host.dart';
 import '../core/installer.dart';
@@ -1337,6 +1338,70 @@ class AppModel extends ChangeNotifier {
   /// Whether choices are written to disk (off in previews and tests).
   final bool persist;
 
+  /// Settings › Game Presets, in a file of their own ([GamePresetsStore]): every game starts with
+  /// them. One set for now; a profile can own its own file once there are profiles.
+  late GamePresets gamePresets = persist ? GamePresetsStore(paths.gamePresetsFile).load() : const GamePresets();
+
+  void setGamePresets(GamePresets presets) {
+    if (presets == gamePresets) return;
+    gamePresets = presets;
+    if (persist) GamePresetsStore(paths.gamePresetsFile).save(presets);
+    _changed();
+  }
+
+  List<PanelRow> _presetRows() {
+    final presets = gamePresets;
+    const difficultyNames = ['presetGameDefault', 'presetEasiest', 'presetEasy', 'presetNormal', 'presetHard', 'presetHardest'];
+    const priorityNames = ['presetGameDefault', 'presetPerformance', 'presetResolution'];
+    const subtitleNames = ['presetGameDefault', 'presetShow', 'presetHide'];
+    const languages = ConsoleLanguage.all;
+    final languageIndex = presets.audioLanguage == null
+        ? 0
+        : languages.indexWhere((language) => language.$1 == presets.audioLanguage) + 1;
+    PanelRow toggle(String id, bool value, GamePresets Function(bool) change) =>
+        PanelRow(id: id, title: T.text(id), kind: ToggleRow(value, (on) => setGamePresets(change(on))));
+    return [
+      PanelRow(id: 'presetsIntro', title: T.text('presetsIntroTitle'), kind: InfoRow(T.text('presetsIntro'))),
+      PanelRow(
+        id: 'presetDifficulty',
+        title: T.text('presetDifficulty'),
+        kind: ChoiceRow([for (final name in difficultyNames) T.text(name)], presets.difficulty.index, (index) {
+          setGamePresets(presets.copyWith(difficulty: PresetDifficulty.values[index]));
+        }),
+      ),
+      PanelRow(
+        id: 'presetPriority',
+        title: T.text('presetPriority'),
+        detail: T.text('presetPriorityDetail'),
+        kind: ChoiceRow([for (final name in priorityNames) T.text(name)], presets.priority.index, (index) {
+          setGamePresets(presets.copyWith(priority: PresetPriority.values[index]));
+        }),
+      ),
+      toggle('presetInvertVerticalFirst', presets.invertVerticalFirstPerson, (on) => presets.copyWith(invertVerticalFirstPerson: on)),
+      toggle('presetInvertHorizontalFirst', presets.invertHorizontalFirstPerson, (on) => presets.copyWith(invertHorizontalFirstPerson: on)),
+      toggle('presetInvertVerticalThird', presets.invertVerticalThirdPerson, (on) => presets.copyWith(invertVerticalThirdPerson: on)),
+      toggle('presetInvertHorizontalThird', presets.invertHorizontalThirdPerson, (on) => presets.copyWith(invertHorizontalThirdPerson: on)),
+      PanelRow(
+        id: 'presetSubtitles',
+        title: T.text('presetSubtitles'),
+        kind: ChoiceRow([for (final name in subtitleNames) T.text(name)], presets.subtitles.index, (index) {
+          setGamePresets(presets.copyWith(subtitles: PresetSubtitles.values[index]));
+        }),
+      ),
+      PanelRow(
+        id: 'presetAudioLanguage',
+        title: T.text('presetAudioLanguage'),
+        kind: ChoiceRow(
+          [T.text('presetGameDefault'), for (final language in languages) language.$2],
+          languageIndex < 0 ? 0 : languageIndex,
+          (index) => setGamePresets(presets.copyWith(audioLanguage: () => index == 0 ? null : languages[index - 1].$1)),
+        ),
+      ),
+      if (!presets.isEmpty)
+        PanelRow(id: 'presetsReset', title: T.text('presetsReset'), kind: ActionRow(() => setGamePresets(const GamePresets()))),
+    ];
+  }
+
   List<Game> games = [];
   int selected = 0;
   int libraryIndex = 0;
@@ -1819,7 +1884,9 @@ class AppModel extends ChangeNotifier {
     final failure = failures[game.id];
     if (failure != null) return Failed(failure);
     final record = records[game.id];
-    if (record != null) {
+    // An update dumped (or removed) since the unlock needs its executable relinked: unlocking
+    // again applies it.
+    if (record != null && record.update == game.update?.version) {
       final version = toolkitVersion;
       return Installed(outdated: (version != null && version != record.toolkit) || engine.updateAvailable);
     }
@@ -2404,6 +2471,10 @@ class AppModel extends ChangeNotifier {
           trace: traced,
         ),
         ...?remote?.bridgeEnvironment,
+        // The update and add-ons dumped beside the game.
+        ...game.addonEnvironment,
+        // Settings › Game Presets, for the games that ask the console for them.
+        ...gamePresets.environment,
         // The engine's online bridge reads the AnyTogether game session there.
         if (together.signedIn) 'ANYPS5_TOGETHER_SESSION': together.hub.games.bridgeFile,
         ...online,
@@ -3627,6 +3698,7 @@ class AppModel extends ChangeNotifier {
       ),
       PanelCategory(id: 'steam', title: T.text('steam'), rows: steam.settingsRows()),
       PanelCategory(id: 'controllers', title: T.text('padTitle'), rows: controllers.rows()),
+      PanelCategory(id: 'presets', title: T.text('presetsTitle'), rows: _presetRows()),
       PanelCategory(id: 'captures', title: T.text('captures'), rows: _captureRows()),
       PanelCategory(id: 'shortcuts', title: T.text('shortcuts'), rows: _shortcutRows()),
       PanelCategory(

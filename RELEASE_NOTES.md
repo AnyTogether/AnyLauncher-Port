@@ -7,6 +7,45 @@ release when it is made.
 
 Nothing yet.
 
+## 0.1.9
+
+- **Full screen.** The launcher starts full screen the first time, then as you left it. **F11**
+  (it can be rebound) or **Settings → Appearance → Full Screen** switch it (Windows: a
+  borderless window over the monitor and back; Linux: GTK's full screen).
+- **Settings with a controller.** The sections' column takes the focus with left; up and down
+  change the section, right or ✕ go back into the rows; L1/R1 as before. Option rows (theme,
+  window mode, ...) no longer change by just moving over them: **✕** enters edit mode (an
+  accent ring and its arrows), **←/→** change the value, **✕** or **○** leave it. Keyboard and
+  mouse work as before.
+- **Hints follow your input, live.** After a pad button the hints show only the pad's buttons,
+  and the Back pill, the step arrows and the gallery's arrows hide outside edit mode; a key or
+  the mouse brings the keyboard's hints back.
+- **PS button.** Held in the launcher: **Quit AnyPS5** (Switch Profile is coming). In a game:
+  the game is paused first, then a **quick menu** (Resume, Game Settings, Close Game) that says
+  Paused or Still running over the game's name. Held in a game: **Close game?** at once. PS now
+  acts when let go (held 500 ms it is the long press). The pause works even with a controller
+  on player 1: with an engine that takes presses (AnyPS5-ARM's Windows and Linux engine from
+  a29698606, below), the launcher sends one press packet through the remote pad bridge that
+  holds Options 160 ms on player 1's pad, whoever drives it; an older or upstream engine keeps
+  the fallback, the Options key typed into the game's window. **Settings → Behaviour → Pause
+  Game When Opening the Menu** turns the pause off.
+- **Share / Create button: clips and screenshots.** With **Settings → Captures → Replay Buffer**
+  on (off by default, about one CPU core; needs **ffmpeg**), the last 30 s to 5 min are kept,
+  and a short press saves them as a clip in the game's gallery; a long press (or a press with the
+  buffer off) takes a screenshot. Clips show in the gallery with a play badge and open in the
+  system's player.
+- **Settings → Shortcuts.** Put Home, Quick Menu, Screenshot, Save Clip, Full Screen and the
+  Settings sections on a key (with modifiers) and on a pad button or chord, pressed or held.
+  Conflicts, and the launcher's own keys and buttons, are refused and said; **Reset to
+  Defaults**; the game's own buttons link to Game Settings → Controls.
+- **Play from a browser.** **Settings → Phones → Play from a browser** shows a QR code with a
+  one-time link: a phone that scans it becomes a DualSense in its browser, with no app, as
+  player 2 to 4. It pairs with the same pairing code as the phone app, works on your LAN only
+  (one-time token, session cookie, origin, host and LAN checks, rate limits) and the server runs
+  only while it is wanted; **Keep browser play on** keeps it up. Each browser is a phone on the
+  phone server's own channel, so seats, the pairing card and the pad path are the same.
+- **Credits.** The README credits AnyPlay's bridge spec and the ideas we followed.
+
 ## 0.1.8
 
 - **Online play (experimental), as on the Mac.** **Settings → AnyTogether → Online play

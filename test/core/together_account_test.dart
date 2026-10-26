@@ -58,6 +58,31 @@ void main() {
       await server.close();
     });
 
+    test('client_too_old tells the launcher to update, with the minimum and where', () async {
+      server.answers['auth/email/start'] = (
+        426,
+        {
+          'code': 'client_too_old',
+          'status': 426,
+          'title': 'This version is too old. Update to 0.2.0 or newer.',
+          'client': 'launcher-linux',
+          'current': '0.1.0',
+          'minimum': '0.2.0',
+          'downloadUrl': 'https://anytogether.test/download',
+        },
+      );
+      expect(account.tooOld, isNull);
+      await expectLater(account.startEmail('utku@example.com'), throwsA(isA<TogetherProblem>()));
+      expect(account.tooOld?.minimum, '0.2.0');
+      expect(account.tooOld?.current, '0.1.0');
+      expect(account.tooOld?.downloadUrl, Uri.parse('https://anytogether.test/download'));
+      final other = TogetherAccount(base: server.base, store: MemoryTokenStore(), clientName: 'x');
+      server.answers['auth/email/start'] = FakeTogether.problem(409, 'conflict');
+      await expectLater(other.startEmail('utku@example.com'), throwsA(isA<TogetherProblem>()));
+      expect(other.tooOld, isNull);
+      other.close();
+    });
+
     test('signs in with an email code and keeps the session', () async {
       await account.startEmail(' utku@example.com ');
       expect(account.step, isA<SignInCodeSent>().having((step) => step.email, 'email', 'utku@example.com'));

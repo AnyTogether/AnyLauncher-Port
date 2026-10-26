@@ -58,6 +58,7 @@ final class _Win32 {
         .lookupFunction<Uint32 Function(Uint32, Pointer<Uint8>, Int32), int Function(int, Pointer<Uint8>, int)>(
           'SendInput',
         );
+    mapVirtualKey = user.lookupFunction<Uint32 Function(Uint32, Uint32), int Function(int, int)>('MapVirtualKeyW');
     postMessage = user.lookupFunction<Int32 Function(_H, Uint32, IntPtr, IntPtr), int Function(int, int, int, int)>(
       'PostMessageW',
     );
@@ -155,6 +156,7 @@ final class _Win32 {
   late final void Function(int, int) switchToThisWindow;
   late final int Function(int, Pointer<Uint8>, int) sendInput;
   late final int Function(int, int, int, int) postMessage;
+  late final int Function(int, int) mapVirtualKey;
   late final int Function(int, int) monitorFromWindow;
   late final int Function(int, Pointer<Uint32>) getMonitorInfo;
   late final int Function(int) getDC;
@@ -414,6 +416,36 @@ class WindowsDesktop implements DesktopWindows {
     const keyDown = 1 | 0x57 << 16;
     const keyUp = keyDown | 1 << 30 | 1 << 31;
     return _w.postMessage(window, 0x0100, 0x7A, keyDown) != 0 && _w.postMessage(window, 0x0101, 0x7A, keyUp) != 0;
+  }
+
+  /// The key typed into the game's window: as input when it is in front (SDL reads its scan
+  /// code), into its queue otherwise; held [hold] so a game reading the keyboard once a frame
+  /// sees it down.
+  @override
+  Future<bool> pressKey(int pid, String key, {Duration hold = const Duration(milliseconds: 100)}) async {
+    final virtualKey = KeyCodes.windowsVirtualKey(key);
+    final window = windowOf(pid);
+    if (virtualKey == null || window == 0) return false;
+    final scan = _w.mapVirtualKey(virtualKey, 0 /* MAPVK_VK_TO_VSC */);
+    // The arrows, Home, End, Page Up and Down, Delete: the extended keys.
+    final extended = const {0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2E}.contains(virtualKey);
+    if (_w.getForegroundWindow() == window) {
+      bool send(bool up) => using((arena) {
+        final input = arena<Uint8>(40);
+        input.cast<Uint32>().value = 1; // INPUT_KEYBOARD
+        (input + 8).cast<Uint16>().value = virtualKey;
+        (input + 10).cast<Uint16>().value = scan;
+        (input + 12).cast<Uint32>().value = (up ? 2 /* KEYEVENTF_KEYUP */ : 0) | (extended ? 1 : 0);
+        return _w.sendInput(1, input, 40) == 1;
+      });
+      if (!send(false)) return false;
+      await Future<void>.delayed(hold);
+      return send(true);
+    }
+    final lParam = 1 | scan << 16 | (extended ? 1 << 24 : 0);
+    if (_w.postMessage(window, 0x0100 /* WM_KEYDOWN */, virtualKey, lParam) == 0) return false;
+    await Future<void>.delayed(hold);
+    return _w.postMessage(window, 0x0101 /* WM_KEYUP */, virtualKey, lParam | 1 << 30 | 1 << 31) != 0;
   }
 
   @override

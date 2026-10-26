@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'feel.dart';
+import 'shortcuts.dart';
 
 /// A controller's buttons, by place on the pad (Cross is south, Triangle north; on an Xbox pad
 /// A is south, Y north). The system readers (Windows XInput and winmm, Linux evdev) turn their
@@ -63,30 +66,83 @@ class PadGone extends PadEvent {
 }
 
 /// What the launcher's screens act on, as a controller gives it.
-enum PadCommand { left, right, up, down, select, back, options, previousGame, nextGame, home }
+enum PadCommand {
+  left,
+  right,
+  up,
+  down,
+  select,
+  back,
+  options,
+  previousGame,
+  nextGame,
+  home,
+
+  /// PS held ([ShortcutTiming.hold]): the home menu in the launcher, "Close game?" in a game.
+  homeHold,
+  quickMenu,
+  screenshot,
+  saveClip,
+  fullscreen,
+}
 
 /// Controller input as launcher commands, the way the macOS launcher's Input.swift reads a pad:
 /// the D-pad and the left stick move (a held direction repeats on [KeyRepeat]'s pace, the same
 /// as the arrow keys; the stick has hysteresis, [StickGate]), Cross/A selects, Circle/B goes
-/// back, Triangle/Y and Options open the options, L1 and R1 move between games, PS/Guide brings
-/// the launcher in front of the game and back. Any number of pads at once; a pad that goes away
-/// lets go of what it held.
+/// back, Triangle/Y and Options open the options. Any number of pads at once; a pad that goes
+/// away lets go of what it held.
+///
+/// The shortcuts ([ShortcutMap], Settings › Shortcuts) come on top: PS (Home), L1 and R1 (the
+/// sections), Share (a clip, held a screenshot) and whatever the user bound, a button or several
+/// held together. The buttons pressed must be exactly a binding's; one with a held partner (PS,
+/// Share) acts when it is let go, or when it has been held [ShortcutTiming.hold]; one without
+/// acts at once. A button that completes a chord of several does not also do its own move.
 class PadNavigator {
-  PadNavigator(this.onCommand) {
+  PadNavigator(this.onCommand, {ShortcutMap? shortcuts, this.isPlayStation}) {
     _repeater = HoldRepeater<PadCommand>(_send);
+    this.shortcuts = shortcuts ?? ShortcutMap();
   }
 
   final void Function(PadCommand command) onCommand;
 
+  /// Whether [pad] is a PlayStation controller: its Create button (SDL's Back, which the engine
+  /// never gives a game on a PlayStation pad) is Share there, as the Xbox pad's own Share is.
+  bool Function(String pad)? isPlayStation;
+
+  /// The face buttons and Options: the launcher's own moves, which no shortcut takes alone.
   static const buttons = {
     PadButton.south: PadCommand.select,
     PadButton.east: PadCommand.back,
     PadButton.north: PadCommand.options,
     PadButton.start: PadCommand.options,
-    PadButton.l1: PadCommand.previousGame,
-    PadButton.r1: PadCommand.nextGame,
-    PadButton.guide: PadCommand.home,
   };
+
+  /// What a shortcut's action is as a command.
+  static PadCommand commandFor(LauncherAction action) => switch (action) {
+    LauncherAction.home => PadCommand.home,
+    LauncherAction.quickMenu => PadCommand.quickMenu,
+    LauncherAction.screenshot => PadCommand.screenshot,
+    LauncherAction.saveClip => PadCommand.saveClip,
+    LauncherAction.toggleFullscreen => PadCommand.fullscreen,
+    LauncherAction.previousSection => PadCommand.previousGame,
+    LauncherAction.nextSection => PadCommand.nextGame,
+  };
+
+  static const _dpad = {PadButton.dpadUp, PadButton.dpadDown, PadButton.dpadLeft, PadButton.dpadRight};
+
+  ShortcutMap _shortcuts = ShortcutMap();
+  Map<PadChord, LauncherAction> _chords = const {};
+  Set<PadButton> _gameButtons = const {};
+
+  ShortcutMap get shortcuts => _shortcuts;
+  set shortcuts(ShortcutMap value) {
+    _shortcuts = value;
+    _chords = value.padActions;
+    _gameButtons = {
+      for (final entry in _chords.entries)
+        if (entry.value.inGame) ...entry.key.buttons,
+    };
+  }
 
   final Map<String, _PadState> _pads = {};
   late final HoldRepeater<PadCommand> _repeater;
@@ -104,29 +160,36 @@ class PadNavigator {
   /// Whether the command being handed on is a repeat of a held direction.
   bool get repeating => _repeater.repeating;
 
+  /// [button] as the shortcuts name it: a PlayStation pad's Create is Share ([PadButton.misc]).
+  PadButton normalize(String pad, PadButton button) =>
+      button == PadButton.select && (isPlayStation?.call(pad) ?? false) ? PadButton.misc : button;
+
+  /// Whether [button] of [pad] belongs to a shortcut that acts in a game, so it must reach the
+  /// navigator while a game is in front ([PadGate]).
+  bool passesInGame(String pad, PadButton button) => _gameButtons.contains(normalize(pad, button));
+
   void _send(PadCommand command) {
     lastPad = _sending ?? _repeater.heldBy as String? ?? lastPad;
     onCommand(command);
   }
 
+  void _sendFrom(String pad, PadCommand command) {
+    _sending = pad;
+    _send(command);
+    _sending = null;
+  }
+
   void handle(PadEvent event) {
     final state = _pads.putIfAbsent(event.pad, _PadState.new);
     switch (event) {
-      case PadButtonEvent(:final button, :final down):
+      case PadButtonEvent(:final down):
+        final button = normalize(event.pad, event.button);
         if (state.pressed.contains(button) == down) return;
         down ? state.pressed.add(button) : state.pressed.remove(button);
-        var command = buttons[button];
-        if (circleConfirms) {
-          command = switch (command) {
-            PadCommand.select => PadCommand.back,
-            PadCommand.back => PadCommand.select,
-            _ => command,
-          };
-        }
-        if (down && command != null) {
-          _sending = event.pad;
-          _send(command);
-          _sending = null;
+        if (down) {
+          _pressed(event.pad, state, button);
+        } else {
+          _released(event.pad, state, button);
         }
       case PadAxisEvent(:final axis, :final value):
         if (axis == PadAxis.leftX) {
@@ -136,11 +199,58 @@ class PadNavigator {
         }
         state.stick.update(state.x, state.y);
       case PadGone():
-        _pads.remove(event.pad);
+        _pads.remove(event.pad)?.disarm();
         if (_repeater.heldBy == event.pad) _repeater.stop();
         return;
     }
     _direction(event.pad, state);
+  }
+
+  void _pressed(String pad, _PadState state, PadButton button) {
+    state.disarm();
+    // A direction held on the D-pad is not part of a chord unless the chord names it.
+    var chord = state.pressed;
+    if (!_chords.containsKey(PadChord(chord)) && !_chords.containsKey(PadChord(chord, hold: true))) {
+      chord = {...state.pressed}..removeAll(_dpad);
+    }
+    final pressAction = _chords[PadChord(chord)];
+    final holdAction = _chords[PadChord(chord, hold: true)];
+    if (pressAction != null || holdAction != null) {
+      final press = pressAction == null ? null : commandFor(pressAction);
+      final hold = holdAction != null
+          ? commandFor(holdAction)
+          : (pressAction == LauncherAction.home ? PadCommand.homeHold : null);
+      if (hold == null) {
+        _sendFrom(pad, press!);
+      } else {
+        state.armed = {...chord};
+        state.armedPress = press;
+        state.timer = Timer(ShortcutTiming.hold, () {
+          state.timer = null;
+          state.armed = null;
+          _sendFrom(pad, hold);
+        });
+      }
+      // A chord of several: its last button does not also do its own move.
+      if (chord.length > 1) return;
+    }
+    var command = buttons[button];
+    if (circleConfirms) {
+      command = switch (command) {
+        PadCommand.select => PadCommand.back,
+        PadCommand.back => PadCommand.select,
+        _ => command,
+      };
+    }
+    if (command != null) _sendFrom(pad, command);
+  }
+
+  void _released(String pad, _PadState state, PadButton button) {
+    final armed = state.armed;
+    if (armed == null || !armed.contains(button)) return;
+    final press = state.armedPress;
+    state.disarm();
+    if (press != null) _sendFrom(pad, press);
   }
 
   void _direction(String pad, _PadState state) {
@@ -173,8 +283,21 @@ class PadNavigator {
     _sending = null;
   }
 
+  /// Forgets what every pad holds (Settings › Shortcuts takes the buttons for a while): the
+  /// presses going on act no more, and their releases are nothing.
+  void reset() {
+    _repeater.stop();
+    for (final state in _pads.values) {
+      state.disarm();
+    }
+    _pads.clear();
+  }
+
   void dispose() {
     _repeater.stop();
+    for (final state in _pads.values) {
+      state.disarm();
+    }
     _pads.clear();
   }
 }
@@ -184,6 +307,18 @@ class _PadState {
   final StickGate stick = StickGate();
   double x = 0;
   double y = 0;
+
+  /// The chord waiting to be let go or held long enough, and what letting it go does.
+  Set<PadButton>? armed;
+  PadCommand? armedPress;
+  Timer? timer;
+
+  void disarm() {
+    timer?.cancel();
+    timer = null;
+    armed = null;
+    armedPress = null;
+  }
 }
 
 /// Where controller events come from on this system.

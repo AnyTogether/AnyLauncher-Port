@@ -1,5 +1,7 @@
 #include "my_application.h"
 
+#include <cstring>
+
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
@@ -10,6 +12,8 @@
 struct _MyApplication {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
+  // "anyps5/window": the launcher asks for full screen and back (F11, its setting).
+  FlMethodChannel* window_channel;
 };
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
@@ -17,6 +21,35 @@ G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
+}
+
+// The launcher's "setFullscreen" (a bool): the window full screen or back. GTK asks the
+// window manager, which works on X11 and Wayland alike.
+static void window_method_cb(FlMethodChannel* channel,
+                             FlMethodCall* method_call, gpointer user_data) {
+  GtkWindow* window = GTK_WINDOW(user_data);
+  g_autoptr(FlMethodResponse) response = nullptr;
+  if (strcmp(fl_method_call_get_name(method_call), "setFullscreen") == 0) {
+    FlValue* args = fl_method_call_get_args(method_call);
+    if (args == nullptr || fl_value_get_type(args) != FL_VALUE_TYPE_BOOL) {
+      response = FL_METHOD_RESPONSE(fl_method_error_response_new(
+          "bad_arguments", "setFullscreen takes a bool", nullptr));
+    } else {
+      if (fl_value_get_bool(args)) {
+        gtk_window_fullscreen(window);
+      } else {
+        gtk_window_unfullscreen(window);
+      }
+      g_autoptr(FlValue) result = fl_value_new_bool(TRUE);
+      response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
+    }
+  } else {
+    response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
+  }
+  g_autoptr(GError) error = nullptr;
+  if (!fl_method_call_respond(method_call, response, &error)) {
+    g_warning("anyps5/window: %s", error->message);
+  }
 }
 
 // Implements GApplication::activate.
@@ -99,6 +132,18 @@ static void my_application_activate(GApplication* application) {
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 
+  g_autoptr(FlPluginRegistrar) window_registrar =
+      fl_plugin_registry_get_registrar_for_plugin(FL_PLUGIN_REGISTRY(view),
+                                                  "AnyPS5Window");
+  g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
+  g_clear_object(&self->window_channel);
+  self->window_channel = fl_method_channel_new(
+      fl_plugin_registrar_get_messenger(window_registrar), "anyps5/window",
+      FL_METHOD_CODEC(codec));
+  fl_method_channel_set_method_call_handler(self->window_channel,
+                                            window_method_cb,
+                                            g_object_ref(window), g_object_unref);
+
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }
 
@@ -145,6 +190,7 @@ static void my_application_shutdown(GApplication* application) {
 static void my_application_dispose(GObject* object) {
   MyApplication* self = MY_APPLICATION(object);
   g_clear_pointer(&self->dart_entrypoint_arguments, g_strfreev);
+  g_clear_object(&self->window_channel);
   G_OBJECT_CLASS(my_application_parent_class)->dispose(object);
 }
 

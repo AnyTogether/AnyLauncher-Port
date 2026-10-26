@@ -6,7 +6,8 @@ import 'pad_navigation.dart';
 /// The readers (XInput and winmm on Windows, evdev on Linux) see every controller whichever window
 /// is in front: the pad a game is played with is the launcher's pad too. So while a game's window
 /// (or any other window) is in front, nothing but PS/Guide gets through, which brings the
-/// launcher in front (and from it, back to the game). When the launcher stops being in front, the
+/// launcher in front (and from it, back to the game), and the buttons of the in-game shortcuts
+/// (Share; the launcher acts on no other command while it is behind). When the launcher stops being in front, the
 /// navigator lets go of what it held, so a held direction does not keep moving behind the game.
 ///
 /// When the launcher comes back in front, whatever is still held from before stays quiet: a
@@ -14,7 +15,12 @@ import 'pad_navigation.dart';
 /// Cross from the game, does not also act in the launcher), and a stick still pushed must come
 /// back to the middle before it moves anything.
 class PadGate {
-  PadGate(this.forward, {required this.inFront, this.log});
+  PadGate(this.forward, {required this.inFront, this.log, this.passesInGame});
+
+  /// Whether a button reaches the navigator while a game (or another window) is in front: PS
+  /// and the buttons of the shortcuts that act in a game (Share, the user's chords); PS alone
+  /// when not given.
+  final bool Function(String pad, PadButton button)? passesInGame;
 
   /// Where the events that get through go (the navigator).
   final void Function(PadEvent event) forward;
@@ -63,8 +69,11 @@ class PadGate {
     }
     if (event is PadGone) return forward(event);
     if (!front) {
-      // Behind a game: only PS/Guide, which brings the launcher in front.
-      if (event is PadButtonEvent && event.button == PadButton.guide) return forward(event);
+      // Behind a game: only PS/Guide, which brings the launcher in front, and the in-game
+      // shortcuts' buttons (Share).
+      if (event is PadButtonEvent && (passesInGame?.call(event.pad, event.button) ?? event.button == PadButton.guide)) {
+        return forward(event);
+      }
       if (event is PadButtonEvent && event.down) log?.call('pad: ${event.button.name} ignored, launcher not in front');
       return;
     }
@@ -103,7 +112,11 @@ class PadGate {
   /// The launcher is in front again: what is held now waits to be let go.
   void _reopen() {
     _open = true;
-    for (final raw in _pads.values) {
+    for (final entry in _pads.entries) {
+      // What the navigator was told behind the game (PS, Share going down) starts again from
+      // nothing: a press it saw begin there never ends in the launcher.
+      forward(PadGone(entry.key));
+      final raw = entry.value;
       raw.swallowed
         ..clear()
         ..addAll(raw.pressed);

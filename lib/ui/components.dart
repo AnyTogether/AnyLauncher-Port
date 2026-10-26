@@ -480,6 +480,42 @@ class _GlyphPainter extends CustomPainter {
   bool shouldRepaint(_GlyphPainter oldDelegate) => oldDelegate.glyph != glyph || oldDelegate.color != color;
 }
 
+/// What the user moved the launcher with last: the hints and controls follow it.
+enum InputMode { keyboardMouse, pad }
+
+/// The input in use and the section keys and buttons, for the hints: with a controller they show
+/// its buttons only, with the keys and the mouse the keys only.
+class InputScope extends InheritedWidget {
+  const InputScope({
+    super.key,
+    required this.mode,
+    this.previousKey,
+    this.nextKey,
+    this.previousPad,
+    this.nextPad,
+    required super.child,
+  });
+
+  final InputMode mode;
+  final String? previousKey;
+  final String? nextKey;
+  final String? previousPad;
+  final String? nextPad;
+
+  static InputScope? of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<InputScope>();
+
+  /// Whether the controller was used last (the keyboard and the mouse when there is no scope).
+  static bool pad(BuildContext context) => of(context)?.mode == InputMode.pad;
+
+  @override
+  bool updateShouldNotify(InputScope oldWidget) =>
+      oldWidget.mode != mode ||
+      oldWidget.previousKey != previousKey ||
+      oldWidget.nextKey != nextKey ||
+      oldWidget.previousPad != previousPad ||
+      oldWidget.nextPad != nextPad;
+}
+
 /// What a hint pill does when it is clicked: the same as its key.
 enum HintAction { previousGame, nextGame, select, back, options }
 
@@ -599,7 +635,7 @@ class _PressableState extends State<Pressable> {
 
 /// A key or button with what it does; clicked, it does the same as the key.
 class Hint extends StatelessWidget {
-  const Hint({super.key, required this.keys, required this.label, this.glyph, this.action});
+  const Hint({super.key, required this.keys, required this.label, this.glyph, this.pad, this.action});
 
   /// Settings › Controllers › Confirm Button is Circle: the hints show ○ to select and ✕ to go
   /// back (AppModel sets it).
@@ -613,8 +649,15 @@ class Hint extends StatelessWidget {
           final other => other,
         };
 
+  /// The keyboard's key or keys ("Enter", "Q").
   final String keys;
+
+  /// The controller's face button, drawn.
   final PadGlyph? glyph;
+
+  /// The controller's button in words where it has no glyph ("L1"); the keys stand for both
+  /// when neither is given (the arrows).
+  final String? pad;
   final String label;
   final HintAction? action;
 
@@ -622,6 +665,10 @@ class Hint extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
     final run = action == null ? null : HintScope.of(context);
+    final viaPad = InputScope.pad(context);
+    // With a controller only its button; with the keys only the key.
+    final shownGlyph = viaPad ? _shownGlyph : null;
+    final shownText = viaPad ? (glyph != null ? null : pad ?? keys) : keys;
     Widget pill(bool hovering) {
       final color = Colors.white.withValues(alpha: hovering ? 1 : 0.72);
       return AnimatedContainer(
@@ -644,17 +691,12 @@ class Hint extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    keys,
-                    style: AppText.display(12 * scale, weight: FontWeight.w700, color: color),
-                  ),
-                  if (glyph != null) ...[
+                  if (shownText != null)
                     Text(
-                      ' / ',
+                      shownText,
                       style: AppText.display(12 * scale, weight: FontWeight.w700, color: color),
                     ),
-                    PadGlyphIcon(_shownGlyph!, size: 12 * scale, color: color),
-                  ],
+                  if (shownGlyph != null) PadGlyphIcon(shownGlyph, size: 13 * scale, color: color),
                 ],
               ),
             ),
@@ -684,6 +726,12 @@ class HintBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
+    final input = InputScope.of(context);
+    final previousKey = input == null ? 'Q' : input.previousKey;
+    final nextKey = input == null ? 'E' : input.nextKey;
+    final previousPad = input == null ? 'L1' : input.previousPad;
+    final nextPad = input == null ? 'R1' : input.nextPad;
+    final viaPad = input?.mode == InputMode.pad;
     return Wrap(
       spacing: 10 * scale,
       runSpacing: 8 * scale,
@@ -691,8 +739,16 @@ class HintBar extends StatelessWidget {
       children: [
         Hint(keys: '← → ↑ ↓', label: T.text('hintMove')),
         if (games) ...[
-          Hint(keys: 'Q / L1', label: T.text('hintPreviousGame'), action: HintAction.previousGame),
-          Hint(keys: 'E / R1', label: T.text('hintNextGame'), action: HintAction.nextGame),
+          // A section shortcut cleared for the input in use: its hint goes.
+          if ((viaPad ? previousPad : previousKey) case final String shown)
+            Hint(
+              keys: previousKey ?? shown,
+              pad: shown,
+              label: T.text('hintPreviousGame'),
+              action: HintAction.previousGame,
+            ),
+          if ((viaPad ? nextPad : nextKey) case final String shown)
+            Hint(keys: nextKey ?? shown, pad: shown, label: T.text('hintNextGame'), action: HintAction.nextGame),
         ],
         Hint(keys: 'Enter', glyph: PadGlyph.cross, label: T.text('hintSelect'), action: HintAction.select),
         Hint(keys: 'Esc', glyph: PadGlyph.circle, label: T.text('hintBack'), action: HintAction.back),
@@ -715,6 +771,7 @@ class BackPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
+    final viaPad = InputScope.pad(context);
     return Semantics(
       button: true,
       label: T.text(close ? 'close' : 'back'),
@@ -727,7 +784,7 @@ class BackPill extends StatelessWidget {
                 hover: hovering,
                 shadow: false,
                 padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 9 * scale),
-                child: _backContent(scale, hovering),
+                child: _backContent(scale, hovering, viaPad),
               )
             : AnimatedContainer(
                 key: const ValueKey('back-pill'),
@@ -739,13 +796,13 @@ class BackPill extends StatelessWidget {
                   borderRadius: BorderRadius.circular(30 * scale),
                   border: Border.all(color: Colors.white.withValues(alpha: hovering ? 0.3 : 0.12)),
                 ),
-                child: _backContent(scale, hovering),
+                child: _backContent(scale, hovering, viaPad),
               ),
       ),
     );
   }
 
-  Widget _backContent(double scale, bool hovering) => Row(
+  Widget _backContent(double scale, bool hovering, bool viaPad) => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
       Icon(
@@ -759,10 +816,18 @@ class BackPill extends StatelessWidget {
         style: AppText.display(15 * scale, weight: FontWeight.w600, color: Colors.white),
       ),
       SizedBox(width: 10 * scale),
-      Text(
-        'Esc',
-        style: AppText.display(12 * scale, weight: FontWeight.w700, color: Colors.white.withValues(alpha: 0.5)),
-      ),
+      // With a controller the way back is Circle (Cross when Circle confirms), not Esc.
+      if (viaPad)
+        PadGlyphIcon(
+          Hint.circleConfirms ? PadGlyph.cross : PadGlyph.circle,
+          size: 13 * scale,
+          color: Colors.white.withValues(alpha: 0.6),
+        )
+      else
+        Text(
+          'Esc',
+          style: AppText.display(12 * scale, weight: FontWeight.w700, color: Colors.white.withValues(alpha: 0.5)),
+        ),
     ],
   );
 }

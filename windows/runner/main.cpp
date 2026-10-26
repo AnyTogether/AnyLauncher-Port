@@ -50,19 +50,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   }
   window.SetQuitOnClose(true);
   if (fullscreen) {
-    HWND hwnd = window.GetHandle();
-    MONITORINFO monitor{sizeof(MONITORINFO)};
-    if (::GetMonitorInfo(::MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
-                         &monitor)) {
-      ::SetWindowLongPtr(
-          hwnd, GWL_STYLE,
-          (::GetWindowLongPtr(hwnd, GWL_STYLE) & ~WS_OVERLAPPEDWINDOW) |
-              WS_POPUP);
-      const RECT& area = monitor.rcMonitor;
-      ::SetWindowPos(hwnd, HWND_TOP, area.left, area.top,
-                     area.right - area.left, area.bottom - area.top,
-                     SWP_FRAMECHANGED | SWP_NOOWNERZORDER);
-    }
+    window.SetFullscreen(true);
   }
 
   ::MSG msg;

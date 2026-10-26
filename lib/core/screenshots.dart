@@ -35,14 +35,28 @@ abstract final class Screenshots {
     return p.join(folderFor(pictures, game), '${game.titleId}-trophy$id-${_stamp(time)}.png');
   }
 
-  /// Every picture of [game], newest first.
+  /// Where a clip saved at [time] goes: the game's own folder, beside its pictures.
+  static String clipPath(String pictures, Game game, DateTime time) =>
+      p.join(folderFor(pictures, game), '${game.titleId}-clip-${_stamp(time)}.mp4');
+
+  /// Where a screenshot taken by the launcher (Share held) at [time] goes.
+  static String shotPath(String pictures, Game game, DateTime time) =>
+      p.join(folderFor(pictures, game), '${game.titleId}-${_stamp(time)}.png');
+
+  /// Whether [path] is a clip (from the replay buffer) rather than a picture.
+  static bool isClip(String path) => path.toLowerCase().endsWith('.mp4');
+
+  /// Every picture and clip of [game], newest first.
   static List<String> list(String pictures, Game game) {
     final found = <String>[];
     void scan(String folder, bool Function(String name) wanted) {
       try {
         for (final entity in Directory(folder).listSync(followLinks: false)) {
           final name = p.basename(entity.path);
-          if (entity is File && name.toLowerCase().endsWith('.png') && wanted(name)) found.add(entity.path);
+          final lower = name.toLowerCase();
+          if (entity is File && (lower.endsWith('.png') || lower.endsWith('.mp4')) && wanted(name)) {
+            found.add(entity.path);
+          }
         }
       } on FileSystemException {
         // No pictures yet.
@@ -54,7 +68,7 @@ abstract final class Screenshots {
     int compare(String a, String b) {
       // The time in the name first (both namings end in date-time), then the file's own.
       String key(String path) {
-        final match = RegExp(r'(\d{8}-\d{6})(-\d+)?\.png$').firstMatch(p.basename(path));
+        final match = RegExp(r'(\d{8}-\d{6})(-\d+)?\.(png|mp4)$').firstMatch(p.basename(path));
         return match?.group(1) ?? '';
       }
 

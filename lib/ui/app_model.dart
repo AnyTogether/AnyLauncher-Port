@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:path/path.dart' as p;
 
 import '../core/audio/atrac9.dart';
@@ -17,6 +18,7 @@ import '../core/controls.dart';
 import '../core/crash_report.dart' show Diagnosis, SystemInfo;
 import '../core/desktop_notice.dart';
 import '../core/desktop/desktop.dart';
+import '../core/desktop/launcher_window.dart';
 import '../core/desktop/window_backdrop.dart';
 import '../core/font_download.dart';
 import '../core/free_space.dart';
@@ -25,6 +27,7 @@ import '../core/gamepad/feel.dart';
 import '../core/gamepad/guide_switch.dart';
 import '../core/gamepad/pad_gate.dart';
 import '../core/gamepad/pad_navigation.dart';
+import '../core/gamepad/shortcuts.dart';
 import '../core/game_library.dart';
 import '../core/game_log.dart';
 import '../core/game_process.dart';
@@ -39,6 +42,7 @@ import '../core/remote/mdns.dart';
 import '../core/remote/paired_devices.dart';
 import '../core/remote/remote_protocol.dart';
 import '../core/remote/remote_server.dart';
+import '../core/replay_buffer.dart';
 import '../core/save_backup.dart';
 import '../core/steam/steam_launch.dart';
 import '../core/screenshots.dart';
@@ -118,6 +122,14 @@ class Preferences {
         if (id is String) id,
     }
     ..prepareNewGames = json['prepareNewGames'] as bool? ?? true
+    ..launcherFullscreen = json['launcherFullscreen'] as bool?
+    ..pauseOnMenu = json['pauseOnMenu'] as bool? ?? true
+    ..replayBuffer = json['replayBuffer'] == true
+    ..replaySeconds = switch (json['replaySeconds']) {
+      final num seconds when ReplayBuffer.lengths.contains(seconds.toInt()) => seconds.toInt(),
+      _ => ReplayBuffer.defaultLength,
+    }
+    ..shortcuts = ShortcutMap.fromJson(json['shortcuts'])
     ..lastPlayed = {
       for (final entry in (json['lastPlayed'] as Map<String, dynamic>? ?? const {}).entries)
         entry.key: entry.value as String,
@@ -208,6 +220,21 @@ class Preferences {
   /// Settings › Game Library: new games unlocked in the background like a console installing them.
   bool prepareNewGames = true;
 
+  /// Settings › Appearance › Full Screen: null until the user chooses (the launcher starts full
+  /// screen then), the choice after.
+  bool? launcherFullscreen;
+
+  /// Settings › Behaviour: before the quick menu covers a game, its Options is pressed so it
+  /// pauses.
+  bool pauseOnMenu = true;
+
+  /// Settings › Captures: the last [replaySeconds] of play kept while a game runs, for Share.
+  bool replayBuffer = false;
+  int replaySeconds = ReplayBuffer.defaultLength;
+
+  /// Settings › Shortcuts.
+  ShortcutMap shortcuts = ShortcutMap();
+
   Map<String, Object?> toJson() => {
     'language': language,
     'theme': theme,
@@ -245,6 +272,11 @@ class Preferences {
     'stickDeadzone': stickDeadzone,
     'cjkGames': cjkGames.toList()..sort(),
     'prepareNewGames': prepareNewGames,
+    'launcherFullscreen': launcherFullscreen,
+    'pauseOnMenu': pauseOnMenu,
+    'replayBuffer': replayBuffer,
+    'replaySeconds': replaySeconds,
+    if (!shortcuts.isDefault) 'shortcuts': shortcuts.toJson(),
   };
 
   static Preferences load(String file) {
@@ -418,6 +450,15 @@ enum Layer {
 
   /// Settings › Controllers › Test Buttons and Sticks.
   controllerTest,
+
+  /// PS in a game: the game paused under Resume, Game Settings and Close Game.
+  quickMenu,
+
+  /// PS held in a game: Close Game?
+  closeGame,
+
+  /// PS held in the launcher: Switch Profile, Quit AnyPS5.
+  homeMenu,
 }
 
 /// A settings row the panels draw and the keyboard moves through.
@@ -530,6 +571,16 @@ class KeysRow extends RowKind {
   final void Function() capture;
 }
 
+/// A shortcut's key and controller binding (Settings › Shortcuts); choosing it waits for a key or
+/// buttons.
+class ShortcutRow extends RowKind {
+  const ShortcutRow({required this.key, required this.pad, required this.capturing, required this.capture});
+  final String? key;
+  final String? pad;
+  final bool capturing;
+  final void Function() capture;
+}
+
 class PanelCategory {
   const PanelCategory({required this.id, required this.title, required this.rows});
   final String id;
@@ -573,7 +624,16 @@ class LauncherServices {
     this.systemInfo,
     this.startDetached,
     this.quit,
+    this.window,
+    this.replay,
   });
+
+  /// The launcher's own window: full screen or not; nothing when not given.
+  final LauncherWindow? window;
+
+  /// The replay buffer for a game about to start, [seconds] long; ffmpeg found on this system by
+  /// default (null: none, or a desktop it cannot record).
+  final ReplayBuffer? Function(int seconds)? replay;
 
   /// Starts a program that outlives the launcher (an update's installer, the new AppImage);
   /// Process.start detached by default.
@@ -735,7 +795,16 @@ class AppModel extends ChangeNotifier {
   }
 
   /// The keyboard or the mouse was used: the controller on the desk stays still.
-  void usedKeyboard() => haptics.padInUse = false;
+  void usedKeyboard() {
+    haptics.padInUse = false;
+    _usedInput(InputMode.keyboardMouse);
+  }
+
+  /// The mouse moved over the launcher: its hints and controls show again.
+  void usedPointer() {
+    if (inputMode == InputMode.keyboardMouse) return;
+    usedKeyboard();
+  }
 
   /// What a command may change where the eye is: a direction that changed none of it and asked
   /// for no sound hit the end of its row.
@@ -752,6 +821,9 @@ class AppModel extends ChangeNotifier {
     galleryViewing,
     capturing,
     editingRow,
+    panelSections,
+    editingValue,
+    shortcutCapture,
   );
 
   /// A command from the keys or a controller: handled, and a direction that did nothing bumps
@@ -888,7 +960,9 @@ class AppModel extends ChangeNotifier {
 
   /// The controller settings that act at once: Circle confirming, the dead zone, the hints.
   void _applyPadPreferences() {
-    _navigator?.circleConfirms = preferences.confirmCircle;
+    _navigator
+      ?..circleConfirms = preferences.confirmCircle
+      ..shortcuts = preferences.shortcuts;
     _deadzone?.percent = preferences.stickDeadzone;
     Hint.circleConfirms = preferences.confirmCircle;
   }
@@ -945,9 +1019,13 @@ class AppModel extends ChangeNotifier {
     if (_pads != null) return;
     final source = services.pads?.call();
     if (source == null) return;
-    final navigator = PadNavigator(padCommand);
+    final navigator = PadNavigator(
+      padCommand,
+      shortcuts: preferences.shortcuts,
+      isPlayStation: (pad) => controllers.roster.pad(pad)?.kind.isPlayStation ?? false,
+    );
     _navigator = navigator;
-    final gate = PadGate(navigator.handle, inFront: () => launcherInFront, log: _padLog);
+    final gate = PadGate(_padEvent, inFront: () => launcherInFront, log: _padLog, passesInGame: navigator.passesInGame);
     _gate = gate;
     final deadzone = DeadzoneStage(gate.handle);
     _deadzone = deadzone;
@@ -969,25 +1047,74 @@ class AppModel extends ChangeNotifier {
 
   Timer? _focusWatch;
 
+  /// A controller's event past the gate: to the navigator, or to Settings › Shortcuts while it
+  /// waits for buttons.
+  void _padEvent(PadEvent event) {
+    if (shortcutCapture != null && event is PadButtonEvent) return _capturePad(event);
+    _navigator?.handle(event);
+  }
+
+  /// What the user moved the launcher with last: the controller's hints or the keys'.
+  InputMode inputMode = InputMode.keyboardMouse;
+
+  void _usedInput(InputMode mode) {
+    if (inputMode == mode) return;
+    inputMode = mode;
+    notifyListeners();
+  }
+
+  /// Whether the command being handled came from a controller (or the phone's pad), not the
+  /// keys or the mouse: the settings' sections and edit mode are for it.
+  bool _viaPad = false;
+
   /// A controller command. With the launcher behind a game (or another window) only PS/Guide
-  /// counts: it brings the launcher in front, as on the Mac.
+  /// and the in-game shortcuts (the quick menu, Share) count.
   void padCommand(PadCommand command) {
-    final mapped = switch (command) {
-      PadCommand.left => Command.left,
-      PadCommand.right => Command.right,
-      PadCommand.up => Command.up,
-      PadCommand.down => Command.down,
-      PadCommand.select => Command.select,
-      PadCommand.back => Command.back,
-      PadCommand.options => Command.options,
-      PadCommand.previousGame => Command.previousGame,
-      PadCommand.nextGame => Command.nextGame,
-      PadCommand.home => Command.home,
-    };
-    if (mapped != Command.home && !launcherInFront) return;
+    final inFront = launcherInFront;
+    final Command mapped;
+    switch (command) {
+      case PadCommand.homeHold || PadCommand.quickMenu || PadCommand.screenshot || PadCommand.saveClip:
+        _pulses.pad = _navigator?.lastPad;
+        // A controller's press, in the game or not: the menus it opens show its buttons.
+        _usedInput(InputMode.pad);
+        if (inFront) haptics.padInUse = true;
+        if (overlay == Layer.controllerTest && inFront) return;
+        return switch (command) {
+          PadCommand.homeHold => homeHeld(),
+          PadCommand.quickMenu => unawaited(openQuickMenu()),
+          PadCommand.screenshot => unawaited(takeScreenshot()),
+          _ => unawaited(saveClip()),
+        };
+      case PadCommand.fullscreen:
+        if (!inFront || overlay == Layer.controllerTest) return;
+        _usedInput(InputMode.pad);
+        return unawaited(toggleFullscreen());
+      case PadCommand.left:
+        mapped = Command.left;
+      case PadCommand.right:
+        mapped = Command.right;
+      case PadCommand.up:
+        mapped = Command.up;
+      case PadCommand.down:
+        mapped = Command.down;
+      case PadCommand.select:
+        mapped = Command.select;
+      case PadCommand.back:
+        mapped = Command.back;
+      case PadCommand.options:
+        mapped = Command.options;
+      case PadCommand.previousGame:
+        mapped = Command.previousGame;
+      case PadCommand.nextGame:
+        mapped = Command.nextGame;
+      case PadCommand.home:
+        mapped = Command.home;
+    }
+    if (mapped != Command.home && !inFront) return;
     haptics.padInUse = true;
     _pulses.pad = _navigator?.lastPad;
     controllers.used(_navigator?.lastPad);
+    _usedInput(InputMode.pad);
     // The controller test takes the pads' buttons: only PS acts (a held Circle leaves it).
     if (overlay == Layer.controllerTest && mapped != Command.home) return;
     if (editingRow != null) return;
@@ -995,8 +1122,164 @@ class AppModel extends ChangeNotifier {
     if (overlay == Layer.settings && (mapped == Command.previousGame || mapped == Command.nextGame)) {
       return moveCategory(mapped == Command.nextGame ? 1 : -1);
     }
-    this.command(mapped, repeat: _navigator?.repeating ?? false);
+    _viaPad = true;
+    try {
+      this.command(mapped, repeat: _navigator?.repeating ?? false);
+    } finally {
+      _viaPad = false;
+    }
   }
+
+  // Shortcuts (Settings › Shortcuts).
+
+  /// The action waiting for a key or controller buttons in Settings › Shortcuts.
+  LauncherAction? shortcutCapture;
+
+  /// The buttons held together so far while waiting, the most at once, and whether they were
+  /// held long enough to be a long press.
+  final Set<PadButton> _captureHeld = {};
+  final Set<PadButton> _captureChord = {};
+  bool _captureLong = false;
+  Timer? _captureTimer;
+
+  void startShortcutCapture(LauncherAction action) {
+    shortcutCapture = action;
+    _captureHeld.clear();
+    _captureChord.clear();
+    _captureLong = false;
+    // The press that chose the row is let go into the capture: the navigator starts afresh.
+    _navigator?.reset();
+    sounds.play(Cue.select);
+    _changed();
+  }
+
+  void cancelShortcutCapture() {
+    if (shortcutCapture == null) return;
+    shortcutCapture = null;
+    _captureTimer?.cancel();
+    sounds.play(Cue.back);
+    _changed();
+  }
+
+  void _capturePad(PadButtonEvent event) {
+    final button = _navigator?.normalize(event.pad, event.button) ?? event.button;
+    if (event.down) {
+      _captureHeld.add(button);
+      _captureChord.add(button);
+      _captureTimer?.cancel();
+      _captureLong = false;
+      _captureTimer = Timer(ShortcutTiming.hold, () => _captureLong = true);
+      return;
+    }
+    if (!_captureHeld.remove(button) || _captureHeld.isNotEmpty) return;
+    _captureTimer?.cancel();
+    final chord = PadChord({..._captureChord}, hold: _captureLong);
+    _captureChord.clear();
+    _usedInput(InputMode.pad);
+    // Circle alone (Cross with Circle confirming) is the way out.
+    final cancel = preferences.confirmCircle ? PadButton.south : PadButton.east;
+    if (!chord.hold && chord.buttons.length == 1 && chord.buttons.first == cancel) return cancelShortcutCapture();
+    // Triangle alone clears the controller's binding.
+    if (!chord.hold && chord.buttons.length == 1 && chord.buttons.first == PadButton.north) {
+      final action = shortcutCapture!;
+      shortcutCapture = null;
+      return clearShortcut(action, input: InputMode.pad);
+    }
+    assignPadShortcut(chord);
+  }
+
+  /// A key pressed while a shortcut waits for one.
+  void captureShortcutKey(KeyCombo key) {
+    if (shortcutCapture == null) return;
+    _usedInput(InputMode.keyboardMouse);
+    final plain = !key.control && !key.alt && !key.shift;
+    if (key.key == KeyIds.escape && plain) return cancelShortcutCapture();
+    final action = shortcutCapture!;
+    // Backspace (or Delete) alone clears the key.
+    if ((key.key == KeyIds.backspace || key.key == KeyIds.delete) && plain) {
+      shortcutCapture = null;
+      return clearShortcut(action, input: InputMode.keyboardMouse);
+    }
+    final conflict = preferences.shortcuts.keyConflict(action, key);
+    _finishCapture(conflict, () => preferences.shortcuts[action].withKey(key));
+  }
+
+  void assignPadShortcut(PadChord chord) {
+    final action = shortcutCapture;
+    if (action == null) return;
+    final conflict = preferences.shortcuts.padConflict(action, chord);
+    _finishCapture(conflict, () => preferences.shortcuts[action].withPad(chord));
+  }
+
+  void _finishCapture(ShortcutConflict? conflict, ShortcutBinding Function() binding) {
+    final action = shortcutCapture!;
+    shortcutCapture = null;
+    if (conflict != null) {
+      vibrate(HapticCue.error);
+      sounds.play(Cue.bump);
+      show(switch (conflict) {
+        TakenBy(:final action) => T.format('shortcutTaken', [shortcutTitle(action)]),
+        Reserved() => T.text('shortcutReserved'),
+      });
+      _changed();
+      return;
+    }
+    preferences.shortcuts = preferences.shortcuts.withBinding(action, binding());
+    sounds.play(Cue.move);
+    savePreferences();
+  }
+
+  /// The shortcut whose row the focus is on in Settings › Shortcuts, if any.
+  LauncherAction? get focusedShortcut {
+    if (overlay != Layer.settings) return null;
+    final rows = _currentRows;
+    final id = panelRow < rows.length ? rows[panelRow].id : '';
+    return id.startsWith('shortcut-') ? LauncherAction.byName(id.substring('shortcut-'.length)) : null;
+  }
+
+  /// △ (or Delete) on a shortcut: the binding of the input in use goes.
+  void clearShortcut(LauncherAction action, {InputMode? input}) {
+    final binding = preferences.shortcuts[action];
+    final next = (input ?? inputMode) == InputMode.pad ? binding.withPad(null) : binding.withKey(null);
+    if (next == binding) return _changed();
+    preferences.shortcuts = preferences.shortcuts.withBinding(action, next);
+    sounds.play(Cue.back);
+    savePreferences();
+  }
+
+  /// The action a key runs while the launcher has the keyboard, if any.
+  LauncherAction? shortcutForKey(KeyCombo key) => preferences.shortcuts.actionForKey(key);
+
+  /// A shortcut's key pressed in the launcher.
+  void runKeyShortcut(LauncherAction action) {
+    usedKeyboard();
+    switch (action) {
+      case LauncherAction.home:
+        command(Command.home);
+      case LauncherAction.quickMenu:
+        unawaited(openQuickMenu());
+      case LauncherAction.screenshot:
+        unawaited(takeScreenshot());
+      case LauncherAction.saveClip:
+        unawaited(saveClip());
+      case LauncherAction.toggleFullscreen:
+        unawaited(toggleFullscreen());
+      case LauncherAction.previousSection || LauncherAction.nextSection:
+        final delta = action == LauncherAction.nextSection ? 1 : -1;
+        if (overlay == Layer.settings) return moveCategory(delta);
+        command(delta > 0 ? Command.nextGame : Command.previousGame);
+    }
+  }
+
+  static String shortcutTitle(LauncherAction action) => T.text(switch (action) {
+    LauncherAction.home => 'shortcutHome',
+    LauncherAction.quickMenu => 'shortcutQuickMenu',
+    LauncherAction.screenshot => 'shortcutScreenshot',
+    LauncherAction.saveClip => 'shortcutSaveClip',
+    LauncherAction.toggleFullscreen => 'shortcutFullscreen',
+    LauncherAction.previousSection => 'shortcutPreviousSection',
+    LauncherAction.nextSection => 'shortcutNextSection',
+  });
 
   /// The AnyPS5 engine downloaded from upstream: versions, the download, the one in use.
   late final EngineModel engine = EngineModel(this);
@@ -1051,6 +1334,14 @@ class AppModel extends ChangeNotifier {
   /// The panel row the keyboard is on, and in the settings, the category.
   int panelRow = 0;
   int panelCategory = 0;
+
+  /// With a controller in the settings: the focus is on the sections' column (← from a row),
+  /// where ↑ and ↓ change the section and → or ✕ go back into its rows.
+  bool panelSections = false;
+
+  /// With a controller: the choice or stepper row whose value ← and → change now (✕ on it);
+  /// outside it they never change a value. Null while none is.
+  String? editingValue;
 
   /// The pad action waiting for a key in the controls panel.
   PadAction? capturing;
@@ -1114,6 +1405,9 @@ class AppModel extends ChangeNotifier {
         if (!galleryViewing) move(galleryColumns);
       case Command.select:
         if (count == 0) return;
+        if (Screenshots.isClip(galleryShots[galleryIndex.clamp(0, count - 1)])) {
+          return openClip(galleryShots[galleryIndex.clamp(0, count - 1)]);
+        }
         galleryViewing = !galleryViewing;
         sounds.play(galleryViewing ? Cue.select : Cue.back);
         _changed();
@@ -1141,9 +1435,20 @@ class AppModel extends ChangeNotifier {
   /// A click on a picture in the gallery: shown big; a click on the big one goes back.
   void tapShot(int index) {
     if (index < 0 || index >= galleryShots.length) return;
+    if (Screenshots.isClip(galleryShots[index])) {
+      galleryIndex = index;
+      return openClip(galleryShots[index]);
+    }
     galleryIndex = index;
     galleryViewing = true;
     sounds.play(Cue.select);
+    _changed();
+  }
+
+  /// A clip from the gallery, in the system's video player.
+  void openClip(String path) {
+    sounds.play(Cue.select);
+    services.openUrl?.call(Uri.file(path));
     _changed();
   }
 
@@ -2103,6 +2408,7 @@ class AppModel extends ChangeNotifier {
       starting = null;
       running = (game, run);
       _stopped = false;
+      unawaited(_startReplay());
       crash.started(game, traced: traced);
       final began = DateTime.now();
       // Upstream's engine does not read ANYPS5_FULLSCREEN or ANYPS5_WINDOW_SIZE: the launcher
@@ -2120,6 +2426,9 @@ class AppModel extends ChangeNotifier {
       _trophyWatch?.cancel();
       _loadTrophies(game);
       if (running?.$1 == game) running = null;
+      unawaited(_stopReplay());
+      // The quick menu and the question go with the game.
+      if (overlay == Layer.quickMenu || overlay == Layer.closeGame) overlay = null;
       updates.gameEnded();
       together.gameChanged();
       crash.ended(game, code, stopped: _stopped);
@@ -2277,6 +2586,12 @@ class AppModel extends ChangeNotifier {
     overlay = next;
     panelRow = 0;
     panelCategory = 0;
+    panelSections = false;
+    editingValue = null;
+    if (shortcutCapture != null) {
+      shortcutCapture = null;
+      _captureTimer?.cancel();
+    }
     capturing = null;
     if (next == Layer.library) libraryIndex = selected;
     if (next == Layer.gameSettings) _gameFacts.clear();
@@ -2309,6 +2624,9 @@ class AppModel extends ChangeNotifier {
 
   void closeOverlay() {
     overlay = null;
+    panelSections = false;
+    editingValue = null;
+    shortcutCapture = null;
     together.askingRow = null;
     capturing = null;
     revealedTrophies = {};
@@ -2379,9 +2697,15 @@ class AppModel extends ChangeNotifier {
         layerOpen: overlay != null,
       )) {
         case GuideAction.showGame:
+          // The quick menu (or Close Game?) goes with the launcher.
+          if (overlay == Layer.quickMenu || overlay == Layer.closeGame) {
+            overlay = null;
+            _changed();
+          }
           unawaited(_showGame(run!));
         case GuideAction.showLauncher:
-          unawaited(desktop.raiseLauncher());
+          // From the game: the launcher with the quick menu over it, the game paused first.
+          unawaited(run != null ? openQuickMenu() : desktop.raiseLauncher());
         case GuideAction.closeLayer:
           closeOverlay();
         case GuideAction.none:
@@ -2478,6 +2802,9 @@ class AppModel extends ChangeNotifier {
       case Layer.compare:
         together.compareCommand(command);
         return;
+      case Layer.quickMenu || Layer.closeGame when command == Command.back || command == Command.options:
+        resumeGame();
+        return;
       case Layer.friendOptions when command == Command.back || command == Command.options:
         // A question asked in place (together_ask.dart) is answered Cancel first.
         if (!together.cancelAsk()) open(Layer.friends, cue: Cue.back);
@@ -2491,7 +2818,10 @@ class AppModel extends ChangeNotifier {
           Layer.friends ||
           Layer.friendOptions ||
           Layer.party ||
-          Layer.family:
+          Layer.family ||
+          Layer.quickMenu ||
+          Layer.closeGame ||
+          Layer.homeMenu:
         _panelCommand(command);
         return;
       case null:
@@ -2558,6 +2888,202 @@ class AppModel extends ChangeNotifier {
         break;
     }
   }
+
+  // PS: the quick menu, Close Game?, the home menu.
+
+  /// The key the game's Options is on (its controls), for pausing it; null when it has none.
+  String? optionsKey(Game game) {
+    final sources = Controls.sources(PadAction.options, currentSettings(game).controls ?? const {});
+    for (final source in sources) {
+      if (source.startsWith('KEY:')) return source.substring(4);
+    }
+    return null;
+  }
+
+  /// The quick menu over the game playing: the game's Options pressed first (Settings ›
+  /// Behaviour › Pause Game When Opening the Menu) while it is still in front, then the
+  /// launcher in front with Resume, Game Settings and Close Game.
+  Future<void> openQuickMenu() async {
+    final playing = running;
+    if (playing == null || !preferences.onboarded) return;
+    final (game, run) = playing;
+    final front = _frontForGuide;
+    quickMenuPaused = false;
+    if (!front && preferences.pauseOnMenu) {
+      final key = optionsKey(game);
+      final paused = key != null && await desktop.pressKey(run.pid, key);
+      quickMenuPaused = paused;
+      _padLog?.call('quick menu: ${paused ? 'pressed $key in the game' : 'could not pause the game'}');
+    }
+    if (running?.$2 != run) return;
+    final index = games.indexOf(game);
+    if (index >= 0) selected = index;
+    open(Layer.quickMenu);
+    if (!front) await desktop.raiseLauncher();
+  }
+
+  /// Whether the game under the quick menu was sent its Options (paused, as far as the launcher
+  /// can tell).
+  bool quickMenuPaused = false;
+
+  /// PS held: Close Game? over a game in front; the home menu in the launcher.
+  void homeHeld() {
+    if (!preferences.onboarded) return;
+    final front = _frontForGuide;
+    if (running != null && !front) {
+      open(Layer.closeGame);
+      unawaited(desktop.raiseLauncher());
+      return;
+    }
+    if (overlay == Layer.controllerTest) return;
+    open(Layer.homeMenu);
+    if (!front) unawaited(desktop.raiseLauncher());
+  }
+
+  /// Back to the game from the quick menu (or Close Game?): the game in front again. Its pause
+  /// menu, if the Options press opened one, stays for the player.
+  void resumeGame() {
+    overlay = null;
+    sounds.play(Cue.back);
+    _changed();
+    if (running?.$2 case final RunningGame run) unawaited(_showGame(run));
+  }
+
+  /// Close Game from the quick menu or the question.
+  void closeRunningGame() {
+    overlay = null;
+    sounds.play(Cue.select);
+    stopGame();
+    _changed();
+  }
+
+  /// Quit AnyPS5 (the home menu): the game playing closes with it.
+  void quitLauncher() {
+    stopGame();
+    unawaited(_stopReplay());
+    (services.quit ?? exit)(0);
+  }
+
+  // Captures: Share, the replay buffer, screenshots.
+
+  ReplayBuffer? _replay;
+
+  /// Whether the replay buffer is recording now.
+  bool get replayRecording => _replay?.running ?? false;
+
+  ReplayBuffer? _defaultReplay(int seconds) {
+    final environment = services.environment ?? Platform.environment;
+    final ffmpeg = replayFfmpeg;
+    if (ffmpeg == null || !ReplayBuffer.supported(system, environment)) return null;
+    return ReplayBuffer(
+      ffmpeg: ffmpeg,
+      folder: p.join(Directory.systemTemp.path, 'anyps5-replay-$pid'),
+      seconds: seconds,
+      system: system,
+      environment: environment,
+    );
+  }
+
+  /// ffmpeg for the replay buffer: beside the launcher or on the PATH.
+  late final String? replayFfmpeg = ReplayBuffer.locate(
+    system: system,
+    environment: services.environment ?? Platform.environment,
+    launcherFolder: p.dirname(Platform.resolvedExecutable),
+  );
+
+  /// Why the replay buffer cannot record here (no ffmpeg, Wayland), or null when it can.
+  String? get replayUnavailable {
+    if (services.replay != null) return null;
+    if (!ReplayBuffer.supported(system, services.environment ?? Platform.environment)) {
+      return T.text('replayNoScreen');
+    }
+    return replayFfmpeg == null ? T.text('replayNoFfmpeg') : null;
+  }
+
+  Future<void> _startReplay() async {
+    if (!preferences.replayBuffer || _replay != null || running == null) return;
+    final buffer = (services.replay ?? _defaultReplay)(preferences.replaySeconds);
+    if (buffer == null) return;
+    _replay = buffer;
+    if (!await buffer.start()) {
+      _replay = null;
+      show(T.text('replayFailed'));
+    }
+    notifyListeners();
+  }
+
+  Future<void> _stopReplay() async {
+    final buffer = _replay;
+    _replay = null;
+    await buffer?.stop();
+  }
+
+  /// A capture said: the toast, and over the game a desktop notice.
+  Future<void> _captureSaid(String text) async {
+    show(text);
+    if (launcherInFront) return;
+    if (!await desktop.notify('AnyPS5', text)) desktopNotify('AnyPS5', text);
+  }
+
+  /// The game's window now, into its gallery (Share held); the picture's path.
+  Future<String?> takeScreenshot() async {
+    final playing = running;
+    if (playing == null) return null;
+    final (game, run) = playing;
+    final frame = await desktop.captureGame(run.pid);
+    if (frame == null) {
+      unawaited(_captureSaid(T.text('screenshotFailed')));
+      return null;
+    }
+    final path = Screenshots.shotPath(paths.pictures, game, DateTime.now());
+    try {
+      await Isolate.run(() {
+        File(path)
+          ..parent.createSync(recursive: true)
+          ..writeAsBytesSync(PngEncoder.rgba(frame.width, frame.height, frame.pixels));
+      });
+    } on Object {
+      unawaited(_captureSaid(T.text('screenshotFailed')));
+      return null;
+    }
+    sounds.play(Cue.unlocked);
+    unawaited(_captureSaid(T.text('screenshotSaved')));
+    return path;
+  }
+
+  /// Share: the last seconds from the replay buffer as a clip in the game's gallery; with the
+  /// buffer off, a screenshot.
+  Future<String?> saveClip() async {
+    final playing = running;
+    if (playing == null) return null;
+    final buffer = _replay;
+    if (buffer == null || !buffer.running) return takeScreenshot();
+    final saved = await buffer.save(Screenshots.clipPath(paths.pictures, playing.$1, DateTime.now()));
+    if (saved != null) sounds.play(Cue.unlocked);
+    unawaited(
+      _captureSaid(saved == null ? T.text('clipFailed') : T.format('clipSaved', [replayLengthText(buffer.seconds)])),
+    );
+    return saved;
+  }
+
+  static String replayLengthText(int seconds) =>
+      seconds < 60 ? T.format('replaySeconds', [seconds]) : T.format('replayMinutes', [seconds ~/ 60]);
+
+  // The launcher's window.
+
+  /// Whether the launcher is full screen (Settings › Appearance › Full Screen; F11).
+  bool get launcherFullscreen => preferences.launcherFullscreen ?? true;
+
+  Future<void> toggleFullscreen() => setLauncherFullscreen(!launcherFullscreen);
+
+  Future<void> setLauncherFullscreen(bool on) async {
+    preferences.launcherFullscreen = on;
+    savePreferences();
+    await services.window?.setFullscreen(on);
+  }
+
+  /// At launch: full screen the first time, then as the user left it.
+  Future<void> applyLauncherWindow() async => services.window?.setFullscreen(launcherFullscreen);
 
   static const libraryColumns = 6;
 
@@ -2642,6 +3168,63 @@ class AppModel extends ChangeNotifier {
             id: 'updateRequired',
             title: T.text('requiredTitle'),
             rows: updates.requiredRows(together.account.tooOld!),
+          ),
+        ];
+      case Layer.quickMenu when running != null:
+        return [
+          PanelCategory(
+            id: 'quickMenu',
+            title: running!.$1.name,
+            rows: [
+              PanelRow(id: 'resume', title: T.text('quickResume'), kind: ActionRow(resumeGame)),
+              PanelRow(
+                id: 'gameSettings',
+                title: T.text('gameSettings'),
+                kind: ActionRow(() => open(Layer.gameSettings)),
+              ),
+              PanelRow(
+                id: 'closeGame',
+                title: T.text('quickCloseGame'),
+                // Asked first, as PS held asks.
+                kind: ActionRow(() => open(Layer.closeGame), destructive: true),
+              ),
+            ],
+          ),
+        ];
+      case Layer.closeGame when running != null:
+        return [
+          PanelCategory(
+            id: 'closeGame',
+            title: T.format('closeGameTitle', [running!.$1.name]),
+            rows: [
+              PanelRow(
+                id: 'confirmClose',
+                title: T.text('quickCloseGame'),
+                detail: T.text('closeGameDetail'),
+                kind: ActionRow(closeRunningGame, destructive: true),
+              ),
+              PanelRow(id: 'cancel', title: T.text('cancel'), kind: ActionRow(resumeGame)),
+            ],
+          ),
+        ];
+      case Layer.homeMenu:
+        return [
+          PanelCategory(
+            id: 'homeMenu',
+            title: 'AnyPS5',
+            rows: [
+              PanelRow(
+                id: 'switchProfile',
+                title: T.text('switchProfile'),
+                kind: InfoRow(T.text('switchProfileLater')),
+              ),
+              PanelRow(
+                id: 'quit',
+                title: T.text('quitLauncher'),
+                detail: running == null ? null : T.format('quitLauncherGame', [running!.$1.name]),
+                kind: ActionRow(quitLauncher, destructive: true),
+              ),
+            ],
           ),
         ];
       case Layer.updateChoice when game != null:
@@ -2856,6 +3439,14 @@ class AppModel extends ChangeNotifier {
               }),
             ),
           PanelRow(
+            id: 'fullscreen',
+            title: T.text('launcherFullscreen'),
+            detail: T.format('launcherFullscreenDetail', [
+              keyLabel(preferences.shortcuts[LauncherAction.toggleFullscreen].key) ?? '—',
+            ]),
+            kind: ToggleRow(launcherFullscreen, (value) => unawaited(setLauncherFullscreen(value))),
+          ),
+          PanelRow(
             id: 'motion',
             title: T.text('motion'),
             kind: ChoiceRow([T.text('motionFull'), T.text('motionReduced')], preferences.reducedMotion ? 1 : 0, (
@@ -2987,6 +3578,15 @@ class AppModel extends ChangeNotifier {
             }),
           ),
           PanelRow(
+            id: 'pauseOnMenu',
+            title: T.text('pauseOnMenu'),
+            detail: T.text('pauseOnMenuDetail'),
+            kind: ToggleRow(preferences.pauseOnMenu, (value) {
+              preferences.pauseOnMenu = value;
+              savePreferences();
+            }),
+          ),
+          PanelRow(
             id: 'hiddenTrophies',
             title: T.text('showHiddenTrophies'),
             detail: T.text('showHiddenTrophiesDetail'),
@@ -2999,6 +3599,8 @@ class AppModel extends ChangeNotifier {
       ),
       PanelCategory(id: 'steam', title: T.text('steam'), rows: steam.settingsRows()),
       PanelCategory(id: 'controllers', title: T.text('padTitle'), rows: controllers.rows()),
+      PanelCategory(id: 'captures', title: T.text('captures'), rows: _captureRows()),
+      PanelCategory(id: 'shortcuts', title: T.text('shortcuts'), rows: _shortcutRows()),
       PanelCategory(
         id: 'about',
         title: T.text('about'),
@@ -3016,6 +3618,134 @@ class AppModel extends ChangeNotifier {
   }
 
   static String _percent(int value) => value == 0 ? T.text('off') : '$value%';
+
+  List<PanelRow> _captureRows() {
+    final unavailable = replayUnavailable;
+    final share = padLabel(preferences.shortcuts[LauncherAction.saveClip].pad) ?? '—';
+    final shot = padLabel(preferences.shortcuts[LauncherAction.screenshot].pad) ?? '—';
+    return [
+      PanelRow(
+        id: 'replayBuffer',
+        title: T.text('replayBuffer'),
+        detail: unavailable ?? T.text('replayBufferDetail'),
+        kind: ToggleRow(preferences.replayBuffer && unavailable == null, (value) {
+          if (unavailable != null) return show(unavailable);
+          preferences.replayBuffer = value;
+          savePreferences();
+          unawaited(value ? _startReplay() : _stopReplay());
+        }),
+      ),
+      if (preferences.replayBuffer && unavailable == null)
+        PanelRow(
+          id: 'replayLength',
+          title: T.text('replayLength'),
+          kind: ChoiceRow(
+            [for (final seconds in ReplayBuffer.lengths) replayLengthText(seconds)],
+            ReplayBuffer.lengths.indexOf(preferences.replaySeconds).clamp(0, ReplayBuffer.lengths.length - 1),
+            (index) {
+              preferences.replaySeconds = ReplayBuffer.lengths[index];
+              savePreferences();
+              // A new length: the buffer starts again with it.
+              if (_replay != null) unawaited(_stopReplay().then((_) => _startReplay()));
+            },
+          ),
+        ),
+      PanelRow(
+        id: 'capturesHow',
+        title: T.text('capturesHow'),
+        kind: InfoRow(
+          T.format(preferences.replayBuffer && unavailable == null ? 'capturesHowClip' : 'capturesHowShot', [
+            share,
+            shot,
+          ]),
+        ),
+      ),
+    ];
+  }
+
+  List<PanelRow> _shortcutRows() {
+    final map = preferences.shortcuts;
+    final conflicted = map.conflicted;
+    return [
+      for (final action in LauncherAction.values)
+        PanelRow(
+          id: 'shortcut-${action.name}',
+          title: shortcutTitle(action),
+          detail: conflicted.contains(action)
+              ? T.text('shortcutConflict')
+              : shortcutCapture == action
+              ? T.text('shortcutWaiting')
+              : T.text(action.inGame ? 'shortcutInGame' : 'shortcutInLauncher'),
+          kind: ShortcutRow(
+            key: keyLabel(map[action].key),
+            pad: padLabel(map[action].pad),
+            capturing: shortcutCapture == action,
+            capture: () => startShortcutCapture(action),
+          ),
+        ),
+      PanelRow(id: 'shortcutsHow', title: T.text('shortcutsHow'), kind: InfoRow(T.text('shortcutsHowDetail'))),
+      PanelRow(
+        id: 'gameControls',
+        title: T.text('shortcutsGameButtons'),
+        detail: T.text('shortcutsGameButtonsDetail'),
+        kind: ActionRow(() {
+          if (selectedGame != null) open(Layer.controls);
+        }),
+      ),
+      PanelRow(
+        id: 'shortcutsReset',
+        title: T.text('shortcutsReset'),
+        kind: ActionRow(() {
+          preferences.shortcuts = ShortcutMap();
+          savePreferences();
+          show(T.text('shortcutsResetDone'));
+        }, destructive: true),
+      ),
+    ];
+  }
+
+  /// A key as the launcher writes it: "Ctrl+Alt+F11"; null for none.
+  static String? keyLabel(KeyCombo? key) {
+    if (key == null) return null;
+    final logical = LogicalKeyboardKey.findKeyByKeyId(key.key);
+    var name = logical?.keyLabel ?? '';
+    if (name.trim().isEmpty) name = logical?.debugName ?? '?';
+    if (name.length == 1) name = name.toUpperCase();
+    return [if (key.control) 'Ctrl', if (key.alt) 'Alt', if (key.shift) 'Shift', name].join('+');
+  }
+
+  /// A controller button as the launcher writes it.
+  static String padButtonLabel(PadButton button) => switch (button) {
+    PadButton.south => 'Cross',
+    PadButton.east => 'Circle',
+    PadButton.west => 'Square',
+    PadButton.north => 'Triangle',
+    PadButton.l1 => 'L1',
+    PadButton.r1 => 'R1',
+    PadButton.l2 => 'L2',
+    PadButton.r2 => 'R2',
+    PadButton.l3 => 'L3',
+    PadButton.r3 => 'R3',
+    PadButton.select => 'View',
+    PadButton.start => 'Options',
+    PadButton.guide => 'PS',
+    PadButton.misc => 'Share',
+    PadButton.touchpad => T.text('touchpad'),
+    PadButton.dpadUp => '${T.text('dpad')} ↑',
+    PadButton.dpadDown => '${T.text('dpad')} ↓',
+    PadButton.dpadLeft => '${T.text('dpad')} ←',
+    PadButton.dpadRight => '${T.text('dpad')} →',
+  };
+
+  /// A chord as the launcher writes it: "View+R1", "Share (hold)"; null for none.
+  static String? padLabel(PadChord? chord) {
+    if (chord == null) return null;
+    final names = [
+      for (final button in PadButton.values)
+        if (chord.buttons.contains(button)) padButtonLabel(button),
+    ].join('+');
+    return chord.hold ? T.format('shortcutHeld', [names]) : names;
+  }
 
   List<PanelRow> _gameRows(Game game) {
     final settings = currentSettings(game);
@@ -3300,6 +4030,17 @@ class AppModel extends ChangeNotifier {
     }
 
     final row = panelRow < rows.length ? rows[panelRow] : null;
+    if (_viaPad && _padPanelCommand(command, row, categories)) return;
+    if (!_viaPad) {
+      // The keys and the mouse have no sections' focus and no edit mode.
+      panelSections = false;
+      editingValue = null;
+    }
+    if (row?.kind case ShortcutRow(:final capture) when command == Command.select) return capture();
+    if (row?.id case final String id when command == Command.options && id.startsWith('shortcut-')) {
+      final action = LauncherAction.byName(id.substring('shortcut-'.length));
+      if (action != null) return clearShortcut(action);
+    }
     switch (command) {
       case Command.up || Command.down:
         final next = nextFocusable(panelRow, command == Command.down ? 1 : -1);
@@ -3362,12 +4103,76 @@ class AppModel extends ChangeNotifier {
     }
   }
 
+  /// A controller's command in a panel: the sections' column and edit mode (the keys and the
+  /// mouse keep the old ways). True when it was handled here.
+  bool _padPanelCommand(Command command, PanelRow? row, List<PanelCategory> categories) {
+    final sections = overlay == Layer.settings && categories.length > 1;
+    if (panelSections && sections) {
+      switch (command) {
+        case Command.up || Command.down:
+          moveCategory(command == Command.down ? 1 : -1);
+        case Command.right || Command.select:
+          panelSections = false;
+          _skipToFocusable();
+          sounds.play(Cue.move);
+          _changed();
+        case Command.back || Command.options:
+          closeOverlay();
+        default:
+          break;
+      }
+      return true;
+    }
+    final editable = row?.kind is ChoiceRow || row?.kind is StepperRow;
+    if (editingValue != null && (row == null || row.id != editingValue || !editable)) editingValue = null;
+    if (editingValue != null) {
+      switch (command) {
+        case Command.left || Command.right:
+          // ← and → change the value: what follows is the keys' way.
+          return false;
+        case Command.select || Command.back:
+          editingValue = null;
+          sounds.play(command == Command.select ? Cue.move : Cue.back);
+          _changed();
+          return true;
+        case Command.up || Command.down:
+          // Moving on leaves edit mode.
+          editingValue = null;
+          return false;
+        default:
+          editingValue = null;
+          _changed();
+          return true;
+      }
+    }
+    switch (command) {
+      case Command.select when editable:
+        editingValue = row!.id;
+        sounds.play(Cue.select);
+        _changed();
+        return true;
+      case Command.left:
+        if (sections) {
+          panelSections = true;
+          sounds.play(Cue.move);
+          _changed();
+        }
+        return true;
+      case Command.right:
+        return true;
+      default:
+        return false;
+    }
+  }
+
   /// A click on a row: the focus goes there and the row does what Enter does.
   void activateRow(int index) {
     final rows = _currentRows;
     if (index < 0 || index >= rows.length || !rows[index].focusable) return;
     panelRow = index;
     pointerFocus = true;
+    panelSections = false;
+    editingValue = null;
     handle(Command.select);
   }
 
@@ -3411,6 +4216,8 @@ class AppModel extends ChangeNotifier {
   void selectCategory(int index) {
     if (index != panelCategory) sounds.play(Cue.move);
     panelCategory = index;
+    panelSections = false;
+    editingValue = null;
     panelRow = 0;
     _skipToFocusable();
     _changed();
@@ -3430,6 +4237,7 @@ class AppModel extends ChangeNotifier {
     final next = (panelCategory + delta).clamp(0, categories.length - 1);
     if (next != panelCategory) sounds.play(Cue.move);
     panelCategory = next;
+    editingValue = null;
     panelRow = 0;
     _skipToFocusable();
     _changed();
@@ -3677,7 +4485,15 @@ class AppModel extends ChangeNotifier {
           'r1' => Command.nextGame,
           _ => null,
         };
-        if (command != null) handle(command);
+        if (command == null) return;
+        // The phone's pad moves the launcher as a controller does (the sections, edit mode).
+        _usedInput(InputMode.pad);
+        _viaPad = true;
+        try {
+          handle(command);
+        } finally {
+          _viaPad = false;
+        }
       case RemoteWantArt(:final id):
         final game = games.where((game) => game.id == id).firstOrNull;
         if (game == null) return;

@@ -1,6 +1,9 @@
 #include "flutter_window.h"
 
+#include <flutter/standard_method_codec.h>
+
 #include <optional>
+#include <variant>
 
 #include "flutter/generated_plugin_registrant.h"
 
@@ -27,6 +30,26 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
+  window_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "anyps5/window",
+          &flutter::StandardMethodCodec::GetInstance());
+  window_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        if (call.method_name() == "setFullscreen") {
+          const auto* on = std::get_if<bool>(call.arguments());
+          if (on == nullptr) {
+            result->Error("bad_arguments", "setFullscreen takes a bool");
+            return;
+          }
+          result->Success(flutter::EncodableValue(SetFullscreen(*on)));
+          return;
+        }
+        result->NotImplemented();
+      });
+
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
   });
@@ -39,7 +62,48 @@ bool FlutterWindow::OnCreate() {
   return true;
 }
 
+bool FlutterWindow::SetFullscreen(bool on) {
+  HWND hwnd = GetHandle();
+  if (hwnd == nullptr) {
+    return false;
+  }
+  if (on == fullscreen_) {
+    return true;
+  }
+  if (on) {
+    MONITORINFO monitor{sizeof(MONITORINFO)};
+    if (!::GetMonitorInfo(::MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
+                          &monitor)) {
+      return false;
+    }
+    windowed_style_ = ::GetWindowLongPtr(hwnd, GWL_STYLE);
+    windowed_placement_.length = sizeof(WINDOWPLACEMENT);
+    ::GetWindowPlacement(hwnd, &windowed_placement_);
+    ::SetWindowLongPtr(hwnd, GWL_STYLE,
+                       (windowed_style_ & ~WS_OVERLAPPEDWINDOW) | WS_POPUP);
+    const RECT& area = monitor.rcMonitor;
+    ::SetWindowPos(hwnd, HWND_TOP, area.left, area.top,
+                   area.right - area.left, area.bottom - area.top,
+                   SWP_FRAMECHANGED | SWP_NOOWNERZORDER);
+  } else {
+    ::SetWindowLongPtr(hwnd, GWL_STYLE,
+                       windowed_style_ != 0
+                           ? windowed_style_
+                           : ((::GetWindowLongPtr(hwnd, GWL_STYLE) & ~WS_POPUP) |
+                              WS_OVERLAPPEDWINDOW));
+    if (windowed_placement_.length == sizeof(WINDOWPLACEMENT)) {
+      ::SetWindowPlacement(hwnd, &windowed_placement_);
+    }
+    ::SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER |
+                       SWP_FRAMECHANGED);
+  }
+  fullscreen_ = on;
+  return true;
+}
+
 void FlutterWindow::OnDestroy() {
+  window_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }

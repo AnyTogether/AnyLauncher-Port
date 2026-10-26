@@ -67,6 +67,11 @@ abstract class DesktopWindows {
   /// F11 for it (upstream's own full-screen key). Returns whether it could.
   Future<bool> applyDisplay(int pid, {required bool fullscreen, required int windowSize});
 
+  /// Presses the key [key] (as the controls name it: 'Escape', 'Return', 'P') in the game's
+  /// window and lets go of it [hold] later: the game's Options, so it pauses before the quick menu
+  /// covers it. Returns whether it could.
+  Future<bool> pressKey(int pid, String key, {Duration hold = const Duration(milliseconds: 100)});
+
   /// The game's window as it is on screen now, null when it cannot be read.
   Future<RgbaImage?> captureGame(int pid);
 
@@ -96,6 +101,8 @@ class NoDesktop implements DesktopWindows {
   bool? launcherFocused() => null;
   @override
   Future<bool> applyDisplay(int pid, {required bool fullscreen, required int windowSize}) async => false;
+  @override
+  Future<bool> pressKey(int pid, String key, {Duration hold = const Duration(milliseconds: 100)}) async => false;
   @override
   Future<RgbaImage?> captureGame(int pid) async => null;
   @override
@@ -142,4 +149,55 @@ class NoDesktop implements DesktopWindows {
   final out = (ms - enterMs - stayMs) / leaveMs;
   if (out >= 1) return (opacity: 0, t: 1, done: true);
   return (opacity: 1 - out, t: 1, done: false);
+}
+
+/// The keys the controls name ([Controls.keyName]) as each desktop's own key codes.
+abstract final class KeyCodes {
+  /// A Windows virtual-key code, or null for a key this does not know.
+  static int? windowsVirtualKey(String name) {
+    if (RegExp(r'^[A-Z0-9]$').hasMatch(name)) return name.codeUnitAt(0);
+    final function = RegExp(r'^F([1-9]|1[0-2])$').firstMatch(name);
+    if (function != null) return 0x6F + int.parse(function.group(1)!);
+    return switch (name) {
+      'Return' => 0x0D,
+      'Escape' => 0x1B,
+      'Backspace' => 0x08,
+      'Tab' => 0x09,
+      'Space' => 0x20,
+      'Home' => 0x24,
+      'End' => 0x23,
+      'PageUp' => 0x21,
+      'PageDown' => 0x22,
+      'Delete' => 0x2E,
+      'Left' => 0x25,
+      'Up' => 0x26,
+      'Right' => 0x27,
+      'Down' => 0x28,
+      _ => null,
+    };
+  }
+
+  /// An X11 keysym name, as xdotool takes it, or null.
+  static String? x11Keysym(String name) {
+    if (RegExp(r'^[A-Z]$').hasMatch(name)) return name.toLowerCase();
+    if (RegExp(r'^[0-9]$').hasMatch(name)) return name;
+    if (RegExp(r'^F([1-9]|1[0-2])$').hasMatch(name)) return name;
+    return switch (name) {
+      'Return' => 'Return',
+      'Escape' => 'Escape',
+      'Backspace' => 'BackSpace',
+      'Tab' => 'Tab',
+      'Space' => 'space',
+      'Home' => 'Home',
+      'End' => 'End',
+      'PageUp' => 'Prior',
+      'PageDown' => 'Next',
+      'Delete' => 'Delete',
+      'Left' => 'Left',
+      'Up' => 'Up',
+      'Right' => 'Right',
+      'Down' => 'Down',
+      _ => null,
+    };
+  }
 }

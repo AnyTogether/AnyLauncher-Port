@@ -7,12 +7,14 @@ import 'package:anyps5_desktop/core/audio/atrac9.dart';
 import 'package:anyps5_desktop/core/audio/audio_out.dart';
 import 'package:anyps5_desktop/core/crash_report.dart';
 import 'package:anyps5_desktop/core/desktop/desktop.dart';
+import 'package:anyps5_desktop/core/desktop/launcher_window.dart';
 import 'package:anyps5_desktop/core/desktop/window_backdrop.dart';
 import 'package:anyps5_desktop/core/font_download.dart';
 import 'package:anyps5_desktop/core/gamepad/pad_navigation.dart';
 import 'package:anyps5_desktop/core/host.dart';
 import 'package:anyps5_desktop/core/power.dart';
 import 'package:anyps5_desktop/core/release_signing.dart';
+import 'package:anyps5_desktop/core/replay_buffer.dart';
 import 'package:anyps5_desktop/core/trophies.dart';
 import 'package:anyps5_desktop/core/installer.dart';
 import 'package:anyps5_desktop/core/toolkit_download.dart';
@@ -153,6 +155,8 @@ Fixture makeFixture({
   Map<String, String> environment = const {},
   bool prepareNewGames = false,
   int? Function(String folder)? freeSpace,
+  LauncherWindow? window,
+  ReplayBuffer? Function(int seconds)? replay,
 }) {
   final opened = <Uri>[];
   final copied = <String>[];
@@ -223,6 +227,8 @@ Fixture makeFixture({
       launcherReleases: launcherReleases,
       startDetached: startDetached,
       quit: quit,
+      window: window,
+      replay: replay,
       systemInfo: () async =>
           const SystemInfo(os: 'Ubuntu 24.04.1 LTS, kernel 6.8.0-45-generic', cpu: 'AMD Ryzen 7 5800X', memoryGB: 32),
     ),

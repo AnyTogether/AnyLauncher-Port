@@ -75,16 +75,20 @@ void main() {
     expect(commands, [PadCommand.select], reason: 'the next press counts');
   });
 
-  test('PS from the game: it comes back, and letting go of it does not act again', () {
+  test('PS from the game: it acts when let go, and one held as the launcher came back does nothing', () {
     front = false;
     gate.handle(down(PadButton.guide));
+    expect(commands, isEmpty, reason: 'PS acts when let go (held, it is the long press)');
+    gate.handle(up(PadButton.guide));
     expect(commands, [PadCommand.home]);
-    // The launcher came in front with PS still held, and Cross held from the game.
+    // The launcher came in front with PS held from the game.
+    gate.handle(down(PadButton.guide));
     front = true;
     gate.handle(const PadAxisEvent('a', PadAxis.leftX, 0.01));
     expect(gate.waitingForRelease('a'), {PadButton.guide});
     gate.handle(up(PadButton.guide));
     expect(gate.waitingForRelease('a'), isEmpty);
+    expect(commands, [PadCommand.home], reason: 'letting go of it does not switch straight back');
     press(PadButton.guide);
     expect(commands, [PadCommand.home, PadCommand.home], reason: 'PS works again after it was let go');
   });

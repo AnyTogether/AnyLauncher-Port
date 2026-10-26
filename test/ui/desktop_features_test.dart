@@ -50,6 +50,12 @@ class FakeDesktop implements DesktopWindows {
   }
 
   @override
+  Future<bool> pressKey(int pid, String key, {Duration hold = const Duration(milliseconds: 100)}) async {
+    calls.add('key $key');
+    return true;
+  }
+
+  @override
   Future<RgbaImage?> captureGame(int pid) async {
     calls.add('capture');
     return RgbaImage(2, 1, Uint8List.fromList([10, 20, 30, 255, 40, 50, 60, 255]));
@@ -198,8 +204,10 @@ void main() {
     test('the PS press that brought the launcher in front does not act in it again', () {
       model.open(Layer.settings);
       desktop.focused = false;
+      pads.press(PadButton.guide);
+      expect(desktop.calls, ['raise'], reason: 'PS acts when it is let go');
+      // Held from behind as the launcher came in front (Alt+Tab): letting go of it there does nothing.
       pads.hold(PadButton.guide);
-      expect(desktop.calls, ['raise']);
       desktop.focused = true;
       pads.release(PadButton.guide);
       expect(model.overlay, Layer.settings, reason: 'PS in front closes a layer; letting go of it does not');
@@ -226,6 +234,7 @@ void main() {
       await until(() => model.running != null);
       model.setActive(false);
       pads.press(PadButton.guide);
+      await until(() => desktop.calls.contains('raise'));
       model.setActive(true);
       await Future<void>.delayed(GuideSwitch.defaultDebounce);
       pads.press(PadButton.guide);
@@ -249,8 +258,11 @@ void main() {
     test('PS toggles game and launcher: one press is one switch, also read twice', () async {
       final playing = await startOrbit();
       desktop.calls.clear();
+      // The game's pause key before the quick menu is not what this is about.
+      model.preferences.pauseOnMenu = false;
       desktop.focused = false;
       pads.press(PadButton.guide);
+      await until(() => desktop.calls.isNotEmpty);
       expect(desktop.calls, ['raise']);
       desktop.focused = true;
       pads.press(PadButton.guide);
@@ -261,6 +273,7 @@ void main() {
       desktop.focused = false;
       await Future<void>.delayed(GuideSwitch.defaultDebounce);
       pads.press(PadButton.guide);
+      await until(() => desktop.calls.length == 3);
       expect(desktop.calls, ['raise', 'focus', 'raise']);
       model.stopGame();
       await playing.done;

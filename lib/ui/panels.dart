@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import '../core/controls.dart';
+import '../core/replay_buffer.dart';
+import '../core/screenshots.dart';
 import '../core/trophies.dart';
 import 'app_model.dart';
 import 'components.dart';
@@ -167,7 +171,16 @@ class PanelView extends StatelessWidget {
       Layer.updateRequired,
       Layer.friendOptions,
       Layer.copyWarning,
+      Layer.quickMenu,
+      Layer.closeGame,
+      Layer.homeMenu,
     }.contains(model.overlay);
+    // PS's menus: a heading that may be long (the game's name), and only as tall as their rows.
+    final psMenu = const {Layer.quickMenu, Layer.closeGame, Layer.homeMenu}.contains(model.overlay);
+    // The quick menu and Close Game? are about the game playing: its icon by the heading.
+    final gameIcon = model.overlay == Layer.quickMenu || model.overlay == Layer.closeGame
+        ? model.running?.$1.icon
+        : null;
     // The copy warning explains itself before its four choices.
     final tall = model.overlay == Layer.copyWarning;
     final heading = switch (model.overlay) {
@@ -184,7 +197,13 @@ class PanelView extends StatelessWidget {
       child: Center(
         child: SizedBox(
           width: (compact ? 760 : 1180) * scale,
-          height: (compact ? (tall ? 560 : 420) : 720) * scale,
+          height:
+              (psMenu
+                  ? 168 + 62 * category.rows.length
+                  : compact
+                  ? (tall ? 560 : 420)
+                  : 720) *
+              scale,
           child: Glass(
             radius: 28 * scale,
             opacity: 0.5,
@@ -195,7 +214,43 @@ class PanelView extends StatelessWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text(heading, style: AppText.display(34 * scale, weight: FontWeight.w300)),
+                    if (gameIcon != null) ...[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12 * scale),
+                        child: SizedBox.square(
+                          dimension: 52 * scale,
+                          child: ArtworkImage(path: gameIcon, cacheWidth: 160),
+                        ),
+                      ),
+                      SizedBox(width: 16 * scale),
+                    ],
+                    if (psMenu)
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Over the game: whether it was paused for the menu, or still runs.
+                            if (model.overlay == Layer.quickMenu)
+                              Text(
+                                T.text(model.quickMenuPaused ? 'quickPaused' : 'quickRunning').toUpperCase(),
+                                style: AppText.display(
+                                  12 * scale,
+                                  weight: FontWeight.w700,
+                                  color: model.accentChoice.color,
+                                ).copyWith(letterSpacing: 1.4 * scale),
+                              ),
+                            Text(
+                              heading,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppText.display(34 * scale, weight: FontWeight.w300, height: 1.1),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Text(heading, style: AppText.display(34 * scale, weight: FontWeight.w300)),
                     if (!const {Layer.settings, Layer.friends, Layer.party}.contains(model.overlay) && !compact) ...[
                       SizedBox(width: 14 * scale),
                       Expanded(
@@ -209,12 +264,18 @@ class PanelView extends StatelessWidget {
                           ),
                         ),
                       ),
-                    ] else
+                    ] else if (!psMenu)
                       const Spacer(),
                     SizedBox(width: 14 * scale),
                     BackPill(
                       onTap: () => model.handle(Command.back),
-                      close: !const {Layer.controls, Layer.friendOptions}.contains(model.overlay),
+                      // Over a game the way out is back to it, not a close (Close Game is a row).
+                      close: !const {
+                        Layer.controls,
+                        Layer.friendOptions,
+                        Layer.quickMenu,
+                        Layer.closeGame,
+                      }.contains(model.overlay),
                     ),
                   ],
                 ),
@@ -238,8 +299,11 @@ class PanelView extends StatelessWidget {
                                 children: [
                                   for (var index = 0; index < categories.length; index++)
                                     _CategoryTab(
+                                      key: ValueKey('section-${categories[index].id}'),
                                       title: categories[index].title,
                                       selected: index == model.panelCategory,
+                                      // A controller's focus on the sections' column.
+                                      focused: model.panelSections && index == model.panelCategory,
                                       onTap: () => model.selectCategory(index),
                                     ),
                                 ],
@@ -265,38 +329,51 @@ class PanelView extends StatelessWidget {
 }
 
 class _CategoryTab extends StatelessWidget {
-  const _CategoryTab({required this.title, required this.selected, required this.onTap});
+  const _CategoryTab({
+    super.key,
+    required this.title,
+    required this.selected,
+    required this.onTap,
+    this.focused = false,
+  });
 
   final String title;
   final bool selected;
+
+  /// The controller's focus is here (the sections' column): the ring around it.
+  final bool focused;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
+    return Padding(
+      padding: EdgeInsets.only(bottom: 6 * scale),
+      child: FocusRing(focused: focused, radius: 12 * scale, width: 2.5 * scale, child: _tab(context, scale)),
+    );
+  }
+
+  Widget _tab(BuildContext context, double scale) {
     if (LookScope.isGlass(context)) {
       // Glass: the chosen category is a pane of ice set into the panel; the others are words.
       return Pressable(
         onTap: onTap,
         pressScale: 0.985,
-        builder: (context, hovering) => Padding(
-          padding: EdgeInsets.only(bottom: 6 * scale),
-          child: IceSurface(
-            radius: 12 * scale,
-            shadow: false,
-            hover: hovering,
-            opacity: selected ? 0.3 : 0,
-            rim: selected ? 0.8 : (hovering ? 0.3 : 0),
-            sheen: selected || hovering,
-            width: double.infinity,
-            padding: EdgeInsets.symmetric(horizontal: 18 * scale, vertical: 14 * scale),
-            child: Text(
-              title,
-              style: AppText.display(
-                17 * scale,
-                weight: selected ? FontWeight.w600 : FontWeight.w400,
-                color: Colors.white.withValues(alpha: selected ? 1 : (hovering ? 0.9 : 0.72)),
-              ),
+        builder: (context, hovering) => IceSurface(
+          radius: 12 * scale,
+          shadow: false,
+          hover: hovering,
+          opacity: selected ? 0.3 : 0,
+          rim: selected ? 0.8 : (hovering ? 0.3 : 0),
+          sheen: selected || hovering,
+          width: double.infinity,
+          padding: EdgeInsets.symmetric(horizontal: 18 * scale, vertical: 14 * scale),
+          child: Text(
+            title,
+            style: AppText.display(
+              17 * scale,
+              weight: selected ? FontWeight.w600 : FontWeight.w400,
+              color: Colors.white.withValues(alpha: selected ? 1 : (hovering ? 0.9 : 0.72)),
             ),
           ),
         ),
@@ -309,7 +386,6 @@ class _CategoryTab extends StatelessWidget {
         duration: Motion.focus,
         curve: Motion.settle,
         width: double.infinity,
-        margin: EdgeInsets.only(bottom: 6 * scale),
         padding: EdgeInsets.symmetric(horizontal: 18 * scale, vertical: 14 * scale),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: selected ? 0.14 : (hovering ? 0.07 : 0)),
@@ -349,7 +425,8 @@ class PanelRows extends StatelessWidget {
                 key: ValueKey('row-${rows[index].id}'),
                 model: model,
                 row: rows[index],
-                focused: index == model.panelRow,
+                // While a controller is on the sections' column, no row has the focus.
+                focused: index == model.panelRow && !model.panelSections,
                 onTap: () => model.activateRow(index),
                 onStep: (delta) => model.stepRow(index, delta),
                 onHover: () => model.hoverRow(index),
@@ -393,33 +470,56 @@ class _RowView extends StatelessWidget {
         ? ink.withValues(alpha: glass ? 0.68 : 0.6)
         : Colors.white.withValues(alpha: glass ? 0.72 : 0.55);
     final accent = model.accentChoice.color;
+    // With a controller the ‹ › and − + (mouse targets) show only in edit mode (✕ on the row),
+    // where ← and → change the value.
+    final viaPad = InputScope.pad(context);
+    final editing = focused && model.editingValue == row.id;
+    final arrows = !viaPad || editing;
+    final arrowSize = viaPad ? 28.0 : 32.0;
+    // The keys and the mouse see the row as before; a controller sees the frame of edit mode.
+    Widget editable(Widget child) => !viaPad
+        ? child
+        : _EditFrame(
+            key: ValueKey('${row.id}-edit'),
+            editing: editing,
+            hint: focused && !editing,
+            accent: accent,
+            ink: titleColor,
+            child: child,
+          );
     Widget value() {
       final style = AppText.display(16 * scale, weight: FontWeight.w600, color: titleColor);
       switch (kind) {
         case ChoiceRow(:final options, :final selected):
           final current = selected.clamp(0, options.length - 1);
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _StepArrow(
-                key: ValueKey('${row.id}-previous'),
-                icon: Icons.chevron_left_rounded,
-                enabled: current > 0,
-                focused: focused,
-                onTap: () => onStep(-1),
-              ),
-              ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: 280 * scale),
-                child: Text(options[current], style: style, overflow: TextOverflow.ellipsis),
-              ),
-              _StepArrow(
-                key: ValueKey('${row.id}-next'),
-                icon: Icons.chevron_right_rounded,
-                enabled: current < options.length - 1,
-                focused: focused,
-                onTap: () => onStep(1),
-              ),
-            ],
+          return editable(
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (arrows)
+                  _StepArrow(
+                    key: ValueKey('${row.id}-previous'),
+                    size: arrowSize,
+                    icon: Icons.chevron_left_rounded,
+                    enabled: current > 0,
+                    focused: focused,
+                    onTap: () => onStep(-1),
+                  ),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: 280 * scale),
+                  child: Text(options[current], style: style, overflow: TextOverflow.ellipsis),
+                ),
+                if (arrows)
+                  _StepArrow(
+                    key: ValueKey('${row.id}-next'),
+                    size: arrowSize,
+                    icon: Icons.chevron_right_rounded,
+                    enabled: current < options.length - 1,
+                    focused: focused,
+                    onTap: () => onStep(1),
+                  ),
+              ],
+            ),
           );
         case ToggleRow(:final value):
           return AnimatedContainer(
@@ -440,26 +540,46 @@ class _RowView extends StatelessWidget {
             ),
           );
         case StepperRow(:final value, :final min, :final max, :final format):
+          return editable(
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (arrows) ...[
+                  _StepArrow(
+                    key: ValueKey('${row.id}-previous'),
+                    size: arrowSize,
+                    icon: Icons.remove_rounded,
+                    enabled: value > min,
+                    focused: focused,
+                    onTap: () => onStep(-1),
+                  ),
+                  SizedBox(width: 4 * scale),
+                ],
+                Text(format(value), style: style),
+                if (arrows) ...[
+                  SizedBox(width: 4 * scale),
+                  _StepArrow(
+                    key: ValueKey('${row.id}-next'),
+                    size: arrowSize,
+                    icon: Icons.add_rounded,
+                    enabled: value < max,
+                    focused: focused,
+                    onTap: () => onStep(1),
+                  ),
+                ],
+              ],
+            ),
+          );
+        case ShortcutRow(:final key, :final pad, :final capturing):
+          if (capturing) {
+            return _Listening(color: focused ? ink : accent, text: T.text('shortcutPress'));
+          }
           return Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _StepArrow(
-                key: ValueKey('${row.id}-previous'),
-                icon: Icons.remove_rounded,
-                enabled: value > min,
-                focused: focused,
-                onTap: () => onStep(-1),
-              ),
-              SizedBox(width: 4 * scale),
-              Text(format(value), style: style),
-              SizedBox(width: 4 * scale),
-              _StepArrow(
-                key: ValueKey('${row.id}-next'),
-                icon: Icons.add_rounded,
-                enabled: value < max,
-                focused: focused,
-                onTap: () => onStep(1),
-              ),
+              _BindingChip(icon: Icons.keyboard_rounded, text: key, focused: focused, ink: titleColor),
+              SizedBox(width: 8 * scale),
+              _BindingChip(icon: Icons.sports_esports_rounded, text: pad, focused: focused, ink: titleColor),
             ],
           );
         case KeysRow(:final sources, :final capturing):
@@ -585,10 +705,160 @@ class _RowView extends StatelessWidget {
   }
 }
 
+/// A choice or stepper row's value: in edit mode (a controller's ✕) an accent ring round it,
+/// and with a controller on the row before that a small ✕ that says how to get there.
+class _EditFrame extends StatelessWidget {
+  const _EditFrame({
+    super.key,
+    required this.editing,
+    required this.hint,
+    required this.accent,
+    required this.ink,
+    required this.child,
+  });
+
+  final bool editing;
+  final bool hint;
+  final Color accent;
+  final Color ink;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // As tall as the arrows: going in and out of edit mode moves no row.
+        AnimatedContainer(
+          duration: Motion.focus,
+          curve: Motion.settle,
+          height: 32 * scale,
+          alignment: Alignment.center,
+          padding: EdgeInsets.symmetric(horizontal: editing ? 2 * scale : 0),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18 * scale),
+            border: Border.all(color: editing ? accent : accent.withValues(alpha: 0), width: 2 * scale),
+            color: editing ? accent.withValues(alpha: 0.14) : accent.withValues(alpha: 0),
+          ),
+          child: child,
+        ),
+        // The way into edit mode, drawn as the controller's button cap.
+        if (hint) ...[
+          SizedBox(width: 10 * scale),
+          Container(
+            width: 22 * scale,
+            height: 22 * scale,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: ink.withValues(alpha: 0.35), width: 1.5 * scale),
+            ),
+            child: PadGlyphIcon(
+              Hint.circleConfirms ? PadGlyph.circle : PadGlyph.cross,
+              size: 11 * scale,
+              color: ink.withValues(alpha: 0.6),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// One input of a shortcut: the keyboard's or the controller's, "—" for none.
+class _BindingChip extends StatelessWidget {
+  const _BindingChip({required this.icon, required this.text, required this.focused, required this.ink});
+
+  final IconData icon;
+  final String? text;
+  final bool focused;
+  final Color ink;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final none = text == null;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 5 * scale),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8 * scale),
+        color: ink.withValues(alpha: focused ? 0.1 : 0.12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15 * scale, color: ink.withValues(alpha: 0.6)),
+          SizedBox(width: 7 * scale),
+          Text(
+            text ?? '—',
+            style: AppText.display(
+              13 * scale,
+              weight: FontWeight.w600,
+              color: ink.withValues(alpha: none ? 0.4 : 1),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Waiting for a key or buttons: the words, breathing (still with reduced motion).
+class _Listening extends StatefulWidget {
+  const _Listening({required this.color, required this.text});
+
+  final Color color;
+  final String text;
+
+  @override
+  State<_Listening> createState() => _ListeningState();
+}
+
+class _ListeningState extends State<_Listening> with SingleTickerProviderStateMixin {
+  late final AnimationController _breath = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (!Motion.reduced) _breath.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _breath.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    return FadeTransition(
+      opacity: Motion.reduced ? const AlwaysStoppedAnimation(1) : Tween(begin: 0.45, end: 1.0).animate(_breath),
+      child: Text(
+        widget.text,
+        style: AppText.display(15 * scale, weight: FontWeight.w600, color: widget.color),
+      ),
+    );
+  }
+}
+
 /// A row's ‹ › or − + : its own click target, dimmed at the end of the choices.
 class _StepArrow extends StatelessWidget {
-  const _StepArrow({super.key, required this.icon, required this.enabled, required this.focused, required this.onTap});
+  const _StepArrow({
+    super.key,
+    required this.icon,
+    required this.enabled,
+    required this.focused,
+    required this.onTap,
+    this.size = 32,
+  });
 
+  /// Its width and height before the layout's scale (smaller inside edit mode's frame).
+  final double size;
   final IconData icon;
   final bool enabled;
   final bool focused;
@@ -604,8 +874,8 @@ class _StepArrow extends StatelessWidget {
       builder: (context, hovering) => AnimatedContainer(
         duration: Motion.focus,
         curve: Motion.settle,
-        width: 32 * scale,
-        height: 32 * scale,
+        width: size * scale,
+        height: size * scale,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: ink.withValues(alpha: hovering ? 0.14 : 0),
@@ -1267,7 +1537,9 @@ class GalleryView extends StatelessWidget {
                           onTap: () => model.handle(Command.back),
                           builder: (context, _) => ClipRRect(
                             borderRadius: BorderRadius.circular(12 * scale),
-                            child: ArtworkImage(path: shots[index], fit: BoxFit.contain, cacheWidth: 1920),
+                            child: Screenshots.isClip(shots[index])
+                                ? _ClipTile(path: shots[index], accent: model.accentChoice.color)
+                                : ArtworkImage(path: shots[index], fit: BoxFit.contain, cacheWidth: 1920),
                           ),
                         ),
                       ),
@@ -1348,7 +1620,9 @@ class GalleryView extends StatelessWidget {
                                         borderRadius: BorderRadius.circular(12 * scale),
                                         child: ColoredBox(
                                           color: Colors.white.withValues(alpha: hovering ? 0.14 : 0.06),
-                                          child: ArtworkImage(path: shots[index], cacheWidth: 480),
+                                          child: Screenshots.isClip(shots[index])
+                                              ? _ClipTile(path: shots[index], accent: model.accentChoice.color)
+                                              : ArtworkImage(path: shots[index], cacheWidth: 480),
                                         ),
                                       ),
                                     ),
@@ -1365,6 +1639,64 @@ class GalleryView extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// A clip in the gallery: the picture of its last moment (when ffmpeg made one) under a play
+/// badge and its length's mark; ✕ or a click opens it in the system's player.
+class _ClipTile extends StatelessWidget {
+  const _ClipTile({required this.path, required this.accent});
+
+  final String path;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final thumbnail = ReplayBuffer.thumbnailOf(path);
+    final hasThumbnail = File(thumbnail).existsSync();
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (hasThumbnail)
+          ArtworkImage(path: thumbnail, cacheWidth: 480)
+        else
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [accent.withValues(alpha: 0.35), Colors.black.withValues(alpha: 0.6)],
+              ),
+            ),
+          ),
+        Center(
+          child: Container(
+            key: const ValueKey('clip-badge'),
+            width: 56 * scale,
+            height: 56 * scale,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.black.withValues(alpha: 0.45),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.85), width: 2 * scale),
+            ),
+            child: Icon(Icons.play_arrow_rounded, size: 34 * scale, color: Colors.white),
+          ),
+        ),
+        Positioned(
+          left: 12 * scale,
+          bottom: 10 * scale,
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: 8 * scale, vertical: 3 * scale),
+            decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(6 * scale)),
+            child: Text(
+              T.text('clip').toUpperCase(),
+              style: AppText.display(11 * scale, weight: FontWeight.w700).copyWith(letterSpacing: 1.2 * scale),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -8,6 +8,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../core/gamepad/feel.dart';
+import '../core/gamepad/shortcuts.dart';
 import '../core/together/levels.dart';
 import 'app_model.dart';
 import 'compare_view.dart';
@@ -167,6 +168,13 @@ class _LauncherShellState extends State<LauncherShell> {
       }
       return KeyEventResult.handled;
     }
+    // Settings › Shortcuts waits for a key: the next one (with its modifiers) is the binding.
+    if (model.shortcutCapture != null) {
+      if (event is KeyDownEvent && !_modifiers.contains(event.logicalKey)) {
+        model.captureShortcutKey(_combo(event.logicalKey));
+      }
+      return KeyEventResult.handled;
+    }
     if (model.capturing != null && event is KeyDownEvent) {
       if (event.logicalKey == LogicalKeyboardKey.escape) {
         model.handle(Command.back);
@@ -176,6 +184,19 @@ class _LauncherShellState extends State<LauncherShell> {
     }
     final key = event.logicalKey;
     final repeat = event is KeyRepeatEvent;
+    // The shortcuts the user can change (F11, Q and E by default) come before the fixed keys.
+    if (event is KeyDownEvent && !_modifiers.contains(key)) {
+      if (model.shortcutForKey(_combo(key)) case final LauncherAction action) {
+        model.runKeyShortcut(action);
+        return KeyEventResult.handled;
+      }
+      // △'s key on a shortcut row clears it; Delete does too.
+      if (key == LogicalKeyboardKey.delete && model.focusedShortcut != null) {
+        model.usedKeyboard();
+        model.clearShortcut(model.focusedShortcut!);
+        return KeyEventResult.handled;
+      }
+    }
     Command? command;
     if (key == LogicalKeyboardKey.arrowLeft) command = Command.left;
     if (key == LogicalKeyboardKey.arrowRight) command = Command.right;
@@ -195,19 +216,37 @@ class _LauncherShellState extends State<LauncherShell> {
       }
       if (key == LogicalKeyboardKey.escape || key == LogicalKeyboardKey.backspace) command = Command.back;
       if (key == LogicalKeyboardKey.keyO) command = Command.options;
-      if (key == LogicalKeyboardKey.keyQ || key == LogicalKeyboardKey.keyE) {
-        final delta = key == LogicalKeyboardKey.keyE ? 1 : -1;
-        if (model.overlay == Layer.settings) {
-          model.moveCategory(delta);
-          return KeyEventResult.handled;
-        }
-        command = delta > 0 ? Command.nextGame : Command.previousGame;
-      }
     }
     if (command == null) return KeyEventResult.ignored;
     model.usedKeyboard();
     model.command(command);
     return KeyEventResult.handled;
+  }
+
+  static final Set<LogicalKeyboardKey> _modifiers = {
+    LogicalKeyboardKey.controlLeft,
+    LogicalKeyboardKey.controlRight,
+    LogicalKeyboardKey.altLeft,
+    LogicalKeyboardKey.altRight,
+    LogicalKeyboardKey.shiftLeft,
+    LogicalKeyboardKey.shiftRight,
+    LogicalKeyboardKey.metaLeft,
+    LogicalKeyboardKey.metaRight,
+    LogicalKeyboardKey.control,
+    LogicalKeyboardKey.alt,
+    LogicalKeyboardKey.shift,
+    LogicalKeyboardKey.meta,
+  };
+
+  /// [key] with the modifiers held now.
+  static KeyCombo _combo(LogicalKeyboardKey key) {
+    final keyboard = HardwareKeyboard.instance;
+    return KeyCombo(
+      key.keyId,
+      control: keyboard.isControlPressed,
+      alt: keyboard.isAltPressed,
+      shift: keyboard.isShiftPressed,
+    );
   }
 
   /// A hint pill clicked: what its key does.
@@ -258,6 +297,10 @@ class _LauncherShellState extends State<LauncherShell> {
       onKeyEvent: _key,
       child: Listener(
         onPointerDown: _pointerDown,
+        // The mouse moving is the mouse in use: the keys' hints come back.
+        onPointerHover: (event) {
+          if (event.kind == PointerDeviceKind.mouse) widget.model.usedPointer();
+        },
         onPointerSignal: _pointerSignal,
         // Lists pan with a mouse drag (and the wheel, as before); while one is dragged or
         // gliding, the rows passing under the pointer make no hover tick.
@@ -280,85 +323,96 @@ class _LauncherShellState extends State<LauncherShell> {
                         listenable: model,
                         // Behind a game or any other window the launcher rests: every animation
                         // stops and no frame is drawn, the GPU left to what is in front.
-                        builder: (context, _) => TickerMode(
-                          enabled: !model.resting,
-                          child: PointerFocus(
-                            value: model.pointerFocus,
-                            child: LookScope(
-                              glass: model.look == LookStyle.glass,
-                              solid: model.solidGlass,
-                              seeThrough: model.glassWindow.seeThrough,
-                              child: _WindowBase(
-                                window: model.glassWindow,
-                                deep: model.look.deep,
-                                child: Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                    Backdrop(model: model, time: widget.time),
-                                    RepaintBoundary(
-                                      // Glass's see-through window: under a layer the home screen
-                                      // fades out, the layer a pane over the desktop (LayerScrim).
-                                      child: AnimatedOpacity(
-                                        opacity: model.glassWindow.seeThrough && model.overlay != null ? 0 : 1,
-                                        duration: Motion.overlay,
-                                        curve: Motion.settle,
-                                        child: AnimatedSwitcher(
-                                          duration: Motion.fade,
-                                          switchInCurve: Motion.settle,
-                                          child: model.preferences.onboarded
-                                              ? HomeView(key: const ValueKey('home'), model: model, now: widget.now)
-                                              : OnboardingView(
-                                                  key: const ValueKey('onboarding'),
-                                                  model: model,
-                                                  time: widget.time,
-                                                ),
-                                        ),
-                                      ),
-                                    ),
-                                    RepaintBoundary(
-                                      child: AnimatedSwitcher(
-                                        duration: Motion.overlay,
-                                        reverseDuration: Motion.overlay,
-                                        switchInCurve: Motion.settle,
-                                        switchOutCurve: Curves.easeIn,
-                                        transitionBuilder: (child, animation) => FadeTransition(
-                                          opacity: animation,
-                                          child: ScaleTransition(
-                                            scale: Tween(begin: 0.985, end: 1.0).animate(animation),
-                                            child: child,
+                        builder: (context, _) => InputScope(
+                          mode: model.inputMode,
+                          previousKey: AppModel.keyLabel(
+                            model.preferences.shortcuts[LauncherAction.previousSection].key,
+                          ),
+                          nextKey: AppModel.keyLabel(model.preferences.shortcuts[LauncherAction.nextSection].key),
+                          previousPad: AppModel.padLabel(
+                            model.preferences.shortcuts[LauncherAction.previousSection].pad,
+                          ),
+                          nextPad: AppModel.padLabel(model.preferences.shortcuts[LauncherAction.nextSection].pad),
+                          child: TickerMode(
+                            enabled: !model.resting,
+                            child: PointerFocus(
+                              value: model.pointerFocus,
+                              child: LookScope(
+                                glass: model.look == LookStyle.glass,
+                                solid: model.solidGlass,
+                                seeThrough: model.glassWindow.seeThrough,
+                                child: _WindowBase(
+                                  window: model.glassWindow,
+                                  deep: model.look.deep,
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      Backdrop(model: model, time: widget.time),
+                                      RepaintBoundary(
+                                        // Glass's see-through window: under a layer the home screen
+                                        // fades out, the layer a pane over the desktop (LayerScrim).
+                                        child: AnimatedOpacity(
+                                          opacity: model.glassWindow.seeThrough && model.overlay != null ? 0 : 1,
+                                          duration: Motion.overlay,
+                                          curve: Motion.settle,
+                                          child: AnimatedSwitcher(
+                                            duration: Motion.fade,
+                                            switchInCurve: Motion.settle,
+                                            child: model.preferences.onboarded
+                                                ? HomeView(key: const ValueKey('home'), model: model, now: widget.now)
+                                                : OnboardingView(
+                                                    key: const ValueKey('onboarding'),
+                                                    model: model,
+                                                    time: widget.time,
+                                                  ),
                                           ),
                                         ),
-                                        child: KeyedSubtree(
-                                          key: ValueKey(model.overlay),
-                                          child: switch (model.overlay) {
-                                            Layer.library => LibraryGrid(model: model),
-                                            Layer.log => LogView(model: model),
-                                            Layer.crashReport => CrashReportView(model: model),
-                                            Layer.controllerTest => ControllerTestView(model: model),
-                                            Layer.trophies => TrophyView(model: model),
-                                            Layer.gallery => GalleryView(model: model),
-                                            Layer.messages => WithBackPill(
-                                              onBack: () => model.handle(Command.back),
-                                              child: MessagesView(model: model),
+                                      ),
+                                      RepaintBoundary(
+                                        child: AnimatedSwitcher(
+                                          duration: Motion.overlay,
+                                          reverseDuration: Motion.overlay,
+                                          switchInCurve: Motion.settle,
+                                          switchOutCurve: Curves.easeIn,
+                                          transitionBuilder: (child, animation) => FadeTransition(
+                                            opacity: animation,
+                                            child: ScaleTransition(
+                                              scale: Tween(begin: 0.985, end: 1.0).animate(animation),
+                                              child: child,
                                             ),
-                                            Layer.profile => WithBackPill(
-                                              onBack: () => model.handle(Command.back),
-                                              child: ProfileView(model: model),
-                                            ),
-                                            Layer.compare => WithBackPill(
-                                              onBack: () => model.handle(Command.back),
-                                              child: CompareView(model: model),
-                                            ),
-                                            null => const SizedBox.shrink(),
-                                            _ => PanelView(model: model),
-                                          },
+                                          ),
+                                          child: KeyedSubtree(
+                                            key: ValueKey(model.overlay),
+                                            child: switch (model.overlay) {
+                                              Layer.library => LibraryGrid(model: model),
+                                              Layer.log => LogView(model: model),
+                                              Layer.crashReport => CrashReportView(model: model),
+                                              Layer.controllerTest => ControllerTestView(model: model),
+                                              Layer.trophies => TrophyView(model: model),
+                                              Layer.gallery => GalleryView(model: model),
+                                              Layer.messages => WithBackPill(
+                                                onBack: () => model.handle(Command.back),
+                                                child: MessagesView(model: model),
+                                              ),
+                                              Layer.profile => WithBackPill(
+                                                onBack: () => model.handle(Command.back),
+                                                child: ProfileView(model: model),
+                                              ),
+                                              Layer.compare => WithBackPill(
+                                                onBack: () => model.handle(Command.back),
+                                                child: CompareView(model: model),
+                                              ),
+                                              null => const SizedBox.shrink(),
+                                              _ => PanelView(model: model),
+                                            },
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    if (model.starting != null) _StartingCard(model: model),
-                                    if (model.pairing != null) PairingCard(model: model),
-                                    _Toast(message: model.toast, level: model.toastLevel, icon: model.toastIcon),
-                                  ],
+                                      if (model.starting != null) _StartingCard(model: model),
+                                      if (model.pairing != null) PairingCard(model: model),
+                                      _Toast(message: model.toast, level: model.toastLevel, icon: model.toastIcon),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),

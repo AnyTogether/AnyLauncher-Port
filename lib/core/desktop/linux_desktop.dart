@@ -396,6 +396,21 @@ class LinuxDesktop implements DesktopWindows {
   @override
   Future<bool> focusGame(int pid) => _activate(pid);
 
+  /// On X11, the key typed with xdotool (XTEST) while the game's window is the one in front
+  /// (its own events, which SDL takes; a synthetic event sent to a window it would ignore).
+  @override
+  Future<bool> pressKey(int pid, String key, {Duration hold = const Duration(milliseconds: 100)}) async {
+    final keysym = KeyCodes.x11Keysym(key);
+    if (session != LinuxSession.x11 || keysym == null) return false;
+    try {
+      if ((await Process.run('xdotool', ['keydown', keysym])).exitCode != 0) return false;
+      await Future<void>.delayed(hold);
+      return (await Process.run('xdotool', ['keyup', keysym])).exitCode == 0;
+    } on ProcessException {
+      return false;
+    }
+  }
+
   @override
   Future<bool> applyDisplay(int pid, {required bool fullscreen, required int windowSize}) async {
     if (session != LinuxSession.x11) return false;

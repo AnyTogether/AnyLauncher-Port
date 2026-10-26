@@ -20,6 +20,7 @@ import 'core/toolkit_download.dart';
 import 'ui/app_model.dart';
 import 'ui/crash_model.dart';
 import 'ui/launcher.dart';
+import 'ui/launcher_window_channel.dart';
 import 'ui/theme.dart';
 
 Future<void> main(List<String> arguments) async {
@@ -73,12 +74,16 @@ Future<void> main(List<String> arguments) async {
       systemProbe: () => HostProbe(HostSystem.current),
       desktop: desktop,
       backdrop: backdrop,
+      window: const ChannelLauncherWindow(),
     ),
   );
   // An update left for this launch (Later) goes in first: its installer opens the launcher again.
   if (await model.updates.applyPendingAtLaunch()) exit(0);
   model.crash.traceAll = options.trace;
   model.steamLaunch = SteamLaunch.detect(arguments, Platform.environment);
+  // Full screen the first time, then as the user left it (F11, Settings › Appearance); Steam's
+  // --fullscreen and Game Mode keep the whole screen whatever the choice.
+  if (!options.fullscreen && !model.steamLaunch.gameMode) unawaited(model.applyLauncherWindow());
   unawaited(model.startAudio());
   model.startPads();
   if (model.preferences.onboarded) model.rescan();

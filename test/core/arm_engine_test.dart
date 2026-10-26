@@ -45,6 +45,33 @@ void main() {
     expect(ArmToolkitPackage.find(const [], HostSystem.linux), isNull);
   });
 
+  test('a release that keeps an older engine beside a newer one offers the newest upload', () async {
+    final older = armRelease('v0.2.21-arm', '26d785b', linux: false);
+    final newer = armRelease('v0.2.21-arm', '0a1b2c3');
+    final release = FakeRelease('v0.2.21-arm', {...older.files, ...newer.files});
+    release.uploaded['AnyPS5-toolkit-windows-26d785b.zip'] = '2026-10-26T01:03:23Z';
+    release.uploaded['AnyPS5-toolkit-windows-0a1b2c3.zip'] = '2026-10-26T04:10:00Z';
+    release.uploaded['AnyPS5-toolkit-linux-0a1b2c3.tar.gz'] = '2026-10-26T04:12:00Z';
+    github.releases.add(release);
+    final all = await releases.all();
+    expect(all.single.assets.map((asset) => asset.name), contains('AnyPS5-toolkit-windows-26d785b.zip'));
+    final windows = ArmToolkitPackage.find(all, HostSystem.windows)!;
+    expect(
+      windows.commit,
+      '0a1b2c3',
+      reason: 'GitHub lists 0a1b2c3 first by name, but it is the newer upload either way',
+    );
+    expect(windows.archive.name, 'AnyPS5-toolkit-windows-0a1b2c3.zip');
+    expect(ArmToolkitPackage.find(all, HostSystem.linux)!.commit, '0a1b2c3');
+
+    release.uploaded['AnyPS5-toolkit-windows-26d785b.zip'] = '2026-10-26T05:00:00Z';
+    expect(
+      ArmToolkitPackage.find(await releases.all(), HostSystem.windows)!.commit,
+      '26d785b',
+      reason: 'the upload time decides, not the name',
+    );
+  });
+
   test('a signed release: the archive is checked against the signed sums and laid out whole', () async {
     github.releases.add(signed(armRelease('v0.2.17-arm', '26d785b'), [key]));
     final package = ArmToolkitPackage.find(await releases.all(), HostSystem.windows)!;

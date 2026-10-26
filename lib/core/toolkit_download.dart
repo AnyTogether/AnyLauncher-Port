@@ -53,7 +53,7 @@ class ToolkitFailure implements Exception {
 
 /// One file of an upstream release, as GitHub's API describes it.
 class ReleaseAsset {
-  const ReleaseAsset({required this.name, required this.size, required this.url, this.sha256});
+  const ReleaseAsset({required this.name, required this.size, required this.url, this.sha256, this.updated});
 
   factory ReleaseAsset.fromJson(Map<String, dynamic> json) {
     final digest = json['digest'] as String?;
@@ -64,6 +64,7 @@ class ReleaseAsset {
       sha256: digest != null && digest.startsWith('sha256:') && digest.length == 71
           ? digest.substring(7).toLowerCase()
           : null,
+      updated: DateTime.tryParse(json['updated_at'] as String? ?? ''),
     );
   }
 
@@ -73,6 +74,9 @@ class ReleaseAsset {
 
   /// GitHub's SHA-256 of the file in hex, null when the API gave none.
   final String? sha256;
+
+  /// When the file was uploaded (GitHub's updated_at), null when the API gave none.
+  final DateTime? updated;
 }
 
 /// A release on GitHub: upstream AnyPS5's (boykopovar/AnyPS5), or one of ours, which are signed.
@@ -198,7 +202,13 @@ class ArmToolkitPackage extends ToolkitPackage {
           if (_name.firstMatch(asset.name) case final match? when match.group(1) == wanted) (asset, match.group(2)!),
       ];
       if (matches.isEmpty) continue;
-      // The zip first on Windows, the .tar.gz first on Linux.
+      // The newest upload first: a release keeps an older engine beside a newer one for the
+      // launchers that already have it, and GitHub lists files by name, not by age. Then the
+      // zip first on Windows, the .tar.gz first on Linux.
+      final epoch = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+      final newest = matches.map((match) => match.$1.updated ?? epoch).reduce((a, b) => a.isAfter(b) ? a : b);
+      final commit = matches.firstWhere((match) => (match.$1.updated ?? epoch) == newest).$2;
+      matches.retainWhere((match) => match.$2 == commit);
       matches.sort((a, b) {
         int rank(ReleaseAsset asset) => asset.name.endsWith(system == HostSystem.windows ? '.zip' : '.tar.gz') ? 0 : 1;
         return rank(a.$1).compareTo(rank(b.$1));

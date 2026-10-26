@@ -19,6 +19,9 @@ class FakeRelease {
 
   /// Digests the API reports instead of the real ones, by file name.
   final Map<String, String> wrongDigests = {};
+
+  /// When each file was uploaded (updated_at), by file name; the others at the release's time.
+  final Map<String, String> uploaded = {};
 }
 
 /// GitHub's releases API and download servers on loopback, as the launcher uses them:
@@ -84,6 +87,7 @@ class FakeGitHub {
           'size': entry.value.length,
           'browser_download_url': '$base/download/${release.tag}/${entry.key}',
           'content_type': 'application/octet-stream',
+          'updated_at': release.uploaded[entry.key] ?? '2026-10-20T09:31:13Z',
           if (release.digests)
             'digest': 'sha256:${release.wrongDigests[entry.key] ?? sha256.convert(entry.value).toString()}',
         },

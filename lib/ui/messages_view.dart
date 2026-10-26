@@ -477,6 +477,7 @@ class _MenuCard extends StatelessWidget {
     return ConstrainedBox(
       constraints: BoxConstraints(maxWidth: 420 * scale),
       child: Glass(
+        floating: true,
         radius: 22 * scale,
         opacity: 0.85,
         padding: EdgeInsets.all(18 * scale),

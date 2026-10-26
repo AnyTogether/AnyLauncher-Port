@@ -454,11 +454,11 @@ int get iceCacheBytes => _IceCache.bytes;
 /// [focused] turns it into the bright ice chip (the caller switches its ink to [GlassRecipe.ink]
 /// and scales it); [sweep] runs a sheen across it as it gains focus.
 ///
-/// A surface blurs nothing itself: everything Glass puts behind its surfaces is soft already
-/// (the slow background, the frosted picture, the desktop the system blurs behind the window, a
-/// full-screen layer's one blur), where a blur of its own changed nothing visible and cost a
-/// pass over the screen for every card, button and pill: on an integrated GPU a panel full of
-/// them drew at 3 to 13 frames a second.
+/// A surface blurs nothing itself (but a [blur] one floating over sharp content): everything
+/// Glass puts behind its surfaces is soft already (the slow background, the frosted picture, the
+/// desktop the system blurs behind the window, a full-screen layer's one blur), where a blur of
+/// its own changed nothing visible and cost a pass over the screen for every card, button and
+/// pill: on an integrated GPU a panel full of them drew at 3 to 13 frames a second.
 class IceSurface extends StatelessWidget {
   const IceSurface({
     super.key,
@@ -466,6 +466,7 @@ class IceSurface extends StatelessWidget {
     this.child,
     this.padding,
     this.focused = false,
+    this.blur = false,
     this.shadow = true,
     this.sweep = false,
     this.opacity = GlassRecipe.baseOpacity,
@@ -481,6 +482,9 @@ class IceSurface extends StatelessWidget {
   final Widget? child;
   final EdgeInsetsGeometry? padding;
   final bool focused;
+
+  /// A surface floating over sharp content (a menu over the messages) blurs it itself.
+  final bool blur;
   final bool shadow;
   final bool sweep;
   final bool hover;
@@ -522,7 +526,12 @@ class IceSurface extends StatelessWidget {
           child: content,
         );
         if (sweep) body = SheenSweep(active: focused, child: body);
-        final clip = ClipRRect(borderRadius: BorderRadius.circular(radius), child: body);
+        final clip = ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: blur && !solid
+              ? BackdropFilter(filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20), child: body)
+              : body,
+        );
         if (!shadow && t == 0) return clip;
         return CustomPaint(
           painter: _IceHalo(radius: radius, focus: t, shadow: shadow, ratio: ratio),

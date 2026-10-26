@@ -23,12 +23,23 @@ class LayoutScale extends InheritedWidget {
 
 /// A dark, frosted panel.
 class Glass extends StatelessWidget {
-  const Glass({super.key, required this.child, required this.radius, this.opacity = 0.38, this.padding});
+  const Glass({
+    super.key,
+    required this.child,
+    required this.radius,
+    this.opacity = 0.38,
+    this.padding,
+    this.floating = false,
+  });
 
   final Widget child;
   final double radius;
   final double opacity;
   final EdgeInsetsGeometry? padding;
+
+  /// Floats over sharp content on a layer (a menu over the messages): it blurs what is behind it
+  /// itself, where other panels on a layer rely on the layer's one blur.
+  final bool floating;
 
   @override
   Widget build(BuildContext context) {
@@ -38,6 +49,7 @@ class Glass extends StatelessWidget {
         radius: radius,
         padding: padding,
         opacity: math.min(GlassRecipe.floatingOpacity, GlassRecipe.baseOpacity + math.max(0, opacity - 0.38) * 1.15),
+        blur: floating,
         child: child,
       );
     }
@@ -47,7 +59,7 @@ class Glass extends StatelessWidget {
     return ClipRRect(
       borderRadius: shape,
       child: BackdropFilter.grouped(
-        enabled: !FrostedBehind.of(context),
+        enabled: floating || !FrostedBehind.of(context),
         filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
         child: Container(
           padding: padding,

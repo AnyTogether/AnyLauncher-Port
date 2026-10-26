@@ -42,9 +42,12 @@ class Glass extends StatelessWidget {
       );
     }
     final shape = BorderRadius.circular(radius);
+    // On a full-screen layer, what is behind was blurred by the layer already; on the home
+    // screen the panels share one backdrop (HomeView's BackdropGroup).
     return ClipRRect(
       borderRadius: shape,
-      child: BackdropFilter(
+      child: BackdropFilter.grouped(
+        enabled: !FrostedBehind.of(context),
         filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
         child: Container(
           padding: padding,
@@ -710,7 +713,6 @@ class BackPill extends StatelessWidget {
                 key: const ValueKey('back-pill'),
                 radius: 30 * scale,
                 hover: hovering,
-                backdrop: false,
                 shadow: false,
                 padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 9 * scale),
                 child: _backContent(scale, hovering),

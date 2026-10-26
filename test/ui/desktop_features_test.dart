@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:anyps5_desktop/core/desktop/desktop.dart';
 import 'package:anyps5_desktop/core/gamepad/feel.dart';
+import 'package:anyps5_desktop/core/gamepad/guide_switch.dart';
 import 'package:anyps5_desktop/core/gamepad/pad_navigation.dart';
 import 'package:anyps5_desktop/core/installer.dart';
 import 'package:anyps5_desktop/core/screenshots.dart';
@@ -226,11 +227,94 @@ void main() {
       model.setActive(false);
       pads.press(PadButton.guide);
       model.setActive(true);
+      await Future<void>.delayed(GuideSwitch.defaultDebounce);
       pads.press(PadButton.guide);
       expect(desktop.calls.where((call) => call == 'raise' || call == 'focus'), ['raise', 'focus']);
       expect(desktop.calls.first, 'display 75%', reason: 'upstream\'s engine: the launcher sizes the window');
       model.stopGame();
       await playing;
+    }, skip: Platform.isWindows ? 'the fake game is a shell script' : false);
+
+    Future<({Future<void> done})> startOrbit({String script = 'sleep 2'}) async {
+      final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
+      final installed = Installer.installedFolder(orbit, model.root!);
+      File(p.join(installed, 'app.elf')).writeAsStringSync('#!/bin/sh\n$script\n');
+      if (!Platform.isWindows) Process.runSync('chmod', ['755', p.join(installed, 'app.elf')]);
+      model.select(model.games.indexOf(orbit));
+      final playing = model.play(orbit);
+      await until(() => model.running != null);
+      return (done: playing);
+    }
+
+    test('PS toggles game and launcher: one press is one switch, also read twice', () async {
+      final playing = await startOrbit();
+      desktop.calls.clear();
+      desktop.focused = false;
+      pads.press(PadButton.guide);
+      expect(desktop.calls, ['raise']);
+      desktop.focused = true;
+      pads.press(PadButton.guide);
+      expect(desktop.calls, ['raise'], reason: 'the same press seen twice (or a bounce) does not switch back');
+      await Future<void>.delayed(GuideSwitch.defaultDebounce);
+      pads.press(PadButton.guide);
+      expect(desktop.calls, ['raise', 'focus'], reason: 'the next press takes the game back in front');
+      desktop.focused = false;
+      await Future<void>.delayed(GuideSwitch.defaultDebounce);
+      pads.press(PadButton.guide);
+      expect(desktop.calls, ['raise', 'focus', 'raise']);
+      model.stopGame();
+      await playing.done;
+    }, skip: Platform.isWindows ? 'the fake game is a shell script' : false);
+
+    test('PS goes back to the game even while Flutter has not yet said the launcher has the focus', () async {
+      final playing = await startOrbit();
+      desktop.calls.clear();
+      // Just raised: Windows has the launcher in front, Flutter's focus report has not arrived.
+      model.setActive(false);
+      desktop.focused = true;
+      pads.press(PadButton.guide);
+      expect(desktop.calls, ['focus']);
+      model.stopGame();
+      await playing.done;
+    }, skip: Platform.isWindows ? 'the fake game is a shell script' : false);
+
+    test('the game is started reading the controllers only while its window is in front', () async {
+      final seen = p.join(fixture.temp.path, 'sdl-hint.txt');
+      final playing = await startOrbit(script: 'echo "\$SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS" > "$seen"; sleep 1');
+      await until(() => File(seen).existsSync() && File(seen).readAsStringSync().trim().isNotEmpty);
+      expect(File(seen).readAsStringSync().trim(), '0');
+      model.stopGame();
+      await playing.done;
+    }, skip: Platform.isWindows ? 'the fake game is a shell script' : false);
+
+    test('on Windows too, the game process gets the variable that keeps its pad to its own window', () async {
+      // A copy of cmd.exe stands in for the game: it reads what to do from its input.
+      final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
+      final installed = Installer.installedFolder(orbit, model.root!);
+      final cmd = File(p.join(Platform.environment['SystemRoot'] ?? r'C:\Windows', 'System32', 'cmd.exe'));
+      for (final name in ['app.exe', 'app.elf']) {
+        cmd.copySync(p.join(installed, name));
+      }
+      final seen = p.join(fixture.temp.path, 'sdl-hint.txt');
+      model.select(model.games.indexOf(orbit));
+      final playing = model.play(orbit);
+      await until(() => model.running != null);
+      model.running!.$2.process.stdin.writeln('(echo %SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS%)> "$seen" & exit');
+      await playing;
+      expect(File(seen).readAsStringSync().trim(), '0');
+    }, skip: Platform.isWindows ? false : 'Windows only (the other systems run the shell script one)');
+
+    test('behind a game the launcher rests, and wakes when it is in front again', () async {
+      final playing = await startOrbit();
+      expect(model.resting, isFalse);
+      desktop.focused = false;
+      model.checkFront();
+      expect(model.resting, isTrue, reason: 'Flutter still says in front; the desktop knows better');
+      desktop.focused = true;
+      model.checkFront();
+      expect(model.resting, isFalse);
+      model.stopGame();
+      await playing.done;
     }, skip: Platform.isWindows ? 'the fake game is a shell script' : false);
   });
 

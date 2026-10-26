@@ -22,6 +22,7 @@ import '../core/font_download.dart';
 import '../core/free_space.dart';
 import '../core/family/family_rules.dart' show TitleVerdict;
 import '../core/gamepad/feel.dart';
+import '../core/gamepad/guide_switch.dart';
 import '../core/gamepad/pad_gate.dart';
 import '../core/gamepad/pad_navigation.dart';
 import '../core/game_library.dart';
@@ -81,6 +82,7 @@ class Preferences {
     ..gameArtwork = json['gameArtwork'] as bool? ?? true
     ..reducedMotion = json['reducedMotion'] as bool? ?? false
     ..reduceTransparency = json['reduceTransparency'] == true
+    ..glassTooSlow = json['glassTooSlow'] == true
     ..glassTransparency = switch (json['glassTransparency']) {
       final num percent => percent.toInt().clamp(0, 100),
       _ => null,
@@ -129,6 +131,10 @@ class Preferences {
 
   /// Glass draws its surfaces solid, without the blur behind them.
   bool reduceTransparency = false;
+
+  /// The graphics card fell behind drawing Glass's transparency once: it starts solid from then
+  /// on, until Glass is picked again in Settings › Appearance.
+  bool glassTooSlow = false;
 
   /// Glass's see-through window: how much of the desktop shows, in percent (null for
   /// GlassWindow.defaultTransparency), and whether the selected game's picture is laid over it.
@@ -199,6 +205,7 @@ class Preferences {
     'gameArtwork': gameArtwork,
     'reducedMotion': reducedMotion,
     'reduceTransparency': reduceTransparency,
+    if (glassTooSlow) 'glassTooSlow': true,
     'glassTransparency': glassTransparency,
     'glassArtwork': glassArtwork,
     'phoneServer': phoneServer,
@@ -795,6 +802,7 @@ class AppModel extends ChangeNotifier {
   void setActive(bool value) {
     if (active == value) return;
     active = value;
+    _shownInFront = launcherInFront;
     // Behind a game (or any other window) the pad is the game's: the motors stop at once, and a
     // direction held on it lets go.
     haptics.launcherInFront = value;
@@ -1171,8 +1179,9 @@ class AppModel extends ChangeNotifier {
 
   LookStyle get look => LookStyle.fromIndex(preferences.theme);
 
-  /// Glass gave up its blur this run: the GPU took too long to draw it (RasterWatch).
-  bool glassFallback = false;
+  /// Glass gave up its transparency: the GPU took too long to draw it (RasterWatch), this run or
+  /// an earlier one (kept as Preferences.glassTooSlow).
+  late bool glassFallback = preferences.glassTooSlow;
 
   /// Glass surfaces drawn solid: asked for, the GPU too slow for the blur, or Glass
   /// Transparency at 0 % on a window that could let the desktop through.
@@ -1207,13 +1216,51 @@ class AppModel extends ChangeNotifier {
     }
   }
 
-  /// The GPU fell behind drawing Glass: its surfaces turn solid for the rest of the run, once
-  /// said in a toast.
+  /// The GPU fell behind drawing Glass: its surfaces turn solid, once said in a toast, and stay
+  /// solid at the next starts too (picking Glass again in Settings tries once more).
   void glassTooSlow() {
     if (glassFallback || look != LookStyle.glass) return;
     glassFallback = true;
+    preferences.glassTooSlow = true;
+    if (persist) preferences.save(paths.preferencesFile);
     if (!preferences.reduceTransparency) show(T.text('glassFallback'));
     notifyListeners();
+  }
+
+  /// PS/Guide as a toggle between the game and the launcher (one press, one switch).
+  final GuideSwitch _guide = GuideSwitch();
+
+  /// Whether the launcher was in front at the last look ([checkFront]): the desktop's word
+  /// where it has one (Windows, X11), Flutter's focus otherwise. Not in front, the launcher
+  /// rests: no animation, no frame drawn, the GPU left to the game.
+  bool get resting => !_shownInFront;
+  bool _shownInFront = true;
+
+  /// Looks again whether the launcher's window is in front (the shell asks a few times a
+  /// second: Flutter's own focus report does not change on Windows when a game takes over).
+  void checkFront() {
+    final front = launcherInFront;
+    if (front == _shownInFront) return;
+    _shownInFront = front;
+    if (!front) {
+      _gate?.close();
+      haptics.launcherInFront = false;
+    }
+    notifyListeners();
+  }
+
+  /// For PS/Guide, which window is in front now: the desktop's answer, which changes the moment
+  /// the window does (Flutter's focus can lag behind it, or not change at all on Windows).
+  bool get _frontForGuide {
+    if (steamLaunch.gameMode && running == null && starting == null) return true;
+    return desktop.launcherFocused() ?? active;
+  }
+
+  /// The game back in front, the launcher behind it.
+  Future<void> _showGame(RunningGame run) async {
+    final shown = await desktop.focusGame(run.pid);
+    _padLog?.call('PS: game ${shown ? 'in front' : 'could not be brought in front'}');
+    checkFront();
   }
 
   Accent get accentChoice =>
@@ -2274,16 +2321,22 @@ class AppModel extends ChangeNotifier {
     if (!preferences.onboarded) return _onboardingCommand(command);
     if (command == Command.home) {
       // PS/Guide: from the game to the launcher and back; behind another window, to the front.
-      final front = launcherInFront;
-      if (running case (_, final RunningGame run)) {
-        unawaited(front ? desktop.focusGame(run.pid) : desktop.raiseLauncher());
-        return;
+      final run = running?.$2;
+      switch (_guide.press(
+        now: feelNow,
+        gameRunning: run != null,
+        launcherInFront: _frontForGuide,
+        layerOpen: overlay != null,
+      )) {
+        case GuideAction.showGame:
+          unawaited(_showGame(run!));
+        case GuideAction.showLauncher:
+          unawaited(desktop.raiseLauncher());
+        case GuideAction.closeLayer:
+          closeOverlay();
+        case GuideAction.none:
+          break;
       }
-      if (!front) {
-        unawaited(desktop.raiseLauncher());
-        return;
-      }
-      if (overlay != null) closeOverlay();
       return;
     }
     if (command == Command.previousGame || command == Command.nextGame) {
@@ -2677,6 +2730,11 @@ class AppModel extends ChangeNotifier {
               preferences
                 ..theme = index
                 ..accent = null;
+              // Glass picked again: its transparency gets another try on this graphics card.
+              if (index == LookStyle.glass.index) {
+                preferences.glassTooSlow = false;
+                glassFallback = false;
+              }
               savePreferences();
             }),
           ),

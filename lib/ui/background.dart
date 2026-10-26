@@ -3,20 +3,31 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 
 import 'components.dart';
 import 'glass.dart';
 import 'theme.dart';
 
 /// The theme's animated background, drawn by shaders/background.frag (the GLSL form of the macOS
-/// launcher's Metal shader). It stops while a game runs, leaving the GPU to the game. Where the
-/// shader cannot load, a painted gradient stands in.
+/// launcher's Metal shader). Where the shader cannot load, a painted gradient stands in.
+///
+/// It is the costliest thing the launcher draws (on an integrated GPU the full-window shader at
+/// 60 frames a second kept the GPU 85 % busy with the launcher doing nothing), so it is drawn
+/// sparingly: moving, at [rate] steps a second and at half the window's resolution, then scaled
+/// up (its light is soft, the half resolution does not show); still ([paused], or under a muted
+/// [TickerMode], as while a game is in front), it asks for no frame at all.
 class ThemeBackground extends StatefulWidget {
   const ThemeBackground({super.key, required this.style, this.paused = false, this.time});
 
   /// Loads the shaders ahead of the first background (tests load them outside their fake clock).
   static Future<void> preload() => Future.wait([_ThemeBackgroundState.preload(), FrostGrain.preload()]);
+
+  /// Steps a second while it moves: Glass drifts so slowly that 20 look the same as 60, the
+  /// others' ribbons and lights need 30.
+  static int rate(LookStyle style) => style == LookStyle.glass ? 20 : 30;
+
+  /// The share of the window's width and height the moving background is drawn at.
+  static const resolution = 0.5;
 
   final LookStyle style;
   final bool paused;
@@ -28,18 +39,16 @@ class ThemeBackground extends StatefulWidget {
   State<ThemeBackground> createState() => _ThemeBackgroundState();
 }
 
-class _ThemeBackgroundState extends State<ThemeBackground> with SingleTickerProviderStateMixin {
+class _ThemeBackgroundState extends State<ThemeBackground> {
   /// Loads the shader ahead of the first background (tests load it outside their fake clock).
   static Future<void> preload() => _program ??= _load();
 
   static Future<ui.FragmentProgram?>? _program;
   static ui.FragmentProgram? _ready;
   ui.FragmentProgram? _loaded = _ready;
-  Ticker? _ticker;
 
   /// The clock starts somewhere in the middle of the animation, not at its quiet first frame.
   double _clock = 40 + math.Random().nextDouble() * 360;
-  Duration _last = Duration.zero;
 
   static Future<ui.FragmentProgram?> _load() async {
     try {
@@ -56,15 +65,12 @@ class _ThemeBackgroundState extends State<ThemeBackground> with SingleTickerProv
     _program!.then((program) {
       if (mounted) setState(() => _loaded = program);
     });
-    if (widget.time == null) {
-      _ticker = createTicker((elapsed) {
-        final step = (elapsed - _last).inMicroseconds / 1e6;
-        _last = elapsed;
-        if (widget.paused) return;
-        setState(() => _clock += math.min(0.1, step));
-      });
-      _follow();
-    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _follow();
   }
 
   @override
@@ -73,35 +79,27 @@ class _ThemeBackgroundState extends State<ThemeBackground> with SingleTickerProv
     if (widget.style != oldWidget.style || widget.paused != oldWidget.paused) _follow();
   }
 
-  /// Glass drifts so slowly that 20 steps a second look the same as 60 or 120, and every frame
-  /// not drawn is one where the glass over it is not blurred again: a timer moves it instead of
-  /// a ticker. Paused, it stops asking for frames at all.
-  Timer? _slow;
+  /// A timer moves it (a ticker would ask for a frame at every refresh of the screen); paused,
+  /// or with tickers muted above it, the timer stops.
+  Timer? _steps;
+  int _rate = 0;
 
   void _follow() {
-    final ticker = _ticker;
-    if (ticker == null) return;
-    final glass = widget.style == LookStyle.glass;
-    if (glass) {
-      if (ticker.isActive) ticker.stop();
-      _last = Duration.zero;
-    } else if (!ticker.isActive) {
-      ticker.start();
-    }
-    if (glass && !widget.paused) {
-      _slow ??= Timer.periodic(const Duration(milliseconds: 50), (_) {
-        if (mounted) setState(() => _clock += 0.05);
-      });
-    } else {
-      _slow?.cancel();
-      _slow = null;
-    }
+    final moving = widget.time == null && !widget.paused && TickerMode.valuesOf(context).enabled;
+    final rate = ThemeBackground.rate(widget.style);
+    if (moving && _steps != null && _rate == rate) return;
+    _steps?.cancel();
+    _steps = null;
+    if (!moving) return;
+    _rate = rate;
+    _steps = Timer.periodic(Duration(microseconds: 1000000 ~/ rate), (_) {
+      if (mounted) setState(() => _clock += 1 / rate);
+    });
   }
 
   @override
   void dispose() {
-    _slow?.cancel();
-    _ticker?.dispose();
+    _steps?.cancel();
     super.dispose();
   }
 
@@ -113,7 +111,13 @@ class _ThemeBackgroundState extends State<ThemeBackground> with SingleTickerProv
       child: CustomPaint(
         painter: program == null
             ? _FallbackPainter(widget.style)
-            : _ShaderPainter(program.fragmentShader(), widget.style, time),
+            : _ShaderPainter(
+                program.fragmentShader(),
+                widget.style,
+                time,
+                // A still frame is drawn once: it may as well be sharp.
+                resolution: widget.time == null ? ThemeBackground.resolution : 1,
+              ),
         size: Size.infinite,
       ),
     );
@@ -121,14 +125,14 @@ class _ThemeBackgroundState extends State<ThemeBackground> with SingleTickerProv
 }
 
 class _ShaderPainter extends CustomPainter {
-  _ShaderPainter(this.shader, this.style, this.time);
+  _ShaderPainter(this.shader, this.style, this.time, {this.resolution = 1});
 
   final ui.FragmentShader shader;
   final LookStyle style;
   final double time;
+  final double resolution;
 
-  @override
-  void paint(Canvas canvas, Size size) {
+  void _draw(Canvas canvas, Size size) {
     var index = 0;
     void set(double value) => shader.setFloat(index++, value);
     set(math.max(1, size.width));
@@ -144,7 +148,27 @@ class _ShaderPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ShaderPainter oldDelegate) => oldDelegate.time != time || oldDelegate.style != style;
+  void paint(Canvas canvas, Size size) {
+    if (resolution >= 1 || size.isEmpty) return _draw(canvas, size);
+    final width = math.max(1, (size.width * resolution).ceil());
+    final height = math.max(1, (size.height * resolution).ceil());
+    final recorder = ui.PictureRecorder();
+    _draw(Canvas(recorder), Size(width.toDouble(), height.toDouble()));
+    final picture = recorder.endRecording();
+    final image = picture.toImageSync(width, height);
+    picture.dispose();
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      Offset.zero & size,
+      Paint()..filterQuality = FilterQuality.low,
+    );
+    image.dispose();
+  }
+
+  @override
+  bool shouldRepaint(_ShaderPainter oldDelegate) =>
+      oldDelegate.time != time || oldDelegate.style != style || oldDelegate.resolution != resolution;
 }
 
 /// The theme's tones as a still gradient with its glow, where shaders are missing.

@@ -159,6 +159,12 @@ class GameSettings {
     trace: identical(trace, _keep) ? this.trace : trace as bool?,
   );
 
+  /// The game reads the controllers (through SDL2) only while its window is in front: with the
+  /// launcher brought over it with PS, the pad drives the launcher alone. The engine asks SDL for
+  /// background events with a plain SDL_SetHint, which the same name in the environment
+  /// overrides (an SDL hint set from the environment wins over every priority but OVERRIDE).
+  static const backgroundPadEnvironment = {'SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS': '0'};
+
   /// The environment a game starts with. [inputFile] is the anyps5-input.ini written for it,
   /// [screenshots] and [fonts] the launcher's folders for F12 screenshots and system fonts,
   /// [shaderCacheFolder] where its shader and pipeline caches go; [trace] turns detailed logging
@@ -176,6 +182,7 @@ class GameSettings {
       'ANYPS5_WINDOW_SIZE': '${windowSize.clamp(30, 100)}',
       'ANYPS5_PRESENT_MODE': vsync || frameGeneration == true ? 'fifo' : 'immediate',
       'ANYPS5_LANGUAGE': '${language ?? launcherLanguage}',
+      ...backgroundPadEnvironment,
     };
     final position = overlay.position;
     if (position != null) {

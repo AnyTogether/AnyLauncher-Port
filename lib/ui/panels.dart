@@ -282,7 +282,6 @@ class _CategoryTab extends StatelessWidget {
           padding: EdgeInsets.only(bottom: 6 * scale),
           child: IceSurface(
             radius: 12 * scale,
-            backdrop: false,
             shadow: false,
             hover: hovering,
             opacity: selected ? 0.3 : 0,
@@ -552,7 +551,6 @@ class _RowView extends StatelessWidget {
               child: IceSurface(
                 radius: 14 * scale,
                 focused: focused,
-                backdrop: false,
                 shadow: false,
                 sweep: true,
                 hover: hovering && row.focusable,

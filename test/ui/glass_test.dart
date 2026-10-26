@@ -127,6 +127,43 @@ void main() {
       expect(cosmic.model.glassFallback, isFalse);
     });
 
+    test('a new install starts in Cosmic: Glass is picked, never the default', () {
+      expect(LookStyle.fromIndex(Preferences().theme), LookStyle.cosmic);
+      expect(LookStyle.fromIndex(Preferences.fromJson(const {}).theme), LookStyle.cosmic);
+      final fresh = makeFixture(onboarded: false);
+      addTearDown(fresh.dispose);
+      expect(fresh.model.look, LookStyle.cosmic);
+      expect(fresh.model.onboardingChoice, 0, reason: 'the first start offers the language first');
+      fresh.model.onboardingConfirm();
+      expect(fresh.model.onboardingChoice, LookStyle.cosmic.index, reason: 'the theme step starts on Cosmic');
+    });
+
+    test('a GPU found too slow for Glass is remembered: the next start is solid until Glass is picked again', () {
+      final fixture = makeFixture(theme: 3);
+      addTearDown(fixture.dispose);
+      fixture.model.glassTooSlow();
+      expect(fixture.model.preferences.glassTooSlow, isTrue);
+      final kept = Preferences.fromJson(
+        jsonDecode(jsonEncode(fixture.model.preferences.toJson())) as Map<String, dynamic>,
+      );
+      expect(kept.glassTooSlow, isTrue);
+      expect(Preferences.fromJson(const {}).glassTooSlow, isFalse);
+      expect(Preferences().toJson().containsKey('glassTooSlow'), isFalse, reason: 'only written once it happened');
+
+      final next = makeFixture(theme: 3);
+      addTearDown(next.dispose);
+      final model = next.model;
+      model.preferences.glassTooSlow = true;
+      model.glassFallback = model.preferences.glassTooSlow;
+      expect(model.solidGlass, isTrue);
+      model.open(Layer.settings);
+      final rows = model.panelCategories().first.rows;
+      final theme = rows.firstWhere((row) => row.id == 'theme').kind as ChoiceRow;
+      theme.set(LookStyle.glass.index);
+      expect(model.preferences.glassTooSlow, isFalse, reason: 'picking Glass again gives it another try');
+      expect(model.solidGlass, isFalse);
+    });
+
     test('the raster watch trips only when most frames of two windows in a row are slow', () {
       var slow = 0;
       final watch = RasterWatch(onSlow: () => slow++, window: 10);
@@ -146,6 +183,17 @@ void main() {
         ..reset()
         ..add(List.filled(10, late));
       expect(slow, 1, reason: 'a reset forgets the first window');
+    });
+
+    test('a run of frames that drag (under 25 a second) trips the watch at once', () {
+      var slow = 0;
+      final watch = RasterWatch(onSlow: () => slow++);
+      const dragging = Duration(milliseconds: 70);
+      watch.add([...List.filled(7, dragging), const Duration(milliseconds: 5), ...List.filled(7, dragging)]);
+      expect(slow, 0, reason: 'one quick frame between breaks the run');
+      watch.add([dragging]);
+      expect(slow, 1, reason: 'eight in a row');
+      expect(watch.tripped, isTrue);
     });
   });
 
@@ -257,6 +305,25 @@ void main() {
 
     Future<void> shoot(WidgetTester tester, String name) =>
         expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/$name.png'));
+
+    testWidgets('resting glass is drawn once and kept; a window being resized never keeps more than the cap', (
+      tester,
+    ) async {
+      fixture = makeFixture(theme: 3);
+      final model = fixture.model;
+      await pumpLauncher(tester, model);
+      final kept = iceCacheLength;
+      expect(kept, greaterThan(0), reason: 'the cards, buttons and pills at rest are pictures now');
+      model.refresh();
+      await tester.pump();
+      await tester.pump();
+      expect(iceCacheLength, kept, reason: 'a frame with nothing new draws from what is kept');
+      for (var width = 1000; width <= 1900; width += 30) {
+        tester.view.physicalSize = Size(width.toDouble(), width * 9 / 16);
+        await tester.pump();
+      }
+      expect(iceCacheBytes, lessThanOrEqualTo(48 << 20));
+    });
 
     testWidgets('home, an installed game selected, its picture frosted', (tester) async {
       fixture = makeFixture(theme: 3);
@@ -565,10 +632,8 @@ void main() {
           ),
         );
         return [
-          for (final box in tester.widgetList<DecoratedBox>(
-            find.descendant(of: find.byType(ImageFiltered), matching: find.byType(DecoratedBox)),
-          ))
-            (box.decoration as BoxDecoration).color!.a,
+          for (final paint in tester.widgetList<CustomPaint>(find.byType(CustomPaint)))
+            if (paint.painter is PlatePainter) PlatePainter.fill.a,
         ];
       }
 

@@ -161,6 +161,7 @@ StickModifier = KEY:F24
         'ANYPS5_WINDOW_SIZE': '75',
         'ANYPS5_PRESENT_MODE': 'fifo',
         'ANYPS5_LANGUAGE': '19',
+        'SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS': '0',
       });
     });
 
@@ -187,6 +188,7 @@ StickModifier = KEY:F24
           'ANYPS5_WINDOW_SIZE': '30',
           'ANYPS5_PRESENT_MODE': 'immediate',
           'ANYPS5_LANGUAGE': '1',
+          'SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS': '0',
           'ANYPS5_OVERLAY': '1',
           'ANYPS5_OVERLAY_POS': 'br',
           'ANYPS5_OVERLAY_STYLE': 'detailed',

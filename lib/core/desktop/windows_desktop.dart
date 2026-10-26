@@ -50,6 +50,7 @@ final class _Win32 {
           Int32 Function(_H, _H, Int32, Int32, Int32, Int32, Uint32),
           int Function(int, int, int, int, int, int, int)
         >('SetWindowPos');
+    switchToThisWindow = user.lookupFunction<Void Function(_H, Int32), void Function(int, int)>('SwitchToThisWindow');
     attachThreadInput = user.lookupFunction<Int32 Function(Uint32, Uint32, Int32), int Function(int, int, int)>(
       'AttachThreadInput',
     );
@@ -151,6 +152,7 @@ final class _Win32 {
   late final int Function(int, int) showWindow;
   late final int Function(int, int, int, int, int, int, int) setWindowPos;
   late final int Function(int, int, int) attachThreadInput;
+  late final void Function(int, int) switchToThisWindow;
   late final int Function(int, Pointer<Uint8>, int) sendInput;
   late final int Function(int, int, int, int) postMessage;
   late final int Function(int, int) monitorFromWindow;
@@ -186,7 +188,10 @@ final class _Win32 {
 /// screen (or asked of the window with PrintWindow when it is covered), and the trophy card as
 /// a layered, click-through, never-activated topmost window drawn with UpdateLayeredWindow.
 class WindowsDesktop implements DesktopWindows {
-  WindowsDesktop();
+  WindowsDesktop({this.log});
+
+  /// A line for the controller's debug log (ANYPS5_PAD_LOG): how a window was brought in front.
+  final void Function(String line)? log;
 
   late final _Win32 _w = _Win32();
 
@@ -228,22 +233,61 @@ class WindowsDesktop implements DesktopWindows {
 
   int get _launcher => windowOf(_w.getCurrentProcessId());
 
-  /// SetForegroundWindow from a process that is not in front works once its input is joined to
-  /// the window in front's.
+  /// Brings [window] in front and gives it the keyboard. Windows refuses SetForegroundWindow
+  /// more often than its rules say: the launcher, in front itself, could not hand the front to
+  /// the game (PS pressed in the launcher did nothing), because a controller press is no input
+  /// event and the last one went elsewhere. So: our input joined to the window in front's and to
+  /// the target's for the moment; if Windows still says no, a tap of Alt (which makes this the
+  /// process that had the last input, and which no window acts on alone) and once more; then
+  /// SwitchToThisWindow, Alt+Tab's own way. True when [window] is in front.
   bool _bringToFront(int window) {
     if (window == 0) return false;
     if (_w.isIconic(window) != 0) _w.showWindow(window, 9 /* SW_RESTORE */);
     final front = _w.getForegroundWindow();
-    final frontThread = front == 0 ? 0 : _w.getWindowThreadProcessId(front, nullptr);
+    if (front == window) return true;
     final ours = _w.getCurrentThreadId();
-    final joined = frontThread != 0 && frontThread != ours && _w.attachThreadInput(ours, frontThread, 1) != 0;
+    final threads = <int>{
+      if (front != 0) _w.getWindowThreadProcessId(front, nullptr),
+      _w.getWindowThreadProcessId(window, nullptr),
+    }..removeWhere((thread) => thread == 0 || thread == ours);
+    final joined = [
+      for (final thread in threads)
+        if (_w.attachThreadInput(ours, thread, 1) != 0) thread,
+    ];
+    var how = 'refused';
     try {
       _w.bringWindowToTop(window);
-      return _w.setForegroundWindow(window) != 0;
+      if (_w.setForegroundWindow(window) != 0 && _w.getForegroundWindow() == window) {
+        how = 'SetForegroundWindow';
+      } else {
+        _tapAlt();
+        if (_w.setForegroundWindow(window) != 0 && _w.getForegroundWindow() == window) {
+          how = 'SetForegroundWindow after Alt';
+        } else {
+          _w.switchToThisWindow(window, 1);
+          if (_w.getForegroundWindow() == window) how = 'SwitchToThisWindow';
+        }
+      }
     } finally {
-      if (joined) _w.attachThreadInput(ours, frontThread, 0);
+      for (final thread in joined) {
+        _w.attachThreadInput(ours, thread, 0);
+      }
     }
+    log?.call('desktop: window $window in front: $how');
+    return _w.getForegroundWindow() == window;
   }
+
+  /// Alt down and up, as typed: unlocks SetForegroundWindow for this process.
+  void _tapAlt() => using((arena) {
+    final inputs = arena<Uint8>(80);
+    for (final (index, flags) in [(0, 0), (1, 2 /* KEYEVENTF_KEYUP */)]) {
+      final input = inputs + index * 40;
+      input.cast<Uint32>().value = 1; // INPUT_KEYBOARD
+      (input + 8).cast<Uint16>().value = 0x12; // VK_MENU
+      (input + 12).cast<Uint32>().value = flags;
+    }
+    _w.sendInput(2, inputs, 40);
+  });
 
   @override
   Future<bool> raiseLauncher() async {
@@ -255,6 +299,7 @@ class WindowsDesktop implements DesktopWindows {
     return _bringToFront(launcher);
   }
 
+  /// The game in front again and the launcher just behind it (not topmost any more).
   @override
   Future<bool> focusGame(int pid) async {
     final launcher = _launcher;
@@ -262,7 +307,16 @@ class WindowsDesktop implements DesktopWindows {
       _w.setWindowPos(launcher, _notTopmost, 0, 0, 0, 0, _noMove | _noSize | _noActivate);
       _launcherOnTop = false;
     }
-    return _bringToFront(windowOf(pid));
+    final game = windowOf(pid);
+    if (game == 0) {
+      log?.call('desktop: game $pid has no window to bring in front');
+      return false;
+    }
+    final shown = _bringToFront(game);
+    if (shown && launcher != 0) {
+      _w.setWindowPos(launcher, game, 0, 0, 0, 0, _noMove | _noSize | _noActivate);
+    }
+    return shown;
   }
 
   late final Pointer<Uint32> _frontOwner = calloc<Uint32>();
@@ -275,7 +329,15 @@ class WindowsDesktop implements DesktopWindows {
     // No window in front (a switch going on, the lock screen): not the launcher.
     if (front == 0 || (front == _card && _card != 0)) return false;
     _w.getWindowThreadProcessId(front, _frontOwner);
-    return _frontOwner.value == _w.getCurrentProcessId();
+    final ours = _frontOwner.value == _w.getCurrentProcessId();
+    // Another window took the front (the game clicked, Alt+Tab): the launcher no longer stays
+    // above everything, or it would cover the game it was raised over.
+    if (!ours && _launcherOnTop) {
+      final launcher = _launcher;
+      if (launcher != 0) _w.setWindowPos(launcher, _notTopmost, 0, 0, 0, 0, _noMove | _noSize | _noActivate);
+      _launcherOnTop = false;
+    }
+    return ours;
   }
 
   /// Waits for the game's first window: a game can take a while to open it.

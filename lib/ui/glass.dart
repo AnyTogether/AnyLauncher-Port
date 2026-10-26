@@ -12,8 +12,7 @@ import 'theme.dart';
 /// a still frost grain and a soft shadow); the focused one turns into a bright ice chip. The
 /// macOS launcher draws the same numbers.
 abstract final class GlassRecipe {
-  /// The blur behind surfaces, and behind full-screen layers.
-  static const surfaceBlur = 20.0;
+  /// The blur behind full-screen layers (the only blur Glass draws live; see IceSurface).
   static const layerBlur = 30.0;
 
   /// The navy under the glass that keeps white text readable, and how much of it.
@@ -258,14 +257,12 @@ class Legible extends StatelessWidget {
           top: -reach,
           right: -reach,
           bottom: -reach,
+          // The plate is a blurred rounded box drawn with a mask filter, which the GPU draws in
+          // one cheap step; filtering a layer (as it was) cost a pass for every plate on screen.
           child: IgnorePointer(
-            child: ImageFiltered(
-              imageFilter: ui.ImageFilter.blur(sigmaX: soft * 1.15, sigmaY: soft * 1.15, tileMode: TileMode.decal),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: GlassRecipe.layer.withValues(alpha: GlassWindow.plateOpacity + 0.04),
-                  borderRadius: BorderRadius.circular(reach),
-                ),
+            child: RepaintBoundary(
+              child: CustomPaint(
+                painter: PlatePainter(reach: reach, sigma: soft * 1.15),
               ),
             ),
           ),
@@ -274,6 +271,42 @@ class Legible extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Legible's plate: a soft dark rounded box.
+class PlatePainter extends CustomPainter {
+  const PlatePainter({required this.reach, required this.sigma});
+
+  final double reach;
+  final double sigma;
+
+  /// Its fill at the core.
+  static final fill = GlassRecipe.layer.withValues(alpha: GlassWindow.plateOpacity + 0.04);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(reach)),
+      Paint()
+        ..color = fill
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, sigma),
+    );
+  }
+
+  @override
+  bool shouldRepaint(PlatePainter old) => old.reach != reach || old.sigma != sigma;
+}
+
+/// Below it, what is behind has been frosted already (a full-screen layer's blur): a surface
+/// there needs no blur of its own. Nested blurs each read and blur the screen again, and they
+/// were what made opening and scrolling a panel crawl on an integrated GPU.
+class FrostedBehind extends InheritedWidget {
+  const FrostedBehind({super.key, required super.child});
+
+  static bool of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<FrostedBehind>() != null;
+
+  @override
+  bool updateShouldNotify(FrostedBehind oldWidget) => false;
 }
 
 /// How the interface below is drawn: the Glass look, whether its glass is solid, and whether the
@@ -309,37 +342,123 @@ class LookScope extends InheritedWidget {
       oldWidget.glass != glass || oldWidget.solid != solid || oldWidget.seeThrough != seeThrough;
 }
 
-/// The frost grain shader (shaders/frost.frag), loaded once.
+/// The frost: a still grain of light and dark specks laid over glass at a few percent. It is a
+/// small tile made once and repeated as an image shader (the GPU's cheapest fill); the per-pixel
+/// shader it used to be cost a few milliseconds a frame over a panel.
 abstract final class FrostGrain {
-  static Future<ui.FragmentProgram?>? _loading;
-  static ui.FragmentProgram? _program;
+  static const tile = 128;
+  static Future<void>? _loading;
+  static ui.Image? _tile;
 
-  static Future<void> preload() => _loading ??= () async {
-    try {
-      return _program = await ui.FragmentProgram.fromAsset('shaders/frost.frag');
-    } on Object {
-      return null;
+  static Future<void> preload() => _loading ??= Future(() => _tile ??= _make());
+
+  /// The tile at full strength: every pixel a speck of white or black whose opacity is how far
+  /// its random value is from the middle (the same recipe as the shader's).
+  static ui.Image _make() {
+    final random = math.Random(1977);
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final paint = Paint();
+    for (var y = 0; y < tile; y++) {
+      for (var x = 0; x < tile; x++) {
+        final n = random.nextDouble() - 0.5;
+        final alpha = (n.abs() * 2).clamp(0.0, 1.0);
+        if (alpha < 0.02) continue;
+        paint.color = (n > 0 ? Colors.white : Colors.black).withValues(alpha: alpha);
+        canvas.drawRect(Rect.fromLTWH(x.toDouble(), y.toDouble(), 1, 1), paint);
+      }
     }
-  }();
+    final picture = recorder.endRecording();
+    final image = picture.toImageSync(tile, tile);
+    picture.dispose();
+    return image;
+  }
 
-  /// Paints the grain over [rect] at [strength]; nothing until the shader has loaded.
+  /// Paints the grain over [rect] at [strength].
   static void paint(Canvas canvas, Rect rect, double strength) {
-    final program = _program;
-    if (program == null) {
-      preload();
-      return;
-    }
-    final shader = program.fragmentShader()..setFloat(0, strength);
-    canvas.drawRect(rect, Paint()..shader = shader);
-    shader.dispose();
+    final image = _tile ??= _make();
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..color = Colors.white.withValues(alpha: strength.clamp(0.0, 1.0))
+        ..shader = ImageShader(image, TileMode.repeated, TileMode.repeated, Matrix4.identity().storage),
+    );
   }
 }
 
-/// A surface of frosted ice: the blur of what is behind it, clipped to its shape, then the base,
-/// the sheen, the frost and the rim. [focused] turns it into the bright ice chip (the caller
-/// switches its ink to [GlassRecipe.ink] and scales it); [sweep] runs a sheen across it as it
-/// gains focus. Inside another glass surface, [backdrop] false skips the blur (the panel behind
-/// already frosted it).
+/// Glass that is not changing (a surface at rest, focused or not) drawn once and kept as an
+/// image, then laid down as one picture per frame: drawn live, every gradient, rim and speck of
+/// every card and row was worked out again on every frame anything on screen moved, 29 ms a
+/// frame for Glass's home on an integrated GPU.
+abstract final class _IceCache {
+  static final Map<Object, ui.Image> _images = {};
+
+  /// At most this many images and this many bytes of them are kept, the longest unused going
+  /// first (a window being resized makes new sizes on every frame).
+  static const limit = 160;
+  static const byteLimit = 48 << 20;
+  static int _bytes = 0;
+
+  /// Draws what [draw] draws over [size] (and up to [margin] around it), from the image kept for
+  /// [key] (made at [ratio] pixels a point the first time).
+  static void paint(
+    Canvas canvas,
+    Size size,
+    double ratio,
+    Object key,
+    void Function(Canvas canvas) draw, {
+    double margin = 0,
+  }) {
+    final area = (Offset.zero & size).inflate(margin);
+    final width = (area.width * ratio).ceil();
+    final height = (area.height * ratio).ceil();
+    if (width <= 0 || height <= 0 || width * height > 4096 * 4096) return draw(canvas);
+    final full = (key, width, height, margin);
+    var image = _images.remove(full);
+    if (image == null) {
+      final recorder = ui.PictureRecorder();
+      draw(
+        Canvas(recorder)
+          ..scale(width / area.width, height / area.height)
+          ..translate(margin, margin),
+      );
+      final picture = recorder.endRecording();
+      image = picture.toImageSync(width, height);
+      picture.dispose();
+      _bytes += width * height * 4;
+      while (_images.isNotEmpty && (_images.length >= limit || _bytes > byteLimit)) {
+        final old = _images.remove(_images.keys.first)!;
+        _bytes -= old.width * old.height * 4;
+        old.dispose();
+      }
+    }
+    _images[full] = image;
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      area,
+      Paint()..filterQuality = FilterQuality.low,
+    );
+  }
+
+  /// How many images, and bytes of them, are kept (tests).
+  static int get length => _images.length;
+  static int get bytes => _bytes;
+}
+
+/// How many pictures of resting glass are kept, and their bytes (tests).
+int get iceCacheLength => _IceCache.length;
+int get iceCacheBytes => _IceCache.bytes;
+
+/// A surface of frosted ice: the base, the sheen, the frost and the rim over what is behind it.
+/// [focused] turns it into the bright ice chip (the caller switches its ink to [GlassRecipe.ink]
+/// and scales it); [sweep] runs a sheen across it as it gains focus.
+///
+/// A surface blurs nothing itself: everything Glass puts behind its surfaces is soft already
+/// (the slow background, the frosted picture, the desktop the system blurs behind the window, a
+/// full-screen layer's one blur), where a blur of its own changed nothing visible and cost a
+/// pass over the screen for every card, button and pill: on an integrated GPU a panel full of
+/// them drew at 3 to 13 frames a second.
 class IceSurface extends StatelessWidget {
   const IceSurface({
     super.key,
@@ -347,7 +466,6 @@ class IceSurface extends StatelessWidget {
     this.child,
     this.padding,
     this.focused = false,
-    this.backdrop = true,
     this.shadow = true,
     this.sweep = false,
     this.opacity = GlassRecipe.baseOpacity,
@@ -363,7 +481,6 @@ class IceSurface extends StatelessWidget {
   final Widget? child;
   final EdgeInsetsGeometry? padding;
   final bool focused;
-  final bool backdrop;
   final bool shadow;
   final bool sweep;
   final bool hover;
@@ -384,6 +501,7 @@ class IceSurface extends StatelessWidget {
     final solid = LookScope.isSolid(context);
     // On the see-through window a surface is a plate that its text reads on alone.
     final base = LookScope.isSeeThrough(context) ? math.max(opacity, GlassWindow.plateOpacity) : opacity;
+    final ratio = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
     return TweenAnimationBuilder<double>(
       tween: Tween(end: focused ? 1 : 0),
       duration: Motion.focus,
@@ -391,23 +509,23 @@ class IceSurface extends StatelessWidget {
       child: Container(width: width, height: height, constraints: constraints, padding: padding, child: child),
       builder: (context, t, content) {
         Widget body = CustomPaint(
-          painter: _IceFill(radius: radius, focus: t, solid: solid, opacity: base, hover: hover, sheen: sheen),
-          foregroundPainter: rim == 0 && t == 0 ? null : _IceRim(radius: radius, focus: t, strength: rim),
+          painter: _IceFill(
+            radius: radius,
+            focus: t,
+            solid: solid,
+            opacity: base,
+            hover: hover,
+            sheen: sheen,
+            ratio: ratio,
+          ),
+          foregroundPainter: rim == 0 && t == 0 ? null : _IceRim(radius: radius, focus: t, strength: rim, ratio: ratio),
           child: content,
         );
         if (sweep) body = SheenSweep(active: focused, child: body);
-        final clip = ClipRRect(
-          borderRadius: BorderRadius.circular(radius),
-          child: backdrop && !solid
-              ? BackdropFilter.grouped(
-                  filter: ui.ImageFilter.blur(sigmaX: GlassRecipe.surfaceBlur, sigmaY: GlassRecipe.surfaceBlur),
-                  child: body,
-                )
-              : body,
-        );
+        final clip = ClipRRect(borderRadius: BorderRadius.circular(radius), child: body);
         if (!shadow && t == 0) return clip;
         return CustomPaint(
-          painter: _IceHalo(radius: radius, focus: t, shadow: shadow),
+          painter: _IceHalo(radius: radius, focus: t, shadow: shadow, ratio: ratio),
           child: clip,
         );
       },
@@ -424,6 +542,7 @@ class _IceFill extends CustomPainter {
     required this.opacity,
     required this.hover,
     required this.sheen,
+    this.ratio = 1,
   });
 
   final double radius;
@@ -432,9 +551,27 @@ class _IceFill extends CustomPainter {
   final double opacity;
   final bool hover;
   final bool sheen;
+  final double ratio;
 
   @override
   void paint(Canvas canvas, Size size) {
+    // At rest (not halfway through gaining or losing focus): the kept picture.
+    if (focus == 0 || focus == 1) {
+      return _IceCache.paint(canvas, size, ratio, (
+        'fill',
+        size,
+        radius,
+        focus,
+        solid,
+        opacity,
+        hover,
+        sheen,
+      ), (canvas) => _draw(canvas, size));
+    }
+    _draw(canvas, size);
+  }
+
+  void _draw(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
     final shape = RRect.fromRectAndRadius(rect, Radius.circular(radius));
     final white = Colors.white;
@@ -490,19 +627,34 @@ class _IceFill extends CustomPainter {
       old.solid != solid ||
       old.opacity != opacity ||
       old.hover != hover ||
-      old.sheen != sheen;
+      old.sheen != sheen ||
+      old.ratio != ratio;
 }
 
 /// The rim of refracted light around a surface and the specular line inside its top edge.
 class _IceRim extends CustomPainter {
-  _IceRim({required this.radius, required this.focus, required this.strength});
+  _IceRim({required this.radius, required this.focus, required this.strength, this.ratio = 1});
 
   final double radius;
   final double focus;
   final double strength;
+  final double ratio;
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (focus == 0 || focus == 1) {
+      return _IceCache.paint(canvas, size, ratio, (
+        'rim',
+        size,
+        radius,
+        focus,
+        strength,
+      ), (canvas) => _draw(canvas, size));
+    }
+    _draw(canvas, size);
+  }
+
+  void _draw(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
     double lerp(double a, double b) => a * strength + (b - a * strength) * focus;
     final white = Colors.white;
@@ -562,49 +714,71 @@ class _IceRim extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_IceRim old) => old.radius != radius || old.focus != focus || old.strength != strength;
+  bool shouldRepaint(_IceRim old) =>
+      old.radius != radius || old.focus != focus || old.strength != strength || old.ratio != ratio;
 }
 
 /// The shadow under a surface (outside its shape only, so the glass is not darkened through)
-/// and, focused, its icy glow.
+/// and, focused, its icy glow. At rest it is drawn once and kept as an image (_IceCache), so the
+/// cut-out shape costs nothing on the frames after.
 class _IceHalo extends CustomPainter {
-  _IceHalo({required this.radius, required this.focus, required this.shadow});
+  _IceHalo({required this.radius, required this.focus, required this.shadow, this.ratio = 1});
 
   final double radius;
   final double focus;
   final bool shadow;
+  final double ratio;
+
+  /// How far the shadow and the glow reach past the box.
+  static const reach = GlassRecipe.shadowOffset + GlassRecipe.shadowBlur * 1.6;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final shape = RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(radius));
-    final outside = Path()
-      ..fillType = PathFillType.evenOdd
-      ..addRect((Offset.zero & size).inflate(80))
-      ..addRRect(shape);
-    canvas
-      ..save()
-      ..clipPath(outside);
-    if (shadow) {
-      canvas.drawRRect(
-        shape.shift(const Offset(0, GlassRecipe.shadowOffset)),
-        Paint()
-          ..color = Colors.black.withValues(alpha: GlassRecipe.shadowOpacity * (1 - 0.3 * focus))
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, GlassRecipe.shadowBlur / 2),
+    if (focus == 0 || focus == 1) {
+      return _IceCache.paint(
+        canvas,
+        size,
+        ratio,
+        ('halo', size, radius, focus, shadow),
+        (canvas) => _draw(canvas, size),
+        margin: reach,
       );
+    }
+    _draw(canvas, size);
+  }
+
+  void _draw(Canvas canvas, Size size) {
+    final box = Offset.zero & size;
+    final shape = RRect.fromRectAndRadius(box, Radius.circular(radius));
+    if (shadow) {
+      final outside = Path()
+        ..fillType = PathFillType.evenOdd
+        ..addRect(box.inflate(reach))
+        ..addRRect(shape);
+      canvas
+        ..save()
+        ..clipPath(outside)
+        ..drawRRect(
+          shape.shift(const Offset(0, GlassRecipe.shadowOffset)),
+          Paint()
+            ..color = Colors.black.withValues(alpha: GlassRecipe.shadowOpacity * (1 - 0.3 * focus))
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, GlassRecipe.shadowBlur / 2),
+        )
+        ..restore();
     }
     if (focus > 0) {
       canvas.drawRRect(
         shape,
         Paint()
           ..color = GlassRecipe.cyan.withValues(alpha: GlassRecipe.glowOpacity * focus)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, GlassRecipe.glowBlur / 2),
+          ..maskFilter = const MaskFilter.blur(BlurStyle.outer, GlassRecipe.glowBlur / 2),
       );
     }
-    canvas.restore();
   }
 
   @override
-  bool shouldRepaint(_IceHalo old) => old.radius != radius || old.focus != focus || old.shadow != shadow;
+  bool shouldRepaint(_IceHalo old) =>
+      old.radius != radius || old.focus != focus || old.shadow != shadow || old.ratio != ratio;
 }
 
 /// A band of light that sweeps once across its child when [active] turns on: the glint of a
@@ -695,25 +869,31 @@ class LayerScrim extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The layer's blur is the only one under it: its panels and buttons sit on it unblurred.
+    final frosted = FrostedBehind(child: child);
     if (!LookScope.isGlass(context)) {
       return ClipRect(
         child: BackdropFilter(
           filter: ui.ImageFilter.blur(sigmaX: 30, sigmaY: 30),
           child: ColoredBox(
             color: Colors.black.withValues(alpha: opacity),
-            child: child,
+            child: frosted,
           ),
         ),
       );
     }
     final solid = LookScope.isSolid(context);
+    // On the see-through window the layer is a pane over the desktop the system already blurs,
+    // and the home screen fades out under it (LauncherShell) instead of being blurred: a blur of
+    // the whole window on every frame kept scrolling a panel there under 30 frames a second.
+    final seeThrough = LookScope.isSeeThrough(context);
     return ClipRect(
       child: BackdropFilter(
-        enabled: !solid,
+        enabled: !solid && !seeThrough,
         filter: ui.ImageFilter.blur(sigmaX: GlassRecipe.layerBlur, sigmaY: GlassRecipe.layerBlur),
         child: CustomPaint(
           painter: _LayerPainter(solid ? 0.94 : math.max(GlassRecipe.layerOpacity, opacity)),
-          child: child,
+          child: frosted,
         ),
       ),
     );
@@ -794,15 +974,20 @@ class _ArtworkScrimPainter extends CustomPainter {
   bool shouldRepaint(_ArtworkScrimPainter oldDelegate) => false;
 }
 
-/// Watches how long frames take on the GPU and gives up on the blur when it is too slow: if
-/// most frames of two windows in a row take over [budget] to draw, [onSlow] runs (once).
+/// Watches how long frames take on the GPU and gives up on Glass's transparency when it is too
+/// slow: if most frames of two windows in a row take over [budget] to draw, or [severeRun]
+/// frames in a row take over [severe] (under 25 a second: a launcher that visibly drags),
+/// [onSlow] runs (once). The launcher draws frames only while something moves, so the windows
+/// are short: a few seconds of use are enough to tell.
 class RasterWatch {
   RasterWatch({
     required this.onSlow,
     this.budget = const Duration(milliseconds: 12),
-    this.window = 90,
+    this.window = 30,
     this.share = 0.6,
     this.windows = 2,
+    this.severe = const Duration(milliseconds: 40),
+    this.severeRun = 8,
   });
 
   final VoidCallback onSlow;
@@ -810,10 +995,13 @@ class RasterWatch {
   final int window;
   final double share;
   final int windows;
+  final Duration severe;
+  final int severeRun;
 
   int _frames = 0;
   int _slow = 0;
   int _strikes = 0;
+  int _severe = 0;
   bool _done = false;
 
   bool get tripped => _done;
@@ -822,17 +1010,21 @@ class RasterWatch {
   void add(Iterable<Duration> raster) {
     for (final duration in raster) {
       if (_done) return;
+      _severe = duration > severe ? _severe + 1 : 0;
+      if (_severe >= severeRun) return _trip();
       _frames++;
       if (duration > budget) _slow++;
       if (_frames < window) continue;
       _strikes = _slow >= window * share ? _strikes + 1 : 0;
       _frames = 0;
       _slow = 0;
-      if (_strikes >= windows) {
-        _done = true;
-        onSlow();
-      }
+      if (_strikes >= windows) return _trip();
     }
+  }
+
+  void _trip() {
+    _done = true;
+    onSlow();
   }
 
   /// Starts over, frames before now forgotten (a game ran, the look changed).
@@ -840,6 +1032,7 @@ class RasterWatch {
     _frames = 0;
     _slow = 0;
     _strikes = 0;
+    _severe = 0;
   }
 }
 
@@ -870,7 +1063,6 @@ class PaneRow extends StatelessWidget {
         child: IceSurface(
           radius: radius,
           focused: focused,
-          backdrop: false,
           shadow: false,
           sweep: true,
           opacity: 0.16,

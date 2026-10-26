@@ -81,7 +81,14 @@ class Backdrop extends StatelessWidget {
       children: [
         ThemeBackground(
           style: model.look,
-          paused: model.running != null || model.preferences.reducedMotion || covered || (glass && artwork),
+          // Still while a game runs (in front or not: the GPU is the game's), while the launcher
+          // is not in front, under a layer and with reduced motion.
+          paused:
+              model.running != null ||
+              model.resting ||
+              model.preferences.reducedMotion ||
+              covered ||
+              (glass && artwork),
           time: time,
         ),
         RepaintBoundary(
@@ -92,7 +99,13 @@ class Backdrop extends StatelessWidget {
                 ? GameArtwork(
                     key: ValueKey(game!.id),
                     path: game.background!,
-                    animated: !model.preferences.reducedMotion && time == null && !covered && !glass,
+                    animated:
+                        !model.preferences.reducedMotion &&
+                        time == null &&
+                        !covered &&
+                        !glass &&
+                        model.running == null &&
+                        !model.resting,
                   )
                 : const SizedBox.expand(),
           ),

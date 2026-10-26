@@ -32,7 +32,6 @@ flutter:
   uses-material-design: true
   shaders:
     - shaders/background.frag
-    - shaders/frost.frag
   assets:
     - assets/fonts/Figtree-OFL.txt
     # The Noto fonts games get in place of the console's system fonts (SIL Open Font License

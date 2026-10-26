@@ -25,7 +25,21 @@ import 'ui/theme.dart';
 Future<void> main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
   final options = LaunchOptions.parse(arguments);
-  final DesktopWindows desktop = Platform.isWindows ? WindowsDesktop() : LinuxDesktop();
+  final padLog = Platform.environment['ANYPS5_PAD_LOG'];
+  final DesktopWindows desktop = Platform.isWindows
+      ? WindowsDesktop(
+          log: padLog == null || padLog.isEmpty
+              ? null
+              : (line) {
+                  try {
+                    File(padLog)
+                        .writeAsStringSync('${DateTime.now().toIso8601String()} $line\n', mode: FileMode.append);
+                  } on FileSystemException {
+                    // The log is a help, never a reason to stop.
+                  }
+                },
+        )
+      : LinuxDesktop();
   final WindowBackdrop backdrop = switch (desktop) {
     final LinuxDesktop linux => LinuxBackdrop(linux),
     _ => Platform.isWindows ? WindowsBackdrop() : const NoBackdrop(),

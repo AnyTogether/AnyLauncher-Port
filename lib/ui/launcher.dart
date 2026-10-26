@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
@@ -13,6 +15,7 @@ import 'components.dart';
 import 'controller_test_view.dart';
 import 'crash_report_view.dart';
 import 'drag_pan.dart';
+import 'frame_log.dart';
 import 'glass.dart';
 import 'home.dart';
 import 'level_badge.dart';
@@ -58,10 +61,29 @@ class _LauncherShellState extends State<LauncherShell> {
   /// Glass's blur given up when the GPU cannot keep up with it.
   late final RasterWatch _raster = RasterWatch(onSlow: () => widget.model.glassTooSlow());
 
+  /// Whether the launcher is in front, looked at a few times a second (AppModel.checkFront).
+  late final Timer _frontWatch;
+
+  /// ANYPS5_FRAME_LOG: the frames drawn each second and how long they took.
+  late final FrameLog? _frameLog = FrameLog.forPath(
+    (widget.model.services.environment ?? Platform.environment)['ANYPS5_FRAME_LOG'],
+    describe: () {
+      final model = widget.model;
+      return 'look ${model.look.name}${model.solidGlass ? ' solid' : ''}'
+          '${model.glassWindow.seeThrough ? ' see-through' : ''} layer ${model.overlay?.name ?? 'home'}'
+          '${model.running != null ? ' game running' : ''} ${model.active ? 'in front' : 'behind'}';
+    },
+  );
+
   void _timings(List<FrameTiming> timings) {
     final model = widget.model;
+    if (_frameLog case final log?) {
+      for (final timing in timings) {
+        log.add(timing.buildDuration, timing.rasterDuration);
+      }
+    }
     // Only Glass's own frames count: not while a game shares the GPU, nor once it is solid.
-    if (model.look != LookStyle.glass || model.solidGlass || model.running != null) {
+    if (model.look != LookStyle.glass || model.solidGlass || model.running != null || model.resting) {
       _raster.reset();
       return;
     }
@@ -72,6 +94,8 @@ class _LauncherShellState extends State<LauncherShell> {
   void initState() {
     super.initState();
     SchedulerBinding.instance.addTimingsCallback(_timings);
+    _frameLog?.start();
+    _frontWatch = Timer.periodic(const Duration(milliseconds: 400), (_) => widget.model.checkFront());
     widget.model.addListener(_modelChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => widget.model.applyBackdrop());
     _lifecycle = AppLifecycleListener(
@@ -105,6 +129,8 @@ class _LauncherShellState extends State<LauncherShell> {
   @override
   void dispose() {
     SchedulerBinding.instance.removeTimingsCallback(_timings);
+    _frameLog?.stop();
+    _frontWatch.cancel();
     widget.model.removeListener(_modelChanged);
     _keys.stop();
     _lifecycle.dispose();
@@ -252,76 +278,88 @@ class _LauncherShellState extends State<LauncherShell> {
                       scale: scale,
                       child: ListenableBuilder(
                         listenable: model,
-                        builder: (context, _) => PointerFocus(
-                          value: model.pointerFocus,
-                          child: LookScope(
-                            glass: model.look == LookStyle.glass,
-                            solid: model.solidGlass,
-                            seeThrough: model.glassWindow.seeThrough,
-                            child: _WindowBase(
-                              window: model.glassWindow,
-                              deep: model.look.deep,
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  Backdrop(model: model, time: widget.time),
-                                  RepaintBoundary(
-                                    child: AnimatedSwitcher(
-                                      duration: Motion.fade,
-                                      switchInCurve: Motion.settle,
-                                      child: model.preferences.onboarded
-                                          ? HomeView(key: const ValueKey('home'), model: model, now: widget.now)
-                                          : OnboardingView(
-                                              key: const ValueKey('onboarding'),
-                                              model: model,
-                                              time: widget.time,
-                                            ),
-                                    ),
-                                  ),
-                                  RepaintBoundary(
-                                    child: AnimatedSwitcher(
-                                      duration: Motion.overlay,
-                                      reverseDuration: Motion.overlay,
-                                      switchInCurve: Motion.settle,
-                                      switchOutCurve: Curves.easeIn,
-                                      transitionBuilder: (child, animation) => FadeTransition(
-                                        opacity: animation,
-                                        child: ScaleTransition(
-                                          scale: Tween(begin: 0.985, end: 1.0).animate(animation),
-                                          child: child,
+                        // Behind a game or any other window the launcher rests: every animation
+                        // stops and no frame is drawn, the GPU left to what is in front.
+                        builder: (context, _) => TickerMode(
+                          enabled: !model.resting,
+                          child: PointerFocus(
+                            value: model.pointerFocus,
+                            child: LookScope(
+                              glass: model.look == LookStyle.glass,
+                              solid: model.solidGlass,
+                              seeThrough: model.glassWindow.seeThrough,
+                              child: _WindowBase(
+                                window: model.glassWindow,
+                                deep: model.look.deep,
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    Backdrop(model: model, time: widget.time),
+                                    RepaintBoundary(
+                                      // Glass's see-through window: under a layer the home screen
+                                      // fades out, the layer a pane over the desktop (LayerScrim).
+                                      child: AnimatedOpacity(
+                                        opacity: model.glassWindow.seeThrough && model.overlay != null ? 0 : 1,
+                                        duration: Motion.overlay,
+                                        curve: Motion.settle,
+                                        child: AnimatedSwitcher(
+                                          duration: Motion.fade,
+                                          switchInCurve: Motion.settle,
+                                          child: model.preferences.onboarded
+                                              ? HomeView(key: const ValueKey('home'), model: model, now: widget.now)
+                                              : OnboardingView(
+                                                  key: const ValueKey('onboarding'),
+                                                  model: model,
+                                                  time: widget.time,
+                                                ),
                                         ),
                                       ),
-                                      child: KeyedSubtree(
-                                        key: ValueKey(model.overlay),
-                                        child: switch (model.overlay) {
-                                          Layer.library => LibraryGrid(model: model),
-                                          Layer.log => LogView(model: model),
-                                          Layer.crashReport => CrashReportView(model: model),
-                                          Layer.controllerTest => ControllerTestView(model: model),
-                                          Layer.trophies => TrophyView(model: model),
-                                          Layer.gallery => GalleryView(model: model),
-                                          Layer.messages => WithBackPill(
-                                            onBack: () => model.handle(Command.back),
-                                            child: MessagesView(model: model),
+                                    ),
+                                    RepaintBoundary(
+                                      child: AnimatedSwitcher(
+                                        duration: Motion.overlay,
+                                        reverseDuration: Motion.overlay,
+                                        switchInCurve: Motion.settle,
+                                        switchOutCurve: Curves.easeIn,
+                                        transitionBuilder: (child, animation) => FadeTransition(
+                                          opacity: animation,
+                                          child: ScaleTransition(
+                                            scale: Tween(begin: 0.985, end: 1.0).animate(animation),
+                                            child: child,
                                           ),
-                                          Layer.profile => WithBackPill(
-                                            onBack: () => model.handle(Command.back),
-                                            child: ProfileView(model: model),
-                                          ),
-                                          Layer.compare => WithBackPill(
-                                            onBack: () => model.handle(Command.back),
-                                            child: CompareView(model: model),
-                                          ),
-                                          null => const SizedBox.shrink(),
-                                          _ => PanelView(model: model),
-                                        },
+                                        ),
+                                        child: KeyedSubtree(
+                                          key: ValueKey(model.overlay),
+                                          child: switch (model.overlay) {
+                                            Layer.library => LibraryGrid(model: model),
+                                            Layer.log => LogView(model: model),
+                                            Layer.crashReport => CrashReportView(model: model),
+                                            Layer.controllerTest => ControllerTestView(model: model),
+                                            Layer.trophies => TrophyView(model: model),
+                                            Layer.gallery => GalleryView(model: model),
+                                            Layer.messages => WithBackPill(
+                                              onBack: () => model.handle(Command.back),
+                                              child: MessagesView(model: model),
+                                            ),
+                                            Layer.profile => WithBackPill(
+                                              onBack: () => model.handle(Command.back),
+                                              child: ProfileView(model: model),
+                                            ),
+                                            Layer.compare => WithBackPill(
+                                              onBack: () => model.handle(Command.back),
+                                              child: CompareView(model: model),
+                                            ),
+                                            null => const SizedBox.shrink(),
+                                            _ => PanelView(model: model),
+                                          },
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  if (model.starting != null) _StartingCard(model: model),
-                                  if (model.pairing != null) PairingCard(model: model),
-                                  _Toast(message: model.toast, level: model.toastLevel, icon: model.toastIcon),
-                                ],
+                                    if (model.starting != null) _StartingCard(model: model),
+                                    if (model.pairing != null) PairingCard(model: model),
+                                    _Toast(message: model.toast, level: model.toastLevel, icon: model.toastIcon),
+                                  ],
+                                ),
                               ),
                             ),
                           ),

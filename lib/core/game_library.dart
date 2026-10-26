@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import 'binary.dart';
 import 'family/family_rules.dart' show AgeLevels;
+import 'game_addons.dart';
 import 'self_unwrap.dart';
 
 /// What a dump's eboot.bin is.
@@ -33,6 +34,8 @@ class Game {
     this.background,
     this.music,
     this.ageLevels,
+    this.update,
+    this.addons = const [],
   });
 
   /// The dump's folder, as the scan found it.
@@ -56,6 +59,15 @@ class Game {
   /// param.json's age ratings (`ageLevel`): "default" or a region such as "US", to an age; null
   /// when the dump has none.
   final Map<String, int>? ageLevels;
+
+  /// The update dumped beside the game ([GameAddons]), null when there is none.
+  final GameUpdate? update;
+
+  /// The add-ons dumped beside the game ([GameAddons]).
+  final List<GameAddon> addons;
+
+  /// What the engine needs to see them (ANYPS5_UPDATE_DIR, ANYPS5_ADDCONT_DIRS).
+  Map<String, String> get addonEnvironment => GameAddons.environment(update: update, addons: addons);
 
   String get id => folder;
 
@@ -111,6 +123,12 @@ abstract final class GameLibrary {
     final found = <Game>[];
     final incomplete = <String>[];
     _visit(root, 0, found, incomplete);
+    // A game's update and add-ons are not games of their own, nor dumps still being copied.
+    final claimed = GameAddons.claimed(found.map((game) => (update: game.update, addons: game.addons)));
+    if (claimed.isNotEmpty) {
+      found.removeWhere((game) => GameAddons.isClaimed(game.folder, claimed));
+      incomplete.removeWhere((folder) => GameAddons.isClaimed(folder, claimed));
+    }
     found.sort((a, b) {
       final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
       return byName != 0 ? byName : a.folder.compareTo(b.folder);
@@ -131,12 +149,17 @@ abstract final class GameLibrary {
           a.icon != b.icon ||
           a.background != b.background ||
           a.music != b.music ||
+          a.update != b.update ||
+          !_sameAddons(a.addons, b.addons) ||
           !_sameNames(a.names, b.names)) {
         return false;
       }
     }
     return true;
   }
+
+  static bool _sameAddons(List<GameAddon> a, List<GameAddon> b) =>
+      a.length == b.length && [for (var index = 0; index < a.length; index++) a[index] == b[index]].every((same) => same);
 
   static bool _sameNames(Map<String, String> a, Map<String, String> b) =>
       a.length == b.length && a.entries.every((entry) => b[entry.key] == entry.value);
@@ -208,6 +231,7 @@ abstract final class GameLibrary {
     } else {
       executable = ExecutableKind.unreadable;
     }
+    final beside = GameAddons.look(folder, titleId);
     return Game(
       folder: folder,
       titleId: titleId,
@@ -220,6 +244,8 @@ abstract final class GameLibrary {
       background: existing('pic0.png'),
       music: existing('snd0.at9'),
       ageLevels: AgeLevels.parse(parameters['ageLevel']),
+      update: beside.update,
+      addons: beside.addons,
     );
   }
 

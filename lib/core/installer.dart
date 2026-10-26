@@ -27,6 +27,7 @@ class InstallRecord {
     required this.system,
     required this.date,
     this.resolution,
+    this.update,
   });
 
   factory InstallRecord.fromJson(Map<String, dynamic> json) => InstallRecord(
@@ -36,6 +37,7 @@ class InstallRecord {
     system: json['system'] as String? ?? 'linux',
     date: DateTime.parse(json['date'] as String),
     resolution: json['resolution'] as String?,
+    update: json['update'] as String?,
   );
 
   final String source;
@@ -47,8 +49,12 @@ class InstallRecord {
   /// The resolution written into the executable by the title's patch file, if any.
   final String? resolution;
 
+  /// The version of the update the game was unlocked with ([GameUpdate]), null without one.
+  final String? update;
+
   Map<String, Object> toJson() => {
     'resolution': ?resolution,
+    'update': ?update,
     'date': date.toUtc().toIso8601String(),
     'source': source,
     'system': system,
@@ -250,11 +256,8 @@ class Installer {
       }
     }
 
-    final found = modules(game.folder);
-    final executables = [
-      'eboot.bin',
-      ...found,
-    ].fold(0, (sum, relative) => sum + size(p.join(game.folder, p.joinAll(relative.split('/')))));
+    final found = modulesOf(game);
+    final executables = ['eboot.bin', ...found].fold(0, (sum, relative) => sum + size(source(game, relative)));
     final games = p.join(root, GameLibrary.storeName, 'Games');
     final libraryFiles = toolkit.libraryFiles;
     var libraries = 0;
@@ -310,7 +313,7 @@ class Installer {
       'patches ${patches == null ? '-' : sha256.convert(utf8.encode(patches))}',
     ];
     for (final relative in ['eboot.bin', ...found]) {
-      final path = p.join(game.folder, p.joinAll(relative.split('/')));
+      final path = source(game, relative);
       for (final file in [path, '$path.esbak']) {
         final stat = File(file).statSync();
         if (stat.type == FileSystemEntityType.notFound) {
@@ -320,7 +323,28 @@ class Installer {
         lines.add('${p.relative(file, from: game.folder)} ${stat.size} ${stat.modified.microsecondsSinceEpoch}');
       }
     }
+    final update = game.update;
+    if (update != null) lines.add('update ${update.folder} ${update.version}');
     return lines.join('\n');
+  }
+
+  /// Where the file at [relative] (with / separators) in [game] comes from: the update's copy
+  /// when the game has an update that has it, else the game's.
+  static String source(Game game, String relative) {
+    final update = game.update;
+    if (update != null) {
+      final updated = p.join(update.folder, p.joinAll(relative.split('/')));
+      if (File(updated).existsSync()) return updated;
+    }
+    return p.join(game.folder, p.joinAll(relative.split('/')));
+  }
+
+  /// The game's modules and its update's, each once and sorted: the relinker converts the
+  /// update's copy of one both have ([source]), and the engine loads the relinked ones from app0.
+  static List<String> modulesOf(Game game) {
+    final update = game.update;
+    if (update == null) return modules(game.folder);
+    return {...modules(game.folder), ...modules(update.folder)}.toList()..sort();
   }
 
   /// The kept relinker output of [game] when its key is [key], null when there is none or it was
@@ -421,7 +445,7 @@ class Installer {
     final shortage = needs.shortage(free: freeSpace(root), folder: root);
     if (shortage != null) throw shortage;
     try {
-      final found = modules(game.folder);
+      final found = modulesOf(game);
       final (patchText, appliedResolution) = _patchText(toolkit, game, resolution);
       final key = relinkKey(game, toolkit, found, patchText);
       final keeps = needs.linksOutput;
@@ -444,7 +468,7 @@ class Installer {
           final relative = inputs[index];
           final target = p.join(source, p.joinAll(relative.split('/')));
           Directory(p.dirname(target)).createSync(recursive: true);
-          _unwrap(p.join(game.folder, p.joinAll(relative.split('/'))), target);
+          _unwrap(Installer.source(game, relative), target);
           _progress(InstallStep.unwrap, (index + 1) / inputs.length);
           await _yield();
         }
@@ -531,6 +555,7 @@ class Installer {
         system: system.name,
         date: _clock(),
         resolution: appliedResolution,
+        update: game.update?.version,
       );
       File(p.join(partial, recordName)).writeAsStringSync(const JsonEncoder.withIndent('  ').convert(record.toJson()));
       _progress(InstallStep.layout, 1);

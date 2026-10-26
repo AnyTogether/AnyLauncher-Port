@@ -16,6 +16,17 @@ settings, saves and trophies per game. A phone running the AnyPS5 Remote app pai
 works as a controller (the protocol in section 12.4 of the
 [AnyTogether platform notes](https://github.com/utkuhalis/AnyPS5-ARM/blob/anytogether/docs/en/12-platforms.md)).
 
+A phone without the app plays too: **Settings › Phones › Show QR code**, scanned with the
+phone's camera, turns its browser into a touch DualSense (sticks, D-pad, face buttons, L1/R1,
+L2/R2, Options, Create, PS, touchpad, the game's light bar and rumble where the browser can
+vibrate). The browser goes through the same pairing card, seats (players 2 to 4) and pad relay
+as the app. The link works once for two minutes and becomes a cookie for that browser; the page
+is served on the local network address only, to the local network only, refusing other sites and
+hosts, with rate limits; the server runs only while the code is shown and its browsers are
+connected, or always with Keep browser play on. Plain HTTP, so no tilt (browsers give motion
+sensors to HTTPS pages only). The page is the macOS launcher's own file
+(`assets/browser_pad/index.html`, copied by `tool/sync_browser_pad.sh`).
+
 ## Layout
 
 - `lib/core/` platform-independent logic in pure Dart (no Flutter), unit tested:
@@ -34,6 +45,8 @@ works as a controller (the protocol in section 12.4 of the
     and the pre-filled GitHub issue for it
   - `remote/` the phone server (WebSocket 47700, pairing, UDP pad relay, cable frames), an
     mDNS responder for `_anyps5-remote._tcp`, the adb cable tunnel
+    and the browser pad server (HTTP and WebSocket 47710 on the LAN address: one-time token,
+    session cookie, each browser a phone on the phone server's own control channel)
   - `trophies.dart`, `save_backup.dart`, `screenshots.dart` (a game's F12 and trophy pictures,
     a small PNG encoder)
   - `gamepad/` controllers as launcher commands (`pad_navigation.dart`: the mapping, repeat on

@@ -151,7 +151,8 @@ void main() {
     expect(seen['join_status'], '201');
     expect(seen['join_response'], 'parsed', reason: 'the game\'s web API library takes the reply');
     expect(seen['join_body'], '{"players":[{"accountId":"${OnlineIdentity.account(me.id)}","platform":"PS5"}]}');
-    expect(seen['joined_status'], '200');
+    expect(seen['joined_status'], '200', reason: 'getPlayerSessions finds it by the session IDs header');
+    expect(seen['joined_response'], 'parsed');
     expect(seen['leave_status'], '204');
     expect(play.router.notOffered, isEmpty);
   }, skip: skip);

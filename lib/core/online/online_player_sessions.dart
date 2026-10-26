@@ -111,6 +111,22 @@ class OnlinePlayerSessions {
     switch ((method, parts.length)) {
       case ('POST', 2):
         return _create(body);
+      case ('GET', 2):
+        // getPlayerSessions names its sessions in a header, not in the path (Join reads the
+        // session it just joined this way).
+        final header = request.headers
+            .where((pair) => pair.name.toLowerCase() == 'x-psn-session-manager-session-ids')
+            .firstOrNull;
+        final wanted = [
+          for (final id in (header?.value ?? '').split(','))
+            if (id.trim().isNotEmpty) id.trim(),
+        ];
+        if (wanted.isEmpty) return _problem(400, 'X-PSN-SESSION-MANAGER-SESSION-IDS is required');
+        final found = [
+          for (final id in wanted)
+            if (_sessions[id] case final session?) _view(session),
+        ];
+        return found.isEmpty ? _problem(404, 'No such player session') : _json(200, {'playerSessions': found});
       case ('GET', 3):
         final found = [
           for (final id in parts[2].split(','))

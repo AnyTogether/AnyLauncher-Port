@@ -233,7 +233,11 @@ void main() {
     expect(sessions.handle(request('POST', '/v1/playerSessions', '[1]')).status, 400);
     expect(sessions.handle(request('POST', '/v1/playerSessions', '{}')).status, 400);
     expect(sessions.handle(request('PATCH', '/v1/playerSessions/nope', '{}')).status, 404);
-    expect(sessions.handle(request('GET', '/v1/playerSessions')).status, 404);
+    expect(
+      sessions.handle(request('GET', '/v1/playerSessions')).status,
+      400,
+      reason: 'getPlayerSessions needs its header',
+    );
     expect(sessions.handle(request('GET', '/v1/users/123/playerSessions')).status, 403);
     expect(sessions.handle(request('GET', '/v2/playerSessions')).status, 404);
     expect(sessions.handle(request('DELETE', '/v1/playerSessions/$id')).status, 204);
@@ -318,6 +322,18 @@ void main() {
     expect(joined.status, 201);
     expect(utf8.decode(joined.body), '{"players":[{"accountId":"42","platform":"PS5"}]}');
     expect(sessions.sessionIds, [elsewhere]);
+    // What Human Fall Flat asks next: getPlayerSessions, the session named in a header.
+    WireWebRequest byHeader(String ids) => WireWebRequest(
+      userId: 0x10000000,
+      apiGroup: 'sessionManager',
+      path: '/v1/playerSessions?fields=sessionId,member,leader,customData1',
+      method: 'GET',
+      headers: [WirePair('X-PSN-SESSION-MANAGER-SESSION-IDS', ids)],
+    );
+    final listed = sessions.handle(byHeader(elsewhere));
+    expect(listed.status, 200);
+    expect(((json(listed)['playerSessions'] as List).single as Map)['sessionId'], elsewhere);
+    expect(sessions.handle(byHeader('0190a0b1-0000-7000-8000-00000000000d')).status, 404);
     final got =
         (json(sessions.handle(request('GET', '/v1/playerSessions/$elsewhere')))['playerSessions'] as List).single;
     expect([for (final player in ((got as Map)['member'] as Map)['players'] as List) player['accountId']], ['42']);

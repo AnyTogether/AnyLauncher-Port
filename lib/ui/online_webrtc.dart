@@ -6,8 +6,9 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../core/online/online_peer_mesh.dart';
 
 /// Online play's peer connections with flutter_webrtc on Windows and Linux: data only (no
-/// microphone, no media), one `game` channel per connection, unordered and without resends, the
-/// way the Mac launcher opens it, so a PC and a Mac connect to each other.
+/// microphone, no media), a `game` channel per connection, unordered and without resends, and a
+/// reliable, ordered `stream` channel for the game's streams, the way the Mac launcher opens them,
+/// so a PC and a Mac connect to each other.
 class WebRtcGameLinks implements GameLinks {
   @override
   Future<GameLink> link(List<Map<String, dynamic>> iceServers) async {
@@ -41,12 +42,16 @@ class _GameLink implements GameLink {
     };
     pc.onDataChannel = (channel) {
       if (channel.label == OnlinePeerMesh.label) _use(channel);
+      if (channel.label == OnlinePeerMesh.streamLabel) _useStream(channel);
     };
   }
 
   final RTCPeerConnection pc;
   RTCDataChannel? _channel;
   bool _open = false;
+  RTCDataChannel? _streamChannel;
+  bool _streamOpen = false;
+  void Function(Uint8List)? _onStreamMessage;
   void Function(Map<String, dynamic>)? _onCandidate;
   void Function(Uint8List)? _onMessage;
   void Function(String)? _onState;
@@ -69,8 +74,34 @@ class _GameLink implements GameLink {
     };
   }
 
+  void _useStream(RTCDataChannel channel) {
+    _streamChannel = channel;
+    _streamOpen = channel.state == RTCDataChannelState.RTCDataChannelOpen;
+    channel.onDataChannelState = (state) => _streamOpen = state == RTCDataChannelState.RTCDataChannelOpen;
+    channel.onMessage = (message) {
+      if (message.isBinary) _onStreamMessage?.call(message.binary);
+    };
+  }
+
   @override
-  Future<void> openChannel() async => _use(await pc.createDataChannel(OnlinePeerMesh.label, _Unreliable()));
+  Future<void> openChannel() async {
+    _use(await pc.createDataChannel(OnlinePeerMesh.label, _Unreliable()));
+    _useStream(await pc.createDataChannel(OnlinePeerMesh.streamLabel, RTCDataChannelInit()..binaryType = 'binary'));
+  }
+
+  @override
+  bool get streamOpen => _streamOpen;
+
+  @override
+  bool sendStream(Uint8List data) {
+    final channel = _streamChannel;
+    if (channel == null || !_streamOpen) return false;
+    unawaited(channel.send(RTCDataChannelMessage.fromBinary(data)).catchError((Object _) {}));
+    return true;
+  }
+
+  @override
+  set onStreamMessage(void Function(Uint8List data) handler) => _onStreamMessage = handler;
 
   @override
   bool send(Uint8List data) {
@@ -123,8 +154,11 @@ class _GameLink implements GameLink {
     _onState = null;
     _onMessage = null;
     _onCandidate = null;
+    _onStreamMessage = null;
     _open = false;
+    _streamOpen = false;
     await _channel?.close().catchError((Object _) {});
+    await _streamChannel?.close().catchError((Object _) {});
     await pc.close();
   }
 }

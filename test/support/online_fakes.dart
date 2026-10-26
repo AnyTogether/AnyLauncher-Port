@@ -95,6 +95,19 @@ class FakeEngine {
 
   void send(WireDatagram datagram) => write(OnlineWire.frame(WireKind.datagram, datagram.payload));
 
+  void sendStream(WireStream frame) => write(frame.frame);
+
+  /// The next stream frame, skipping datagrams and taking account changes on the way.
+  Future<WireStream?> nextStream({Duration timeout = const Duration(seconds: 5)}) async {
+    while (true) {
+      final frame = await readFrame(timeout: timeout);
+      if (frame == null) return null;
+      if (frame.header.kind == WireKind.account.value) account = WireAccount.parse(frame.payload);
+      final kind = WireKind.of(frame.header.kind);
+      if (kind != null && kind.isStream) return WireStream.parse(kind, frame.payload);
+    }
+  }
+
   Future<WireDatagram?> nextDatagram({Duration timeout = const Duration(seconds: 5)}) async {
     final frame = await next(WireKind.datagram, timeout: timeout);
     return frame == null ? null : WireDatagram.parse(frame.payload);
@@ -253,7 +266,11 @@ class FakeGameLink implements GameLink {
   final candidatesIn = <Map<String, dynamic>>[];
   void Function(Map<String, dynamic>)? _onCandidate;
   void Function(Uint8List)? _onMessage;
+  void Function(Uint8List)? _onStreamMessage;
   void Function(String)? _onState;
+
+  /// Messages sent on the stream channel (reliable: never lost).
+  int streamMessages = 0;
 
   FakeGameLink? get partner => _remote == null ? null : network._links[_remote];
 
@@ -314,6 +331,24 @@ class FakeGameLink implements GameLink {
     });
     return true;
   }
+
+  @override
+  bool get streamOpen => _channel && !closed;
+
+  @override
+  bool sendStream(Uint8List data) {
+    final other = partner;
+    if (!_channel || closed || other == null || other.closed) return false;
+    streamMessages++;
+    final copy = Uint8List.fromList(data);
+    Timer.run(() {
+      if (!other.closed) other._onStreamMessage?.call(copy);
+    });
+    return true;
+  }
+
+  @override
+  set onStreamMessage(void Function(Uint8List data) handler) => _onStreamMessage = handler;
 
   @override
   set onCandidate(void Function(Map<String, dynamic> candidate) handler) => _onCandidate = handler;

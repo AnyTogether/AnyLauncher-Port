@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'online_wire.dart';
 
 /// AnyTogether's API as the online pieces call it: JSON in, JSON out (TogetherAccount.call in the
@@ -89,6 +91,10 @@ abstract class OnlinePeerTransport {
   /// false when nobody could be reached now.
   bool send(WireDatagram datagram);
 
+  /// A message of the game's streams (`OnlineStreamRelay`) to another player, carried reliably and
+  /// in order; false when they cannot be reached that way now.
+  bool sendStream(int peer, Uint8List message);
+
   /// A signal from another player's launcher.
   void receive(OnlinePeerSignal signal);
 
@@ -98,11 +104,23 @@ abstract class OnlinePeerTransport {
 /// What a transport is made with: where packets for the game go, AnyTogether (for ICE servers),
 /// and how to signal another player's launcher.
 class OnlinePeerContext {
-  const OnlinePeerContext({required this.deliver, required this.call, required this.signal});
+  const OnlinePeerContext({
+    required this.deliver,
+    required this.call,
+    required this.signal,
+    this.deliverStream,
+    this.peerGone,
+  });
 
   final void Function(WireDatagram datagram) deliver;
   final OnlineCall call;
   final OnlineSignal signal;
+
+  /// A stream message from the player at a virtual address.
+  final void Function(int peer, Uint8List message)? deliverStream;
+
+  /// The connection to the player at a virtual address is gone (their streams break).
+  final void Function(int peer)? peerGone;
 }
 
 /// No transport: packets to other players are dropped (online play without a way to reach them).
@@ -112,6 +130,9 @@ class OnlineNoTransport implements OnlinePeerTransport {
 
   @override
   bool send(WireDatagram datagram) => false;
+
+  @override
+  bool sendStream(int peer, Uint8List message) => false;
 
   @override
   void receive(OnlinePeerSignal signal) {}

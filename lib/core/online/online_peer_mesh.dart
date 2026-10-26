@@ -15,12 +15,20 @@ abstract class GameLink {
   Future<void> setRemote(Map<String, dynamic> description);
   Future<void> addCandidate(Map<String, dynamic> candidate);
 
-  /// The offerer opens the channel (`game`: unordered, no resends) before its offer; the answerer
-  /// gets it from the other side.
+  /// The offerer opens the channels (`game`: unordered, no resends; `stream`: reliable and
+  /// ordered) before its offer; the answerer gets them from the other side.
   Future<void> openChannel();
 
-  /// Sends one message on the channel; false while it is not open.
+  /// Sends one message on the game channel; false while it is not open.
   bool send(Uint8List data);
+
+  /// Sends one message on the stream channel; false while it is not open.
+  bool sendStream(Uint8List data);
+
+  /// Whether the stream channel is open.
+  bool get streamOpen;
+
+  set onStreamMessage(void Function(Uint8List data) handler);
 
   set onCandidate(void Function(Map<String, dynamic> candidate) handler);
   set onMessage(void Function(Uint8List data) handler);
@@ -74,13 +82,15 @@ class _Peer {
 /// game's bytes. The sender's virtual address is not in the packet: it is the address of whoever
 /// the connection is with, so nobody can speak for another player. A datagram to a broadcast or
 /// multicast address goes to every other player; one bigger than UDP allows is dropped and
-/// counted.
+/// counted. A second, reliable and ordered channel (`stream`) carries the game's streams as
+/// `OnlineStreamRelay` messages.
 class OnlinePeerMesh implements OnlinePeerTransport {
   /// [iceServers] replaces asking AnyTogether for them (tests pass [] for host candidates only).
   OnlinePeerMesh({required this.context, required this.links, List<Map<String, dynamic>>? iceServers})
     : _fixedIceServers = iceServers;
 
   static const label = 'game';
+  static const streamLabel = 'stream';
   static const headerSize = 9;
 
   final OnlinePeerContext context;
@@ -203,6 +213,18 @@ class OnlinePeerMesh implements OnlinePeerTransport {
     }
     _sent += sent;
     return sent > 0;
+  }
+
+  @override
+  bool sendStream(int peer, Uint8List message) {
+    final target = _byAddress[peer];
+    return target != null && !target.closed && target.link.sendStream(message);
+  }
+
+  /// Whether the reliable channel to the player at a virtual address is open.
+  bool canStream(int peer) {
+    final target = _byAddress[peer];
+    return target != null && !target.closed && target.link.streamOpen;
   }
 
   @override
@@ -346,8 +368,15 @@ class OnlinePeerMesh implements OnlinePeerTransport {
           case 'closed':
             peer.state = PeerState.closed;
         }
+        if ((state == 'failed' || state == 'closed') && identical(_byAddress[peer.address], peer)) {
+          context.peerGone?.call(peer.address);
+        }
       }
-      ..onMessage = (data) => _deliver(data, peer);
+      ..onMessage = ((data) => _deliver(data, peer))
+      ..onStreamMessage = (data) {
+        if (peer.closed || !identical(_byAddress[peer.address], peer)) return;
+        context.deliverStream?.call(peer.address, data);
+      };
     return peer;
   }
 
@@ -454,5 +483,7 @@ class OnlinePeerMesh implements OnlinePeerTransport {
       ..closed = true
       ..state = PeerState.closed;
     unawaited(peer.link.close().catchError((Object _) {}));
+    // The game's streams with this player end with the connection.
+    context.peerGone?.call(peer.address);
   }
 }

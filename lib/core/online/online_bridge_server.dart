@@ -5,13 +5,16 @@ import 'dart:typed_data';
 
 import 'online_wire.dart';
 
-/// What the bridge hands on: the game's web requests, its packets, its observation lines, and
-/// which engine is connected (null when it went).
+/// What the bridge hands on: the game's web requests, its packets, its stream frames, its
+/// observation lines, and which engine is connected (null when it went).
 class OnlineBridgeHandlers {
-  const OnlineBridgeHandlers({this.web, this.datagram, this.observation, this.engine});
+  const OnlineBridgeHandlers({this.web, this.datagram, this.stream, this.observation, this.engine});
 
   final Future<WireWebReply> Function(WireWebRequest request)? web;
   final void Function(WireDatagram datagram)? datagram;
+
+  /// The game's stream frames, in the order the engine sent them.
+  final void Function(WireStream frame)? stream;
   final void Function(String line)? observation;
   final void Function(WireHello? hello)? engine;
 }
@@ -211,6 +214,13 @@ class OnlineBridgeServer {
     return _write(socket, OnlineWire.frame(WireKind.datagram, datagram.payload));
   }
 
+  /// Hands a stream frame from a peer to the game; false while no game is connected.
+  bool deliverStream(WireStream frame) {
+    final socket = _engine;
+    if (socket == null || frame.data.length > OnlineWire.maxStreamData) return false;
+    return _write(socket, frame.frame);
+  }
+
   /// Hands a push event (session news) to the game; false while no game is connected or when the
   /// event is not one the engine accepts.
   bool push(WirePushEvent event) {
@@ -333,6 +343,9 @@ class OnlineBridgeServer {
       case WireKind.datagram:
         final datagram = WireDatagram.parse(frame.payload);
         if (datagram != null) handlers.datagram?.call(datagram);
+      case final kind? when kind.isStream:
+        final parsed = WireStream.parse(kind, frame.payload);
+        if (parsed != null) handlers.stream?.call(parsed);
       case WireKind.observation:
         final reader = WireReader(frame.payload);
         final line = reader.str();

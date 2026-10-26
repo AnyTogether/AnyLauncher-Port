@@ -120,7 +120,10 @@ void main() {
 
     // The engine wrote the title's observation log, and sent each line to the launcher too.
     final lines = File(log).readAsLinesSync();
-    expect(lines.any((line) => line.contains('sceNpWebApi2PushEventCreatePushContext') && line.contains(context)), isTrue);
+    expect(
+      lines.any((line) => line.contains('sceNpWebApi2PushEventCreatePushContext') && line.contains(context)),
+      isTrue,
+    );
     expect(lines.any((line) => line.contains('PushEventDelivered')), isTrue);
     expect(OnlineHost.lastLines(log, 5), hasLength(5));
     expect(play.observed, isNotEmpty);
@@ -176,6 +179,25 @@ void main() {
     expect(ponged['from'], '$a:3658/1');
   }, skip: skip);
 
+  test('two games stream through two launchers (stream P2P sockets)', () async {
+    final (environments, addresses, together) = await twoLaunchers();
+    final (a, b) = (OnlineIdentity.dotted(addresses[0]), OnlineIdentity.dotted(addresses[1]));
+    final pong = run(environments[1], arguments: ['stream', a, 'pong', '300000']);
+    final pinged = await run(environments[0], arguments: ['stream', b, 'ping', '300000']);
+    final ponged = await pong;
+    expect(pinged['peer'], '$b:3658/1', reason: '$pinged ${together.signals}');
+    expect(pinged['echoed'], '300000');
+    expect(pinged['same'], '1', reason: 'the bytes came back whole and in order');
+    expect(
+      ponged['from']!.startsWith('$a:'),
+      isTrue,
+      reason: 'the stream comes from the other game\'s address: $ponged',
+    );
+    expect(ponged['got'], '300000');
+    expect(ponged['same'], '1');
+    expect(ponged['end'], '0', reason: 'the pinger\'s close ends the stream');
+  }, skip: skip);
+
   test('a game\'s broadcast reaches the other game; the largest datagram crosses, a bigger one is refused', () async {
     final (environments, addresses, together) = await twoLaunchers();
     final (a, b) = (OnlineIdentity.dotted(addresses[0]), OnlineIdentity.dotted(addresses[1]));
@@ -183,7 +205,11 @@ void main() {
       final pong = run(environments[1], arguments: ['udp', a, 'pong']);
       final pinged = await run(environments[0], arguments: ['udp', destination, 'ping', '$size']);
       final ponged = await pong;
-      expect(pinged['oversize'], '0x80410128', reason: 'a datagram larger than UDP allows fails with EMSGSIZE: $pinged');
+      expect(
+        pinged['oversize'],
+        '0x80410128',
+        reason: 'a datagram larger than UDP allows fails with EMSGSIZE: $pinged',
+      );
       expect(ponged['got'], 'ping', reason: '$destination: $ponged');
       expect(ponged['from'], '$a:3660', reason: 'the broadcast comes from the sender\'s virtual address');
       expect(ponged['size'], '$size');

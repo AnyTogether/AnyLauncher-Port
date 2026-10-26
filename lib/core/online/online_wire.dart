@@ -28,6 +28,13 @@ abstract final class OnlineWire {
   /// refuses bigger ones with EMSGSIZE; a transport drops (and counts) any that still come.
   static const maxGameDatagram = 65507 - 12;
 
+  /// Stream numbers name a stream on one engine-launcher connection (0 is never one); whoever
+  /// opens a stream picks its number, the engine's with the top bit clear, the launcher's set.
+  static const launcherStream = 0x80000000;
+
+  /// The most game bytes one StreamData frame carries.
+  static const maxStreamData = 65536;
+
   static const flagReply = 0x0001;
   static const flagUnsupported = 0x0002;
 
@@ -110,10 +117,16 @@ enum WireKind {
   observation(0x0102),
   webRequest(0x0201),
   pushEvent(0x0204),
-  datagram(0x0310);
+  datagram(0x0310),
+  streamOpen(0x0311),
+  streamData(0x0312),
+  streamClose(0x0313),
+  streamAccept(0x0314);
 
   const WireKind(this.value);
   final int value;
+
+  bool get isStream => value >= streamOpen.value && value <= streamAccept.value;
 
   static WireKind? of(int value) => WireKind.values.where((kind) => kind.value == value).firstOrNull;
 }
@@ -138,6 +151,21 @@ enum DatagramKind {
   final int value;
 
   static DatagramKind? of(int value) => DatagramKind.values.where((kind) => kind.value == value).firstOrNull;
+}
+
+/// Why a stream ended: the other end closed it, nobody listens on the port and virtual port it
+/// named, or it broke (no route to the player, the player left, a connection dropped).
+enum StreamCloseReason {
+  closed(0),
+  refused(1),
+  reset(2);
+
+  const StreamCloseReason(this.value);
+  final int value;
+
+  /// An unknown reason still ends the stream, as a break.
+  static StreamCloseReason of(int value) =>
+      StreamCloseReason.values.where((reason) => reason.value == value).firstOrNull ?? reset;
 }
 
 class WireHeader {
@@ -721,4 +749,131 @@ class WirePushEvent {
 
   @override
   String toString() => 'WirePushEvent($service, $pushContextId, $dataType)';
+}
+
+/// A game stream between two players (stream P2P sockets), both directions, events:
+/// StreamOpen u32 stream, u32 peer, u16 peer port, u16 peer virtual port, u16 local port, u16
+/// local virtual port; StreamAccept u32 stream; StreamData u32 stream, bytes data (at most 64
+/// KiB); StreamClose u32 stream, u8 reason.
+class WireStream {
+  WireStream._(
+    this.kind,
+    this.stream, {
+    this.peer = 0,
+    this.peerPort = 0,
+    this.peerVport = 0,
+    this.localPort = 0,
+    this.localVport = 0,
+    List<int> data = const [],
+    this.reason = StreamCloseReason.closed,
+  }) : data = data is Uint8List ? data : Uint8List.fromList(data);
+
+  WireStream.open({
+    required int stream,
+    required int peer,
+    required int peerPort,
+    required int peerVport,
+    required int localPort,
+    required int localVport,
+  }) : this._(
+         WireKind.streamOpen,
+         stream,
+         peer: peer,
+         peerPort: peerPort,
+         peerVport: peerVport,
+         localPort: localPort,
+         localVport: localVport,
+       );
+
+  WireStream.accept(int stream) : this._(WireKind.streamAccept, stream);
+
+  WireStream.data(int stream, List<int> data) : this._(WireKind.streamData, stream, data: data);
+
+  WireStream.close(int stream, StreamCloseReason reason) : this._(WireKind.streamClose, stream, reason: reason);
+
+  final WireKind kind;
+  final int stream;
+  final int peer;
+  final int peerPort;
+  final int peerVport;
+  final int localPort;
+  final int localVport;
+  final Uint8List data;
+  final StreamCloseReason reason;
+
+  Uint8List get payload {
+    final writer = WireWriter()..u32(stream);
+    switch (kind) {
+      case WireKind.streamOpen:
+        writer
+          ..u32(peer)
+          ..u16(peerPort)
+          ..u16(peerVport)
+          ..u16(localPort)
+          ..u16(localVport);
+      case WireKind.streamData:
+        writer.bytes(data);
+      case WireKind.streamClose:
+        writer.u8(reason.value);
+      default:
+        break;
+    }
+    return writer.data;
+  }
+
+  Uint8List get frame => OnlineWire.frame(kind, payload);
+
+  /// Null when it is malformed, names stream 0, carries more than 64 KiB, or opens from outside the
+  /// virtual network.
+  static WireStream? parse(WireKind kind, List<int> payload) {
+    if (!kind.isStream) return null;
+    final reader = WireReader(payload);
+    final stream = reader.u32();
+    final WireStream parsed;
+    switch (kind) {
+      case WireKind.streamOpen:
+        parsed = WireStream.open(
+          stream: stream,
+          peer: reader.u32(),
+          peerPort: reader.u16(),
+          peerVport: reader.u16(),
+          localPort: reader.u16(),
+          localVport: reader.u16(),
+        );
+        if (!OnlineWire.isVirtual(parsed.peer)) return null;
+      case WireKind.streamData:
+        parsed = WireStream.data(stream, reader.bytes());
+        if (parsed.data.length > OnlineWire.maxStreamData) return null;
+      case WireKind.streamClose:
+        parsed = WireStream.close(stream, StreamCloseReason.of(reader.u8()));
+      default:
+        parsed = WireStream.accept(stream);
+    }
+    return reader.ok && stream != 0 ? parsed : null;
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is WireStream &&
+      other.kind == kind &&
+      other.stream == stream &&
+      other.peer == peer &&
+      other.peerPort == peerPort &&
+      other.peerVport == peerVport &&
+      other.localPort == localPort &&
+      other.localVport == localVport &&
+      other.reason == reason &&
+      _sameBytes(other.data, data);
+
+  @override
+  int get hashCode => Object.hash(kind, stream, peer, peerPort, localPort, reason, data.length);
+
+  @override
+  String toString() => switch (kind) {
+    WireKind.streamOpen =>
+      'WireStream.open($stream, ${peer.toRadixString(16)}:$peerPort/$peerVport ← $localPort/$localVport)',
+    WireKind.streamData => 'WireStream.data($stream, ${data.length} B)',
+    WireKind.streamClose => 'WireStream.close($stream, ${reason.name})',
+    _ => 'WireStream.accept($stream)',
+  };
 }

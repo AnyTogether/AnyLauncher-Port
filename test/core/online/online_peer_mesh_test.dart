@@ -390,4 +390,75 @@ void main() {
       reason: 'it settles: one new offer, answered once',
     );
   });
+
+  test('two launchers carry a game stream over the reliable channel', () async {
+    final players = Players([alice, bob]);
+    addTearDown(players.stop);
+    await players.start(alice);
+    await players.start(bob);
+    final addresses = OnlineIdentity.addresses([alice, bob]);
+    final (a, b) = (addresses[alice]!, addresses[bob]!);
+    await players.plays[bob]!.follow(players.together.id);
+    await players.plays[alice]!.follow(players.together.id);
+    final aliceEngine = players.engines[alice]!, bobEngine = players.engines[bob]!;
+    expect(await aliceEngine.addressSoon(a) && await bobEngine.addressSoon(b), isTrue);
+    final aliceMesh = players.meshes[alice]!, bobMesh = players.meshes[bob]!;
+    expect(
+      await eventually(() => aliceMesh.canStream(b) && bobMesh.canStream(a)),
+      isTrue,
+      reason: '${players.together.signals}',
+    );
+    // Some game datagrams are lost on the way; stream messages never are.
+    players.network.lose = (data) => true;
+
+    aliceEngine.sendStream(
+      WireStream.open(stream: 1, peer: b, peerPort: 3659, peerVport: 1, localPort: 3660, localVport: 5),
+    );
+    final opened = (await bobEngine.nextStream())!;
+    expect(opened.kind, WireKind.streamOpen);
+    final id = opened.stream;
+    expect(id & OnlineWire.launcherStream, isNot(0));
+    expect(
+      [opened.peer, opened.peerPort, opened.peerVport, opened.localPort, opened.localVport],
+      [a, 3660, 5, 3659, 1],
+    );
+    bobEngine.sendStream(WireStream.accept(id));
+    expect(await aliceEngine.nextStream(), WireStream.accept(1));
+
+    final big = Uint8List.fromList(List.generate(60000, (index) => (index * 13) & 0xFF));
+    aliceEngine.sendStream(WireStream.data(1, big));
+    final received = <int>[];
+    while (received.length < big.length) {
+      final frame = await bobEngine.nextStream();
+      if (frame == null || frame.kind != WireKind.streamData) break;
+      received.addAll(frame.data);
+    }
+    expect(received, big, reason: 'the bytes arrive whole and in order');
+    bobEngine.sendStream(WireStream.data(id, utf8.encode('pong')));
+    expect(await aliceEngine.nextStream(), WireStream.data(1, utf8.encode('pong')));
+    aliceEngine.sendStream(WireStream.close(1, StreamCloseReason.closed));
+    expect(await bobEngine.nextStream(), WireStream.close(id, StreamCloseReason.closed));
+    bobEngine.sendStream(WireStream.data(id, utf8.encode('late')));
+    expect(
+      await aliceEngine.nextStream(),
+      WireStream.data(1, utf8.encode('late')),
+      reason: 'a half close carries back',
+    );
+    bobEngine.sendStream(WireStream.close(id, StreamCloseReason.closed));
+    expect(await aliceEngine.nextStream(), WireStream.close(1, StreamCloseReason.closed));
+    expect(players.plays[alice]!.streams.count + players.plays[bob]!.streams.count, 0);
+
+    aliceEngine.sendStream(
+      WireStream.open(stream: 2, peer: b, peerPort: 3659, peerVport: 1, localPort: 0, localVport: 0),
+    );
+    final second = (await bobEngine.nextStream())!.stream;
+    bobEngine.sendStream(WireStream.accept(second));
+    expect(await aliceEngine.nextStream(), WireStream.accept(2));
+    await players.plays[bob]!.follow(null);
+    expect(
+      await aliceEngine.nextStream(),
+      WireStream.close(2, StreamCloseReason.reset),
+      reason: 'a player who leaves breaks the streams with them',
+    );
+  });
 }

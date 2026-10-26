@@ -10,6 +10,7 @@ import 'online_bridge_server.dart';
 import 'online_identity.dart';
 import 'online_peer.dart';
 import 'online_player_sessions.dart';
+import 'online_stream_relay.dart';
 import 'online_user_profile.dart';
 import 'online_web_router.dart';
 import 'online_wire.dart';
@@ -36,6 +37,12 @@ class OnlinePlay {
       deliver: (datagram) => bridge.deliver(datagram),
       call: call,
       signal: signal ?? (_, _, _, _, _) {},
+      deliverStream: (peer, message) => streams.fromPeer(peer, message),
+      peerGone: (peer) => streams.peerGone(peer),
+    );
+    streams = OnlineStreamRelay(
+      toEngine: (frame) => bridge.deliverStream(frame),
+      toPeer: (peer, message) => this.transport.sendStream(peer, message),
     );
     this.transport = transport?.call(context) ?? OnlineNoTransport();
     final me = user;
@@ -61,8 +68,11 @@ class OnlinePlay {
       handlers: OnlineBridgeHandlers(
         web: router.handle,
         datagram: (datagram) => this.transport.send(datagram),
+        stream: (frame) => streams.fromEngine(frame),
         observation: _keep,
         engine: (hello) {
+          // A game that connects (again) or goes starts with no streams.
+          streams.engineGone();
           if (hello != null) router.setEngineBuild(hello.build);
         },
       ),
@@ -78,6 +88,9 @@ class OnlinePlay {
   late final OnlineBridgeServer bridge;
   late final OnlineWebRouter router;
   late final OnlinePeerTransport transport;
+
+  /// The game's streams between the bridge and the transport.
+  late final OnlineStreamRelay streams;
   OnlineSessionView? _session;
   String? _following;
   final _observations = <String>[];

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:anyps5_desktop/core/online/online_identity.dart';
 import 'package:anyps5_desktop/core/online/online_peer.dart';
@@ -35,6 +36,9 @@ class RecordingTransport implements OnlinePeerTransport {
     sent.add(datagram);
     return false;
   }
+
+  @override
+  bool sendStream(int peer, Uint8List message) => false;
 
   @override
   void receive(OnlinePeerSignal signal) => received.add(signal);

@@ -232,6 +232,25 @@ void main() {
     expect(bob.take(), [
       WireStream.close(fifth, StreamCloseReason.reset),
     ], reason: 'a message that cannot go breaks it');
+    bob.reachable = true;
+
+    // A game that closed its stream and then went (or a player who did) leaves it closed, not broken.
+    alice.relay.fromEngine(WireStream.open(stream: 6, peer: b, peerPort: 1, peerVport: 0, localPort: 0, localVport: 0));
+    final sixth = bob.take().single.stream;
+    bob.relay.fromEngine(WireStream.accept(sixth));
+    expect(alice.take(), [WireStream.accept(6)]);
+    alice.relay.fromEngine(WireStream.close(6, StreamCloseReason.closed));
+    expect(bob.take(), [WireStream.close(sixth, StreamCloseReason.closed)]);
+    alice.relay.engineGone();
+    expect(bob.take(), isEmpty, reason: 'a stream the game had closed is not reset when the game goes');
+    bob.relay.fromEngine(WireStream.data(sixth, utf8.encode('x')));
+    expect(bob.take(), [WireStream.close(sixth, StreamCloseReason.reset)], reason: 'but nothing more reaches it');
+    alice.relay.fromEngine(WireStream.open(stream: 7, peer: b, peerPort: 1, peerVport: 0, localPort: 0, localVport: 0));
+    final seventh = bob.take().single.stream;
+    bob.relay.fromEngine(WireStream.close(seventh, StreamCloseReason.closed));
+    expect(alice.take(), [WireStream.close(7, StreamCloseReason.closed)]);
+    alice.relay.peerGone(b);
+    expect(alice.take(), isEmpty, reason: 'nor one the player had closed when they go');
   });
 
   test('the bridge carries stream frames both ways', () async {

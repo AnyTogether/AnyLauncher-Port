@@ -268,21 +268,26 @@ class OnlineStreamRelay {
     }
   }
 
-  /// A player's connection is gone: their streams break.
+  /// A player's connection is gone: their streams break (those they had already ended stay ended,
+  /// as a closed TCP connection does when its peer goes).
   void peerGone(int peer) {
     final gone = [
       for (final entry in _routes.entries)
-        if (entry.value.key.peer == peer) entry.key,
+        if (entry.value.key.peer == peer) (entry.key, entry.value.peerEnded),
     ];
-    for (final id in gone) {
+    for (final (id, ended) in gone) {
       _remove(id);
-      toEngine(WireStream.close(id, StreamCloseReason.reset));
+      if (!ended) toEngine(WireStream.close(id, StreamCloseReason.reset));
     }
   }
 
-  /// The game's connection is gone (or a new game connected): every stream breaks for the players.
+  /// The game's connection is gone (or a new game connected): every stream it had not ended breaks
+  /// for the players.
   void engineGone() {
-    final gone = [for (final route in _routes.values) route.key];
+    final gone = [
+      for (final route in _routes.values)
+        if (!route.engineEnded) route.key,
+    ];
     _routes.clear();
     _engineIds.clear();
     for (final key in gone) {

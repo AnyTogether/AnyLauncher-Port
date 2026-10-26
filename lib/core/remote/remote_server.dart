@@ -26,6 +26,7 @@ class RemoteEvents {
     this.connecting,
     this.players,
     this.streamWishes,
+    this.textPrompt,
   });
 
   final void Function(PairingRequest request)? pairing;
@@ -45,6 +46,9 @@ class RemoteEvents {
 
   /// A phone asked for Remote Play or stopped wanting it ([RemoteServer.streamWishes]).
   final void Function()? streamWishes;
+
+  /// The game began or stopped asking for text ([RemoteServer.textPrompt]).
+  final void Function()? textPrompt;
 }
 
 /// The phone on the control channel, from its hello to the end of its socket.
@@ -128,6 +132,19 @@ class RemoteServer {
   final List<DateTime?> _gameHelloAt = [];
   static const _helloLapse = Duration(seconds: 3);
 
+  /// Whether each bridge's game said (in its hello) that its engine takes typed text.
+  final List<bool> _gameTakesText = [];
+
+  /// The text the game asks for, from its prompts, and when it last said so.
+  RemoteTextPrompt? _prompt;
+  DateTime _promptHeard = DateTime.fromMillisecondsSinceEpoch(0);
+  int? _answeredPrompt;
+  int _textId = 0;
+  Timer? _promptCheck;
+
+  /// A prompt not said again for this long is over: the game went away with it open.
+  static const promptLifetime = Duration(seconds: 3);
+
   /// The next press's id: a random start, one more for each press.
   int _pressId = Random().nextInt(0x7FFFFFFF);
   static final _random = Random.secure();
@@ -183,6 +200,9 @@ class RemoteServer {
     _gamePlayers.clear();
     _gameTakesPresses.clear();
     _gameHelloAt.clear();
+    _gameTakesText.clear();
+    _prompt = null;
+    _promptCheck?.cancel();
     await http?.close(force: true);
   }
 
@@ -338,6 +358,8 @@ class RemoteServer {
           RemoteTogetherHandoff() ||
           RemoteTogetherHandoffAnswer():
         if (_phones.contains(client)) events.request?.call(message, client.deviceId ?? '');
+      case RemoteTyped(:final prompt, :final typed, :final action):
+        if (_phones.contains(client)) _type(typed, action, prompt);
       case RemoteStream(:final on, :final width, :final height):
         if (!_phones.contains(client)) return;
         client.streamSize = on ? (max(160, width), max(90, height)) : null;
@@ -377,6 +399,9 @@ class RemoteServer {
       ),
       client,
     );
+    // A phone that comes while the game asks for text sees the keyboard at once.
+    final prompt = _prompt;
+    if (prompt != null) _send(RemoteTextInput(prompt), client);
     final phoneName = client.name;
     if (phoneName != null) events.connected?.call(phoneName);
   }
@@ -443,6 +468,7 @@ class RemoteServer {
       _gamePlayers.add(null);
       _gameTakesPresses.add(false);
       _gameHelloAt.add(null);
+      _gameTakesText.add(false);
       bridge.listen((event) {
         if (event == RawSocketEvent.read) _fromGame(slot);
       });
@@ -492,12 +518,15 @@ class RemoteServer {
       if (RemotePacket.isHello(data)) {
         _gameAddresses[slot] = (datagram.address, datagram.port);
         _gameTakesPresses[slot] = RemotePacket.helloTakesPresses(data);
+        _gameTakesText[slot] = RemotePacket.helloTakesText(data);
         _gameHelloAt[slot] = DateTime.now();
         final player = RemotePacket.helloPlayer(data);
         if (_gamePlayers[slot] != player) {
           _gamePlayers[slot] = player;
           events.players?.call();
         }
+      } else if (RemotePacket.prompt(data) case (:final prompt)) {
+        _heard(prompt);
       } else if (RemotePacket.isOutput(data)) {
         final game = _gameAddresses[slot];
         if (game == null || game.$1 != datagram.address || game.$2 != datagram.port) continue;
@@ -516,6 +545,67 @@ class RemoteServer {
           socket.send(data, address, port);
         }
       }
+    }
+  }
+
+  /// The text the game asks for now, null when none.
+  RemoteTextPrompt? get textPrompt => _prompt;
+
+  /// A prompt from the game (on any bridge: the engine says it on each): the phones are told
+  /// when it changes, and it ends when the game stops saying it.
+  void _heard(RemoteTextPrompt? said) {
+    _promptHeard = DateTime.now();
+    // A keyboard a phone already answered stays away while the game keeps it open.
+    final prompt = said != null && said.id == _answeredPrompt ? null : said;
+    if (prompt == _prompt) return;
+    _prompt = prompt;
+    for (final phone in _phones) {
+      _send(RemoteTextInput(prompt), phone);
+    }
+    events.textPrompt?.call();
+    _promptCheck?.cancel();
+    if (prompt == null) return;
+    _promptCheck = Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      if (_prompt == null) return timer.cancel();
+      if (DateTime.now().difference(_promptHeard) > promptLifetime) {
+        timer.cancel();
+        _heard(null);
+      }
+    });
+  }
+
+  /// A phone's text goes to the game, twice in case one is lost (the engine counts a copy once),
+  /// if the prompt it was typed for is still open.
+  void _type(String text, RemoteTypedAction action, int prompt) {
+    final open = _prompt;
+    if (open == null || open.id != prompt) return;
+    int? slot;
+    for (var candidate = 0; candidate < _bridges.length; candidate++) {
+      if (_gameTakesText[candidate] && _gameAddresses[candidate] != null) {
+        slot = candidate;
+        break;
+      }
+    }
+    if (slot == null) return;
+    final game = _gameAddresses[slot]!;
+    _textId = (_textId + 1) & 0xFFFFFFFF;
+    final packet = RemotePacket.text(prompt: prompt, id: _textId, action: action, text: text);
+    for (var copy = 0; copy < 2; copy++) {
+      try {
+        _bridges[slot].send(packet, game.$1, game.$2);
+      } on Object {
+        // Closing.
+      }
+    }
+    if (action != RemoteTypedAction.update) {
+      // Answered: the other phones put their keyboards away at once.
+      _answeredPrompt = prompt;
+      _prompt = null;
+      _promptCheck?.cancel();
+      for (final phone in _phones) {
+        _send(const RemoteTextInput(null), phone);
+      }
+      events.textPrompt?.call();
     }
   }
 

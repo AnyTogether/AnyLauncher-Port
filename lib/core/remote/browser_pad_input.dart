@@ -87,15 +87,17 @@ class BrowserPadState {
 /// - `{"t":"pad","b":bits,"s":[lx,ly,rx,ry],"l2":0-255,"r2":0-255,"tp":[[id,x,y]]}`: the whole pad,
 ///   sent on every change and again every 200 ms while nothing changes;
 /// - `{"t":"btn","n":"ps"|"create"}`: the launcher's PS and Create buttons, as the phone app sends;
-/// - `{"t":"ping","at":ms}`, answered with a pong; `{"t":"lat","ms":ms}`, the latency it measured.
+/// - `{"t":"ping","at":ms}`, answered with a pong; `{"t":"lat","ms":ms}`, the latency it measured;
+/// - `{"t":"type","id":prompt,"text":"...","a":"update"|"submit"|"cancel"}`: the text typed for the
+///   game's keyboard (`{"t":"ime",...}`), replacing the game's.
 sealed class BrowserPadMessage {
   const BrowserPadMessage();
 
   /// The pad buttons a page may hold: every libScePad bit the phone app sends, nothing else.
   static const buttonMask = 0x0002 | 0x0004 | 0x0008 | 0x00F0 | 0x0F00 | 0xF000 | 0x100000;
 
-  /// A text frame longer than this is not one of the page's.
-  static const maxLength = 1024;
+  /// A text frame longer than this is not one of the page's (a typed text is the longest).
+  static const maxLength = 4096;
 
   static BrowserPadMessage? parse(String text) {
     if (utf8.encode(text).length > maxLength) return null;
@@ -119,6 +121,13 @@ sealed class BrowserPadMessage {
       case 'lat':
         final ms = _number(json['ms']);
         return ms == null || ms < 0 || ms >= 10000 ? null : BrowserPadLatency(ms);
+      case 'type':
+        final id = _number(json['id']);
+        final text = json['text'];
+        final name = json['a'];
+        final action = RemoteTypedAction.values.where((action) => action.name == name).firstOrNull;
+        if (id == null || id < 1 || id > 0xFFFFFFFF || text is! String || action == null) return null;
+        return BrowserPadTyped(prompt: id.toInt(), text: text, action: action);
       default:
         return null;
     }
@@ -195,6 +204,13 @@ class BrowserPadLatency extends BrowserPadMessage {
   final double milliseconds;
 }
 
+class BrowserPadTyped extends BrowserPadMessage {
+  const BrowserPadTyped({required this.prompt, required this.text, required this.action});
+  final int prompt;
+  final String text;
+  final RemoteTypedAction action;
+}
+
 /// What the launcher tells the page, as the JSON text it sends.
 abstract final class BrowserPadReply {
   static String wait() => _text({'t': 'wait'});
@@ -206,6 +222,22 @@ abstract final class BrowserPadReply {
   static String look(String deep, String middle, String accent) =>
       _text({'accent': accent, 'deep': deep, 'middle': middle, 't': 'look'});
   static String pong(double at) => _text({'at': at, 't': 'pong'});
+
+  /// The game asks for text (the page shows a keyboard), or no longer does (null).
+  static String ime(RemoteTextPrompt? prompt) => prompt == null
+      ? _text({'id': 0, 't': 'ime'})
+      : _text({
+          'enter': prompt.enter,
+          'id': prompt.id,
+          'kb': prompt.keyboard,
+          'kind': prompt.kind,
+          'max': prompt.maxLength,
+          'multi': prompt.multiline,
+          'placeholder': prompt.placeholder,
+          't': 'ime',
+          'text': prompt.text,
+          'title': prompt.title,
+        });
 
   /// The game's answer packet (vibration and light bar) as the page hears it; null for anything else.
   static String? output(List<int> packet) {

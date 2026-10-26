@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 /// A game as the phone lists it. [art] changes whenever its icon or background does, so the
@@ -55,6 +56,80 @@ enum RemoteGameState { installed, update, locked, installing, starting, running,
 /// The launcher's steps with a game, as the phone names them: waiting for its turn, the
 /// installer's five, and starting it.
 enum RemotePhase { queued, unwrap, relink, copy, bundle, finish, starting }
+
+/// What text the game asks for, for a phone to type it: the game's keyboard (sceImeOpen) or its
+/// text dialog (sceImeDialogInit), from the engine's prompt datagram (APRK).
+class RemoteTextPrompt {
+  const RemoteTextPrompt({
+    required this.id,
+    this.kind = 'dialog',
+    this.title = '',
+    this.placeholder = '',
+    this.text = '',
+    this.maxLength = 0,
+    this.multiline = false,
+    this.keyboard = 'text',
+    this.enter = 'default',
+  });
+
+  factory RemoteTextPrompt.fromJson(Map<String, dynamic> json) => RemoteTextPrompt(
+    id: (json['id'] as num).toInt(),
+    kind: json['kind'] as String? ?? 'dialog',
+    title: json['title'] as String? ?? '',
+    placeholder: json['placeholder'] as String? ?? '',
+    text: json['text'] as String? ?? '',
+    maxLength: (json['maxLength'] as num?)?.toInt() ?? 0,
+    multiline: json['multiline'] as bool? ?? false,
+    keyboard: json['keyboard'] as String? ?? 'text',
+    enter: json['enter'] as String? ?? 'default',
+  );
+
+  static const keyboards = ['text', 'latin', 'url', 'mail', 'number'];
+  static const enters = ['default', 'send', 'search', 'go'];
+
+  /// The engine's number for this keyboard or dialog; the typed text names it.
+  final int id;
+
+  /// keyboard or dialog.
+  final String kind;
+  final String title;
+  final String placeholder;
+
+  /// The text the game starts with.
+  final String text;
+
+  /// The most characters the game takes (UTF-16 units, as it counts them).
+  final int maxLength;
+  final bool multiline;
+
+  /// The keys the console would show: text, latin, url, mail or number.
+  final String keyboard;
+
+  /// The Enter key's label: default, send, search or go.
+  final String enter;
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'kind': kind,
+    'title': title,
+    'placeholder': placeholder,
+    'text': text,
+    'maxLength': maxLength,
+    'multiline': multiline,
+    'keyboard': keyboard,
+    'enter': enter,
+  };
+
+  @override
+  bool operator ==(Object other) => other is RemoteTextPrompt && jsonEncode(toJson()) == jsonEncode(other.toJson());
+
+  @override
+  int get hashCode => jsonEncode(toJson()).hashCode;
+}
+
+/// What a phone does with the text it typed: send it as the game's text so far, enter it, or
+/// cancel the game's keyboard.
+enum RemoteTypedAction { update, submit, cancel }
 
 /// What the launcher is doing with a game, for the phone to show.
 class RemoteActivity {
@@ -197,6 +272,14 @@ sealed class RemoteMessage {
     'togetherHandoffAnswer' => RemoteTogetherHandoffAnswer(
       id: json['id'] as String,
       approved: json['approved'] as bool,
+    ),
+    'textInput' => RemoteTextInput(
+      json['prompt'] == null ? null : RemoteTextPrompt.fromJson(json['prompt'] as Map<String, dynamic>),
+    ),
+    'typed' => RemoteTyped(
+      prompt: (json['prompt'] as num).toInt(),
+      typed: json['text'] as String,
+      action: RemoteTypedAction.values.byName(json['action'] as String),
     ),
     _ => null,
   };
@@ -474,6 +557,30 @@ class RemoteTogetherHandoffAnswer extends RemoteMessage {
   Map<String, Object?> get fields => {'id': id, 'approved': approved};
 }
 
+/// The game asks for text, or (null) no longer does: the phone shows its own keyboard with the
+/// game's prompt. A phone that does not know this message ignores it.
+class RemoteTextInput extends RemoteMessage {
+  const RemoteTextInput(this.prompt);
+  final RemoteTextPrompt? prompt;
+  @override
+  String get type => 'textInput';
+  @override
+  Map<String, Object?> get fields => {'prompt': prompt?.toJson()};
+}
+
+/// The text a phone typed for a prompt (its id), replacing the game's, and what to do with it.
+/// ([typed] is the JSON's `text`: the message's own [text] is its JSON.)
+class RemoteTyped extends RemoteMessage {
+  const RemoteTyped({required this.prompt, required this.typed, required this.action});
+  final int prompt;
+  final String typed;
+  final RemoteTypedAction action;
+  @override
+  String get type => 'typed';
+  @override
+  Map<String, Object?> get fields => {'prompt': prompt, 'text': typed, 'action': action.name};
+}
+
 /// The pad datagrams the launcher relays between the phone and the game, the engine's RemotePad
 /// wire format: little-endian, with a magic, a version and a size up front.
 abstract final class RemotePacket {
@@ -481,7 +588,14 @@ abstract final class RemotePacket {
   static const outputMagic = 0x4F525041;
   static const helloMagic = 0x48525041;
   static const pressMagic = 0x50525041;
+  static const promptMagic = 0x4B525041;
+  static const textMagic = 0x54525041;
   static const version = 1;
+  static const promptHeaderSize = 24;
+  static const textHeaderSize = 20;
+
+  /// The largest prompt or text datagram (the engine's LargestTextDatagram).
+  static const largestText = 8192;
   static const inputSize = 80;
   static const outputSize = 32;
   static const helloSize = 16;
@@ -510,15 +624,113 @@ abstract final class RemotePacket {
   /// without it drops them unread.
   static bool helloTakesPresses(List<int> data) => isHello(data) && data[9] & 1 != 0;
 
+  /// Whether a game's hello says its engine tells what text the game asks for and takes the
+  /// text typed for it ([text]): bit 1 of byte 9.
+  static bool helloTakesText(List<int> data) => isHello(data) && data[9] & 2 != 0;
+
+  /// A game's prompt (APRK): a record whose prompt is null when the game no longer asks for
+  /// text; null for anything that is not a well-formed prompt.
+  static ({RemoteTextPrompt? prompt})? prompt(List<int> data) {
+    if (data.length < promptHeaderSize || data.length > largestText) return null;
+    final bytes = Uint8List.fromList(data);
+    final view = ByteData.sublistView(bytes);
+    if (view.getUint32(0, Endian.little) != promptMagic ||
+        view.getUint16(4, Endian.little) != version ||
+        view.getUint16(6, Endian.little) != data.length ||
+        bytes[12] > 2) {
+      return null;
+    }
+    final lengths = [
+      for (final at in [18, 20, 22]) view.getUint16(at, Endian.little),
+    ];
+    if (promptHeaderSize + lengths[0] + lengths[1] + lengths[2] != data.length) return null;
+    final id = view.getUint32(8, Endian.little);
+    if (id == 0 || bytes[12] == 0) return (prompt: null);
+    final strings = <String>[];
+    var at = promptHeaderSize;
+    for (final length in lengths) {
+      strings.add(utf8.decode(bytes.sublist(at, at + length), allowMalformed: true));
+      at += length;
+    }
+    return (
+      prompt: RemoteTextPrompt(
+        id: id,
+        kind: bytes[12] == 1 ? 'keyboard' : 'dialog',
+        title: strings[0],
+        placeholder: strings[1],
+        text: strings[2],
+        maxLength: view.getUint16(16, Endian.little),
+        multiline: bytes[13] & 1 != 0,
+        keyboard: bytes[14] < RemoteTextPrompt.keyboards.length ? RemoteTextPrompt.keyboards[bytes[14]] : 'text',
+        enter: bytes[15] < RemoteTextPrompt.enters.length ? RemoteTextPrompt.enters[bytes[15]] : 'default',
+      ),
+    );
+  }
+
+  /// A prompt as the engine sends it, null for none (a stand-in game in the tests).
+  static Uint8List promptPacket(RemoteTextPrompt? prompt) {
+    final parts = [
+      for (final part in [prompt?.title ?? '', prompt?.placeholder ?? '', prompt?.text ?? '']) utf8.encode(part),
+    ];
+    final size = promptHeaderSize + parts.fold<int>(0, (sum, part) => sum + part.length);
+    final bytes = Uint8List(size);
+    final view = ByteData.sublistView(bytes)
+      ..setUint32(0, promptMagic, Endian.little)
+      ..setUint16(4, version, Endian.little)
+      ..setUint16(6, size, Endian.little)
+      ..setUint32(8, prompt?.id ?? 0, Endian.little);
+    if (prompt != null) {
+      bytes[12] = prompt.kind == 'keyboard' ? 1 : 2;
+      bytes[13] = prompt.multiline ? 1 : 0;
+      bytes[14] = max(0, RemoteTextPrompt.keyboards.indexOf(prompt.keyboard));
+      bytes[15] = max(0, RemoteTextPrompt.enters.indexOf(prompt.enter));
+      view.setUint16(16, prompt.maxLength.clamp(0, 0xFFFF), Endian.little);
+    }
+    var at = promptHeaderSize;
+    for (var index = 0; index < 3; index++) {
+      view.setUint16(18 + index * 2, parts[index].length, Endian.little);
+      bytes.setRange(at, at + parts[index].length, parts[index]);
+      at += parts[index].length;
+    }
+    return bytes;
+  }
+
+  /// The text a phone typed (APRT), for the engine: the whole text, replacing the game's, then
+  /// the action. [id] tells copies apart; the text is cut on a character to fit one datagram.
+  static Uint8List text({
+    required int prompt,
+    required int id,
+    required RemoteTypedAction action,
+    required String text,
+  }) {
+    final utf = <int>[];
+    for (final rune in text.runes) {
+      final encoded = utf8.encode(String.fromCharCode(rune));
+      if (textHeaderSize + utf.length + encoded.length > largestText) break;
+      utf.addAll(encoded);
+    }
+    final bytes = Uint8List(textHeaderSize + utf.length);
+    ByteData.sublistView(bytes)
+      ..setUint32(0, textMagic, Endian.little)
+      ..setUint16(4, version, Endian.little)
+      ..setUint16(6, bytes.length, Endian.little)
+      ..setUint32(8, prompt & 0xFFFFFFFF, Endian.little)
+      ..setUint32(12, id & 0xFFFFFFFF, Endian.little)
+      ..setUint16(18, utf.length, Endian.little);
+    bytes[16] = action.index;
+    bytes.setRange(textHeaderSize, bytes.length, utf);
+    return bytes;
+  }
+
   /// A game hello, as the engine's bridge sends it (for tests and tools).
-  static Uint8List hello({int player = 0, bool takesPresses = false}) {
+  static Uint8List hello({int player = 0, bool takesPresses = false, bool takesText = false}) {
     final bytes = Uint8List(helloSize);
     ByteData.sublistView(bytes)
       ..setUint32(0, helloMagic, Endian.little)
       ..setUint16(4, version, Endian.little)
       ..setUint16(6, helloSize, Endian.little);
     bytes[8] = player;
-    bytes[9] = takesPresses ? 1 : 0;
+    bytes[9] = (takesPresses ? 1 : 0) | (takesText ? 2 : 0);
     return bytes;
   }
 

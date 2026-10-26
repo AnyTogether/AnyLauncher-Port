@@ -219,7 +219,7 @@ void main() {
         '{"t":"what"}',
         '{"b":1}',
         '{"t":"pad","b":-1}',
-        '{"t":"pad","b":1,"pad":"${'x' * 2000}"}',
+        '{"t":"pad","b":1,"pad":"${'x' * 5000}"}',
       ]) {
         expect(BrowserPadMessage.parse(text), isNull, reason: text);
       }

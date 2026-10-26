@@ -413,6 +413,8 @@ class _Link {
         }
       case RemoteLook(:final deep, :final middle, :final accent):
         _toPage(BrowserPadReply.look(deep, middle, accent));
+      case RemoteTextInput(:final prompt):
+        _toPage(BrowserPadReply.ime(prompt));
       default:
         break;
     }
@@ -470,6 +472,8 @@ class _Link {
         _toPage(BrowserPadReply.pong(at));
       case BrowserPadLatency(:final milliseconds):
         if (padSession != null) _tell(RemoteLatency(milliseconds));
+      case BrowserPadTyped(:final prompt, :final text, :final action):
+        if (padSession != null) _tell(RemoteTyped(prompt: prompt, typed: text, action: action));
     }
   }
 

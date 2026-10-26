@@ -14,6 +14,13 @@ import 'online_wire.dart';
 /// follow public documentation of the console network's Session Manager API and are unverified;
 /// every request body is in the title's observation log (the engine writes it with the request).
 ///
+/// Status codes are the platform's, and they matter: the game's own `libSceNpCppWebApi.prx` reads
+/// a reply body only when the status is the one the call answers with — 201 for every POST that
+/// makes something (a session, members, invitations, joinable users), 200 for GETs. With 200 for
+/// a POST it finishes the request with no body, and Human Fall Flat crashes reading it (SIGSEGV at
+/// 0x10 in `PostPlayerSessionsResponseBody::getPlayerSessions`). Joining a session that is not
+/// here (made by another player's console or launcher) is taken as the platform would take it.
+///
 /// Changes the game makes itself bring it no push events (the platform does not tell a member
 /// about its own change). Changes from elsewhere ([playerJoined], [playerLeft]) are pushed to
 /// every push context the session's players registered, with the data types the game listens for
@@ -81,26 +88,26 @@ class OnlinePlayerSessions {
   WireWebReply handle(WireWebRequest request) {
     final (parts, query) = OnlineJson.split(request.path);
     final method = request.method.toUpperCase();
-    if (parts.length < 2 || parts[0] != 'v1') return OnlineJson.problem(404, 'No such sessionManager call');
+    if (parts.length < 2 || parts[0] != 'v1') return _problem(404, 'No such sessionManager call');
     final body = OnlineJson.object(request.body);
-    if (body == null) return OnlineJson.problem(400, 'The body must be a JSON object');
+    if (body == null) return _problem(400, 'The body must be a JSON object');
 
     if (parts[1] == 'users' && parts.length == 4) {
-      if (!_isMe(parts[2])) return OnlineJson.problem(403, 'Only your own sessions are offered');
+      if (!_isMe(parts[2])) return _problem(403, 'Only your own sessions are offered');
       switch ((method, parts[3])) {
         case ('GET', 'playerSessions'):
           final mine = [
             for (final id in _order)
               if (_sessions[id]!.has(me)) {'sessionId': id, 'platform': platform},
           ];
-          return OnlineJson.reply(200, {'playerSessions': mine});
+          return _json(200, {'playerSessions': mine});
         case ('GET', 'playerSessionsInvitations'):
-          return OnlineJson.reply(200, {'invitations': <Object>[]});
+          return _json(200, {'invitations': <Object>[]});
         default:
-          return OnlineJson.problem(404, 'No such sessionManager call');
+          return _problem(404, 'No such sessionManager call');
       }
     }
-    if (parts[1] != 'playerSessions') return OnlineJson.problem(404, 'No such sessionManager call');
+    if (parts[1] != 'playerSessions') return _problem(404, 'No such sessionManager call');
     switch ((method, parts.length)) {
       case ('POST', 2):
         return _create(body);
@@ -109,9 +116,7 @@ class OnlinePlayerSessions {
           for (final id in parts[2].split(','))
             if (_sessions[id] case final session?) _view(session),
         ];
-        return found.isEmpty
-            ? OnlineJson.problem(404, 'No such player session')
-            : OnlineJson.reply(200, {'playerSessions': found});
+        return found.isEmpty ? _problem(404, 'No such player session') : _json(200, {'playerSessions': found});
       case ('PATCH', 3):
         return _change(parts[2], (session) {
           for (final entry in body.entries) {
@@ -120,23 +125,39 @@ class OnlinePlayerSessions {
           return null;
         });
       case ('DELETE', 3):
-        if (_sessions.remove(parts[2]) == null) return OnlineJson.problem(404, 'No such player session');
+        if (_sessions.remove(parts[2]) == null) return _problem(404, 'No such player session');
         _order.remove(parts[2]);
         return WireWebReply(status: 204);
     }
-    if (parts.length < 4) return OnlineJson.problem(404, 'No such sessionManager call');
+    if (parts.length < 4) return _problem(404, 'No such sessionManager call');
     final id = parts[2];
     switch ((method, parts.length, parts[3])) {
       case ('POST', 5, 'member') when parts[4] == 'players' || parts[4] == 'spectators':
         final spectators = parts[4] == 'spectators';
         final joining = _players(body[parts[4]]);
+        if (joining.isEmpty) return _problem(400, '${parts[4]} is required');
+        // A session made elsewhere (Join in a room from the game's own matchmaking, whose host
+        // made the Player Session on their console): the platform would let the player in, and a
+        // 404 crashes Human Fall Flat. It is kept here from now on, with the joining players.
+        if (_sessionId.hasMatch(id) && !_sessions.containsKey(id) && _sessions.length < maxSessions) {
+          _sessions[id] = _Session(
+            id: id,
+            created: _millis(),
+            settings: {'maxPlayers': joining.length, 'maxSpectators': 0},
+            players: [],
+            spectators: [],
+            leader: joining.first.accountId,
+            joinableSpecifiedUsers: [],
+          );
+          _order.add(id);
+        }
         return _change(id, (session) {
           for (final player in joining) {
             session.players.removeWhere((known) => known.accountId == player.accountId);
             session.spectators.removeWhere((known) => known.accountId == player.accountId);
             (spectators ? session.spectators : session.players).add(player);
           }
-          return OnlineJson.reply(200, {
+          return _json(201, {
             parts[4]: [
               for (final player in joining) {'accountId': player.accountId, 'platform': player.platform},
             ],
@@ -160,10 +181,10 @@ class OnlinePlayerSessions {
         return WireWebReply(status: 204);
       case ('PUT', 4, 'leader'):
         final account = _accountId(body['accountId']);
-        if (account == null) return OnlineJson.problem(400, 'accountId is required');
+        if (account == null) return _problem(400, 'accountId is required');
         return _change(id, (session) {
           if (!session.players.any((player) => player.accountId == account)) {
-            return OnlineJson.problem(400, 'The leader must be a player');
+            return _problem(400, 'The leader must be a player');
           }
           session.leader = account;
           return null;
@@ -184,7 +205,7 @@ class OnlinePlayerSessions {
           }
           return null;
         });
-        return reply.status == 204 ? OnlineJson.reply(200, {'invitations': made}) : reply;
+        return reply.status == 204 ? _json(201, {'invitations': made}) : reply;
       case ('POST', 4, 'joinableSpecifiedUsers'):
         final users = [
           for (final user in body['joinableSpecifiedUsers'] as List<dynamic>? ?? const [])
@@ -197,7 +218,7 @@ class OnlinePlayerSessions {
           return null;
         });
         return reply.status == 204
-            ? OnlineJson.reply(200, {
+            ? _json(201, {
                 'joinableSpecifiedUsers': [
                   for (final user in users) {'accountId': user},
                 ],
@@ -212,7 +233,7 @@ class OnlinePlayerSessions {
       case ('POST', 4, 'sessionMessage'):
         return _change(id, (_) => null);
       default:
-        return OnlineJson.problem(404, 'No such sessionManager call');
+        return _problem(404, 'No such sessionManager call');
     }
   }
 
@@ -295,8 +316,8 @@ class OnlinePlayerSessions {
       for (final fields in body['playerSessions'] as List<dynamic>? ?? const [])
         if (fields is Map<String, dynamic>) fields,
     ];
-    if (asked.isEmpty) return OnlineJson.problem(400, 'playerSessions is required');
-    if (_sessions.length + asked.length > maxSessions) return OnlineJson.problem(429, 'Too many player sessions');
+    if (asked.isEmpty) return _problem(400, 'playerSessions is required');
+    if (_sessions.length + asked.length > maxSessions) return _problem(429, 'Too many player sessions');
     final made = <Map<String, Object?>>[];
     for (final fields in asked) {
       final member = fields['member'] is Map<String, dynamic> ? fields['member'] as Map<String, dynamic> : const {};
@@ -327,25 +348,43 @@ class OnlinePlayerSessions {
       );
       _sessions[session.id] = session;
       _order.add(session.id);
+      // The platform's reply: the session ID and its members, spectators only when there are any.
       made.add({
         'sessionId': session.id,
         'member': {
           'players': [
             for (final player in playing) {'accountId': player.accountId, 'platform': player.platform},
           ],
-          'spectators': [
-            for (final player in watching) {'accountId': player.accountId, 'platform': player.platform},
-          ],
+          if (watching.isNotEmpty)
+            'spectators': [
+              for (final player in watching) {'accountId': player.accountId, 'platform': player.platform},
+            ],
         },
       });
     }
-    return OnlineJson.reply(200, {'playerSessions': made});
+    return _json(201, {'playerSessions': made});
   }
+
+  static final _sessionId = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
+
+  /// A JSON reply with its Content-Type and Content-Length, as the platform's replies carry them.
+  static WireWebReply _json(int status, Object? body) {
+    final reply = OnlineJson.reply(status, body);
+    return WireWebReply(
+      status: reply.status,
+      headers: [...reply.headers, WirePair('Content-Length', '${reply.body.length}')],
+      body: reply.body,
+    );
+  }
+
+  static WireWebReply _problem(int status, String message) => _json(status, {
+    'error': {'code': status, 'message': message},
+  });
 
   /// Runs [apply] on session [id]; its reply, or 204 when it returns null.
   WireWebReply _change(String id, WireWebReply? Function(_Session session) apply) {
     final session = _sessions[id];
-    if (session == null) return OnlineJson.problem(404, 'No such player session');
+    if (session == null) return _problem(404, 'No such player session');
     return apply(session) ?? WireWebReply(status: 204);
   }
 

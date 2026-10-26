@@ -71,13 +71,21 @@ void main() {
 "invitableUserType":"MEMBER","leaderPrivileges":["KICK"],"swapSupported":false,"customData1":"cm9vbQ==",
 "member":{"players":[{"accountId":"me","platform":"me","pushContexts":[{"pushContextId":"$context"}]}]}}]}'''),
     );
-    expect(created?.status, 200, reason: 'Host gets its Player Session');
-    expect(created?.headers, const [WirePair('Content-Type', 'application/json')]);
+    // 201, as the platform answers it: the game's libSceNpCppWebApi.prx reads the body of a
+    // created session only from a 201 reply (its executor compares the status with 201).
+    expect(created?.status, 201, reason: 'Host gets its Player Session');
+    expect(created?.headers, [
+      const WirePair('Content-Type', 'application/json'),
+      WirePair('Content-Length', '${created?.body.length}'),
+    ]);
     final made = (json(created)['playerSessions'] as List).single as Map<String, dynamic>;
     final sessionId = made['sessionId'] as String;
     expect(sessionId, matches(RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')));
-    final createdPlayers = (made['member'] as Map)['players'] as List;
-    expect(createdPlayers.single, {'accountId': mine, 'platform': 'PS5'}, reason: '"me" is the signed-in player');
+    expect(
+      utf8.decode(created!.body),
+      '{"playerSessions":[{"member":{"players":[{"accountId":"$mine","platform":"PS5"}]},"sessionId":"$sessionId"}]}',
+      reason: 'the platform\'s shape: sessionId and member.players ("me" is the signed-in player), nothing else',
+    );
 
     final session =
         (json(await engine.web(request('GET', '/v1/playerSessions/$sessionId?fields=@default')))['playerSessions']
@@ -140,7 +148,7 @@ void main() {
           '{"joinableSpecifiedUsers":[{"accountId":"123"}]}',
         ),
       ))?.status,
-      200,
+      201,
     );
     expect(
       (await engine.web(request('DELETE', '/v1/playerSessions/$sessionId/joinableSpecifiedUsers?accountIds=123')))
@@ -184,7 +192,7 @@ void main() {
     final pushed = <WirePushEvent>[];
     final sessions = OnlinePlayerSessions(account: 42, onlineId: 'alice', push: pushed.add);
     final created = sessions.handle(request('POST', '/v1/playerSessions', '{"playerSessions":[{"maxPlayers":2}]}'));
-    expect(created.status, 200);
+    expect(created.status, 201);
     final id = ((json(created)['playerSessions'] as List).single as Map)['sessionId'] as String;
     String? leader() =>
         (((json(sessions.handle(request('GET', '/v1/playerSessions/$id')))['playerSessions'] as List).single
@@ -196,13 +204,13 @@ void main() {
     final joined = sessions.handle(
       request('POST', '/v1/playerSessions/$id/member/players', '{"players":[{"accountId":"77","platform":"PS5"}]}'),
     );
-    expect(joined.status, 200);
+    expect(joined.status, 201, reason: 'joining makes a member: 201, which the game\'s web API library needs');
     expect(((json(joined)['players'] as List).single as Map)['accountId'], '77');
     expect(
       sessions
           .handle(request('POST', '/v1/playerSessions/$id/member/spectators', '{"spectators":[{"accountId":88}]}'))
           .status,
-      200,
+      201,
     );
     final view =
         (json(sessions.handle(request('GET', '/v1/playerSessions/$id')))['playerSessions'] as List).single as Map;
@@ -247,6 +255,104 @@ void main() {
       await quiet.handle(request('POST', '/v1/playerSessions', '{"playerSessions":[{}]}')),
       WireWebReply.notOffered,
       reason: 'with platform groups off, Player Sessions are not offered either',
+    );
+  });
+
+  test('replies carry the platform\'s statuses and headers', () {
+    final sessions = OnlinePlayerSessions(account: 42, onlineId: 'alice');
+    final created = sessions.handle(
+      request(
+        'POST',
+        '/v1/playerSessions',
+        '{"playerSessions":[{"member":{"players":[{"accountId":"me","platform":"PS5"}],"spectators":[{"accountId":"88","platform":"PS5"}]}}]}',
+      ),
+    );
+    expect(created.status, 201);
+    final made = (json(created)['playerSessions'] as List).single as Map<String, dynamic>;
+    expect(made.keys.toSet(), {'sessionId', 'member'});
+    expect(
+      [for (final player in (made['member'] as Map)['spectators'] as List) player['accountId']],
+      ['88'],
+      reason: 'spectators appear when there are any',
+    );
+    final id = made['sessionId'] as String;
+    final statuses = [
+      ('GET', '/v1/playerSessions/$id', '', 200),
+      ('GET', '/v1/users/me/playerSessions', '', 200),
+      ('GET', '/v1/users/me/playerSessionsInvitations', '', 200),
+      ('POST', '/v1/playerSessions/$id/member/players', '{"players":[{"accountId":"77","platform":"PS5"}]}', 201),
+      ('POST', '/v1/playerSessions/$id/member/spectators', '{"spectators":[{"accountId":"99","platform":"PS5"}]}', 201),
+      ('POST', '/v1/playerSessions/$id/invitations', '{"invitations":[{"to":{"accountId":"123"}}]}', 201),
+      (
+        'POST',
+        '/v1/playerSessions/$id/joinableSpecifiedUsers',
+        '{"joinableSpecifiedUsers":[{"accountId":"123"}]}',
+        201,
+      ),
+      ('GET', '/v1/playerSessions/nope', '', 404),
+    ];
+    for (final (method, path, body, status) in statuses) {
+      final reply = sessions.handle(request(method, path, body));
+      expect(reply.status, status, reason: '$method $path');
+      expect(reply.headers, [
+        const WirePair('Content-Type', 'application/json'),
+        WirePair('Content-Length', '${reply.body.length}'),
+      ], reason: '$method $path');
+    }
+  });
+
+  // Join in Human Fall Flat: the room comes from Photon's public list, and its Player Session was
+  // made by the host's own console (or launcher), so it is not here. A 404 makes the game's
+  // libSceNpCppWebApi finish without a body and the game crashes reading it (SIGSEGV at 0x10,
+  // libSceNpCppWebApi.prx +0x1daa84), so joining a session made elsewhere is taken.
+  test('joining a session made elsewhere is taken', () {
+    final sessions = OnlinePlayerSessions(account: 42, onlineId: 'alice');
+    const elsewhere = 'e12bb290-d6fc-4027-aac1-2bfb09fbe59b';
+    final joined = sessions.handle(
+      request(
+        'POST',
+        '/v1/playerSessions/$elsewhere/member/players',
+        '{"players":[{"accountId":"42","platform":"PS5","pushContexts":[{"pushContextId":"$context"}]}]}',
+      ),
+    );
+    expect(joined.status, 201);
+    expect(utf8.decode(joined.body), '{"players":[{"accountId":"42","platform":"PS5"}]}');
+    expect(sessions.sessionIds, [elsewhere]);
+    final got =
+        (json(sessions.handle(request('GET', '/v1/playerSessions/$elsewhere')))['playerSessions'] as List).single;
+    expect([for (final player in ((got as Map)['member'] as Map)['players'] as List) player['accountId']], ['42']);
+    expect(
+      sessions
+          .handle(
+            request('POST', '/v1/playerSessions/not-a-session/member/players', '{"players":[{"accountId":"42"}]}'),
+          )
+          .status,
+      404,
+      reason: 'only a session ID (a UUID) is taken',
+    );
+    expect(
+      sessions
+          .handle(
+            request('POST', '/v1/playerSessions/0190a0b1-0000-7000-8000-00000000000b/member/players', '{"players":[]}'),
+          )
+          .status,
+      400,
+      reason: 'joining needs a player',
+    );
+    expect(sessions.handle(request('DELETE', '/v1/playerSessions/$elsewhere/members/me')).status, 204);
+    expect(sessions.sessionIds, isEmpty, reason: 'leaving it closes it here');
+    expect(
+      sessions
+          .handle(
+            request(
+              'POST',
+              '/v1/playerSessions/0190a0b1-0000-7000-8000-00000000000c/invitations',
+              '{"invitations":[]}',
+            ),
+          )
+          .status,
+      404,
+      reason: 'other calls on an unknown session still find nothing',
     );
   });
 }

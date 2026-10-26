@@ -104,7 +104,14 @@ void main() {
     expect(seen['push_context_result'], '0x00000000', reason: 'a push context is made');
     final context = seen['push_context']!;
     expect(context, hasLength(36));
-    expect(seen['create_status'], '200', reason: 'Host gets its Player Session');
+    // The game's own libSceNpCppWebApi.prx reads and parses a created session only from a 201
+    // reply; with any other 2xx the game crashes reading a body that is not there.
+    expect(seen['create_status'], '201', reason: 'Host gets its Player Session as the platform answers it');
+    expect(seen['create_response'], 'parsed', reason: 'the game\'s web API library takes the reply');
+    expect(seen['create_content_type'], 'application/json');
+    expect(seen['create_content_length'], seen['create_size'], reason: 'Content-Length is the body\'s size');
+    expect(seen['invite_status'], '201');
+    expect(seen['invite_response'], 'parsed');
     final sessionId = seen['session_id']!;
     expect(seen['get_status'], '200');
     expect(seen['patch_status'], '204');
@@ -127,6 +134,26 @@ void main() {
     expect(lines.any((line) => line.contains('PushEventDelivered')), isTrue);
     expect(OnlineHost.lastLines(log, 5), hasLength(5));
     expect(play.observed, isNotEmpty);
+  }, skip: skip);
+
+  // Join as Human Fall Flat does it: the room comes from Photon, its Player Session from the
+  // host's console, so the launcher has never seen it. The game's libSceNpCppWebApi must still get
+  // a 201 with the players, or the game crashes reading a body that is not there.
+  test('a game joins a Player Session made elsewhere', () async {
+    final play = OnlinePlay(
+      call: FakeOnlineTogether().call,
+      user: me,
+      game: const OnlineGame(titleId: 'PPSA02429', gameVersion: '01.017', engineBuild: 'x'),
+    );
+    final environment = await play.start();
+    addTearDown(play.stop);
+    final seen = await run(environment, arguments: ['join', 'e12bb290-d6fc-4027-aac1-2bfb09fbe59b']);
+    expect(seen['join_status'], '201');
+    expect(seen['join_response'], 'parsed', reason: 'the game\'s web API library takes the reply');
+    expect(seen['join_body'], '{"players":[{"accountId":"${OnlineIdentity.account(me.id)}","platform":"PS5"}]}');
+    expect(seen['joined_status'], '200');
+    expect(seen['leave_status'], '204');
+    expect(play.router.notOffered, isEmpty);
   }, skip: skip);
 
   test('without the launcher the game stays signed out', () async {

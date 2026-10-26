@@ -4438,7 +4438,7 @@ class AppModel extends ChangeNotifier {
             }),
           );
         }
-      default:
+      case 3:
         switch (onboardingChoice) {
           case 0:
             onboardingDownload();
@@ -4453,6 +4453,8 @@ class AppModel extends ChangeNotifier {
             profileFlow.modeChoice = 0;
             onboardingStep++;
         }
+      default:
+        confirmModeChoice();
     }
     notifyListeners();
   }

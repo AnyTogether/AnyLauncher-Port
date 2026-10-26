@@ -93,6 +93,8 @@ void main() {
       fixture = makeFixture(theme: 1);
       final model = fixture.model;
       model.open(Layer.controls);
+      // Past gyro aiming to the second pad action.
+      model.handle(Command.down);
       model.handle(Command.down);
       model.handle(Command.select);
       await pumpLauncher(tester, model);
@@ -301,6 +303,8 @@ void main() {
       final game = model.selectedGame!;
       model.open(Layer.controls);
       await pumpLauncher(tester, model);
+      // Gyro aiming comes first, then the pad's actions.
+      await press(tester, LogicalKeyboardKey.arrowDown);
       await press(tester, LogicalKeyboardKey.enter);
       expect(model.capturing, PadAction.cross);
       expect(find.text(T.text('pressKey')), findsOneWidget);
@@ -315,12 +319,13 @@ void main() {
       final model = fixture.model;
       model.open(Layer.controls);
       await pumpLauncher(tester, model);
-      for (var row = 0; row < 22; row++) {
+      // Gyro aiming's row comes first, then the pad's actions.
+      for (var row = 0; row < 23; row++) {
         await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
         await tester.pump(const Duration(milliseconds: 50));
       }
       await settle(tester);
-      expect(model.panelRow, 22);
+      expect(model.panelRow, 23);
       final title = AppModel.padActionTitle(PadAction.values[22]);
       final rect = tester.getRect(find.text(title));
       expect(rect.top, greaterThan(0));

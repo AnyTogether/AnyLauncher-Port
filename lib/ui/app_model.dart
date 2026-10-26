@@ -34,6 +34,7 @@ import '../core/game_log.dart';
 import '../core/game_process.dart';
 import '../core/game_presets.dart';
 import '../core/game_settings.dart';
+import '../core/gyro_aiming.dart';
 import '../core/host.dart';
 import '../core/installer.dart';
 import '../core/library_watch.dart';
@@ -4159,10 +4160,74 @@ class AppModel extends ChangeNotifier {
       ),
   ];
 
+  /// Controls › Gyro Aiming, first on a game's Controls page: on or off, and while on its
+  /// sensitivity, when it aims, invert and its dead zone (GyroAiming).
+  List<PanelRow> _gyroRows(Game game, GameSettings settings) {
+    final aim = settings.gyro ?? const GyroAiming();
+    void change(GyroAiming changed) =>
+        saveSettings(game, settings.copyWith(gyro: changed == const GyroAiming() ? null : changed));
+    return [
+      PanelRow(
+        id: 'gyro',
+        title: T.text('gyro'),
+        detail: T.text('gyroDetail'),
+        kind: ToggleRow(aim.enabled, (value) => change(aim.copyWith(enabled: value))),
+      ),
+      if (aim.enabled) ...[
+        PanelRow(
+          id: 'gyroSensitivity',
+          title: T.text('gyroSensitivity'),
+          detail: T.text('gyroSensitivityDetail'),
+          kind: StepperRow(
+            value: aim.sensitivity,
+            min: GyroAiming.sensitivityMin,
+            max: GyroAiming.sensitivityMax,
+            step: 1,
+            format: (value) => (value / 10).toStringAsFixed(1),
+            set: (value) => change(aim.copyWith(sensitivity: value)),
+          ),
+        ),
+        PanelRow(
+          id: 'gyroActivation',
+          title: T.text('gyroActivation'),
+          detail: T.text('gyroActivationDetail'),
+          kind: ChoiceRow(
+            [for (final activation in GyroActivation.values) T.text('gyro_${activation.name}')],
+            aim.activation.index,
+            (index) => change(aim.copyWith(activation: GyroActivation.values[index])),
+          ),
+        ),
+        PanelRow(
+          id: 'gyroInvert',
+          title: T.text('gyroInvert'),
+          kind: ChoiceRow(
+            [for (final invert in GyroInvert.values) T.text('gyroInvert_${invert.name}')],
+            aim.invert.index,
+            (index) => change(aim.copyWith(invert: GyroInvert.values[index])),
+          ),
+        ),
+        PanelRow(
+          id: 'gyroDeadzone',
+          title: T.text('gyroDeadzone'),
+          detail: T.text('gyroDeadzoneDetail'),
+          kind: StepperRow(
+            value: aim.deadzone,
+            min: 0,
+            max: GyroAiming.deadzoneMax,
+            step: 1,
+            format: (value) => value == 0 ? T.text('off') : '$value°/s',
+            set: (value) => change(aim.copyWith(deadzone: value)),
+          ),
+        ),
+      ],
+    ];
+  }
+
   List<PanelRow> _controlRows(Game game) {
     final settings = currentSettings(game);
     final changes = settings.controls ?? const <String, List<String>>{};
     return [
+      ..._gyroRows(game, settings),
       for (final action in PadAction.values)
         PanelRow(
           id: action.key,

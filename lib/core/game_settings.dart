@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import 'controls.dart';
 import 'game_log.dart';
+import 'gyro_aiming.dart';
 
 /// Where the performance overlay sits.
 enum OverlayCorner {
@@ -40,6 +41,7 @@ class GameSettings {
     this.shaderCache,
     this.phoneLayout,
     this.trace,
+    this.gyro,
   });
 
   factory GameSettings.fromJson(Map<String, dynamic> json) {
@@ -72,6 +74,7 @@ class GameSettings {
       shaderCache: json['shaderCache'] as bool?,
       phoneLayout: json['phoneLayout'] as String?,
       trace: json['trace'] as bool?,
+      gyro: json['gyro'] is Map<String, dynamic> ? GyroAiming.fromJson(json['gyro'] as Map<String, dynamic>) : null,
     );
   }
 
@@ -110,6 +113,9 @@ class GameSettings {
   /// Detailed logging ([TraceMode]) on every start; null is off.
   final bool? trace;
 
+  /// Gyro aiming (Controls › Gyro Aiming, ANYPS5_GYRO_AIM); null is off.
+  final GyroAiming? gyro;
+
   Map<String, Object?> toJson() => {
     'fullscreen': fullscreen,
     'windowSize': windowSize,
@@ -124,6 +130,7 @@ class GameSettings {
     if (shaderCache != null) 'shaderCache': shaderCache,
     if (phoneLayout != null) 'phoneLayout': phoneLayout,
     if (trace != null) 'trace': trace,
+    if (gyro != null) 'gyro': gyro!.toJson(),
   };
 
   static const _keep = Object();
@@ -143,6 +150,7 @@ class GameSettings {
     Object? shaderCache = _keep,
     Object? phoneLayout = _keep,
     Object? trace = _keep,
+    Object? gyro = _keep,
   }) => GameSettings(
     resolution: identical(resolution, _keep) ? this.resolution : resolution as String?,
     fullscreen: fullscreen ?? this.fullscreen,
@@ -157,6 +165,7 @@ class GameSettings {
     shaderCache: identical(shaderCache, _keep) ? this.shaderCache : shaderCache as bool?,
     phoneLayout: identical(phoneLayout, _keep) ? this.phoneLayout : phoneLayout as String?,
     trace: identical(trace, _keep) ? this.trace : trace as bool?,
+    gyro: identical(gyro, _keep) ? this.gyro : gyro as GyroAiming?,
   );
 
   /// The game reads the controllers (through SDL2) only while its window is in front: with the
@@ -199,6 +208,7 @@ class GameSettings {
       environment['ANYPS5_SHADER_CACHE_DIR'] = shaderCacheFolder;
     }
     if (frameGeneration == true) environment['ANYPS5_FRAME_GEN'] = '1';
+    if (gyro?.environment case final String aim) environment['ANYPS5_GYRO_AIM'] = aim;
     if (trace || this.trace == true) environment.addAll(TraceMode.environment);
     return environment;
   }

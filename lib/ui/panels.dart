@@ -174,9 +174,11 @@ class PanelView extends StatelessWidget {
       Layer.quickMenu,
       Layer.closeGame,
       Layer.homeMenu,
+      Layer.profileMenu,
+      Layer.signIn,
     }.contains(model.overlay);
     // PS's menus: a heading that may be long (the game's name), and only as tall as their rows.
-    final psMenu = const {Layer.quickMenu, Layer.closeGame, Layer.homeMenu}.contains(model.overlay);
+    final psMenu = const {Layer.quickMenu, Layer.closeGame, Layer.homeMenu, Layer.profileMenu}.contains(model.overlay);
     // The quick menu and Close Game? are about the game playing: its icon by the heading.
     final gameIcon = model.overlay == Layer.quickMenu || model.overlay == Layer.closeGame
         ? model.running?.$1.icon
@@ -199,7 +201,8 @@ class PanelView extends StatelessWidget {
           width: (compact ? 760 : 1180) * scale,
           height:
               (psMenu
-                  ? 168 + 62 * category.rows.length
+                  // The Options menu's rows say what each does: a line more each.
+                  ? 168 + (model.overlay == Layer.profileMenu ? 74 : 62) * category.rows.length
                   : compact
                   ? (tall ? 560 : 420)
                   : 720) *
@@ -231,6 +234,15 @@ class PanelView extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             // Over the game: whether it was paused for the menu, or still runs.
+                            if (model.overlay == Layer.profileMenu)
+                              Text(
+                                T.text('profileMenuTitle').toUpperCase(),
+                                style: AppText.display(
+                                  12 * scale,
+                                  weight: FontWeight.w700,
+                                  color: model.accentChoice.color,
+                                ).copyWith(letterSpacing: 1.4 * scale),
+                              ),
                             if (model.overlay == Layer.quickMenu)
                               Text(
                                 T.text(model.quickMenuPaused ? 'quickPaused' : 'quickRunning').toUpperCase(),

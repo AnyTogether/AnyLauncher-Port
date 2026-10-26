@@ -277,14 +277,18 @@ void main() {
       pads.release(PadButton.guide);
     }
 
-    test('held in the launcher: the home menu, Switch Profile shown for later, Quit AnyPS5', () async {
+    test('held in the launcher: the home menu, Switch Profile, Quit AnyPS5', () async {
       desktop.focused = true;
       await holdGuide();
       expect(model.overlay, Layer.homeMenu);
       final rows = model.panelCategories().single.rows;
       expect(rows.map((row) => row.id), ['switchProfile', 'quit']);
-      expect(rows.first.focusable, isFalse, reason: 'no profiles yet');
-      expect(model.panelRow, 1);
+      expect(rows.first.focusable, isTrue, reason: 'Switch Profile opens "Who\'s playing?"');
+      pads.press(PadButton.south);
+      expect(model.overlay, Layer.profilePicker);
+      pads.press(PadButton.east);
+      await holdGuide();
+      pads.press(PadButton.dpadDown);
       pads.press(PadButton.south);
       expect(quits, [0]);
     });

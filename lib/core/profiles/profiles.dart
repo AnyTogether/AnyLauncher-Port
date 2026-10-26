@@ -258,11 +258,11 @@ class ProfileStore {
       }
     }
     final first = book.profiles.isEmpty;
-    final made = id != null && this.profile(id) == null
+    final made = id != null && profile(id) == null
         ? id
         : first && book.legacyOwner == null
         ? LauncherProfile.legacyId
-        : _newId();
+        : newId();
     final added = LauncherProfile(id: made, name: name, color: color, mode: mode, account: account);
     book.profiles.add(added);
     if (first) {
@@ -273,7 +273,7 @@ class ProfileStore {
     return added;
   }
 
-  static String _newId() {
+  static String newId() {
     final random = Random.secure();
     return List.generate(16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
   }

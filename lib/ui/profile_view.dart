@@ -25,7 +25,10 @@ class ProfileView extends StatelessWidget {
     final together = model.together;
     final page = together.profile;
     final card = together.profileCard;
-    final name = page?.profile.displayName ?? card?.displayName ?? '';
+    // A friend's friends-only name and picture (the user's own too), the handle under it.
+    final shownCard = page?.profile.card ?? card;
+    final identity = shownCard == null ? null : TogetherModel.shown(shownCard);
+    final name = identity?.name ?? '';
     final handle = page?.profile.handle ?? card?.handle ?? '';
     final muted = Colors.white.withValues(alpha: 0.6);
     final totals = page?.totals;
@@ -48,7 +51,7 @@ class ProfileView extends StatelessWidget {
                   PersonAvatar(
                     person: PanelPerson(
                       name: name,
-                      avatar: page?.profile.avatar ?? card?.avatar,
+                      avatar: identity?.avatar,
                       status: appearing ? PersonStatus.offline : null,
                     ),
                     size: 112 * scale,
@@ -62,6 +65,20 @@ class ProfileView extends StatelessWidget {
                         '@$handle',
                         style: AppText.display(16 * scale, weight: FontWeight.w500, color: muted),
                       ),
+                      if (identity != null && identity.isPrivate) ...[
+                        SizedBox(width: 10 * scale),
+                        Icon(Icons.lock_rounded, size: 13 * scale, color: muted),
+                        SizedBox(width: 4 * scale),
+                        Flexible(
+                          child: Text(
+                            identity.publicName == identity.name
+                                ? T.text('privateBadge')
+                                : '${identity.publicName} · ${T.text('privateBadge')}',
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.display(12 * scale, weight: FontWeight.w600, color: muted),
+                          ),
+                        ),
+                      ],
                       if (page != null && (page.profile.isMe || page.profile.friendship == 'friends')) ...[
                         SizedBox(width: 10 * scale),
                         _Tag(

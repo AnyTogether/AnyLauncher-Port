@@ -7,10 +7,12 @@ import 'background.dart';
 import 'components.dart';
 import 'engine_model.dart';
 import 'home.dart';
+import 'profiles_view.dart';
 import 'strings.dart';
 import 'theme.dart';
 
-/// First start: language, one of the three themes, the games folder, then the toolkit.
+/// First start: language, one of the three themes, the games folder, the toolkit, then offline or
+/// online (the first profile; online signs in or makes the account).
 class OnboardingView extends StatelessWidget {
   const OnboardingView({super.key, required this.model, this.time});
 
@@ -68,7 +70,8 @@ class OnboardingView extends StatelessWidget {
                     0 => _LanguageStep(model: model),
                     1 => _ThemeStep(model: model, time: time),
                     2 => _FolderStep(model: model),
-                    _ => _ToolkitStep(model: model),
+                    3 => _ToolkitStep(model: model),
+                    _ => _ModeStep(model: model),
                   },
                 ),
               ),
@@ -581,6 +584,26 @@ class _ToolkitStep extends StatelessWidget {
             ),
           ],
         ),
+      ],
+    );
+  }
+}
+
+/// The first start's last step: offline or online; online's sign-in comes up over it.
+class _ModeStep extends StatelessWidget {
+  const _ModeStep({required this.model});
+
+  final AppModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _StepTitle(title: T.text('profileHowToPlay'), subtitle: T.text('profileHowToPlaySubtitle')),
+        SizedBox(height: 40 * scale),
+        ProfileModeCards(model: model),
       ],
     );
   }

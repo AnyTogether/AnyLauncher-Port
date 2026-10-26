@@ -56,6 +56,11 @@ Future<void> main(List<String> arguments) async {
             : Process.run('xdg-open', [url.toString()]),
       ),
       copyText: (text) => unawaited(Clipboard.setData(ClipboardData(text: text))),
+      pickImage: () async => (await openFile(
+        acceptedTypeGroups: const [
+          XTypeGroup(label: 'Pictures', extensions: ['png', 'jpg', 'jpeg']),
+        ],
+      ))?.path,
       saveFile: (name) async => (await getSaveLocation(
         suggestedName: name,
         acceptedTypeGroups: const [
@@ -89,6 +94,8 @@ Future<void> main(List<String> arguments) async {
   if (model.preferences.onboarded) model.rescan();
   model.watchGamesFolder();
   unawaited(model.startPhoneServer());
+  // Several profiles (or Ask every time): "Who's playing?" first, the session waiting for the pick.
+  model.startProfiles();
   unawaited(model.together.start());
   unawaited(model.engine.startupCheck());
   unawaited(model.updates.startupCheck());

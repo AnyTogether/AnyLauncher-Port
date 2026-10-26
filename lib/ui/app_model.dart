@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart' show Color;
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:path/path.dart' as p;
 
@@ -48,7 +49,9 @@ import '../core/steam/steam_launch.dart';
 import '../core/screenshots.dart';
 import '../core/toolkit.dart';
 import '../core/toolkit_download.dart';
-import '../core/together/account.dart' show ClientTooOld;
+import '../core/profiles/profile_saves.dart';
+import '../core/profiles/profiles.dart';
+import '../core/together/account.dart' show ClientTooOld, TogetherAccount;
 import '../core/together/levels.dart';
 import '../core/together/talk_key.dart';
 import '../core/together/token_store.dart';
@@ -68,6 +71,8 @@ import 'theme.dart';
 import 'together_model.dart';
 import 'update_model.dart';
 import 'trophy_card.dart';
+
+part 'profiles_model.dart';
 
 /// The launcher's own choices, kept as JSON in the config folder.
 class Preferences {
@@ -459,6 +464,18 @@ enum Layer {
 
   /// PS held in the launcher: Switch Profile, Quit AnyPS5.
   homeMenu,
+
+  /// "Who's playing?": the profiles' tiles and Add Profile (profiles_model.dart).
+  profilePicker,
+
+  /// A new profile: its name, then offline or online.
+  addProfile,
+
+  /// Signing in to AnyTogether for a profile (a new one, one going online or signing in again).
+  signIn,
+
+  /// Options (or a right click) on Home: the game's settings, Switch Profile, online or offline.
+  profileMenu,
 }
 
 /// A settings row the panels draw and the keyboard moves through.
@@ -601,6 +618,7 @@ class LauncherServices {
     this.copyText,
     this.environment,
     this.togetherStore,
+    this.togetherStoreFor,
     this.togetherServer,
     this.togetherPollEvery,
     this.voiceEngine,
@@ -621,6 +639,7 @@ class LauncherServices {
     this.fontClient,
     this.builtInFonts,
     this.saveFile,
+    this.pickImage,
     this.systemInfo,
     this.startDetached,
     this.quit,
@@ -641,6 +660,9 @@ class LauncherServices {
 
   /// Ends the launcher (Restart Now); exit by default.
   final void Function(int code)? quit;
+
+  /// Asks the user for a picture (PNG or JPEG); null when they cancelled.
+  final Future<String?> Function()? pickImage;
 
   /// Asks the user where to save a file, [suggestedName] first; null when they cancelled.
   final Future<String?> Function(String suggestedName)? saveFile;
@@ -716,8 +738,12 @@ class LauncherServices {
   /// The environment the launcher reads (ANYTOGETHER_URL); the process's by default.
   final Map<String, String>? environment;
 
-  /// Where the AnyTogether session is kept; the system's own store by default.
+  /// Where the AnyTogether session is kept (the first profile's); the system's own store by
+  /// default.
   final TokenStore? togetherStore;
+
+  /// Where another launcher profile's session is kept; its own system store by default.
+  final TokenStore Function(String profile)? togetherStoreFor;
 
   /// An AnyTogether server that wins over every choice (tests).
   final Uri? togetherServer;
@@ -753,6 +779,12 @@ class AppModel extends ChangeNotifier {
   }) : system = system ?? HostSystem.current,
        preferences = preferences ?? Preferences.load(paths.preferencesFile),
        settingsStore = GameSettingsStore(paths.gameSettingsFolder) {
+    // Profiles: a launcher set up before them becomes its first profile at once.
+    profiles = ProfileStore(
+      p.join(paths.config, 'Profiles'),
+      existing: ExistingSetup(onboarded: this.preferences.onboarded, name: this.preferences.profileName),
+      persist: persist,
+    );
     T.language = Language.byCode(this.preferences.language);
     Motion.reduced = this.preferences.reducedMotion;
     together = TogetherModel(this);
@@ -1103,6 +1135,14 @@ class AppModel extends ChangeNotifier {
         mapped = Command.back;
       case PadCommand.options:
         mapped = Command.options;
+      case PadCommand.menu:
+        // Options/Start on Home: Switch Profile, online or offline (Triangle stays the game's).
+        mapped = Command.options;
+        if (overlay == null && preferences.onboarded && inFront && pairing == null && starting == null) {
+          haptics.padInUse = true;
+          _usedInput(InputMode.pad);
+          return openProfileMenu();
+        }
       case PadCommand.previousGame:
         mapped = Command.previousGame;
       case PadCommand.nextGame:
@@ -1316,7 +1356,16 @@ class AppModel extends ChangeNotifier {
   void refresh() => _changed();
 
   final AppPaths paths;
-  final Preferences preferences;
+
+  /// Replaced by another profile's when that profile plays (profiles_model.dart).
+  Preferences preferences;
+
+  /// Who plays on this computer, and the profile screens' state.
+  late final ProfileStore profiles;
+  final ProfileFlow profileFlow = ProfileFlow();
+
+  /// The other profiles' sessions in tests and previews, which give the first one's in memory.
+  final Map<String, MemoryTokenStore> _memoryStores = {};
   final LauncherServices services;
   final HostSystem system;
   final GameSettingsStore settingsStore;
@@ -2340,6 +2389,8 @@ class AppModel extends ChangeNotifier {
   Future<void> play(Game game, {bool trace = false}) async {
     final folder = root;
     if (folder == null || starting != null || running != null) return;
+    // The profile's own saves and trophies in the game's folder before anything reads them.
+    activateProfileSaves(game);
     final allowed = together.family.beforePlay(game);
     if (!(allowed is bool ? allowed : await allowed) || starting != null || running != null) return;
     var settings = currentSettings(game);
@@ -2601,6 +2652,13 @@ class AppModel extends ChangeNotifier {
       revealedTrophies = {};
     }
     if (next == Layer.trophies || next == Layer.gallery) _loadShots();
+    // Friends' private picture links run out (6 to 12 hours): the list is read again.
+    if ((next == Layer.friends || next == Layer.party || next == Layer.profile) &&
+        together.signedIn &&
+        together.hub.friends.identities.learnedAt != null &&
+        together.hub.friends.identities.stale()) {
+      unawaited(together.hub.friends.refresh().catchError((Object _) {}));
+    }
     if (next == Layer.gallery) {
       galleryIndex = 0;
       galleryViewing = false;
@@ -2687,6 +2745,8 @@ class AppModel extends ChangeNotifier {
       return;
     }
     if (!preferences.onboarded) return _onboardingCommand(command);
+    // At start a profile is picked first: PS waits.
+    if (overlay == Layer.profilePicker && profileFlow.atLaunch && command == Command.home) return sounds.play(Cue.bump);
     if (command == Command.home) {
       // PS/Guide: from the game to the launcher and back; behind another window, to the front.
       final run = running?.$2;
@@ -2805,6 +2865,15 @@ class AppModel extends ChangeNotifier {
       case Layer.quickMenu || Layer.closeGame when command == Command.back || command == Command.options:
         resumeGame();
         return;
+      case Layer.profilePicker:
+        pickerCommand(command);
+        return;
+      case Layer.addProfile:
+        modeChoiceCommand(command);
+        return;
+      case Layer.signIn:
+        _signInCommand(command);
+        return;
       case Layer.friendOptions when command == Command.back || command == Command.options:
         // A question asked in place (together_ask.dart) is answered Cancel first.
         if (!together.cancelAsk()) open(Layer.friends, cue: Cue.back);
@@ -2821,7 +2890,8 @@ class AppModel extends ChangeNotifier {
           Layer.family ||
           Layer.quickMenu ||
           Layer.closeGame ||
-          Layer.homeMenu:
+          Layer.homeMenu ||
+          Layer.profileMenu:
         _panelCommand(command);
         return;
       case null:
@@ -2889,6 +2959,15 @@ class AppModel extends ChangeNotifier {
     }
   }
 
+  /// The sign-in screen: Back gives it up (a question asked in place answers Cancel first).
+  void _signInCommand(Command command) {
+    if (command == Command.back && editingRow == null) {
+      if (!together.cancelAsk()) unawaited(cancelSignIn());
+      return;
+    }
+    _panelCommand(command);
+  }
+
   // PS: the quick menu, Close Game?, the home menu.
 
   /// The key the game's Options is on (its controls), for pausing it; null when it has none.
@@ -2940,6 +3019,7 @@ class AppModel extends ChangeNotifier {
   /// PS held: Close Game? over a game in front; the home menu in the launcher.
   void homeHeld() {
     if (!preferences.onboarded) return;
+    if (overlay == Layer.profilePicker && profileFlow.atLaunch) return;
     final front = _frontForGuide;
     if (running != null && !front) {
       open(Layer.closeGame);
@@ -3218,6 +3298,26 @@ class AppModel extends ChangeNotifier {
             ],
           ),
         ];
+      case Layer.profileMenu:
+        return [
+          PanelCategory(
+            id: 'profileMenu',
+            title: currentProfile?.name ?? T.text('profileMenuTitle'),
+            rows: profileMenuRows(),
+          ),
+        ];
+      case Layer.signIn:
+        return [
+          PanelCategory(
+            id: 'signIn',
+            title: T.text(switch (profileFlow.origin) {
+              ProfileOrigin.firstStart || ProfileOrigin.adding => 'profileSignInNew',
+              ProfileOrigin.goingOnline => 'profileSignInOnline',
+              ProfileOrigin.signingInAgain => 'profileSignInAgain',
+            }),
+            rows: together.signInRows(),
+          ),
+        ];
       case Layer.homeMenu:
         return [
           PanelCategory(
@@ -3227,7 +3327,13 @@ class AppModel extends ChangeNotifier {
               PanelRow(
                 id: 'switchProfile',
                 title: T.text('switchProfile'),
-                kind: InfoRow(T.text('switchProfileLater')),
+                detail: switch (profiles.book.profiles.length - 1) {
+                  0 => T.text('profileAddSomeone'),
+                  1 => T.text('profileOthersOne'),
+                  final others => T.format('profileOthers', [others]),
+                },
+                // Not while a game plays: it is closed first.
+                kind: ActionRow(() => openProfilePicker()),
               ),
               PanelRow(
                 id: 'quit',
@@ -3495,6 +3601,7 @@ class AppModel extends ChangeNotifier {
       ),
       PanelCategory(id: 'engine', title: T.text('engine'), rows: engine.settingsRows()),
       PanelCategory(id: 'fonts', title: T.text('fonts'), rows: fonts.settingsRows()),
+      PanelCategory(id: 'profiles', title: T.text('profilesCategory'), rows: profileRows()),
       PanelCategory(id: 'together', title: 'AnyTogether', rows: together.settingsRows()),
       PanelCategory(
         id: 'phone',
@@ -4256,7 +4363,7 @@ class AppModel extends ChangeNotifier {
 
   // Onboarding: language, theme, games folder, toolkit.
 
-  static const onboardingSteps = 4;
+  static const onboardingSteps = 5;
   int onboardingStep = 0;
   final Map<int, int> _onboardingChoices = {};
 
@@ -4267,7 +4374,8 @@ class AppModel extends ChangeNotifier {
     0 => T.language.index,
     1 => look.index,
     2 => preferences.gamesFolder == null ? 0 : 1,
-    _ => toolkit == null ? 0 : 2,
+    3 => toolkit == null ? 0 : 2,
+    _ => 0,
   };
 
   int get _onboardingCount => switch (onboardingStep) {
@@ -4278,6 +4386,11 @@ class AppModel extends ChangeNotifier {
   };
 
   void _onboardingCommand(Command command) {
+    // The last step: the cards, or the sign-in they lead to.
+    if (onboardingStep == 4) {
+      overlay == Layer.signIn ? _signInCommand(command) : modeChoiceCommand(command);
+      return;
+    }
     switch (command) {
       case Command.left:
         if (onboardingChoice > 0) {
@@ -4337,7 +4450,8 @@ class AppModel extends ChangeNotifier {
               }),
             );
           default:
-            finishOnboarding();
+            profileFlow.modeChoice = 0;
+            onboardingStep++;
         }
     }
     notifyListeners();

@@ -37,7 +37,7 @@ void main() {
         PadCommand.select,
         PadCommand.back,
         PadCommand.options,
-        PadCommand.options,
+        PadCommand.menu,
         PadCommand.previousGame,
         PadCommand.nextGame,
         PadCommand.home,

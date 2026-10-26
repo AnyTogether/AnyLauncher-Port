@@ -4,6 +4,7 @@ import 'account.dart';
 import 'levels.dart';
 import 'notifier.dart';
 import 'people.dart';
+import 'private_identity.dart';
 import 'socket.dart';
 
 /// The friends list: who they are and what they are doing, requests both ways, and adding
@@ -27,6 +28,10 @@ class Friends with Notifier {
   List<Person> outgoing = const [];
   bool loaded = false;
 
+  /// The friends' private names and pictures as this list last said, for the cards of other
+  /// answers and of realtime events, which carry none.
+  final IdentityBook identities = IdentityBook();
+
   int get online => friends.where((friend) => friend.presence.online).length;
 
   Future<void> refresh() async {
@@ -40,6 +45,7 @@ class Friends with Notifier {
           level: LevelBadge.fromJson(json['level']),
         ),
     ]);
+    identities.learn(friends);
     incoming = _people(requests['incoming']);
     outgoing = _people(requests['outgoing']);
     loaded = true;
@@ -66,6 +72,7 @@ class Friends with Notifier {
   Future<void> remove(String userId) async {
     await account.call('DELETE', 'me/friends/$userId');
     friends = friends.where((friend) => friend.person.id != userId).toList();
+    identities.learn(friends);
     notifyListeners();
   }
 
@@ -75,6 +82,7 @@ class Friends with Notifier {
   /// Signed out: nothing kept.
   void clear() {
     friends = const [];
+    identities.learn(const []);
     incoming = const [];
     outgoing = const [];
     loaded = false;
@@ -94,6 +102,7 @@ class Friends with Notifier {
       case 'friend.removed':
         final gone = event.json['userId'];
         friends = friends.where((friend) => friend.person.id != gone).toList();
+        identities.learn(friends);
         notifyListeners();
       case 'presence.updated':
         final userId = event.json['userId'];

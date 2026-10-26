@@ -115,9 +115,12 @@ extension TogetherParty on TogetherModel {
       for (final member in party.members)
         PanelRow(
           id: 'party-member-${member.id}',
-          title: member.id == me.id ? '${member.displayName} (${T.text('profileYou')})' : member.displayName,
+          // A friend's friends-only name, with the handle (and public name) beside.
+          title: member.id == me.id
+              ? '${member.displayName} (${T.text('profileYou')})'
+              : TogetherModel.shown(member).name,
           detail: [
-            '@${member.handle}',
+            if (member.id == me.id) '@${member.handle}' else TogetherModel.shown(member).handleLine,
             if (party.leads(member.id)) T.text('partyLeader'),
             if (party.inCall.contains(member.id)) T.text('partyInVoice'),
             if (party.muted.contains(member.id)) T.text('voiceMuted'),
@@ -135,10 +138,10 @@ extension TogetherParty on TogetherModel {
             ...askingFirst(
               PanelRow(
                 id: 'party-kick-${member.id}',
-                title: T.format('partyKick', [member.displayName]),
+                title: T.format('partyKick', [TogetherModel.shown(member).name]),
                 kind: ActionRow(() => unawaited(kick(member)), destructive: true),
               ),
-              T.format('askKick', [member.displayName]),
+              T.format('askKick', [TogetherModel.shown(member).name]),
             ),
       if (leader)
         PanelRow(
@@ -160,15 +163,17 @@ extension TogetherParty on TogetherModel {
           invited.contains(friend.person.id)
               ? PanelRow(
                   id: 'party-invited-${friend.person.id}',
-                  title: friend.person.displayName,
-                  detail: T.text('partyInvited'),
+                  title: TogetherModel.shown(friend.person).name,
+                  detail: '${TogetherModel.shown(friend.person).handleLine} · ${T.text('partyInvited')}',
+
                   person: TogetherModel.card(friend.person, status: status),
                   kind: const InfoRow(''),
                 )
               : PanelRow(
                   id: 'party-invite-${friend.person.id}',
-                  title: T.format('partyInvite', [friend.person.displayName]),
-                  detail: presenceText(friend.presence),
+                  title: T.format('partyInvite', [TogetherModel.shown(friend.person).name]),
+                  detail: '${TogetherModel.shown(friend.person).handleLine} · ${presenceText(friend.presence)}',
+
                   person: TogetherModel.card(friend.person, status: status),
                   kind: ActionRow(() => unawaited(inviteToParty(friend.person))),
                 ),

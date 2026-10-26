@@ -20,6 +20,17 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
   flutter::DartProject project(L"data");
+  // The renderer: Skia, which draws the launcher's glass, blurs and layers through ANGLE far
+  // faster than Impeller's OpenGL ES backend does on integrated GPUs (an Impeller frame of a
+  // settings panel took dozens of offscreen passes). ANYPS5_RENDERER=impeller picks Impeller.
+  wchar_t renderer[16] = {};
+  const DWORD renderer_length =
+      ::GetEnvironmentVariableW(L"ANYPS5_RENDERER", renderer, 16);
+  project.set_impeller_switch(
+      renderer_length > 0 && renderer_length < 16 &&
+              _wcsicmp(renderer, L"impeller") == 0
+          ? flutter::ImpellerSwitch::Enabled
+          : flutter::ImpellerSwitch::Disabled);
 
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();

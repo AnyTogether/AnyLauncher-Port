@@ -5,6 +5,10 @@ release when it is made.
 
 ## Next release
 
+Nothing yet.
+
+## 0.1.7
+
 - **Play from Steam and the Steam Deck.** **Settings → Steam → Add to Steam** puts AnyPS5 in
   your Steam library as a non-Steam game, with artwork in the Cosmic look (cover, wide capsule,
   hero, logo and icon), tagged **AnyPS5**, so Big Picture, Steam Input and the Steam Deck's Game
@@ -27,6 +31,19 @@ release when it is made.
   command to copy), and gives the Bluetooth and cable tips. Started from Steam, Steam's virtual
   pad is used and the real one left to Steam. Crash reports now list the controllers.
 
+- **No unlock without the room, and new games prepared in the background.** Unlock (and Update
+  and Play) first works out what it will write and checks the games folder's drive; when it is
+  short nothing starts, and the panel says how much is needed and how much is free, why the
+  game's files would be copied when they would, and the ways out (a games folder on the dump's
+  drive or one with more room, Developer Mode on Windows, try again). **Settings → Game Library →
+  Prepare New Games Automatically** (on by default): a new, complete game found in the games
+  folder is unlocked in the background, one at a time and at the lowest priority; it waits for
+  your own unlocks and for a game you play, pauses where it is when one starts, and never runs on
+  a battery below 30 % or a drive without the room (it says so). The **New game** notice says
+  **Preparing…**, then **Ready to play**; Play on a game being prepared finishes it at full speed
+  and starts it. Unlocking again is faster too: the relinker's output is kept, and the same
+  game, engine and modules skip the unwrap and relink.
+
 - **More in Messages.** Pick a message (↑ from the field, or click it) for its menu: react with
   👍 ❤️ 😂 😮 😢 🔥 or GG, reply (the answer quotes it), edit your own for 15 minutes, or unsend
   it for everyone after a confirmation; unsent ones read "Message removed". Reactions show as chips
@@ -35,8 +52,6 @@ release when it is made.
   top (up to five) or mutes it, with a mark in the list; muted ones come in without a notice.
   **Settings → AnyTogether → Send read receipts** turns read receipts off both ways. Unread counts
   are now the server's own.
-
-## 0.1.6
 
 - **Smooth on laptops and integrated graphics, and nothing drawn behind your game.** On Windows
   the launcher now draws with Skia instead of Impeller's OpenGL ES backend, which needed dozens
@@ -125,6 +140,10 @@ release when it is made.
   the pointer and glide on when you let go fast; a drag never clicks what it started on, and a
   click that moves a few pixels is still a click. The arrow keys and the controller scroll the
   focused row into view as before.
+
+## 0.1.6
+
+Pre-release, superseded by 0.1.7.
 
 ## 0.1.5
 

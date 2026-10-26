@@ -10,6 +10,7 @@ import '../core/game_library.dart';
 import '../core/game_log.dart';
 import '../core/game_settings.dart';
 import '../core/host.dart';
+import '../core/online/online_play.dart' show OnlineHost;
 import 'app_model.dart';
 import 'strings.dart';
 import 'together_model.dart' show launcherVersion;
@@ -170,6 +171,7 @@ class CrashModel {
       started: last?.started,
       ended: last?.ended,
       controllers: app.controllers.reportLines,
+      onlineLog: OnlineHost.logFile(game.titleId, app.paths.onlineLogs),
     );
     final built = await _buildAway(input);
     if (!identical(current, state)) return;
@@ -359,9 +361,13 @@ class _ReportInput {
     required this.started,
     required this.ended,
     this.controllers = const [],
+    this.onlineLog,
   });
 
   final String logFile;
+
+  /// The game's online observation log; its last lines go in when it was written this start.
+  final String? onlineLog;
   final List<String> controllers;
   final String unlockFile;
   final String gameName;
@@ -386,6 +392,23 @@ typedef _Built = ({SessionReport report, IssueDraft engine, IssueDraft launcher,
 Future<_Built> _buildAway(_ReportInput input) => Isolate.run(() => _build(input));
 
 Future<String> _wholeText(SessionReport report) => Isolate.run(() => report.text(whole: true));
+
+/// The last lines of the game's online log, when it was written during the start reported (or,
+/// for a start the launcher no longer remembers, in the last day).
+List<String> _onlineLines(_ReportInput input) {
+  final path = input.onlineLog;
+  if (path == null) return const [];
+  try {
+    final written = File(path).lastModifiedSync();
+    final since = (input.started ?? DateTime.now().subtract(const Duration(days: 1))).subtract(
+      const Duration(minutes: 1),
+    );
+    if (written.isBefore(since)) return const [];
+  } on FileSystemException {
+    return const [];
+  }
+  return OnlineHost.lastLines(path, SessionReport.onlineTail);
+}
 
 _Built _build(_ReportInput input) {
   final session = GameLog.lastSession(GameLog.tail(input.logFile, 32 << 20));
@@ -412,6 +435,7 @@ _Built _build(_ReportInput input) {
     ended: input.ended,
     unlockLog: GameLog.read(input.unlockFile),
     controllers: input.controllers,
+    onlineLines: _onlineLines(input),
   );
   return (
     report: report,

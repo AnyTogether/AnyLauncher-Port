@@ -7,6 +7,9 @@ import '../core/audio/tones.dart';
 import '../core/game_library.dart';
 import '../core/gamepad/feel.dart' show HapticCue;
 import '../core/host.dart';
+import '../core/online/online_peer.dart';
+import '../core/online/online_peer_mesh.dart';
+import '../core/online/online_play.dart';
 import '../core/remote/remote_protocol.dart';
 import '../core/together/account.dart';
 import '../core/together/family.dart';
@@ -29,6 +32,7 @@ import '../core/trophies.dart';
 import '../core/game_settings.dart';
 import 'app_model.dart';
 import 'family_gate.dart';
+import 'online_webrtc.dart';
 import 'strings.dart';
 import 'voice_webrtc.dart';
 
@@ -90,6 +94,19 @@ class TogetherModel {
       platform: app.system.name,
       model: machineModel(app.system),
     );
+    online = OnlineHost(
+      logFolder: app.paths.onlineLogs,
+      call: account.call,
+      user: () => account.user,
+      // Signals to the other players' launchers go out on the gateway socket.
+      signal: (to, device, sessionId, kind, data) =>
+          hub.socket.send(OnlinePeerSignal.frame(to: to, device: device, sessionId: sessionId, kind: kind, data: data)),
+      transport: (context) =>
+          OnlinePeerMesh(context: context, links: app.services.gameLinks?.call() ?? WebRtcGameLinks()),
+      locale: Platform.localeName,
+    );
+    // Online play follows the game session this launcher keeps for the running game.
+    hub.games.addListener(() => online.follow(hub.games.session?.id));
     _ready = hub.socket.events.listen(_event);
     hub.messages.onSendFailed = (error) => sendFailed(error);
     hub.voice
@@ -105,6 +122,10 @@ class TogetherModel {
 
   /// Play sessions and trophies on their way to the server.
   late final TogetherSync sync;
+
+  /// Online play for the running game (Settings › AnyTogether › Online play): the bridge the game
+  /// connects to, the platform's web API answered from AnyTogether, the peer mesh.
+  late final OnlineHost online;
 
   /// Family limits: the kept status, play time, age ratings, asking a parent.
   late final FamilyGate family = FamilyGate(this);
@@ -779,6 +800,18 @@ class TogetherModel {
           kind: ToggleRow(app.preferences.friendsJoin, (value) => unawaited(setFriendsJoin(value))),
         ),
         PanelRow(
+          id: 'together-online-play',
+          title: T.text('togetherOnlinePlay'),
+          detail: T.format('togetherOnlinePlayDetail', [me.handle]),
+          kind: ToggleRow(app.preferences.onlinePlay, setOnlinePlay),
+        ),
+        PanelRow(
+          id: 'together-online-log',
+          title: T.text('togetherOnlineLog'),
+          detail: T.text('togetherOnlineLogDetail'),
+          kind: ActionRow(openOnlineLog),
+        ),
+        PanelRow(
           id: 'together-signout',
           title: T.text('togetherSignOut'),
           kind: ActionRow(() => unawaited(signOut()), destructive: true),
@@ -902,6 +935,37 @@ class TogetherModel {
     ];
   }
 
+  // Online play.
+
+  /// Online play (experimental) on or off; a game started from now on gets it.
+  void setOnlinePlay(bool on) {
+    app.preferences.onlinePlay = on;
+    app.savePreferences();
+    app.refresh();
+  }
+
+  /// Shows the folder of the games' online logs (made first, so it opens even before a game
+  /// wrote one).
+  void openOnlineLog() {
+    final folder = app.paths.onlineLogs;
+    try {
+      Directory(folder).createSync(recursive: true);
+    } on FileSystemException {
+      // The file manager says so.
+    }
+    app.services.openFolder?.call(folder);
+  }
+
+  /// What [game] is started with for online play: nothing while the setting is off.
+  Future<Map<String, String>> onlineEnvironment(Game game) async {
+    if (!app.preferences.onlinePlay) return const {};
+    online.platformGroups = app.preferences.onlinePlatformGroups;
+    return online.environment(titleId: game.titleId, gameVersion: gameVersion(game), engineBuild: engineBuild(game));
+  }
+
+  /// The game ended: its online bridge closes.
+  Future<void> onlineGameEnded() => online.stop();
+
   /// What to tell the user about a failed call.
   String message(Object error) {
     if (isFamilyRestriction(error)) {
@@ -924,6 +988,8 @@ class TogetherModel {
 
   /// Gateway events worth a word on screen, and the outbox's chance after a reconnect.
   void _event(TogetherEvent event) {
+    // Online play follows the same game session: players joining, leaving, signalling.
+    online.handle(event);
     final data = event.json;
     switch (event.type) {
       case 'live.ready':
@@ -969,6 +1035,7 @@ class TogetherModel {
   }
 
   void dispose() {
+    unawaited(online.stop());
     family.dispose();
     talkWatch?.stop();
     talkWatch?.reader.close();

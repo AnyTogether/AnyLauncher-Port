@@ -83,6 +83,17 @@ void main() {
       expect(model.crash.reasonText(current), 'The game crashed (access violation (0xC0000005)).');
     }, skip: Platform.isWindows ? 'the fake game is a shell script' : false);
 
+    test('with online play on, the report carries the end of the game\'s online log', () async {
+      model.preferences.onlinePlay = true;
+      gameScript('echo \'{"v":1,"fn":"sceNpGetState","ret":0}\' >> "\$ANYPS5_ONLINE_LOG"\n$crashScript');
+      await model.play(orbit());
+      await model.crash.pending;
+      final report = model.crash.current!.report!;
+      expect(report.onlineLines, ['{"v":1,"fn":"sceNpGetState","ret":0}']);
+      expect(report.text(), contains('Online play, the end of the game\'s online log (1 line):'));
+      expect(model.together.online.running, isNull, reason: 'the bridge closed with the game');
+    }, skip: Platform.isWindows ? 'the fake game is a shell script' : false);
+
     test('Save crash_log.txt writes the report and the whole start where the user picks', () async {
       gameScript(crashScript);
       await model.play(orbit());

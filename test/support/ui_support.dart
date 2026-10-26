@@ -115,6 +115,9 @@ class Fixture {
   /// Texts the launcher put on the clipboard.
   final List<String> copied;
 
+  /// Folders the launcher showed in the file manager.
+  final List<String> folders = [];
+
   void dispose() => temp.deleteSync(recursive: true);
 }
 
@@ -153,6 +156,7 @@ Fixture makeFixture({
 }) {
   final opened = <Uri>[];
   final copied = <String>[];
+  void Function(String folder)? shown;
   final temp = temporaryFolder('ui');
   final root = p.join(temp.path, 'Games');
   final toolkit = makeFakeToolkit(p.join(temp.path, 'toolkit'));
@@ -195,6 +199,7 @@ Fixture makeFixture({
       cable: false,
       openUrl: opened.add,
       copyText: copied.add,
+      openFolder: (folder) => shown?.call(folder),
       environment: environment,
       togetherStore: togetherStore ?? MemoryTokenStore(),
       togetherServer: together,
@@ -238,7 +243,9 @@ Fixture makeFixture({
   writeTrophies(orbit.folder, installed: installed, earned: [1, 2]);
   model.rescan();
   model.sizes[orbit.id] = 48200000000;
-  return Fixture(temp, model, toolkit, opened, copied);
+  final fixture = Fixture(temp, model, toolkit, opened, copied);
+  shown = fixture.folders.add;
+  return fixture;
 }
 
 /// Renders the launcher at 1600x900 with the background and clock held still.

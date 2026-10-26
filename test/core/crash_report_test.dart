@@ -171,6 +171,29 @@ void main() {
       expect(report().fileName, 'crash_log.txt');
     });
 
+    test('carries the last lines of the game\'s online log, cleaned, when there are any', () {
+      expect(report().text(), isNot(contains('Online play')));
+      final online = SessionReport(
+        gameName: 'Orbit Runner',
+        titleId: 'PPSA01001',
+        gameVersion: '01.000.002',
+        settings: const GameSettings(),
+        system: const SystemInfo(os: 'Windows 11'),
+        launcherVersion: '0.1.8',
+        platform: 'Windows',
+        session: windowsCrash,
+        privacy: windowsUser(),
+        onlineLines: const [
+          '{"v":1,"fn":"sceNpWebApi2CreateRequest","in":{"api_group":"sessionManager"}}',
+          r'{"v":1,"fn":"sceNpGetOnlineId","in":{"path":"C:\\Users\\Utku Halis\\x"}}',
+        ],
+      );
+      final text = online.text();
+      expect(text, contains('Online play, the end of the game\'s online log (2 lines):'));
+      expect(text, contains('  {"v":1,"fn":"sceNpWebApi2CreateRequest"'));
+      expect(text, isNot(contains('Utku Halis')), reason: 'cleaned like the rest');
+    });
+
     test('says when detailed logging was on and when the user stopped the game', () {
       expect(report(traced: true).text(), contains('detailed logging on'));
       final stopped = SessionReport(

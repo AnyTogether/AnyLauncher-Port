@@ -33,7 +33,8 @@ class AppPaths {
     required this.cache,
     required this.pictures,
     required this.toolkits,
-  });
+    String? onlineLogs,
+  }) : onlineLogs = onlineLogs ?? p.join(logs, 'Online');
 
   /// The usual folders for [system], read from [environment] (Platform.environment by default).
   factory AppPaths.forSystem(HostSystem system, {Map<String, String>? environment}) {
@@ -48,6 +49,7 @@ class AppPaths {
         cache: p.windows.join(local, 'AnyPS5', 'Cache'),
         pictures: p.windows.join(profile, 'Pictures', 'AnyPS5'),
         toolkits: p.windows.join(local, 'AnyPS5', 'Toolkits'),
+        onlineLogs: p.windows.join(local, 'AnyPS5', 'Logs', 'Online'),
       );
     }
     final home = env['HOME'] ?? '/tmp';
@@ -62,12 +64,16 @@ class AppPaths {
       cache: p.posix.join(xdg('XDG_CACHE_HOME', '.cache'), 'AnyPS5'),
       pictures: p.posix.join(home, 'Pictures', 'AnyPS5'),
       toolkits: p.posix.join(xdg('XDG_DATA_HOME', '.local/share'), 'AnyPS5', 'Toolkits'),
+      onlineLogs: p.posix.join(xdg('XDG_STATE_HOME', '.local/state'), 'AnyPS5', 'online'),
     );
   }
 
   /// Settings, paired phones, per-game choices.
   final String config;
   final String logs;
+
+  /// Online play's observation logs, one per game (`<TitleID>.jsonl`, the engine writes them).
+  final String onlineLogs;
 
   /// Shader caches, one folder per game.
   final String cache;

@@ -152,6 +152,11 @@ const togetherEnglish = <String, String>{
   'gameJoined': 'Starting %2\$@ with %1\$@',
   'togetherFriendsJoin': 'Let friends join my game',
   'togetherFriendsJoinDetail': 'While you play, friends see it and can start the same game to join',
+  'togetherOnlinePlay': 'Online play (experimental)',
+  'togetherOnlinePlayDetail':
+      'Games see you signed in as @%@ with your AnyTogether friends and reach the other players directly or through AnyTogether\'s relay, never Sony. What they ask for goes to a log. From the next game start',
+  'togetherOnlineLog': 'Open online log',
+  'togetherOnlineLogDetail': 'What each game asked for online, one file per game, for a bug report',
   'voiceJoin': 'Join voice',
   'voiceJoinDetail': 'Talk with the party',
   'voiceInCall': '%d in voice',
@@ -441,6 +446,11 @@ const togetherTurkish = <String, String>{
   'gameJoined': '%1\$@ ile %2\$@ başlıyor',
   'togetherFriendsJoin': 'Arkadaşlarım oyunuma katılabilsin',
   'togetherFriendsJoinDetail': 'Oynarken arkadaşların görür ve aynı oyunu başlatıp katılabilir',
+  'togetherOnlinePlay': 'Çevrimiçi oyun (deneysel)',
+  'togetherOnlinePlayDetail':
+      'Oyunlar seni @%@ olarak AnyTogether arkadaşlarınla görür; diğer oyunculara doğrudan ya da AnyTogether aktarıcısıyla ulaşır, Sony\'ye asla. İstedikleri bir kayda yazılır. Sonraki oyun başlatışta geçerli olur',
+  'togetherOnlineLog': 'Çevrimiçi kaydı aç',
+  'togetherOnlineLogDetail': 'Her oyunun çevrimiçi ne istediği, oyun başına bir dosya; hata bildirimi için',
   'voiceJoin': 'Sese katıl',
   'voiceJoinDetail': 'Partiyle konuş',
   'voiceInCall': '%d kişi seste',

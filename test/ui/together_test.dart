@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:anyps5_desktop/core/installer.dart';
+import 'package:anyps5_desktop/core/online/online_identity.dart';
+import 'package:anyps5_desktop/core/online/online_wire.dart';
 import 'package:anyps5_desktop/core/together/account.dart';
 import 'package:anyps5_desktop/core/together/messages.dart';
 import 'package:anyps5_desktop/core/together/people.dart';
@@ -15,6 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
 import '../support/fake_together.dart';
+import '../support/online_fakes.dart';
 import '../support/phone/fake_phone.dart';
 import '../support/phone/messages.dart';
 import '../support/ui_support.dart';
@@ -81,6 +84,8 @@ void main() {
         'together-receipts',
         'together-profile',
         'together-join',
+        'together-online-play',
+        'together-online-log',
         'together-signout',
         'together-server',
         'together-server-use',
@@ -1196,6 +1201,60 @@ void main() {
         File(model.paths.logFile('PPSA01001')).readAsStringSync(),
         contains('ANYPS5_TOGETHER_SESSION=${bridge.path}'),
       );
+    });
+
+    test('online play: off by default; on, the game is started with the bridge and signed in as the user', () async {
+      final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
+      final installed = Installer.installedFolder(orbit, model.root!);
+      File(p.join(installed, 'app.elf')).writeAsStringSync('#!/bin/sh\nenv | grep ^ANYPS5_ONLINE\nsleep 0.4\n');
+      if (!Platform.isWindows) Process.runSync('chmod', ['755', p.join(installed, 'app.elf')]);
+      expect(model.preferences.onlinePlay, isFalse, reason: 'off by default');
+      await model.play(orbit);
+      expect(File(model.paths.logFile('PPSA01001')).readAsStringSync(), isNot(contains('ANYPS5_ONLINE')));
+
+      openTogether();
+      final row = model.panelCategories()[model.panelCategory].rows.firstWhere(
+        (row) => row.id == 'together-online-play',
+      );
+      expect(row.title, 'Online play (experimental)');
+      expect(row.detail, contains('@utku'));
+      expect(row.detail, contains('never Sony'));
+      (row.kind as ToggleRow).set(true);
+      expect(model.preferences.onlinePlay, isTrue);
+      expect(model.preferences.toJson()['onlinePlay'], isTrue);
+      final log = model.panelCategories()[model.panelCategory].rows.firstWhere(
+        (row) => row.id == 'together-online-log',
+      );
+      (log.kind as ActionRow).run();
+      expect(fixture.folders, [model.paths.onlineLogs]);
+      expect(Directory(model.paths.onlineLogs).existsSync(), isTrue);
+      expect(model.paths.onlineLogs, endsWith(p.join('.local', 'state', 'AnyPS5', 'online')));
+
+      // The game connects to the launcher's bridge with the secret it was started with.
+      File(p.join(installed, 'app.elf')).writeAsStringSync('#!/bin/sh\nenv | grep ^ANYPS5_ONLINE\nsleep 3\n');
+      final playing = model.play(orbit);
+      final logFile = File(model.paths.logFile('PPSA01001'));
+      String? line(String name) =>
+          RegExp('^$name=(.*)\$', multiLine: true).allMatches(logFile.readAsStringSync()).lastOrNull?.group(1);
+      await until(() => line('ANYPS5_ONLINE_SECRET') != null && model.together.online.running != null);
+      expect(line('ANYPS5_ONLINE'), '127.0.0.1:${model.together.online.running!.bridge.port}');
+      expect(line('ANYPS5_ONLINE_SECRET'), hasLength(64));
+      expect(line('ANYPS5_ONLINE_LOG'), p.join(model.paths.onlineLogs, 'PPSA01001.jsonl'));
+      final engine = (await FakeEngine.fromEnvironment({
+        'ANYPS5_ONLINE': line('ANYPS5_ONLINE')!,
+        'ANYPS5_ONLINE_SECRET': line('ANYPS5_ONLINE_SECRET')!,
+      }))!;
+      expect(engine.account?.signedIn, isTrue);
+      expect(engine.account?.onlineId, 'utku');
+      expect(engine.account?.accountId, OnlineIdentity.accountId('u-me'));
+      final friends = await engine.web(
+        WireWebRequest(userId: 0x10000000, apiGroup: 'userProfile', path: '/v1/users/me/friends', method: 'GET'),
+      );
+      expect(friends?.status, 200);
+      expect((friends!.json! as Map)['friends'], [OnlineIdentity.account('u-ana')], reason: 'AnyTogether friends');
+      await engine.close();
+      await playing;
+      await until(() => model.together.online.running == null);
     });
 
     test("joining a friend's game: the same version and engine, then the game starts", () async {

@@ -47,6 +47,7 @@ import '../core/toolkit_download.dart';
 import '../core/together/levels.dart';
 import '../core/together/talk_key.dart';
 import '../core/together/token_store.dart';
+import '../core/online/online_peer_mesh.dart';
 import '../core/together/voice_mesh.dart';
 import '../core/trophies.dart';
 import '../core/unlock_space.dart';
@@ -91,6 +92,8 @@ class Preferences {
     ..phoneServer = json['phoneServer'] as bool? ?? true
     ..togetherServer = json['togetherServer'] as String?
     ..friendsJoin = json['friendsJoin'] as bool? ?? true
+    ..onlinePlay = json['onlinePlay'] == true
+    ..onlinePlatformGroups = json['onlinePlatformGroups'] as bool? ?? true
     ..pushToTalk = json['pushToTalk'] as bool? ?? false
     ..talkKey = (json['talkKey'] as num?)?.toInt()
     ..sounds = json['sounds'] as bool? ?? true
@@ -147,6 +150,16 @@ class Preferences {
 
   /// While a game runs, friends see it and can join (an AnyTogether game session).
   bool friendsJoin = true;
+
+  /// Settings › AnyTogether › Online play (experimental): games are started with the launcher's
+  /// online bridge (signed in as the AnyTogether user, friends, Player Sessions, game packets to
+  /// the other players). Off by default.
+  bool onlinePlay = false;
+
+  /// With online play on, the platform's web API groups the launcher knows (userProfile,
+  /// communicationRestrictionStatus, sessionManager) are answered; off answers them all "not
+  /// offered", for a clean observation run. Not in the interface.
+  bool onlinePlatformGroups = true;
 
   /// In party voice: the talk key held to talk (else it turns the microphone on and off), and
   /// which key it is (a USB HID usage; null for the default).
@@ -211,6 +224,8 @@ class Preferences {
     'phoneServer': phoneServer,
     'togetherServer': togetherServer,
     'friendsJoin': friendsJoin,
+    'onlinePlay': onlinePlay,
+    if (!onlinePlatformGroups) 'onlinePlatformGroups': false,
     'pushToTalk': pushToTalk,
     'talkKey': talkKey,
     'sounds': sounds,
@@ -534,6 +549,7 @@ class LauncherServices {
     this.togetherServer,
     this.togetherPollEvery,
     this.voiceEngine,
+    this.gameLinks,
     this.talkKeys,
     this.engineReleases,
     this.launcherReleases,
@@ -620,6 +636,9 @@ class LauncherServices {
 
   /// Party voice's microphone and connections; flutter_webrtc by default.
   final VoiceEngine Function()? voiceEngine;
+
+  /// Online play's peer connections to the other players; flutter_webrtc by default.
+  final GameLinks Function()? gameLinks;
 
   /// Reads the talk key anywhere on the desktop; the system's reader by default, none in tests.
   final KeyStateReader? Function()? talkKeys;
@@ -2044,6 +2063,9 @@ class AppModel extends ChangeNotifier {
       // A game in Japanese, Korean or Chinese waits for those fonts; every game gets the folder
       // the fonts are put together in.
       final systemFonts = await fonts.prepare(game, settings.language ?? T.language.consoleLanguage);
+      // Settings › AnyTogether › Online play: the loopback bridge the engine connects to
+      // (ANYPS5_ONLINE, ANYPS5_ONLINE_SECRET) and the title's observation log; nothing when off.
+      final online = await together.onlineEnvironment(game);
       final environment = {
         ...settings.environment(
           launcherLanguage: T.language.consoleLanguage,
@@ -2056,6 +2078,7 @@ class AppModel extends ChangeNotifier {
         ...?remote?.bridgeEnvironment,
         // The engine's online bridge reads the AnyTogether game session there.
         if (together.signedIn) 'ANYPS5_TOGETHER_SESSION': together.hub.games.bridgeFile,
+        ...online,
       };
       fonts.watch(game, logFile);
       final run = await GameProcess.start(
@@ -2081,6 +2104,7 @@ class AppModel extends ChangeNotifier {
       together.gameChanged();
       _changed();
       final code = await run.exitCode;
+      unawaited(together.onlineGameEnded());
       fonts.ended();
       together.recordPlay(game, began, DateTime.now(), exit: _stopped ? 'killed' : (code == 0 ? 'normal' : 'crashed'));
       _trophyWatch?.cancel();
@@ -2099,6 +2123,7 @@ class AppModel extends ChangeNotifier {
     } on Object catch (error) {
       starting = null;
       fonts.ended();
+      unawaited(together.onlineGameEnded());
       vibrate(HapticCue.error);
       show('${T.text('startFailed')}: $error');
       _changed();

@@ -441,6 +441,7 @@ class SessionReport {
     this.ended,
     this.unlockLog,
     this.controllers = const [],
+    this.onlineLines = const [],
   }) : created = created ?? DateTime.now(),
        diagnosis = stoppedByUser ? null : Diagnosis.read(session, exitCode: exitCode);
 
@@ -479,10 +480,17 @@ class SessionReport {
 
   /// The controllers connected and the last connects and disconnects (PadLog.report).
   final List<String> controllers;
+
+  /// The last lines of the game's online observation log, when online play wrote one during this
+  /// start (what the game asked of the platform's online libraries just before it stopped).
+  final List<String> onlineLines;
   final Diagnosis? diagnosis;
 
   /// The log lines the copied text and the panel carry; the saved file has the whole start.
   static const tailLines = 200;
+
+  /// The online log lines a report carries.
+  static const onlineTail = 20;
 
   /// The file the report is saved as, as the Discord request named it.
   String get fileName => 'crash_log.txt';
@@ -570,6 +578,11 @@ class SessionReport {
       'Settings: ${settings.reportSummary}',
       if (traced) 'Detailed logging: ${TraceMode.environment.entries.map((e) => '${e.key}=${e.value}').join(' ')}',
       if (controllers.isNotEmpty) ...['', 'Controllers:', for (final line in controllers) '  $line'],
+      if (onlineLines.isNotEmpty) ...[
+        '',
+        'Online play, the end of the game\'s online log (${onlineLines.length} ${onlineLines.length == 1 ? 'line' : 'lines'}):',
+        for (final line in onlineLines) '  $line',
+      ],
     ];
     final crash = Diagnosis.crashLines(session);
     if (crash.isNotEmpty) {

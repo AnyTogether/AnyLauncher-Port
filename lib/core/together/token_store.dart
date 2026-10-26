@@ -85,6 +85,38 @@ abstract class TokenStore {
     }
     return SecretServiceStore(fallback: FileTokenStore(p.join(folder, 'session.json')));
   }
+
+  /// A launcher profile's session: the first profile (the setup from before profiles) keeps the
+  /// store it had, so nothing moves; every other profile has its own DPAPI file, or its own
+  /// Secret Service item (by a profile attribute) with its own fallback file.
+  static TokenStore forProfile(AppPaths paths, HostSystem system, String profile, {required bool legacy}) {
+    if (legacy) return forSystem(paths, system);
+    final folder = p.join(paths.config, 'Together', 'profiles', profile);
+    if (system == HostSystem.windows) {
+      return FileTokenStore(p.join(folder, 'session.bin'), sealer: Platform.isWindows ? DpapiSealer() : null);
+    }
+    return SecretServiceStore(fallback: FileTokenStore(p.join(folder, 'session.json')), profile: profile);
+  }
+}
+
+/// The store of the profile playing, changed when another profile plays: the account keeps one
+/// store and its sessions stay apart.
+class ProfileTokenStore implements TokenStore {
+  ProfileTokenStore(this.inner);
+
+  TokenStore inner;
+
+  /// From now on [next] keeps the session (the account is detached first).
+  void use(TokenStore next) => inner = next;
+
+  @override
+  Future<SavedSession?> load() => inner.load();
+
+  @override
+  Future<void> save(SavedSession? session) => inner.save(session);
+
+  @override
+  String get kind => inner.kind;
 }
 
 /// Kept for this run only (tests, previews).
@@ -186,15 +218,26 @@ abstract final class Posix {
 /// The Secret Service through secret-tool (libsecret), with a file kept as [fallback] where
 /// there is no secret-tool or no keyring answers (a headless session, a desktop without one).
 class SecretServiceStore implements TokenStore {
-  SecretServiceStore({required this.fallback, this.tool = 'secret-tool'});
+  SecretServiceStore({required this.fallback, this.tool = 'secret-tool', this.profile});
 
   final FileTokenStore fallback;
+
+  /// The launcher profile whose item this is; null for the first one's (the item from before
+  /// profiles).
+  final String? profile;
 
   /// The secret-tool to run; tests give a fake one.
   final String tool;
   bool _usable = true;
 
-  static const _attributes = ['application', 'anyps5', 'kind', 'anytogether-session'];
+  /// How the item is found: the application and kind, and the profile after the first.
+  List<String> get attributes => [
+    'application',
+    'anyps5',
+    'kind',
+    'anytogether-session',
+    if (profile != null) ...['profile', profile!],
+  ];
 
   @override
   String get kind => _usable ? 'secret-service' : fallback.kind;
@@ -203,7 +246,7 @@ class SecretServiceStore implements TokenStore {
   Future<SavedSession?> load() async {
     if (_usable) {
       try {
-        final result = await Process.run(tool, ['lookup', ..._attributes]);
+        final result = await Process.run(tool, ['lookup', ...attributes]);
         if (result.exitCode == 0) {
           final session = SavedSession.decode((result.stdout as String).trim());
           if (session != null) return session;
@@ -220,11 +263,11 @@ class SecretServiceStore implements TokenStore {
     if (_usable) {
       try {
         if (session == null) {
-          await Process.run(tool, ['clear', ..._attributes]);
+          await Process.run(tool, ['clear', ...attributes]);
           await fallback.save(null);
           return;
         }
-        final process = await Process.start(tool, ['store', '--label=AnyPS5 AnyTogether session', ..._attributes]);
+        final process = await Process.start(tool, ['store', '--label=AnyPS5 AnyTogether session', ...attributes]);
         try {
           process.stdin.write(jsonEncode(session.toJson()));
           await process.stdin.close();

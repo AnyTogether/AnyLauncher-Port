@@ -349,8 +349,15 @@ class FakeTogether {
       _socket(socket);
       return;
     }
-    final text = await utf8.decodeStream(request);
-    final body = text.isEmpty ? <String, dynamic>{} : (jsonDecode(text) as Map<String, dynamic>? ?? {});
+    final bytes = await request.fold<List<int>>(<int>[], (all, chunk) => all..addAll(chunk));
+    // A picture going up is no JSON: its size stands for it.
+    final isJson = request.headers.contentType == null || request.headers.contentType?.mimeType == 'application/json';
+    final text = isJson ? utf8.decode(bytes) : '';
+    final body = !isJson
+        ? <String, dynamic>{'bytes': bytes.length}
+        : text.isEmpty
+        ? <String, dynamic>{}
+        : (jsonDecode(text) as Map<String, dynamic>? ?? {});
     final prefix = '/api/v1/';
     final path = request.uri.path.startsWith(prefix)
         ? request.uri.path.substring(prefix.length) + (request.uri.hasQuery ? '?${request.uri.query}' : '')

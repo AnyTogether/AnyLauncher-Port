@@ -6,6 +6,7 @@ import 'strings_family.dart';
 import 'strings_feedback.dart';
 import 'strings_fonts.dart';
 import 'strings_prepare.dart';
+import 'strings_profiles.dart';
 import 'strings_steam.dart';
 import 'strings_table.dart';
 import 'strings_play_together.dart';
@@ -239,6 +240,7 @@ abstract final class T {
                   addonsTurkish[key] ??
                   presetsTurkish[key] ??
                   feedbackTurkish[key] ??
+                  profilesTurkish[key] ??
                   turkishTable[key]
             : null) ??
         _english[key] ??
@@ -254,6 +256,7 @@ abstract final class T {
         addonsEnglish[key] ??
         presetsEnglish[key] ??
         feedbackEnglish[key] ??
+        profilesEnglish[key] ??
         englishTable[key] ??
         key;
   }

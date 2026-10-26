@@ -71,6 +71,8 @@ void main() {
       expect(model.onboardingChoice, 2, reason: 'next comes Start');
       expect(model.toast, 'AnyPS5 engine v0.1.3 is ready');
       model.onboardingConfirm();
+      expect(model.onboardingStep, 4, reason: 'then offline or online');
+      model.onboardingConfirm();
       expect(model.preferences.onboarded, isTrue);
     });
 

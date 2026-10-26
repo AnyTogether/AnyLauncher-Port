@@ -264,7 +264,9 @@ void main() {
       expect(model.look, LookStyle.aurora);
       await press(tester, LogicalKeyboardKey.keyE);
       expect(model.panelCategory, 1);
-      // Library, the AnyPS5 engine, the fonts, AnyTogether and the phones, then the language.
+      // Library, the AnyPS5 engine, the fonts, Profiles, AnyTogether and the phones, then the
+      // language.
+      await press(tester, LogicalKeyboardKey.keyE);
       await press(tester, LogicalKeyboardKey.keyE);
       await press(tester, LogicalKeyboardKey.keyE);
       await press(tester, LogicalKeyboardKey.keyE);
@@ -374,7 +376,11 @@ void main() {
       await press(tester, LogicalKeyboardKey.arrowRight);
       await press(tester, LogicalKeyboardKey.arrowRight);
       await press(tester, LogicalKeyboardKey.enter);
+      expect(model.onboardingStep, 4, reason: 'offline or online last');
+      expect(find.text('Çevrimdışı Oyna'), findsOneWidget);
+      await press(tester, LogicalKeyboardKey.enter);
       expect(model.preferences.onboarded, isTrue);
+      expect(model.profiles.book.profiles.single.mode.name, 'offline');
       expect(find.text('Oyunlar'), findsOneWidget);
     });
 

@@ -268,8 +268,9 @@ extension TogetherPlay on TogetherModel {
             case final Person person)
           PanelRow(
             id: 'together-player-$userId',
-            title: person.displayName,
+            title: userId == me ? person.displayName : TogetherModel.shown(person).name,
             detail: [
+              if (userId != me) TogetherModel.shown(person).handleLine,
               if (userId == together.hostId) T.text('togetherHost'),
               userId == me ? T.text('togetherYou') : (mine ? linkText(userId) : T.text('togetherInGame')),
               if (together.versionOverrides.contains(userId)) T.text('togetherTriedAnyway'),

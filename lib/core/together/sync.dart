@@ -107,7 +107,9 @@ class TogetherSync {
   }
 
   final TogetherAccount account;
-  final String file;
+
+  /// The outbox on disk: each launcher profile has its own ([useFile]).
+  String file;
   final String deviceName;
 
   /// windows or linux, as the server names them.
@@ -129,6 +131,22 @@ class TogetherSync {
   Set<String> sentTrophies = {};
   List<Map<String, dynamic>> sessions = [];
   bool _flushing = false;
+
+  /// Another launcher profile plays: its own outbox from now on, so what one played is never
+  /// sent as another's.
+  void useFile(String next) {
+    if (next == file) return;
+    file = next;
+    gameNames = {};
+    gameAges = {};
+    taughtGames = {};
+    sets = {};
+    uploadedSets = {};
+    sentTrophies = {};
+    sessions = [];
+    deviceRegistered = false;
+    _load();
+  }
 
   void _load() {
     Map<String, dynamic> json = const {};

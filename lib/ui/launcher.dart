@@ -25,6 +25,7 @@ import 'messages_view.dart';
 import 'profile_view.dart';
 import 'onboarding.dart';
 import 'panels.dart';
+import 'profiles_view.dart';
 import 'strings.dart';
 import 'theme.dart';
 import 'together_model.dart';
@@ -275,6 +276,8 @@ class _LauncherShellState extends State<LauncherShell> {
     model.usedKeyboard();
     if (event.kind != PointerDeviceKind.mouse || event.buttons & kSecondaryMouseButton == 0) return;
     if (model.editingRow != null || model.capturing != null) return;
+    // On Home the right button opens the Options menu (Switch Profile, online or offline).
+    if (model.homeRightClick()) return;
     if (model.overlay == null && model.focus.isTiles && model.pairing == null) return;
     model.handle(Command.back);
   }
@@ -392,6 +395,8 @@ class _LauncherShellState extends State<LauncherShell> {
                                               Layer.browserPlay => BrowserPlayView(model: model),
                                               Layer.trophies => TrophyView(model: model),
                                               Layer.gallery => GalleryView(model: model),
+                                              Layer.profilePicker => ProfilePickerView(model: model),
+                                              Layer.addProfile => AddProfileView(model: model),
                                               Layer.messages => WithBackPill(
                                                 onBack: () => model.handle(Command.back),
                                                 child: MessagesView(model: model),

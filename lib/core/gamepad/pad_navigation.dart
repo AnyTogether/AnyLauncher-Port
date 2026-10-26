@@ -74,6 +74,10 @@ enum PadCommand {
   select,
   back,
   options,
+
+  /// Options/Start (Triangle is [options]): on Home the menu with Switch Profile and online or
+  /// offline; elsewhere the same as [options].
+  menu,
   previousGame,
   nextGame,
   home,
@@ -114,7 +118,7 @@ class PadNavigator {
     PadButton.south: PadCommand.select,
     PadButton.east: PadCommand.back,
     PadButton.north: PadCommand.options,
-    PadButton.start: PadCommand.options,
+    PadButton.start: PadCommand.menu,
   };
 
   /// What a shortcut's action is as a command.

@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:path/path.dart' as p;
-
 import '../core/audio/tones.dart';
 import '../core/game_library.dart';
 import '../core/gamepad/feel.dart' show HapticCue;
@@ -10,6 +8,7 @@ import '../core/host.dart';
 import '../core/online/online_peer.dart';
 import '../core/online/online_peer_mesh.dart';
 import '../core/online/online_play.dart';
+import '../core/profiles/profiles.dart' show ProfileMode;
 import '../core/remote/remote_protocol.dart';
 import '../core/together/account.dart';
 import '../core/together/family.dart';
@@ -21,6 +20,7 @@ import '../core/together/server.dart';
 import '../core/together/socket.dart';
 import '../core/together/game_sessions.dart';
 import '../core/together/messages.dart';
+import '../core/together/private_identity.dart';
 import '../core/together/profiles.dart';
 import '../core/together/parties.dart';
 import '../core/together/play_together.dart';
@@ -51,9 +51,11 @@ const launcherVersion = '0.1.9';
 /// it. The interface reads it through [AppModel].
 class TogetherModel {
   TogetherModel(this.app) : environment = app.services.environment ?? Platform.environment {
+    // The session of the profile playing; another profile's goes in when it plays.
+    sessions = ProfileTokenStore(app.tokenStoreFor(app.sessionProfileId));
     account = TogetherAccount(
       base: app.services.togetherServer ?? TogetherServer.base(environment, app.preferences.togetherServer),
-      store: app.services.togetherStore ?? TokenStore.forSystem(app.paths, app.system),
+      store: sessions,
       clientName: clientName(app.system),
       pollEvery: app.services.togetherPollEvery,
     );
@@ -85,6 +87,8 @@ class TogetherModel {
       if (!accepted) app.show(T.text('partyRequestDeclined'));
     };
     hub.addListener(app.refresh);
+    // The friends-only names and pictures the friends list brought, for every card shown.
+    identities = hub.friends.identities;
     hub.friends.onRequest = (person) {
       _noticeSound();
       app.show(T.format('friendsAsked', [person.displayName]));
@@ -98,7 +102,7 @@ class TogetherModel {
     };
     sync = TogetherSync(
       account: account,
-      file: p.join(app.paths.config, 'Together', 'outbox.json'),
+      file: app.outboxFile(app.sessionProfileId),
       deviceName: deviceName,
       platform: app.system.name,
       model: machineModel(app.system),
@@ -131,6 +135,16 @@ class TogetherModel {
 
   /// Play sessions and trophies on their way to the server.
   late final TogetherSync sync;
+
+  /// The store the account keeps its session in: the profile playing's.
+  late final ProfileTokenStore sessions;
+
+  /// The friends' private names and pictures as the friends list said (the model's in use).
+  static IdentityBook identities = IdentityBook();
+
+  /// Someone as the launcher shows them: their friends-only name and picture when they let this
+  /// user see them, the handle beside.
+  static ShownIdentity shown(Person person) => ShownIdentity.of(person, identities);
 
   /// Online play for the running game (Settings › AnyTogether › Online play): the bridge the game
   /// connects to, the platform's web API answered from AnyTogether, the peer mesh.
@@ -247,10 +261,17 @@ class TogetherModel {
     return trimmed.length > 60 ? trimmed.substring(0, 60) : trimmed;
   }
 
-  /// The session from the last run, then whatever follows from being signed in.
+  /// The session from the last run, then whatever follows from being signed in. A session kept
+  /// from before profiles makes the profile just migrated online; an offline profile, or the
+  /// picker at start, leaves the session where it is.
   Future<void> start() async {
     family.load();
-    await account.restore();
+    if (app.profiles.migrated) {
+      final saved = await sessions.load();
+      if (saved != null) app.profiles.adoptLegacySession(saved.user);
+    }
+    final profile = app.profiles.book.currentProfile;
+    if (!app.profileFlow.atLaunch && (profile == null || profile.mode == ProfileMode.online)) await account.restore();
     _accountChanged();
   }
 
@@ -501,6 +522,7 @@ class TogetherModel {
     code = '';
     app.sounds.play(Cue.select);
     app.show(T.format('togetherWelcome', [user.displayName]));
+    app.profileSignedIn(user);
   }
 
   Future<void> signOut() async {
@@ -651,8 +673,11 @@ class TogetherModel {
     PresenceState.offline => PersonStatus.offline,
   };
 
-  static PanelPerson card(Person person, {PersonStatus? status, bool speaking = false}) =>
-      PanelPerson(name: person.displayName, avatar: person.avatar, status: status, speaking: speaking);
+  /// A person's avatar on a row: their friends-only name and picture when there.
+  static PanelPerson card(Person person, {PersonStatus? status, bool speaking = false}) {
+    final identity = shown(person);
+    return PanelPerson(name: identity.name, avatar: identity.avatar, status: status, speaking: speaking);
+  }
 
   /// The friends panel: requests to answer, adding someone by handle, the friends by what they
   /// do, the requests waiting for an answer.
@@ -715,8 +740,9 @@ class TogetherModel {
       for (final friend in friends.friends)
         PanelRow(
           id: 'friend-${friend.person.id}',
-          title: friend.person.displayName,
-          detail: '@${friend.person.handle} · ${presenceText(friend.presence)}',
+          // Their friends-only name when they set one, the handle (and public name) beside.
+          title: shown(friend.person).name,
+          detail: '${shown(friend.person).handleLine} · ${presenceText(friend.presence)}',
           person: card(friend.person, status: status(friend.presence)),
           level: friend.level,
           kind: ActionRow(() => openFriend(friend)),
@@ -792,8 +818,36 @@ class TogetherModel {
 
   // Rows.
 
-  List<PanelRow> settingsRows() {
+  /// The sign-in screen's rows: the ways in, without the server's rows.
+  List<PanelRow> signInRows() => [
+    for (final row in settingsRows(signingIn: true))
+      if (!row.id.startsWith('together-server') && row.id != 'together-intro') row,
+  ];
+
+  List<PanelRow> settingsRows({bool signingIn = false}) {
     final me = user;
+    // An offline profile that had an account (it went offline, its session kept): going online
+    // is the way in. One that never had one signs in here as ever, and is online then.
+    final profile = app.currentProfile;
+    if (!signingIn &&
+        me == null &&
+        profile?.mode == ProfileMode.offline &&
+        profile?.account != null &&
+        app.profileFlow.pendingId == null) {
+      return [
+        PanelRow(
+          id: 'together-offline',
+          title: T.text('profileOfflineTogether'),
+          kind: InfoRow(T.text('profileOfflineTogetherDetail')),
+        ),
+        PanelRow(
+          id: 'together-go-online',
+          title: T.text('profileGoOnline'),
+          detail: T.text('profileGoOnlineDetail'),
+          kind: ActionRow(() => unawaited(app.toggleProfileMode())),
+        ),
+      ];
+    }
     if (me != null) {
       return [
         PanelRow(
@@ -832,6 +886,7 @@ class TogetherModel {
           detail: T.text('profileMineDetail'),
           kind: ActionRow(() => unawaited(openMyProfile())),
         ),
+        ...privateIdentityRows(),
         PanelRow(
           id: 'together-join',
           title: T.text('togetherFriendsJoin'),
@@ -1074,6 +1129,86 @@ class TogetherModel {
       watch.start();
     } else {
       watch.stop();
+    }
+  }
+
+  // The friends-only name and picture.
+
+  /// What is typed as the friends-only name, until it is saved (null: the one kept).
+  static String? privateNameDraft;
+
+  List<PanelRow> privateIdentityRows() {
+    final self = hub.self;
+    if (!self.loaded) return const [];
+    final draft = privateNameDraft ?? self.privateName ?? '';
+    return [
+      PanelRow(id: 'private-title', title: T.text('privateTitle'), kind: InfoRow(T.text('privateDetail'))),
+      PanelRow(
+        id: 'private-name',
+        title: T.text('privateName'),
+        kind: TextRow(
+          draft,
+          (text) => privateNameDraft = text,
+          submit: () => unawaited(savePrivateName()),
+          hint: user?.displayName ?? '',
+        ),
+      ),
+      PanelRow(
+        id: 'private-name-save',
+        title: T.text(draft.trim().isEmpty && self.privateName != null ? 'privateNameClear' : 'privateNameSave'),
+        kind: ActionRow(() => unawaited(savePrivateName())),
+      ),
+      PanelRow(
+        id: 'private-picture',
+        title: T.text('privatePicture'),
+        detail: T.text('privatePictureDetail'),
+        person: self.privateAvatar == null
+            ? null
+            : PanelPerson(name: self.privateName ?? user?.displayName ?? '', avatar: self.privateAvatar),
+        kind: ActionRow(() => unawaited(choosePrivatePicture())),
+      ),
+      if (self.privateAvatar != null)
+        PanelRow(
+          id: 'private-picture-remove',
+          title: T.text('privatePictureRemove'),
+          kind: ActionRow(() => unawaited(removePrivatePicture()), destructive: true),
+        ),
+    ];
+  }
+
+  Future<void> savePrivateName() async {
+    final text = (privateNameDraft ?? hub.self.privateName ?? '').trim();
+    try {
+      await hub.self.setPrivateName(text);
+      privateNameDraft = null;
+      app.show(T.text(hub.self.privateName == null ? 'privateNameCleared' : 'privateNameSaved'));
+    } on Object catch (error) {
+      app.show(message(error));
+    }
+  }
+
+  /// A PNG or JPEG chosen on this computer, as the friends-only picture (the public one stays).
+  Future<void> choosePrivatePicture() async {
+    final path = await app.services.pickImage?.call();
+    if (path == null) return;
+    try {
+      final bytes = File(path).readAsBytesSync();
+      if (bytes.length > 5 * 1024 * 1024) return app.show(T.text('privatePictureFailed'));
+      await hub.self.uploadPrivateAvatar(bytes);
+      app.show(T.text('privatePictureSaved'));
+    } on FileSystemException {
+      app.show(T.text('privatePictureFailed'));
+    } on Object catch (error) {
+      app.show('${T.text('privatePictureFailed')}: ${message(error)}');
+    }
+  }
+
+  Future<void> removePrivatePicture() async {
+    try {
+      await hub.self.removePrivateAvatar();
+      app.show(T.text('privatePictureRemoved'));
+    } on Object catch (error) {
+      app.show(message(error));
     }
   }
 

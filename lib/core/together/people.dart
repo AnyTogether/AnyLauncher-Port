@@ -41,6 +41,8 @@ class PresenceGame {
     required this.joinable,
     required this.players,
     required this.capacity,
+    this.kind,
+    this.hostId,
   });
 
   final String sessionId;
@@ -48,6 +50,13 @@ class PresenceGame {
   final bool joinable;
   final int players;
   final int capacity;
+
+  /// online, lan (Play Together) or local; null from older servers.
+  final String? kind;
+  final String? hostId;
+
+  /// Playing together (a LAN game with their party).
+  bool get together => kind == 'lan';
 }
 
 /// What a friend shows: in a game (which, since when), online, away or offline, the party they
@@ -83,6 +92,8 @@ class Presence {
               joinable: game['joinable'] == true,
               players: (game['players'] as num? ?? 1).toInt(),
               capacity: (game['capacity'] as num? ?? 1).toInt(),
+              kind: game['kind'] as String?,
+              hostId: game['hostId'] as String?,
             )
           : null,
     );

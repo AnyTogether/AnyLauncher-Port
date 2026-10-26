@@ -3,6 +3,7 @@ import 'dart:async';
 import 'account.dart';
 import 'notifier.dart';
 import 'people.dart';
+import 'play_together.dart';
 import 'socket.dart';
 
 /// At most eight in a party: its voice is a mesh, each member talking to every other.
@@ -140,6 +141,7 @@ class Party {
     this.joinCode,
     this.discord,
     this.requests = const [],
+    this.together,
   });
 
   factory Party.fromJson(Map<String, dynamic> json) {
@@ -166,6 +168,7 @@ class Party {
         for (final person in (json['requests'] as List<dynamic>? ?? const []))
           if (person is Map<String, dynamic>) Person.fromJson(person),
       ],
+      together: PartyTogether.fromJson(json['together']),
     );
   }
 
@@ -191,6 +194,9 @@ class Party {
 
   /// People asking to join (from the code, or the public list), for the leader to answer.
   final List<Person> requests;
+
+  /// The party's Play Together game while one runs (older servers never say).
+  final PartyTogether? together;
 
   /// User ids as a list of strings, or of peers with a userId.
   static Set<String> _ids(Object? list) => {
@@ -229,6 +235,7 @@ class Party {
     joinCode: joinCode == null ? this.joinCode : joinCode(),
     discord: discord == null ? this.discord : discord(),
     requests: requests ?? this.requests,
+    together: together,
   );
 }
 

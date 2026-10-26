@@ -7,9 +7,14 @@ import 'package:path/path.dart' as p;
 import 'account.dart';
 import 'notifier.dart';
 import 'people.dart';
+import 'play_together.dart';
 import 'socket.dart';
 
 enum SessionMismatch { gameVersion, engineBuild }
+
+/// online: the game's own online play (as before); lan: Play Together, the party's LAN game that
+/// ends with its host; local: one screen, nobody joins over the network.
+enum SessionKind { online, lan, local }
 
 /// A game someone runs that friends can join: the same game version on the same engine build.
 /// [json] is the session as the server sent it (players' own properties included), kept whole
@@ -24,11 +29,21 @@ class GameSession {
     required this.joinable,
     required this.players,
     this.host,
+    this.kind = SessionKind.online,
+    this.partyId,
+    this.versionRule = 'exact',
     this.json = const {},
   });
 
   factory GameSession.fromJson(Map<String, dynamic> json) => GameSession(
     id: json['id'] as String,
+    kind: switch (json['kind']) {
+      'lan' => SessionKind.lan,
+      'local' => SessionKind.local,
+      _ => SessionKind.online,
+    },
+    partyId: json['partyId'] as String?,
+    versionRule: json['versionRule'] as String? ?? 'exact',
     host: json['host'] is Map<String, dynamic> ? Person.fromJson(json['host'] as Map<String, dynamic>) : null,
     titleId: json['titleId'] as String,
     gameVersion: json['gameVersion'] as String? ?? '',
@@ -50,11 +65,21 @@ class GameSession {
   final int capacity;
   final bool joinable;
   final List<Person> players;
+  final SessionKind kind;
+
+  /// The party a Play Together session belongs to.
+  final String? partyId;
+
+  /// exact, major or any: how far a joiner's game version may be from the host's.
+  final String versionRule;
   final Map<String, dynamic> json;
+
+  /// A Play Together game (the party's LAN game).
+  bool get together => kind == SessionKind.lan;
 
   /// Why this computer's copy cannot join, or null when it can.
   SessionMismatch? mismatch({required String gameVersion, required String engineBuild}) {
-    if (gameVersion != this.gameVersion) return SessionMismatch.gameVersion;
+    if (!versionFits(versionRule, this.gameVersion, gameVersion)) return SessionMismatch.gameVersion;
     if (engineBuild != this.engineBuild) return SessionMismatch.engineBuild;
     return null;
   }
@@ -79,6 +104,13 @@ class GameSession {
     final build = engine.substring(at + 1);
     return '${engine.substring(0, at)} (${build.length > 6 ? build.substring(0, 6) : build})';
   }
+}
+
+/// A game session's join code and its page.
+class JoinCodeOf {
+  const JoinCodeOf({required this.code, required this.url});
+  final String code;
+  final String url;
 }
 
 /// An invitation to a friend's game.
@@ -122,9 +154,21 @@ class GameSessions with Notifier {
   GameSession? session;
   List<GameInvite> invites = const [];
 
+  /// The session this launcher was in when it last ended (its kind words the notice).
+  GameSession? ended;
+
   /// The host ended the session this launcher joined (their card).
   void Function(Person? host)? onEnded;
   void Function(GameInvite invite)? onInvite;
+
+  /// Someone in the party started Play Together (the session as the party sees it).
+  void Function(GameSession session)? onStarted;
+
+  /// A Play Together player joined or left: the party's view is read again.
+  void Function()? onPlayersChanged;
+
+  /// A session ended (its id), whether this launcher was in it or not.
+  void Function(String sessionId)? onAnyEnded;
 
   bool get hosting => session != null && session!.host?.id == account.user?.id;
 
@@ -155,6 +199,34 @@ class GameSessions with Notifier {
       }),
     ),
   );
+
+  /// Play Together: a LAN game in the user's party (the party hears it start); it ends with the
+  /// host. One per party: a 409 "conflict" when the party already plays together.
+  Future<GameSession> startTogether({
+    required String titleId,
+    required String gameVersion,
+    required String engineBuild,
+    int capacity = 8,
+    String versionRule = 'exact',
+  }) async => _kept(
+    GameSession.fromJson(
+      await account.call('POST', 'game-sessions', {
+        'kind': 'lan',
+        'titleId': titleId,
+        'gameVersion': gameVersion,
+        'engineBuild': engineBuild,
+        'capacity': capacity,
+        'versionRule': versionRule,
+      }),
+    ),
+  );
+
+  /// The host's join code for the game: whoever holds it may join.
+  Future<JoinCodeOf> code() async {
+    final current = session!;
+    final json = await account.call('POST', 'game-sessions/${current.id}/code', {});
+    return JoinCodeOf(code: json['code'] as String? ?? '', url: json['url'] as String? ?? '');
+  }
 
   Future<GameSession> get(String id) async => GameSession.fromJson(await account.call('GET', 'game-sessions/$id'));
 
@@ -189,15 +261,21 @@ class GameSessions with Notifier {
     await account.call('POST', 'game-sessions/$id/decline', {});
   }
 
-  /// Out of the session: the host ends it, a guest leaves it.
-  Future<void> close() async {
+  /// Out of the session: the host ends it (a Play Together host whose game exited says so with
+  /// [gameExited]), a guest leaves it.
+  Future<void> close({bool gameExited = false}) async {
     final current = session;
     if (current == null) return;
     final hosted = hosting;
     keep(null);
     try {
       if (hosted) {
-        await account.call('DELETE', 'game-sessions/${current.id}');
+        await account.call(
+          'DELETE',
+          gameExited && current.together
+              ? 'game-sessions/${current.id}?reason=game_exited'
+              : 'game-sessions/${current.id}',
+        );
       } else {
         await account.call('POST', 'game-sessions/${current.id}/leave', {});
       }
@@ -259,13 +337,23 @@ class GameSessions with Notifier {
       case 'game_session.updated':
         final updated = GameSession.fromJson(data);
         if (updated.id == session?.id) keep(updated);
+      case 'game_session.started':
+        final session = data['session'];
+        if (session is Map<String, dynamic>) {
+          final started = GameSession.fromJson(session);
+          if (started.host?.id != account.user?.id) onStarted?.call(started);
+        }
+      case 'game_session.member_joined' || 'game_session.member_left':
+        onPlayersChanged?.call();
       case 'game_session.ended':
         final id = data['sessionId'];
+        if (id is String) onAnyEnded?.call(id);
         invites = invites.where((invite) => invite.sessionId != id).toList();
         final current = session;
         if (current != null && current.id == id) {
           final host = current.host;
           final hosted = hosting;
+          ended = current;
           keep(null);
           if (!hosted) onEnded?.call(host);
         } else {

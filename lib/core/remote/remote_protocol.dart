@@ -590,6 +590,12 @@ abstract final class RemotePacket {
   static const pressMagic = 0x50525041;
   static const promptMagic = 0x4B525041;
   static const textMagic = 0x54525041;
+  static const assistMagic = 0x41525041;
+  static const assistSize = 16;
+
+  /// Byte 13 of an input: 1 marks a device that helps the first player (assist).
+  static const seatByte = 13;
+  static const assistSeat = 1;
   static const version = 1;
   static const promptHeaderSize = 24;
   static const textHeaderSize = 20;
@@ -627,6 +633,30 @@ abstract final class RemotePacket {
   /// Whether a game's hello says its engine tells what text the game asks for and takes the
   /// text typed for it ([text]): bit 1 of byte 9.
   static bool helloTakesText(List<int> data) => isHello(data) && data[9] & 2 != 0;
+
+  /// Whether a game's hello says its engine takes assist (bit 2 of byte 9): the assist datagram
+  /// and inputs marked as helping the first player.
+  static bool helloTakesAssist(List<int> data) => isHello(data) && data[9] & 4 != 0;
+
+  /// The assist datagram (APRA): whether the computer's controllers after the first player's
+  /// help the first player instead of being players of their own.
+  static Uint8List assist({required bool controllers}) {
+    final bytes = Uint8List(assistSize);
+    ByteData.sublistView(bytes)
+      ..setUint32(0, assistMagic, Endian.little)
+      ..setUint16(4, version, Endian.little)
+      ..setUint16(6, assistSize, Endian.little)
+      ..setUint32(8, controllers ? 1 : 0, Endian.little);
+    return bytes;
+  }
+
+  /// An input packet marked as helping the first player (byte 13 = 1); anything else unchanged.
+  static Uint8List helping(List<int> data) {
+    final copy = Uint8List.fromList(data);
+    if (inputSession(data) == null) return copy;
+    copy[seatByte] = assistSeat;
+    return copy;
+  }
 
   /// A game's prompt (APRK): a record whose prompt is null when the game no longer asks for
   /// text; null for anything that is not a well-formed prompt.
@@ -723,14 +753,19 @@ abstract final class RemotePacket {
   }
 
   /// A game hello, as the engine's bridge sends it (for tests and tools).
-  static Uint8List hello({int player = 0, bool takesPresses = false, bool takesText = false}) {
+  static Uint8List hello({
+    int player = 0,
+    bool takesPresses = false,
+    bool takesText = false,
+    bool takesAssist = false,
+  }) {
     final bytes = Uint8List(helloSize);
     ByteData.sublistView(bytes)
       ..setUint32(0, helloMagic, Endian.little)
       ..setUint16(4, version, Endian.little)
       ..setUint16(6, helloSize, Endian.little);
     bytes[8] = player;
-    bytes[9] = (takesPresses ? 1 : 0) | (takesText ? 2 : 0);
+    bytes[9] = (takesPresses ? 1 : 0) | (takesText ? 2 : 0) | (takesAssist ? 4 : 0);
     return bytes;
   }
 

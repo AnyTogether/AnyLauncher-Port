@@ -491,7 +491,32 @@ class RemoteServer {
       if (client == null || slot == null) continue;
       client.address = (datagram.address, datagram.port, socket);
       final game = _gameAddresses[slot];
-      if (game != null) _bridges[slot].send(datagram.data, game.$1, game.$2);
+      if (game != null) _bridges[slot].send(_assisted(datagram.data, client), game.$1, game.$2);
+    }
+  }
+
+  /// A pad packet from a phone the launcher set to help the first player is marked so.
+  List<int> _assisted(List<int> data, _Client client) =>
+      _assistDevices.contains(client.deviceId) ? RemotePacket.helping(data) : data;
+
+  /// The phones and browser pads (by device ID) that help the first player, and whether the
+  /// computer's other controllers do.
+  Set<String> _assistDevices = {};
+  bool _assistControllers = false;
+
+  void setAssist({required Set<String> devices, required bool controllers}) {
+    _assistDevices = Set.of(devices);
+    if (controllers == _assistControllers) return;
+    _assistControllers = controllers;
+    final packet = RemotePacket.assist(controllers: controllers);
+    for (var slot = 0; slot < _bridges.length; slot++) {
+      final game = _gameAddresses[slot];
+      if (game == null) continue;
+      try {
+        _bridges[slot].send(packet, game.$1, game.$2);
+      } on Object {
+        // Closing.
+      }
     }
   }
 
@@ -504,7 +529,7 @@ class RemoteServer {
     }
     client.padOnChannel = true;
     final game = _gameAddresses[slot];
-    if (game != null) _bridges[slot].send(data, game.$1, game.$2);
+    if (game != null) _bridges[slot].send(_assisted(data, client), game.$1, game.$2);
   }
 
   /// A hello names the game to send to on that bridge; its answers go back to the slot's phone.
@@ -519,6 +544,11 @@ class RemoteServer {
         _gameAddresses[slot] = (datagram.address, datagram.port);
         _gameTakesPresses[slot] = RemotePacket.helloTakesPresses(data);
         _gameTakesText[slot] = RemotePacket.helloTakesText(data);
+        // The engine hears whether controllers help with every hello: a game started later or
+        // again learns it within a second.
+        if (RemotePacket.helloTakesAssist(data)) {
+          bridge.send(RemotePacket.assist(controllers: _assistControllers), datagram.address, datagram.port);
+        }
         _gameHelloAt[slot] = DateTime.now();
         final player = RemotePacket.helloPlayer(data);
         if (_gamePlayers[slot] != player) {

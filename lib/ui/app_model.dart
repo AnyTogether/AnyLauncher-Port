@@ -39,6 +39,7 @@ import '../core/library_watch.dart';
 import '../core/power.dart';
 import '../core/prepare_queue.dart';
 import '../core/remote/adb_tunnel.dart';
+import '../core/remote/assist.dart';
 import '../core/remote/mdns.dart';
 import '../core/remote/paired_devices.dart';
 import '../core/remote/remote_protocol.dart';
@@ -121,6 +122,7 @@ class Preferences {
     ..steamFullscreen = json['steamFullscreen'] as bool? ?? true
     ..controllerLight = json['controllerLight'] as String?
     ..confirmCircle = json['confirmCircle'] == true
+    ..assistPlayerOne = json['assistPlayerOne'] as String?
     ..stickDeadzone = switch (json['stickDeadzone']) {
       final num percent => percent.toInt().clamp(0, StickDeadzone.maximum),
       _ => 0,
@@ -225,6 +227,10 @@ class Preferences {
   bool confirmCircle = false;
   int stickDeadzone = 0;
 
+  /// Settings › Controllers › Assist Player 1 (AssistTarget): null off, "controllers", or the
+  /// device ID of the phone or browser pad that helps.
+  String? assistPlayerOne;
+
   /// The title IDs of games seen asking for Japanese, Chinese or Korean fonts: their next start
   /// waits for those to download.
   Set<String> cjkGames = {};
@@ -284,6 +290,7 @@ class Preferences {
     'controllerLight': controllerLight,
     'confirmCircle': confirmCircle,
     'stickDeadzone': stickDeadzone,
+    'assistPlayerOne': assistPlayerOne,
     'cjkGames': cjkGames.toList()..sort(),
     'prepareNewGames': prepareNewGames,
     'launcherFullscreen': launcherFullscreen,
@@ -1009,6 +1016,13 @@ class AppModel extends ChangeNotifier {
       ..shortcuts = preferences.shortcuts;
     _deadzone?.percent = preferences.stickDeadzone;
     Hint.circleConfirms = preferences.confirmCircle;
+    applyAssist();
+  }
+
+  /// Assist as the phone server needs it.
+  void applyAssist() {
+    final target = AssistTarget.stored(preferences.assistPlayerOne);
+    remote?.setAssist(devices: target.devices, controllers: target.controllers);
   }
 
   void openControllerTest() {
@@ -4553,6 +4567,7 @@ class AppModel extends ChangeNotifier {
         await server.start();
       }
       remote = server;
+      applyAssist();
       server.togetherServer = together.account.base.toString();
       unawaited(browserPlay.update());
       remoteError = null;

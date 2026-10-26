@@ -8,6 +8,7 @@ import '../core/controllers/sdl_pads.dart';
 import '../core/controllers/troubleshooter.dart';
 import '../core/gamepad/pad_navigation.dart';
 import '../core/host.dart';
+import '../core/remote/assist.dart';
 import 'app_model.dart';
 import 'strings.dart';
 
@@ -214,12 +215,48 @@ class ControllersModel {
     ],
   ].join(' · ');
 
+  /// Settings › Controllers › Assist Player 1: off, the other controllers, or a phone or browser
+  /// pad connected now (the chosen one stays listed while it is away).
+  PanelRow assistRow() {
+    final preferences = app.preferences;
+    final chosen = AssistTarget.stored(preferences.assistPlayerOne);
+    final remote = app.remote;
+    final ids = remote?.connectedDeviceIds ?? const <String>[];
+    final names = remote?.connectedDevices ?? const <String>[];
+    final connected = [
+      for (var index = 0; index < ids.length; index++) (ids[index], index < names.length ? names[index] : ids[index]),
+    ];
+    final choices = AssistTarget.choices(connected, chosen, {for (final (id, name) in connected) id: name});
+    final labels = [
+      for (final (target, name) in choices)
+        switch (target) {
+          AssistOff() => T.text('padAssistOff'),
+          AssistControllers() => T.text('padAssistControllers'),
+          AssistDevice() => name ?? '',
+        },
+    ];
+    final selected = choices.indexWhere((choice) => choice.$1 == chosen);
+    return PanelRow(
+      id: 'padAssist',
+      title: T.text('padAssist'),
+      detail: chosen is AssistOff
+          ? T.text('padAssistDetail')
+          : T.format('padAssistOn', [labels[selected < 0 ? 0 : selected]]),
+      kind: ChoiceRow(labels, selected < 0 ? 0 : selected, (index) {
+        if (index < 0 || index >= choices.length) return;
+        preferences.assistPlayerOne = choices[index].$1.stored;
+        app.savePreferences();
+      }),
+    );
+  }
+
   List<PanelRow> rows() {
     final preferences = app.preferences;
     final one = roster.playerOne;
     final findings = this.findings;
     return [
-      if (roster.pads.isEmpty) PanelRow(id: 'padNone', title: T.text('padNone'), detail: T.text('padNoneDetail'), kind: const InfoRow('')),
+      if (roster.pads.isEmpty)
+        PanelRow(id: 'padNone', title: T.text('padNone'), detail: T.text('padNoneDetail'), kind: const InfoRow('')),
       for (final pad in roster.ordered)
         PanelRow(
           id: 'pad-${pad.id}',
@@ -230,7 +267,12 @@ class ControllersModel {
             app.openControllerTest();
           }),
         ),
-      PanelRow(id: 'padTest', title: T.text('padTest'), detail: T.text('padTestDetail'), kind: ActionRow(app.openControllerTest)),
+      PanelRow(
+        id: 'padTest',
+        title: T.text('padTest'),
+        detail: T.text('padTestDetail'),
+        kind: ActionRow(app.openControllerTest),
+      ),
       PanelRow(
         id: 'padVibrate',
         title: T.text('padVibrate'),
@@ -256,11 +298,14 @@ class ControllersModel {
         id: 'padConfirm',
         title: T.text('padConfirm'),
         detail: T.text('padConfirmDetail'),
-        kind: ChoiceRow([T.text('padConfirmCross'), T.text('padConfirmCircle')], preferences.confirmCircle ? 1 : 0, (index) {
+        kind: ChoiceRow([T.text('padConfirmCross'), T.text('padConfirmCircle')], preferences.confirmCircle ? 1 : 0, (
+          index,
+        ) {
           preferences.confirmCircle = index == 1;
           app.savePreferences();
         }),
       ),
+      assistRow(),
       PanelRow(
         id: 'padDeadzone',
         title: T.text('padDeadzone'),

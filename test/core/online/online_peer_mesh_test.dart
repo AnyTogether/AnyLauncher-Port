@@ -335,4 +335,59 @@ void main() {
     );
     expect(sent, hasLength(1), reason: 'a stopped mesh does nothing');
   });
+
+  test('an answerer that starts over on a repeated offer (as the Mac launcher does) is met with a new offer', () async {
+    final sent = <(String, Object?)>[];
+    final network = FakeGameNetwork();
+    final mesh = OnlinePeerMesh(
+      context: OnlinePeerContext(
+        deliver: (_) {},
+        call: FakeOnlineTogether().call,
+        signal: (to, device, session, kind, data) => sent.add((kind, data)),
+      ),
+      links: network.links,
+      iceServers: const [],
+    );
+    addTearDown(mesh.stop);
+    final addresses = OnlineIdentity.addresses([alice, bob]);
+    mesh.update(
+      OnlinePeerSession(id: 's', me: alice, addresses: addresses, devices: const {alice: 'dev-a', bob: 'dev-b'}),
+    );
+    Future<Map<String, dynamic>> offer(int count) async {
+      expect(await eventually(() => sent.where((signal) => signal.$1 == 'offer').length == count), isTrue);
+      return sent.lastWhere((signal) => signal.$1 == 'offer').$2! as Map<String, dynamic>;
+    }
+
+    // Bob's side, by hand: a new connection for every offer, as the Mac's answerer makes.
+    Future<String> answer(Map<String, dynamic> offer) async {
+      final link = await network.links.link(const []);
+      await link.setRemote(offer);
+      final made = await link.createAnswer();
+      await link.setLocal(made);
+      return made['sdp'] as String;
+    }
+
+    void signal(String kind, Object? data) =>
+        mesh.receive(OnlinePeerSignal(from: bob, device: 'dev-b', kind: kind, data: data));
+
+    final first = await offer(1);
+    final firstAnswer = await answer(first);
+    signal('answer', {'type': 'answer', 'sdp': firstAnswer});
+    expect(await eventually(() => mesh.states[bob] == PeerState.connected), isTrue);
+    signal('answer', {'type': 'answer', 'sdp': firstAnswer});
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(sent.where((signal) => signal.$1 == 'offer'), hasLength(1), reason: 'the same answer again changes nothing');
+
+    // The offer came twice to bob (a crossed request), and bob started over with a new answer.
+    signal('answer', {'type': 'answer', 'sdp': await answer(first)});
+    final second = await offer(2);
+    expect(second['sdp'], isNot(first['sdp']), reason: 'a new connection, with its own offer');
+    signal('answer', {'type': 'answer', 'sdp': await answer(second)});
+    expect(await eventually(() => mesh.states[bob] == PeerState.connected), isTrue);
+    expect(
+      sent.where((signal) => signal.$1 == 'offer'),
+      hasLength(2),
+      reason: 'it settles: one new offer, answered once',
+    );
+  });
 }

@@ -57,6 +57,7 @@ class _Peer {
   /// this side's candidates so far: what is sent again when a signal crossed another.
   Map<String, dynamic>? local;
   String? remoteOffer;
+  String? remoteAnswer;
   final sentCandidates = <Map<String, dynamic>>[];
 }
 
@@ -224,9 +225,19 @@ class OnlinePeerMesh implements OnlinePeerTransport {
         await _answer(signal.from, address, signal.device, sdp, session);
       case 'answer':
         final sdp = data['sdp'];
-        // A second answer to the same offer (sent again after a crossed request) changes nothing.
-        if (sdp is! String || peer == null || !peer.offerer || peer.haveRemote) return;
+        if (sdp is! String || peer == null || !peer.offerer) return;
+        if (peer.haveRemote) {
+          // The same answer again (sent again after a crossed request) changes nothing. Another
+          // one means the other side started its connection over (the Mac launcher does when an
+          // offer comes twice): so does this side, with a new offer it will answer once.
+          if (sdp == peer.remoteAnswer) return;
+          _forget(peer);
+          _close(peer, sayBye: false);
+          await _offer(peer.userId, peer.address, peer.device, session.id);
+          return;
+        }
         try {
+          peer.remoteAnswer = sdp;
           await peer.link.setRemote({'type': 'answer', 'sdp': sdp});
           await _flush(peer);
         } on Object {

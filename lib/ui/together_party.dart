@@ -106,6 +106,7 @@ extension TogetherParty on TogetherModel {
           ),
         ],
       ...voiceRows(party),
+      ...togetherRows(party, me.id),
       PanelRow(
         id: 'party-members',
         title: T.format('partyMembers', [party.members.length, maxPartySize]),

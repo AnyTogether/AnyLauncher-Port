@@ -850,6 +850,10 @@ class AppModel extends ChangeNotifier {
   /// AnyTogether: the account, friends, messages, parties.
   late final TogetherModel together;
 
+  /// An unlock the user asked for finished (the game's id, whether it worked): Play Together
+  /// joins a game it unlocked first.
+  void Function(String gameId, bool succeeded)? onUnlocked;
+
   DesktopWindows get desktop => services.desktop ?? const NoDesktop();
 
   PadSource? _pads;
@@ -1666,12 +1670,14 @@ class AppModel extends ChangeNotifier {
               _playAfterInstall = null;
               unawaited(play(game));
             }
+            onUnlocked?.call(id, true);
           case InstallCancelled():
-            break;
+            onUnlocked?.call(id, false);
           case final SpaceShortage shortage:
             _tellShortage(game, shortage);
           default:
             failures[id] = error.toString();
+            onUnlocked?.call(id, false);
             show('${T.text('unlockFailed')}: ${game.name}');
         }
       },

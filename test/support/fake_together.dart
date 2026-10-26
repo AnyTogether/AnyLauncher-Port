@@ -222,15 +222,19 @@ class FakeTogether {
   final Map<String, Map<String, dynamic>> gameSessions = {};
   final List<Map<String, dynamic>> gameInvites = [];
 
-  /// A game session [host] runs.
+  /// A game session [host] runs; a `lan` one (Play Together) shows in the party the user is in.
   Map<String, dynamic> hostSession(
     String id,
     Map<String, dynamic> host, {
     String titleId = 'PPSA01001',
     String gameVersion = '01.000.000',
     String engineBuild = 'toolkit-1',
-  }) => gameSessions[id] = {
+    String kind = 'online',
+  }) => gameSessions[id] = _together({
     'id': id,
+    'kind': kind,
+    'partyId': kind == 'lan' ? (party?['id']) : null,
+    'versionRule': 'exact',
     'host': host,
     'titleId': titleId,
     'gameVersion': gameVersion,
@@ -248,7 +252,25 @@ class FakeTogether {
       },
     ],
     'properties': {'mode': 'coop'},
-  };
+  });
+
+  /// A Play Together session shows in the party's view as the server keeps it.
+  Map<String, dynamic> _together(Map<String, dynamic> session) {
+    if (session['kind'] == 'lan' && party != null) {
+      party!['together'] = {
+        'sessionId': session['id'],
+        'hostId': (session['host'] as Map)['userId'],
+        'titleId': session['titleId'],
+        'gameVersion': session['gameVersion'],
+        'engineBuild': session['engineBuild'],
+        'versionRule': session['versionRule'] ?? 'exact',
+        'players': [for (final player in session['players'] as List<dynamic>) (player as Map)['userId']],
+        'capacity': session['capacity'],
+        'startedAt': '2026-10-26T00:00:00Z',
+      };
+    }
+    return session;
+  }
 
   /// Handlers a test adds for its own paths: return null to fall through.
   final List<FutureOr<(int, Object?)?> Function(FakeCall call)> handlers = [];
@@ -596,10 +618,16 @@ class FakeTogether {
         return (200, {'session': mine, 'invites': gameInvites});
       case ('POST', 'game-sessions'):
         final id = 'gs-${++_ids}';
+        if (call.body['kind'] == 'lan' && party?['together'] != null) {
+          return (409, {'status': 409, 'code': 'conflict', 'title': 'Your party is already playing together'});
+        }
         return (
           201,
-          gameSessions[id] = {
+          gameSessions[id] = _together({
+            'kind': 'online',
+            'versionRule': 'exact',
             ...call.body,
+            if (call.body['kind'] == 'lan') 'partyId': party?['id'],
             'id': id,
             'host': me_,
             'players': [me_],
@@ -613,10 +641,10 @@ class FakeTogether {
               },
             ],
             'properties': <String, Object>{},
-          },
+          }),
         );
     }
-    final gameSession = RegExp(r'^game-sessions/([^/]+)(/[a-z]+)?$').firstMatch(call.path);
+    final gameSession = RegExp(r'^game-sessions/([^/?]+)(/[a-z]+)?(\?.*)?$').firstMatch(call.path);
     if (gameSession != null) {
       final id = gameSession.group(1)!;
       final session = gameSessions[id];
@@ -629,20 +657,49 @@ class FakeTogether {
           return (200, session);
         case ('DELETE', null):
           gameSessions.remove(id);
+          if ((party?['together'] as Map?)?['sessionId'] == id) party!['together'] = null;
           return (204, null);
         case ('POST', '/join'):
-          if (call.body['gameVersion'] != session['gameVersion'] ||
-              call.body['engineBuild'] != session['engineBuild']) {
-            return problem(409, 'version_mismatch', 'Not the same version');
+          if (call.body['gameVersion'] != session['gameVersion']) {
+            return (
+              409,
+              {
+                'status': 409,
+                'code': 'version_mismatch',
+                'title': 'Not the same version',
+                'reason': 'game_version',
+                'expected': session['gameVersion'],
+                'actual': call.body['gameVersion'],
+                'update': 'you',
+              },
+            );
+          }
+          if (call.body['engineBuild'] != session['engineBuild']) {
+            return (
+              409,
+              {
+                'status': 409,
+                'code': 'version_mismatch',
+                'title': 'Not the same engine',
+                'reason': 'engine',
+                'expected': session['engineBuild'],
+                'actual': call.body['engineBuild'],
+                'update': 'host',
+              },
+            );
           }
           final players = session['players'] as List<dynamic>;
           if (players.length >= (session['capacity'] as int)) return problem(409, 'full', 'Full');
           players.add(me_);
           gameInvites.removeWhere((invite) => invite['sessionId'] == id);
+          _together(session);
           return (200, session);
         case ('POST', '/leave'):
           (session['players'] as List<dynamic>).removeWhere((player) => (player as Map)['userId'] == me['id']);
+          _together(session);
           return (204, null);
+        case ('POST', '/code'):
+          return (201, {'code': 'K7QM3XPA', 'url': '$base/join/K7QM3XPA', 'expiresAt': '2026-10-27T00:00:00Z'});
         case ('POST', '/invites' || '/decline'):
           gameInvites.removeWhere((invite) => invite['sessionId'] == id);
           return (204, null);

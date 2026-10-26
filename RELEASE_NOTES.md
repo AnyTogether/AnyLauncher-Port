@@ -21,6 +21,14 @@ release when it is made.
   opened from **Open online log**; a crash report carries the last lines of it. Needs an engine
   with the online bridge (AnyPS5-ARM's engine, once its Windows and Linux toolkits carry it);
   with an engine without it the setting changes nothing.
+- **Play Together, as on the Mac.** In a party, **Play Together: <game>** starts the game picked
+  on Home for the party, with online play on for that game only (the setting stays as you left
+  it). Everyone else in the party hears "<host> started <game> — Join"; **Join** checks you have
+  the same game, version and AnyPS5 engine (or offers **Unlock and Play** / **Update and Play**,
+  or says who should update), then starts it in the host's session so the games find each other
+  on the virtual LAN. The party panel shows who plays and whether each connection is up; the
+  host can hand out a join code for someone outside the party, and it ends for everyone when the
+  host's game exits. Friends see "Playing <game> together (2/8)".
 
 ## 0.1.7
 

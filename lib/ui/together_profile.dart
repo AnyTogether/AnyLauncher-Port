@@ -225,8 +225,10 @@ extension TogetherProfiles on TogetherModel {
           openingSession = false;
         }
       }());
-    } else if (games.session != null) {
-      unawaited(games.close());
+    } else if (games.session != null && app.starting == null) {
+      // The game ended: the host's session ends with it (a Play Together game says the game
+      // exited), a player leaves theirs.
+      unawaited(games.close(gameExited: true));
     } else {
       // Left from a launcher that stopped without ending it.
       games.writeBridge();
@@ -303,6 +305,7 @@ extension TogetherProfiles on TogetherModel {
     final games = hub.games;
     final session = games.session;
     final rows = <PanelRow>[
+      ...togetherOfferRows(),
       for (final invite in games.invites) ...[
         PanelRow(
           id: 'game-accept-${invite.sessionId}',

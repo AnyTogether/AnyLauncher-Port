@@ -1,0 +1,309 @@
+part of 'together_model.dart';
+
+/// Play Together: in a party, the host picks a game and starts it for the party; the others get
+/// "Mira started Minecraft — Join", Join checks they have the same game and version (unlocking or
+/// updating it first where that helps) and starts it here in the same session with online play
+/// on, so the peer mesh joins the virtual LAN and the host's game finds them by broadcast. The
+/// party panel shows who plays and how each player is reached; it ends when the host quits.
+extension TogetherPlay on TogetherModel {
+  /// How many play together at most: the party's size.
+  static const capacity = maxPartySize;
+
+  /// This computer's copies of every game, for the join check.
+  List<TogetherCopy> togetherCopies() => [
+    for (final game in app.games)
+      () {
+        final unlocked = app.records[game.id] != null;
+        final current = engineBuild(game);
+        final kit = app.toolkit?.version;
+        final next = kit == null ? null : GameSession.cleanEngineBuild(kit);
+        return TogetherCopy(
+          id: game.id,
+          titleId: game.titleId,
+          gameVersion: gameVersion(game),
+          engineBuild: current,
+          unlocked: unlocked,
+          nextEngineBuild: unlocked && next != current ? next : null,
+        );
+      }(),
+  ];
+
+  // Hosting.
+
+  /// The host's Play Together: a LAN session in the party, then the game with online play on.
+  Future<void> startPlayTogether(Game game) async {
+    if (!signedIn || hub.parties.party == null) return;
+    final running = app.running;
+    if (running != null) return app.show(T.format('togetherCloseFirst', [running.$1.name]));
+    if (app.stateOf(game) is! Installed) return app.show(T.format('gameUnlockFirst', [game.name]));
+    app.show(T.format('togetherStarting', [game.name]));
+    try {
+      final session = await hub.games.startTogether(
+        titleId: game.titleId,
+        gameVersion: gameVersion(game),
+        engineBuild: engineBuild(game),
+        capacity: capacity,
+      );
+      app.show(T.format('togetherStarted', [game.name]));
+      _enterTogether(session, game);
+    } on TogetherProblem catch (problem) {
+      app.show(
+        problem.code == 'conflict'
+            ? T.text('togetherAlready')
+            : '${T.text('togetherStartFailed')}: ${message(problem)}',
+      );
+    } on Object catch (error) {
+      app.show('${T.text('togetherStartFailed')}: ${message(error)}');
+    }
+  }
+
+  /// In the session: the bridge file and the mesh follow it (the game session listener), online
+  /// play is on for this game only, and the game starts. Once the game is over (or never ran),
+  /// a session still held ends.
+  void _enterTogether(GameSession session, Game game) {
+    togetherSession = session.id;
+    togetherOffers = togetherOffers.where((offer) => offer.sessionId != session.id).toList();
+    if (app.overlay != null) app.closeOverlay();
+    app.select(app.games.indexOf(game));
+    unawaited(
+      app.play(game).whenComplete(() {
+        if (hub.games.session?.id == session.id && app.running == null) {
+          unawaited(hub.games.close(gameExited: true));
+        }
+      }),
+    );
+  }
+
+  // Joining.
+
+  /// Join from the party or the offer: the check first, then the game in the same session.
+  Future<void> joinPlayTogether(PlayTogetherOffer offer, {bool afterUnlock = false}) async {
+    final verdict = PlayTogetherCheck.verdict(
+      offer,
+      signedIn: signedIn,
+      copies: togetherCopies(),
+      running: app.running?.$1.name,
+    );
+    switch (verdict) {
+      case JoinWith(:final gameId):
+        final game = app.games.where((game) => game.id == gameId).firstOrNull;
+        if (game != null) await _joinTogether(offer, game);
+      case UnlockAndPlay(:final gameId) || UpdateAndPlay(:final gameId):
+        final game = app.games.where((game) => game.id == gameId).firstOrNull;
+        if (afterUnlock || game == null) return app.show(T.text('togetherStartFailed'));
+        togetherAfterUnlock = (gameId, offer);
+        app.show(T.format(verdict is UnlockAndPlay ? 'togetherUnlockingFirst' : 'togetherUpdatingFirst', [game.name]));
+        app.unlock(game);
+      default:
+        app.show(verdictText(verdict, offer) ?? '');
+    }
+  }
+
+  /// An unlock finished: the join waiting on it goes on (or is dropped when it failed).
+  void togetherUnlockDone(String gameId, bool succeeded) {
+    final waiting = togetherAfterUnlock;
+    if (waiting == null || waiting.$1 != gameId) return;
+    togetherAfterUnlock = null;
+    if (succeeded) unawaited(joinPlayTogether(waiting.$2, afterUnlock: true));
+  }
+
+  Future<void> _joinTogether(PlayTogetherOffer offer, Game game) async {
+    app.show(T.format('togetherJoining', [offer.hostName, game.name]));
+    try {
+      final joined = await hub.games.join(
+        offer.sessionId,
+        gameVersion: gameVersion(game),
+        engineBuild: engineBuild(game),
+      );
+      _enterTogether(joined, game);
+    } on TogetherProblem catch (problem) {
+      final refusal = JoinRefusal.of(problem);
+      if (refusal != null) {
+        final verdict = refusal.engine
+            ? OtherEngine(have: refusal.actual, need: refusal.expected, youUpdate: refusal.youUpdate)
+            : OtherGameVersion(have: refusal.actual, need: refusal.expected, youUpdate: refusal.youUpdate);
+        app.show(verdictText(verdict, offer) ?? problem.title);
+      } else {
+        app.show(problem.code == 'full' ? T.text('togetherFull') : message(problem));
+      }
+    } on Object catch (error) {
+      app.show(message(error));
+    }
+  }
+
+  /// What blocks a join, in words; null for a way in.
+  String? verdictText(PlayTogetherVerdict verdict, PlayTogetherOffer offer) {
+    final name = gameName(offer.titleId);
+    return switch (verdict) {
+      JoinWith() || UnlockAndPlay() || UpdateAndPlay() => null,
+      SignInFirst() => T.text('togetherSignInFirst'),
+      MissingGame() => T.format('togetherMissing', [name]),
+      OtherGameVersion(:final have, :final need, :final youUpdate) =>
+        youUpdate
+            ? T.format('togetherVersionYou', [name, need, have])
+            : T.format('togetherVersionHost', [offer.hostName, need, have]),
+      OtherEngine(:final have, :final need, :final youUpdate) => T.format(
+        youUpdate ? 'togetherEngineYou' : 'togetherEngineHost',
+        [offer.hostName, GameSession.release(need), GameSession.release(have)],
+      ),
+      CloseFirst(:final running) => T.format('togetherCloseFirst', [running]),
+      SessionFull() => T.text('togetherFull'),
+    };
+  }
+
+  // Leaving.
+
+  /// The host ends it for everyone; a player leaves it (their game keeps running, alone).
+  Future<void> leavePlayTogether() async {
+    final session = hub.games.session;
+    if (session == null || !session.together) return;
+    await hub.games.close();
+    app.show(T.text('togetherEndedYours'));
+  }
+
+  /// The host's join code for the game, copied for someone outside the party.
+  Future<void> shareTogetherCode() async {
+    final session = hub.games.session;
+    if (session == null || !session.together) return;
+    try {
+      final code = await hub.games.code();
+      app.services.copyText?.call(code.url.isEmpty ? code.code : code.url);
+      app.show(T.format('playTogetherCodeCopied', [JoinCode.show(code.code)]));
+    } on Object catch (error) {
+      app.show(message(error));
+    }
+  }
+
+  // Peers.
+
+  /// How another player is reached: the mesh's connection to them. (The PC's mesh does not hand
+  /// out WebRTC statistics, so no direct/relay route or round trip here, unlike the Mac.)
+  String linkText(String userId) {
+    final transport = online.running?.transport;
+    final state = transport is OnlinePeerMesh ? transport.states[userId] : null;
+    return switch (state) {
+      PeerState.connected => T.text('playTogetherConnected'),
+      PeerState.failed || PeerState.closed => T.text('playTogetherUnreachable'),
+      _ => T.text('playTogetherConnecting'),
+    };
+  }
+
+  // Rows.
+
+  /// The party panel's Play Together: the game running (who plays, how each is reached, Join,
+  /// Unlock and Play or Update and Play, Leave or End, the host's code), or Play Together for the
+  /// game selected on Home.
+  List<PanelRow> togetherRows(Party party, String me) {
+    final together = party.together;
+    if (together == null) {
+      final game = app.selectedGame;
+      if (game == null || app.running != null) {
+        return [
+          PanelRow(id: 'together-pick', title: T.text('togetherPick'), kind: InfoRow(T.text('togetherPickDetail'))),
+        ];
+      }
+      return [
+        PanelRow(
+          id: 'together-start',
+          title: T.format('togetherStart', [game.name]),
+          detail: T.text('togetherStartDetail'),
+          kind: ActionRow(() => unawaited(startPlayTogether(game))),
+        ),
+      ];
+    }
+    final offer = PlayTogetherOffer.fromParty(together, party.members);
+    final mine = hub.games.session?.id == together.sessionId;
+    final hosting = together.hostId == me;
+    final people = {for (final person in party.members) person.id: person};
+    final rows = <PanelRow>[
+      PanelRow(
+        id: 'together-title',
+        title: T.format('togetherTitle', [gameName(together.titleId), together.players.length, together.capacity]),
+        kind: InfoRow(T.format('togetherTitleDetail', [offer.hostName, together.gameVersion])),
+      ),
+      for (final userId in together.players)
+        if (people[userId] ?? hub.games.session?.players.where((p) => p.id == userId).firstOrNull
+            case final Person person)
+          PanelRow(
+            id: 'together-player-$userId',
+            title: person.displayName,
+            detail: [
+              if (userId == together.hostId) T.text('togetherHost'),
+              userId == me ? T.text('togetherYou') : (mine ? linkText(userId) : T.text('togetherInGame')),
+            ].join(' · '),
+            person: TogetherModel.card(person, status: PersonStatus.playing),
+            kind: const InfoRow(''),
+          ),
+    ];
+    if (!mine) {
+      final verdict = PlayTogetherCheck.verdict(
+        offer,
+        signedIn: true,
+        copies: togetherCopies(),
+        running: app.running?.$1.name,
+      );
+      rows.add(
+        PanelRow(
+          id: 'together-join',
+          title: switch (verdict) {
+            UnlockAndPlay() => T.text('togetherUnlockAndPlay'),
+            UpdateAndPlay() => T.text('togetherUpdateAndPlay'),
+            _ => T.format('togetherJoinRow', [offer.hostName, gameName(together.titleId)]),
+          },
+          detail: verdictText(verdict, offer) ?? T.text('togetherJoinDetail'),
+          kind: ActionRow(() => unawaited(joinPlayTogether(offer))),
+        ),
+      );
+    } else {
+      if (hosting) {
+        rows.add(
+          PanelRow(
+            id: 'together-code',
+            title: T.text('playTogetherCode'),
+            detail: T.text('playTogetherCodeDetail'),
+            kind: ActionRow(() => unawaited(shareTogetherCode())),
+          ),
+        );
+      }
+      rows.add(
+        PanelRow(
+          id: 'together-leave',
+          title: hosting ? T.text('togetherEnd') : T.text('togetherLeave'),
+          kind: ActionRow(() => unawaited(leavePlayTogether()), destructive: true),
+        ),
+      );
+    }
+    return rows;
+  }
+
+  /// The friends panel's offers: "Mira started Minecraft — Join".
+  List<PanelRow> togetherOfferRows() => [
+    for (final offer in togetherOffers)
+      if (offer.sessionId != hub.games.session?.id)
+        PanelRow(
+          id: 'together-offer-${offer.sessionId}',
+          title: T.format('togetherOffer', [offer.hostName, gameName(offer.titleId)]),
+          detail: T.text('togetherJoinDetail'),
+          kind: ActionRow(() => unawaited(joinPlayTogether(offer))),
+        ),
+  ];
+
+  // Events.
+
+  /// Someone in the party started Play Together: the offer, a toast and the notice sound.
+  void togetherStarted(GameSession session) {
+    final offer = PlayTogetherOffer.fromSession(session);
+    togetherOffers = [...togetherOffers.where((known) => known.sessionId != offer.sessionId), offer];
+    _noticeSound();
+    app.vibrate(HapticCue.ring);
+    app.show(T.format('togetherOffer', [offer.hostName, gameName(offer.titleId)]));
+    unawaited(hub.parties.refresh().catchError((Object _) {}));
+  }
+
+  /// A session ended: its offer goes.
+  void togetherEnded(String sessionId) {
+    if (!togetherOffers.any((offer) => offer.sessionId == sessionId)) return;
+    togetherOffers = togetherOffers.where((offer) => offer.sessionId != sessionId).toList();
+    app.refresh();
+  }
+}

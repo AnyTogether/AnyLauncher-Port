@@ -23,6 +23,7 @@ import '../core/together/game_sessions.dart';
 import '../core/together/messages.dart';
 import '../core/together/profiles.dart';
 import '../core/together/parties.dart';
+import '../core/together/play_together.dart';
 import '../core/together/sync.dart';
 import '../core/together/talk_key.dart';
 import '../core/together/voice.dart';
@@ -38,6 +39,7 @@ import 'voice_webrtc.dart';
 
 part 'together_messages.dart';
 part 'together_party.dart';
+part 'together_play.dart';
 part 'together_profile.dart';
 
 /// The launcher's version, as AnyTogether hears it.
@@ -64,7 +66,13 @@ class TogetherModel {
       app.vibrate(HapticCue.ring);
       app.show(T.format('gameInvitedYou', [invite.from?.displayName ?? '', gameName(invite.titleId)]));
     };
-    hub.games.onEnded = (host) => app.show(T.format('sessionEnded', [host?.displayName ?? '']));
+    hub.games.onEnded = (host) => app.show(
+      T.format(hub.games.ended?.together == true ? 'togetherEnded' : 'sessionEnded', [host?.displayName ?? '']),
+    );
+    hub.games.onStarted = togetherStarted;
+    hub.games.onAnyEnded = togetherEnded;
+    hub.games.onPlayersChanged = () => unawaited(hub.parties.refresh().catchError((Object _) {}));
+    app.onUnlocked = togetherUnlockDone;
     hub.parties.onRequest = (person, via) {
       _noticeSound();
       app.show(
@@ -193,6 +201,12 @@ class TogetherModel {
 
   /// A game session being opened for the game that just started.
   bool openingSession = false;
+
+  /// Play Together: party members' games to join, a join waiting for its game to unlock, and the
+  /// session the next game starts in with online play on whatever the setting.
+  List<PlayTogetherOffer> togetherOffers = const [];
+  (String, PlayTogetherOffer)? togetherAfterUnlock;
+  String? togetherSession;
 
   /// A handle typed in the friends panel, and the friend whose options are open.
   String friendHandle = '';
@@ -602,6 +616,11 @@ class TogetherModel {
       PresenceState.away => T.text('friendsAway'),
       _ => T.text('friendsOnline'),
     };
+    // Playing together with their party: "Playing Minecraft together (2/8)".
+    final game = presence.game;
+    if (game != null && game.together) {
+      return T.format('togetherPresence', [gameName(game.titleId), game.players, game.capacity]);
+    }
     if (presence.game?.joinable == true) text += ' · ${T.text('gameJoinable')}';
     final party = presence.party;
     if (party != null) text += ' · ${T.format('friendsInParty', [party.size, party.max])}';
@@ -958,13 +977,17 @@ class TogetherModel {
 
   /// What [game] is started with for online play: nothing while the setting is off.
   Future<Map<String, String>> onlineEnvironment(Game game) async {
-    if (!app.preferences.onlinePlay) return const {};
+    // A Play Together game has online play on for that start whatever the setting.
+    if (!app.preferences.onlinePlay && togetherSession == null) return const {};
     online.platformGroups = app.preferences.onlinePlatformGroups;
     return online.environment(titleId: game.titleId, gameVersion: gameVersion(game), engineBuild: engineBuild(game));
   }
 
   /// The game ended: its online bridge closes.
-  Future<void> onlineGameEnded() => online.stop();
+  Future<void> onlineGameEnded() {
+    togetherSession = null;
+    return online.stop();
+  }
 
   /// What to tell the user about a failed call.
   String message(Object error) {

@@ -464,6 +464,7 @@ void main() {
       await together.startParty();
       expect(rowIds(), [
         'voice-join',
+        'together-start',
         'party-members',
         'party-member-u-me',
         'party-privacy',
@@ -1298,6 +1299,127 @@ void main() {
       full['capacity'] = 1;
       await model.together.joinFriendGame('gs-full', titleId: 'PPSA01001', host: 'Ana');
       expect(model.toast, 'This game is full');
+    });
+
+    test('Play Together: the host starts the selected game for the party with online play on for it only', () async {
+      server.inParty([ana]);
+      await model.together.hub.parties.refresh();
+      final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
+      model.select(model.games.indexOf(orbit));
+      final installed = Installer.installedFolder(orbit, model.root!);
+      File(p.join(installed, 'app.elf')).writeAsStringSync('#!/bin/sh\nenv | grep ^ANYPS5_ONLINE=\nsleep 0.6\n');
+      if (!Platform.isWindows) Process.runSync('chmod', ['755', p.join(installed, 'app.elf')]);
+      expect(model.preferences.onlinePlay, isFalse);
+      model.open(Layer.party);
+      final start = model.panelCategories().single.rows.firstWhere((row) => row.id == 'together-start');
+      expect(start.title, 'Play Together: Orbit Runner');
+      (start.kind as ActionRow).run();
+      await until(() => model.together.hub.games.session != null);
+      final session = model.together.hub.games.session!;
+      expect(session.together, isTrue);
+      expect(server.callsTo('game-sessions', method: 'POST').single.body, {
+        'kind': 'lan',
+        'titleId': 'PPSA01001',
+        'gameVersion': '01.000.000',
+        'engineBuild': 'toolkit-1',
+        'capacity': 8,
+        'versionRule': 'exact',
+      });
+      await until(() => model.running != null);
+      await model.together.hub.parties.refresh();
+      model.open(Layer.party);
+      expect(
+        rowIds(),
+        containsAllInOrder(['together-title', 'together-player-u-me', 'together-code', 'together-leave']),
+      );
+      final code = model.panelCategories().single.rows.firstWhere((row) => row.id == 'together-code');
+      (code.kind as ActionRow).run();
+      await until(() => model.toast == 'Join code K7QM-3XPA copied');
+      await until(() => model.running == null);
+      // The game exited: the session ends with it, and online play goes back to the setting.
+      await until(() => server.callsTo('game-sessions/${session.id}?reason=game_exited', method: 'DELETE').isNotEmpty);
+      expect(File(model.paths.logFile('PPSA01001')).readAsStringSync(), contains('ANYPS5_ONLINE=127.0.0.1:'));
+      expect(model.preferences.onlinePlay, isFalse, reason: "the user's setting stays as it was");
+      expect(model.together.togetherSession, isNull);
+    });
+
+    test("Play Together: the party hears it start, and Join starts the same game in the host's session", () async {
+      server.inParty([ana], leader: 'u-ana');
+      await model.together.hub.parties.refresh();
+      final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
+      final installed = Installer.installedFolder(orbit, model.root!);
+      File(p.join(installed, 'app.elf')).writeAsStringSync('#!/bin/sh\nenv | grep ^ANYPS5_ONLINE=\nsleep 0.4\n');
+      if (!Platform.isWindows) Process.runSync('chmod', ['755', p.join(installed, 'app.elf')]);
+      final lan = server.hostSession('gs-lan', ana, kind: 'lan');
+      server.push('game_session.started', {'partyId': server.party!['id'], 'session': lan});
+      await until(() => model.toast == 'Ana started Orbit Runner — Join');
+      model.open(Layer.friends);
+      expect(rowIds(), contains('together-offer-gs-lan'));
+      await until(() => model.together.hub.parties.party?.together != null);
+      model.open(Layer.party);
+      expect(rowIds(), containsAllInOrder(['together-title', 'together-player-u-ana', 'together-join']));
+      final join = model.panelCategories().single.rows.firstWhere((row) => row.id == 'together-join');
+      expect(join.title, "Join Ana's Orbit Runner");
+      (join.kind as ActionRow).run();
+      await until(() => server.callsTo('game-sessions/gs-lan/join').isNotEmpty);
+      expect(server.callsTo('game-sessions/gs-lan/join').single.body, {
+        'gameVersion': '01.000.000',
+        'engineBuild': 'toolkit-1',
+      });
+      await until(() => model.running != null);
+      await until(() => model.running == null);
+      expect(File(model.paths.logFile('PPSA01001')).readAsStringSync(), contains('ANYPS5_ONLINE=127.0.0.1:'));
+      await until(() => server.callsTo('game-sessions/gs-lan/leave').isNotEmpty);
+      model.open(Layer.friends);
+      expect(rowIds(), isNot(contains('together-offer-gs-lan')), reason: 'joined, the offer is gone');
+    });
+
+    test('Play Together: a different version or engine is named, a locked copy is unlocked first', () async {
+      server.inParty([ana], leader: 'u-ana');
+      server.hostSession('gs-v', ana, kind: 'lan', gameVersion: '01.001.000');
+      await model.together.hub.parties.refresh();
+      model.open(Layer.party);
+      final join = model.panelCategories().single.rows.firstWhere((row) => row.id == 'together-join');
+      expect(
+        join.detail,
+        'You need Orbit Runner version 01.001.000; you have 01.000.000. Add the update to your library',
+      );
+      (join.kind as ActionRow).run();
+      await until(() => model.toast == join.detail);
+      expect(server.calls.where((call) => call.path.endsWith('/join')), isEmpty);
+
+      server.gameSessions.remove('gs-v');
+      server.hostSession('gs-neon', ana, kind: 'lan', titleId: 'PPSA02002');
+      await model.together.hub.parties.refresh();
+      model.open(Layer.party);
+      final unlock = model.panelCategories().single.rows.firstWhere((row) => row.id == 'together-join');
+      expect(unlock.title, 'Unlock and Play');
+
+      server.gameSessions.remove('gs-neon');
+      server.hostSession('gs-e', ana, kind: 'lan', engineBuild: '0.2.13-a1b2c3d4e5f6');
+      await model.together.hub.parties.refresh();
+      model.open(Layer.party);
+      final engine = model.panelCategories().single.rows.firstWhere((row) => row.id == 'together-join');
+      expect(engine.detail, 'Ana plays on AnyPS5 0.2.13 (a1b2c3); yours is toolkit (1). Ask them to update');
+
+      T.language = Language.turkish;
+      expect(
+        model.together.presenceText(
+          Presence.fromJson({
+            'state': 'in_game',
+            'titleId': 'PPSA01001',
+            'game': {
+              'sessionId': 's',
+              'titleId': 'PPSA01001',
+              'kind': 'lan',
+              'joinable': false,
+              'players': 2,
+              'capacity': 8,
+            },
+          }),
+        ),
+        'Yörünge Koşucusu birlikte oynanıyor (2/8)',
+      );
     });
 
     test("an invite to a friend's game shows in the friends panel and can be declined", () async {

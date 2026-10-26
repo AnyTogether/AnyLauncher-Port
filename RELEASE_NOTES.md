@@ -7,6 +7,42 @@ release when it is made.
 
 Nothing yet.
 
+## 0.1.10
+
+- **Profiles.** The first start asks **How do you want to play?**: **Play Offline** (no
+  account; trophies and progress stay on this PC, nothing is synced or shared) or **Play
+  Online** (create an AnyTogether account or sign in with an email code, the website or your
+  phone). Add more people with **Add Profile**; with more than one, **Who's playing?** greets
+  you at start (**Ask Who's Playing at Every Start** makes it ask always). Each profile keeps
+  its own AnyTogether session, settings, saves, trophies and Game Presets; its saves are put in
+  place when it plays. **Switch Profile** is in the PS button's long-press menu and in the
+  **Options** menu (Options/Start on a pad, or right-click on Home), which also has **Go
+  Online** / **Go Offline** and the other profiles. Switching, or going online or offline, is
+  refused while a game runs (**Close <game> first**) or while saves sync. **Settings →
+  Profiles** sets the name, picture and tile colour, and switches to or deletes a profile (its
+  saves and trophies are backed up first). An existing install becomes the first profile by
+  itself, with its account, saves and settings.
+- **Friends-only name and picture.** **Settings → AnyTogether → Friends-Only Name and Picture**
+  sets a name (your real name, say, up to 40 characters) and a picture that only your accepted
+  friends see, always next to your @handle, in friends, party, Play Together and profiles, in
+  the launchers and in the phone app; everyone else sees your public ones.
+- **DLC and game updates from your own dumps.** Put them beside the game, as shadPS4 does:
+  `<game>-UPDATE` (or `-patch`), `<game>-DLC/<label or content ID>`, or an add-on named by its
+  content ID next to the game (the game's folder name or title ID, any case). They are no longer
+  listed as games. The game page shows **DLC (n)** and **Update vX applied**; an update dumped
+  after the unlock says **unlock to apply** (saves and trophies stay). Each start passes
+  `ANYPS5_UPDATE_DIR` and `ANYPS5_ADDCONT_DIRS`: the engine reads the update's files in place of
+  the game's and mounts the add-ons the game asks for. Only what is on your disk is reported to
+  the game; nothing contacts Sony.
+- **Game Presets per profile.** **Settings → Game Presets** sets what the PS5 keeps under that
+  name, once for every game: difficulty, Performance Mode or Resolution Mode, inverted
+  vertical and horizontal view (first and third person), subtitles and the audio language,
+  passed as `ANYPS5_GAME_PRESETS`. Games that read the console's presets start with them.
+  Performance Mode is seen to work in games; the other values follow the console's menus and are
+  **experimental** (not checked against a console).
+- **New engine.** DLC, updates and Game Presets need AnyPS5-ARM 0.2.24's Windows and Linux
+  engine from ce334c86b (**Settings → AnyPS5 Engine**); with an older one they are ignored.
+
 ## 0.1.9
 
 - **Full screen.** The launcher starts full screen the first time, then as you left it. **F11**

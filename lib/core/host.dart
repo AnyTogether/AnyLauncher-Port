@@ -86,6 +86,9 @@ class AppPaths {
 
   String get preferencesFile => p.join(config, 'preferences.json');
   String get gameSettingsFolder => p.join(config, 'games');
+
+  /// The launcher profiles' book and each profile's own files ([ProfileStore]).
+  String get profilesFolder => p.join(config, 'Profiles');
   String get inputFilesFolder => p.join(config, 'input');
   String get pairedDevicesFile => p.join(config, 'RemoteDevices.json');
 

@@ -1,4 +1,6 @@
 import 'browser_play.dart';
+import 'strings_addons.dart';
+import 'strings_presets.dart';
 import 'strings_controllers.dart';
 import 'strings_family.dart';
 import 'strings_feedback.dart';
@@ -235,6 +237,8 @@ abstract final class T {
                   fontsTurkish[key] ??
                   steamTurkish[key] ??
                   prepareTurkish[key] ??
+                  addonsTurkish[key] ??
+                  presetsTurkish[key] ??
                   feedbackTurkish[key] ??
                   profilesTurkish[key] ??
                   turkishTable[key]
@@ -249,6 +253,8 @@ abstract final class T {
         fontsEnglish[key] ??
         steamEnglish[key] ??
         prepareEnglish[key] ??
+        addonsEnglish[key] ??
+        presetsEnglish[key] ??
         feedbackEnglish[key] ??
         profilesEnglish[key] ??
         englishTable[key] ??

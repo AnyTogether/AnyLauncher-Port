@@ -8,7 +8,9 @@ import 'controllers/troubleshooter.dart';
 import 'game_library.dart';
 import 'glibc.dart';
 import 'game_process.dart';
+import 'game_presets.dart';
 import 'game_settings.dart';
+import 'profiles/profiles.dart';
 import 'host.dart';
 import 'installer.dart';
 import 'remote/mdns.dart';
@@ -141,13 +143,17 @@ Future<int> runCli(
       final running = await GameProcess.start(
         installed: installed,
         system: host,
-        environment: settings.environment(
-          launcherLanguage: 1,
-          inputFile: inputFile,
-          screenshots: paths.pictures,
-          shaderCacheFolder: paths.shaderCache(game.slug),
-          trace: trace,
-        ),
+        environment: {
+          ...settings.environment(
+            launcherLanguage: 1,
+            inputFile: inputFile,
+            screenshots: paths.pictures,
+            shaderCacheFolder: paths.shaderCache(game.slug),
+            trace: trace,
+          ),
+          ...game.addonEnvironment,
+          ...GamePresetsStore(_gamePresetsFile(paths)).load().environment,
+        },
         logFile: paths.logFile(game.titleId),
         traced: trace || settings.trace == true,
       );
@@ -433,4 +439,10 @@ Future<int> _steam(
       errors.writeln(usage);
       return 2;
   }
+}
+
+/// The Game Presets of the profile the launcher last played as.
+String _gamePresetsFile(AppPaths paths) {
+  final store = ProfileStore(paths.profilesFolder, existing: const ExistingSetup(onboarded: false, name: ''), persist: false);
+  return p.join(paths.profilesFolder, store.book.currentProfile?.id ?? LauncherProfile.legacyId, 'GamePresets.json');
 }

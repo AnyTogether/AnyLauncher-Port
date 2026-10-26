@@ -7,6 +7,22 @@ release when it is made.
 
 Nothing yet.
 
+## 0.1.11
+
+- **Gyro aiming for every game.** Each game's **Controls** page starts with **Aim with the
+  Gyro**: a DualSense, DualShock 4, Switch Pro Controller or a phone aims in any game that aims
+  with the right stick, on top of the stick itself. Set the sensitivity, when it aims (always,
+  while L2 is held, while touching the touchpad), invert and the dead zone. Needs AnyPS5-ARM
+  0.2.25's engine (`ANYPS5_GYRO_AIM`); other engines ignore it.
+- **Type on your phone.** When a game opens its text dialog or keyboard, the phones get a
+  typing sheet with their own keyboard (and one that connects later gets it at once), and the
+  browser pad page a text card; the text goes back to the game, then Enter or cancel.
+- **Assist Player 1.** **Settings → Controllers → Assist Player 1** picks who plays player 1
+  together with its holder: the computer's other controllers, or one phone or browser pad. Its
+  buttons, sticks and touch join player 1's; a change is said to the engine at once.
+- **New engine.** Gyro aiming, typing on the phone and Assist Player 1 need AnyPS5-ARM 0.2.25's
+  Windows and Linux engine (**Settings → AnyPS5 Engine**).
+
 ## 0.1.10
 
 - **Profiles.** The first start asks **How do you want to play?**: **Play Offline** (no

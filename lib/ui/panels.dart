@@ -164,6 +164,7 @@ class PanelView extends StatelessWidget {
     final compact = const {
       Layer.confirmUninstall,
       Layer.updateChoice,
+      Layer.updateRequired,
       Layer.friendOptions,
       Layer.copyWarning,
     }.contains(model.overlay);

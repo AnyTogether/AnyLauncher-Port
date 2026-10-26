@@ -19,6 +19,7 @@ class PartyTogether {
     required this.players,
     required this.capacity,
     this.versionRule = 'exact',
+    this.versionOverrides = const [],
   });
 
   /// The game, or null when the server sent none (or an older server says nothing of it).
@@ -36,6 +37,10 @@ class PartyTogether {
           if (id is String) id,
       ],
       capacity: (json['capacity'] as num? ?? 2).toInt(),
+      versionOverrides: [
+        for (final id in json['versionOverrides'] as List<dynamic>? ?? const [])
+          if (id is String) id,
+      ],
     );
   }
 
@@ -49,12 +54,23 @@ class PartyTogether {
   /// Who plays, the host first, by user id.
   final List<String> players;
   final int capacity;
+
+  /// The players who joined with a game version that did not fit, by trying anyway (none from a
+  /// server before it).
+  final List<String> versionOverrides;
 }
 
 /// Why the server refused a join: a different game version or engine build, the host's and this
-/// copy's, and whether this side is the one behind.
+/// copy's, whether this side is the one behind, and whether the player may try anyway (a game
+/// version only: a different engine build cannot talk to the host's).
 class JoinRefusal {
-  const JoinRefusal({required this.engine, required this.expected, required this.actual, required this.youUpdate});
+  const JoinRefusal({
+    required this.engine,
+    required this.expected,
+    required this.actual,
+    required this.youUpdate,
+    required this.overridable,
+  });
 
   /// From a refused join's problem; null when it was not about the versions (or an older server
   /// said no more).
@@ -70,6 +86,7 @@ class JoinRefusal {
       expected: expected,
       actual: actual,
       youUpdate: extra['update'] != 'host',
+      overridable: extra['overridable'] as bool? ?? reason == 'game_version',
     );
   }
 
@@ -77,6 +94,7 @@ class JoinRefusal {
   final String expected;
   final String actual;
   final bool youUpdate;
+  final bool overridable;
 }
 
 /// What a party member is offered: the host's game, its version and engine, and room left.
@@ -280,16 +298,20 @@ bool versionFits(String rule, String host, String joiner) => switch (rule) {
 
 class PlayTogetherCheck {
   /// Signed in, owned, version, engine, not busy, room, unlocked: the first that does not hold.
+  /// [overrideVersion] (Try anyway) takes any copy's game version; the engine is still checked.
   static PlayTogetherVerdict verdict(
     PlayTogetherOffer offer, {
     required bool signedIn,
     required List<TogetherCopy> copies,
     String? running,
+    bool overrideVersion = false,
   }) {
     if (!signedIn) return const SignInFirst();
     final owned = copies.where((copy) => copy.titleId == offer.titleId).toList();
     if (owned.isEmpty) return MissingGame(offer.titleId);
-    final fitting = owned.where((copy) => versionFits(offer.versionRule, offer.gameVersion, copy.gameVersion)).toList();
+    final fitting = overrideVersion
+        ? owned
+        : owned.where((copy) => versionFits(offer.versionRule, offer.gameVersion, copy.gameVersion)).toList();
     if (fitting.isEmpty) {
       final have = owned.first.gameVersion;
       return OtherGameVersion(
@@ -311,5 +333,19 @@ class PlayTogetherCheck {
     if (!copy.unlocked) return UnlockAndPlay(copy.id);
     if (copy.engineBuild != offer.engineBuild) return UpdateAndPlay(copy.id);
     return JoinWith(copy.id);
+  }
+
+  /// Try anyway: when only the game version keeps this computer out, the way in that skipping the
+  /// version check gives (join, or unlock or update first); null when the version fits or
+  /// something else (the engine, a running game, no room) is in the way.
+  static PlayTogetherVerdict? tryAnyway(
+    PlayTogetherOffer offer, {
+    required bool signedIn,
+    required List<TogetherCopy> copies,
+    String? running,
+  }) {
+    if (verdict(offer, signedIn: signedIn, copies: copies, running: running) is! OtherGameVersion) return null;
+    final anyway = verdict(offer, signedIn: signedIn, copies: copies, running: running, overrideVersion: true);
+    return anyway is JoinWith || anyway is UnlockAndPlay || anyway is UpdateAndPlay ? anyway : null;
   }
 }

@@ -238,10 +238,20 @@ class GameSessions with Notifier {
   }
 
   /// Refused with version_mismatch (409) unless both match the host's, full when it is.
-  Future<GameSession> join(String id, {required String gameVersion, required String engineBuild}) async {
+  /// [overrideVersion]: Try anyway after a game version refusal (the engine is still checked).
+  Future<GameSession> join(
+    String id, {
+    required String gameVersion,
+    required String engineBuild,
+    bool overrideVersion = false,
+  }) async {
     final joined = _kept(
       GameSession.fromJson(
-        await account.call('POST', 'game-sessions/$id/join', {'gameVersion': gameVersion, 'engineBuild': engineBuild}),
+        await account.call('POST', 'game-sessions/$id/join', {
+          'gameVersion': gameVersion,
+          'engineBuild': engineBuild,
+          if (overrideVersion) 'overrideVersion': true,
+        }),
       ),
     );
     invites = invites.where((invite) => invite.sessionId != id).toList();

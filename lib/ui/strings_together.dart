@@ -153,8 +153,7 @@ const togetherEnglish = <String, String>{
   'togetherFriendsJoin': 'Let friends join my game',
   'togetherFriendsJoinDetail': 'While you play, friends see it and can start the same game to join',
   'togetherOnlinePlay': 'Online play (experimental)',
-  'togetherOnlinePlayDetail':
-      'Games see you signed in as @%@ with your AnyTogether friends and reach the other players directly or through AnyTogether\'s relay, never Sony. What they ask for goes to a log. From the next game start',
+  'togetherOnlinePlayDetail': 'Games see you signed in as @%@ with your AnyTogether friends and reach the other players directly or through AnyTogether\'s relay, never Sony. What they ask for goes to a log. From the next game start',
   'togetherOnlineLog': 'Open online log',
   'togetherOnlineLogDetail': 'What each game asked for online, one file per game, for a bug report',
   'voiceJoin': 'Join voice',
@@ -295,6 +294,20 @@ const togetherEnglish = <String, String>{
   'presenceHint': 'Friends see you as offline. Messages, parties and cloud saves keep working.',
   'presenceAppearing': 'Appearing offline',
   'presenceNotYet': 'Appearing offline is not available on this server yet',
+  // Social steps that cannot be taken back ask first; Update Required.
+  'askKick': 'Remove %@ from the party? They need a new invite to come back.',
+  'askLeaveParty': 'Leave the party? Voice ends for you, and an invite-only party takes a new invite to get back in.',
+  'askEndTogether': 'End Play Together for everyone? The others stay in their game, alone.',
+  'askLeaveTogether': 'Leave the game? Your game keeps running, without the others.',
+  'askRemoveFriend': 'Remove %@ from your friends? You need a new request to be friends again.',
+  'requiredTitle': 'Update Required',
+  'requiredTooOld': 'This AnyPS5 is too old for AnyTogether',
+  'requiredTooOldVersion': 'AnyPS5 %@ is too old for AnyTogether',
+  'requiredDetail': 'AnyTogether needs %@ or newer. Friends, parties, messages and cloud saves wait for the update; your games still play.',
+  'requiredDownload': 'Get the Update',
+  'requiredDownloadDetail': 'Opens the downloads page in your browser',
+  'requiredLater': 'Later',
+  'requiredToast': 'AnyTogether needs AnyPS5 %@ or newer: Settings › About',
 };
 
 const togetherTurkish = <String, String>{
@@ -447,8 +460,7 @@ const togetherTurkish = <String, String>{
   'togetherFriendsJoin': 'Arkadaşlarım oyunuma katılabilsin',
   'togetherFriendsJoinDetail': 'Oynarken arkadaşların görür ve aynı oyunu başlatıp katılabilir',
   'togetherOnlinePlay': 'Çevrimiçi oyun (deneysel)',
-  'togetherOnlinePlayDetail':
-      'Oyunlar seni @%@ olarak AnyTogether arkadaşlarınla görür; diğer oyunculara doğrudan ya da AnyTogether aktarıcısıyla ulaşır, Sony\'ye asla. İstedikleri bir kayda yazılır. Sonraki oyun başlatışta geçerli olur',
+  'togetherOnlinePlayDetail': 'Oyunlar seni @%@ olarak AnyTogether arkadaşlarınla görür; diğer oyunculara doğrudan ya da AnyTogether aktarıcısıyla ulaşır, Sony\'ye asla. İstedikleri bir kayda yazılır. Sonraki oyun başlatışta geçerli olur',
   'togetherOnlineLog': 'Çevrimiçi kaydı aç',
   'togetherOnlineLogDetail': 'Her oyunun çevrimiçi ne istediği, oyun başına bir dosya; hata bildirimi için',
   'voiceJoin': 'Sese katıl',
@@ -590,4 +602,17 @@ const togetherTurkish = <String, String>{
   'presenceHint': 'Arkadaşların seni çevrimdışı görür. Mesajlar, partiler ve bulut kayıtları çalışmaya devam eder.',
   'presenceAppearing': 'Çevrimdışı görünüyorsun',
   'presenceNotYet': 'Çevrimdışı görünme bu sunucuda henüz yok',
+  'askKick': '%@ partiden çıkarılsın mı? Geri gelmek için yeni bir davet gerekir.',
+  'askLeaveParty': 'Partiden ayrılınsın mı? Sesli sohbet senin için biter; yalnızca davetle girilen partiye dönmek için yeni davet gerekir.',
+  'askEndTogether': 'Birlikte Oyna herkes için bitsin mi? Diğerleri oyunlarında yalnız kalır.',
+  'askLeaveTogether': 'Oyundan ayrılınsın mı? Oyunun diğerleri olmadan çalışmaya devam eder.',
+  'askRemoveFriend': '%@ arkadaşlarından çıkarılsın mı? Yeniden arkadaş olmak için yeni bir istek gerekir.',
+  'requiredTitle': 'Güncelleme Gerekli',
+  'requiredTooOld': 'Bu AnyPS5, AnyTogether için çok eski',
+  'requiredTooOldVersion': 'AnyPS5 %@, AnyTogether için çok eski',
+  'requiredDetail': 'AnyTogether için %@ ya da daha yenisi gerekiyor. Arkadaşlar, partiler, mesajlar ve bulut kayıtları güncellemeyi bekliyor; oyunların yine oynanır.',
+  'requiredDownload': 'Güncellemeyi İndir',
+  'requiredDownloadDetail': 'İndirme sayfasını tarayıcında açar',
+  'requiredLater': 'Sonra',
+  'requiredToast': 'AnyTogether için AnyPS5 %@ ya da daha yenisi gerekiyor: Ayarlar › Hakkında',
 };

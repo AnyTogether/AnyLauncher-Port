@@ -3,7 +3,13 @@ import 'package:anyps5_desktop/core/together/game_sessions.dart';
 import 'package:anyps5_desktop/core/together/parties.dart';
 import 'package:anyps5_desktop/core/together/people.dart';
 import 'package:anyps5_desktop/core/together/play_together.dart';
+import 'package:anyps5_desktop/core/together/socket.dart';
+import 'package:anyps5_desktop/core/together/token_store.dart';
+import 'package:path/path.dart' as path;
 import 'package:test/test.dart';
+
+import '../support/fake_together.dart';
+import '../support/fixtures.dart';
 
 Map<String, dynamic> card(String id, String name) => {'userId': id, 'handle': name.toLowerCase(), 'displayName': name};
 
@@ -68,6 +74,15 @@ void main() {
       });
       expect(party.together?.sessionId, 's1');
       expect(party.together?.players, ['u1']);
+      expect(party.together?.versionOverrides, isEmpty, reason: 'an older server says nothing of it');
+      expect(
+        PartyTogether.fromJson({
+          'sessionId': 's1',
+          'players': ['u1', 'u2'],
+          'versionOverrides': ['u2'],
+        })?.versionOverrides,
+        ['u2'],
+      );
       expect(party.copyWith(open: true).together?.sessionId, 's1');
       expect(Party.fromJson({'id': 'p2', 'members': [], 'invited': []}).together, isNull);
 
@@ -114,6 +129,15 @@ void main() {
       );
       expect(JoinRefusal.of(engine)!.engine, isTrue);
       expect(JoinRefusal.of(engine)!.youUpdate, isFalse);
+      expect(refusal.overridable, isTrue, reason: 'an older server: a game version can be tried anyway');
+      expect(JoinRefusal.of(engine)!.overridable, isFalse, reason: 'an engine never');
+      const said = TogetherProblem(
+        409,
+        'version_mismatch',
+        'x',
+        extra: {'reason': 'game_version', 'expected': '1', 'actual': '2', 'update': 'you', 'overridable': false},
+      );
+      expect(JoinRefusal.of(said)!.overridable, isFalse, reason: 'the server says');
       expect(JoinRefusal.of(const TogetherProblem(409, 'full', 'Full')), isNull);
       expect(JoinRefusal.of(const TogetherProblem(409, 'version_mismatch', 'old server')), isNull);
     });
@@ -151,6 +175,29 @@ void main() {
       String? running,
       PlayTogetherOffer o = offer,
     }) => PlayTogetherCheck.verdict(o, signedIn: signedIn, copies: copies, running: running);
+
+    test('trying anyway looks past the game version, never the engine', () {
+      PlayTogetherVerdict? anyway(List<TogetherCopy> copies, {String? running}) =>
+          PlayTogetherCheck.tryAnyway(offer, signedIn: true, copies: copies, running: running);
+      expect(anyway([copy(version: '01.008.000')]), const JoinWith('g1'));
+      expect(anyway([copy(version: '02.000.000', unlocked: false)]), const UnlockAndPlay('g1'));
+      expect(anyway([copy()]), isNull, reason: 'nothing to try: it fits');
+      expect(
+        anyway([copy(version: '01.008.000', engine: '0.2.20-1')]),
+        isNull,
+        reason: 'another engine',
+      );
+      expect(
+        anyway([copy(version: '01.008.000')], running: 'Stray'),
+        isNull,
+        reason: 'close the game first',
+      );
+      expect(anyway([]), isNull);
+      expect(
+        PlayTogetherCheck.verdict(offer, signedIn: true, copies: [copy(version: '01.008.000')], overrideVersion: true),
+        const JoinWith('g1'),
+      );
+    });
 
     test('the same game version and engine joins', () {
       expect(check([copy()]), const JoinWith('g1'));
@@ -217,5 +264,35 @@ void main() {
       expect(fromParty.hostName, 'Mira');
       expect(fromParty.players, 2);
     });
+  });
+
+  test('trying anyway sends the override with the join, only when asked', () async {
+    final server = await FakeTogether.start();
+    final folder = temporaryFolder('anyway');
+    final account = TogetherAccount(
+      base: server.base,
+      store: MemoryTokenStore(),
+      clientName: 'launcher-linux/0.1.0 (test)',
+    );
+    addTearDown(() async {
+      account.close();
+      await server.close();
+    });
+    await account.startEmail('utku@example.com');
+    await account.verifyEmail('123456');
+    server.answers['POST game-sessions/s1/join'] = (200, lan());
+    final games = GameSessions(
+      account: account,
+      socket: TogetherSocket(account: account),
+      bridgeFile: path.join(folder.path, 'game-session.json'),
+    );
+    await games.join('s1', gameVersion: '01.008.000', engineBuild: '0.2.21-4194', overrideVersion: true);
+    expect(server.callsTo('game-sessions/s1/join').last.body, {
+      'gameVersion': '01.008.000',
+      'engineBuild': '0.2.21-4194',
+      'overrideVersion': true,
+    });
+    await games.join('s1', gameVersion: '01.044.000', engineBuild: '0.2.21-4194');
+    expect(server.callsTo('game-sessions/s1/join').last.body.containsKey('overrideVersion'), isFalse);
   });
 }

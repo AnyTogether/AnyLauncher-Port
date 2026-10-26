@@ -44,6 +44,7 @@ import '../core/steam/steam_launch.dart';
 import '../core/screenshots.dart';
 import '../core/toolkit.dart';
 import '../core/toolkit_download.dart';
+import '../core/together/account.dart' show ClientTooOld;
 import '../core/together/levels.dart';
 import '../core/together/talk_key.dart';
 import '../core/together/token_store.dart';
@@ -384,6 +385,9 @@ enum Layer {
   controls,
   confirmUninstall,
   updateChoice,
+
+  /// AnyTogether no longer answers this launcher's version (client_too_old): update.
+  updateRequired,
   log,
   trophies,
 
@@ -2269,6 +2273,7 @@ class AppModel extends ChangeNotifier {
   /// Opens a layer with the select sound, or [cue] (going back to the panel before).
   void open(Layer next, {Cue cue = Cue.select}) {
     sounds.play(cue);
+    if (overlay != next) together.askingRow = null;
     overlay = next;
     panelRow = 0;
     panelCategory = 0;
@@ -2289,8 +2294,22 @@ class AppModel extends ChangeNotifier {
     _changed();
   }
 
+  /// AnyTogether answered client_too_old: Update Required over Home (a toast over a game or
+  /// another screen), and a quiet look for the release that replaces this one.
+  void showUpdateRequired(ClientTooOld old) {
+    unawaited(updates.check(quiet: true));
+    if (overlay == null && running == null && starting == null) {
+      open(Layer.updateRequired);
+      panelRow = 1;
+      _changed();
+    } else {
+      show(T.format('requiredToast', [old.minimum]));
+    }
+  }
+
   void closeOverlay() {
     overlay = null;
+    together.askingRow = null;
     capturing = null;
     revealedTrophies = {};
     sounds.play(Cue.back);
@@ -2460,13 +2479,15 @@ class AppModel extends ChangeNotifier {
         together.compareCommand(command);
         return;
       case Layer.friendOptions when command == Command.back || command == Command.options:
-        open(Layer.friends, cue: Cue.back);
+        // A question asked in place (together_ask.dart) is answered Cancel first.
+        if (!together.cancelAsk()) open(Layer.friends, cue: Cue.back);
         return;
       case Layer.settings ||
           Layer.gameSettings ||
           Layer.confirmUninstall ||
           Layer.copyWarning ||
           Layer.updateChoice ||
+          Layer.updateRequired ||
           Layer.friends ||
           Layer.friendOptions ||
           Layer.party ||
@@ -2613,6 +2634,14 @@ class AppModel extends ChangeNotifier {
             id: 'friend',
             title: together.chosen?.person.displayName ?? T.text('friendsTitle'),
             rows: together.friendOptionRows(),
+          ),
+        ];
+      case Layer.updateRequired when together.account.tooOld != null:
+        return [
+          PanelCategory(
+            id: 'updateRequired',
+            title: T.text('requiredTitle'),
+            rows: updates.requiredRows(together.account.tooOld!),
           ),
         ];
       case Layer.updateChoice when game != null:
@@ -3326,7 +3355,8 @@ class AppModel extends ChangeNotifier {
             break;
         }
       case Command.back || Command.options:
-        closeOverlay();
+        // A question asked in place (together_ask.dart) is answered Cancel first.
+        if (!together.cancelAsk()) closeOverlay();
       default:
         break;
     }

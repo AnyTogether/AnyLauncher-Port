@@ -22,6 +22,28 @@ class TogetherProblem implements Exception {
   String toString() => title;
 }
 
+/// AnyTogether no longer answers this launcher's version (client_too_old, its MIN_LAUNCHER_VERSION):
+/// the oldest it still answers, this one's, and where to get a newer one.
+class ClientTooOld {
+  const ClientTooOld({required this.minimum, this.current, this.downloadUrl});
+
+  final String minimum;
+  final String? current;
+  final Uri? downloadUrl;
+
+  /// From an answer's problem details; null for any other problem.
+  static ClientTooOld? fromProblem(Map<String, dynamic> json) {
+    final minimum = json['minimum'];
+    if (json['code'] != 'client_too_old' || minimum is! String) return null;
+    final url = json['downloadUrl'];
+    return ClientTooOld(
+      minimum: minimum,
+      current: json['current'] as String?,
+      downloadUrl: url is String ? Uri.tryParse(url) : null,
+    );
+  }
+}
+
 /// Waiting for an approval was given up.
 class TogetherCancelled implements Exception {
   const TogetherCancelled();
@@ -91,6 +113,10 @@ class TogetherAccount with Notifier {
 
   TogetherUser? user;
   SignInStep step = const SignInIdle();
+
+  /// Set by the first client_too_old answer to any call (and kept current after): the launcher
+  /// shows Update Required.
+  ClientTooOld? tooOld;
   String? _access;
   DateTime _accessExpiry = DateTime.fromMillisecondsSinceEpoch(0);
   String? _refresh;
@@ -338,6 +364,11 @@ class TogetherAccount with Notifier {
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       if (json is Map<String, dynamic> && json['code'] is String) {
+        final old = ClientTooOld.fromProblem(json);
+        if (old != null) {
+          tooOld = old;
+          notifyListeners();
+        }
         throw TogetherProblem(response.statusCode, json['code'] as String, json['title'] as String? ?? '', extra: json);
       }
       throw TogetherProblem(response.statusCode, 'internal', 'AnyTogether answered ${response.statusCode}');

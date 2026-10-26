@@ -660,7 +660,8 @@ class FakeTogether {
           if ((party?['together'] as Map?)?['sessionId'] == id) party!['together'] = null;
           return (204, null);
         case ('POST', '/join'):
-          if (call.body['gameVersion'] != session['gameVersion']) {
+          // Try anyway passes the game version, never the engine build.
+          if (call.body['gameVersion'] != session['gameVersion'] && call.body['overrideVersion'] != true) {
             return (
               409,
               {
@@ -671,6 +672,7 @@ class FakeTogether {
                 'expected': session['gameVersion'],
                 'actual': call.body['gameVersion'],
                 'update': 'you',
+                'overridable': true,
               },
             );
           }
@@ -685,6 +687,7 @@ class FakeTogether {
                 'expected': session['engineBuild'],
                 'actual': call.body['engineBuild'],
                 'update': 'host',
+                'overridable': false,
               },
             );
           }

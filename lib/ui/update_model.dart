@@ -9,6 +9,7 @@ import '../core/gamepad/feel.dart' show HapticCue;
 import '../core/host.dart';
 import '../core/toolkit_download.dart';
 import '../core/update_notice.dart';
+import '../core/together/account.dart';
 import 'app_model.dart';
 import 'components.dart';
 import 'strings.dart';
@@ -340,6 +341,51 @@ class LauncherUpdateModel {
         kind: ActionRow(() => unawaited(check())),
       ),
     ].nonNulls.toList();
+  }
+
+  /// Update Required (AnyTogether's client_too_old): why, the update where it stands (the same
+  /// download and restart as About) or the downloads page, and Later.
+  List<PanelRow> requiredRows(ClientTooOld old) {
+    final now = state;
+    final file = asset;
+    final step = switch (now) {
+      UpdateDownloading(:final version, :final percent) => PanelRow(
+        id: 'required-downloading',
+        title: T.format('desktopUpdateDownloading', [version, percent]),
+        kind: const InfoRow(''),
+      ),
+      UpdateReady(:final version) when !restartAfterGame => PanelRow(
+        id: 'required-restart',
+        title: '${T.format('desktopNoticeReady', [version])} · ${T.text('desktopRestartNow')}',
+        detail: T.text('desktopUpdateLaterDetail'),
+        kind: ActionRow(() => unawaited(restartNow())),
+      ),
+      UpdateAvailable(:final version) when file != null => PanelRow(
+        id: 'required-update',
+        title: T.format('desktopUpdateTo', [version]),
+        detail: T.format('desktopUpdateDetail', [file.name, byteText(file.size)]),
+        kind: ActionRow(() => unawaited(download())),
+      ),
+      _ => null,
+    };
+    final page = old.downloadUrl;
+    return [
+      PanelRow(
+        id: 'required-why',
+        title: old.current == null ? T.text('requiredTooOld') : T.format('requiredTooOldVersion', [old.current!]),
+        detail: T.format('requiredDetail', [old.minimum]),
+        kind: const InfoRow(''),
+      ),
+      ?step,
+      if (step == null && page != null)
+        PanelRow(
+          id: 'required-download',
+          title: T.text('requiredDownload'),
+          detail: T.text('requiredDownloadDetail'),
+          kind: ActionRow(() => app.services.openUrl?.call(page)),
+        ),
+      PanelRow(id: 'required-later', title: T.text('requiredLater'), kind: ActionRow(app.closeOverlay)),
+    ];
   }
 
   static String _time(DateTime time) =>

@@ -45,6 +45,10 @@ const playTogetherEnglish = <String, String>{
   'playTogetherCodeDetail': 'Lets someone outside the party in',
   'playTogetherCodeCopied': 'Join code %@ copied',
   'togetherPresence': 'Playing %@ together (%d/%d)',
+  'togetherTryAnyway': 'Try Anyway',
+  'togetherTryAnywayDetail': 'Join with your version. The game may not find the others, or may misbehave',
+  'togetherTriedAnyway': 'Tried anyway',
+  'togetherTryingAnyway': 'Joining %@ with another version…',
 };
 
 const playTogetherTurkish = <String, String>{
@@ -89,4 +93,8 @@ const playTogetherTurkish = <String, String>{
   'playTogetherCodeDetail': 'Parti dışından birini içeri alır',
   'playTogetherCodeCopied': 'Katılma kodu %@ kopyalandı',
   'togetherPresence': '%@ birlikte oynanıyor (%d/%d)',
+  'togetherTryAnyway': 'Yine de Dene',
+  'togetherTryAnywayDetail': 'Kendi sürümünle katıl. Oyun diğerlerini bulamayabilir ya da sorun çıkarabilir',
+  'togetherTriedAnyway': 'Yine de denedi',
+  'togetherTryingAnyway': '%@ başka bir sürümle katılınıyor…',
 };

@@ -76,13 +76,15 @@ extension TogetherPlay on TogetherModel {
 
   // Joining.
 
-  /// Join from the party or the offer: the check first, then the game in the same session.
+  /// Join from the party or the offer: the check first, then the game in the same session. After
+  /// Try anyway the check looks past the game version (never the engine).
   Future<void> joinPlayTogether(PlayTogetherOffer offer, {bool afterUnlock = false}) async {
     final verdict = PlayTogetherCheck.verdict(
       offer,
       signedIn: signedIn,
       copies: togetherCopies(),
       running: app.running?.$1.name,
+      overrideVersion: togetherTryAnyway.contains(offer.sessionId),
     );
     switch (verdict) {
       case JoinWith(:final gameId):
@@ -107,18 +109,58 @@ extension TogetherPlay on TogetherModel {
     if (succeeded) unawaited(joinPlayTogether(waiting.$2, afterUnlock: true));
   }
 
+  /// Try anyway: the user chose to join with a game version that does not fit; the server
+  /// records it and still checks the engine.
+  Future<void> tryAnywayPlayTogether(PlayTogetherOffer offer) {
+    togetherTryAnyway.add(offer.sessionId);
+    return joinPlayTogether(offer);
+  }
+
+  /// Only the game version keeps this computer out, here or as the server said.
+  bool canTryAnyway(PlayTogetherOffer offer) {
+    final copies = togetherCopies();
+    final running = app.running?.$1.name;
+    if (PlayTogetherCheck.tryAnyway(offer, signedIn: signedIn, copies: copies, running: running) != null) return true;
+    if (!togetherVersionRefused.contains(offer.sessionId)) return false;
+    final anyway = PlayTogetherCheck.verdict(
+      offer,
+      signedIn: signedIn,
+      copies: copies,
+      running: running,
+      overrideVersion: true,
+    );
+    return anyway is JoinWith || anyway is UnlockAndPlay || anyway is UpdateAndPlay;
+  }
+
+  /// The Try Anyway row for an offer, when it can help.
+  PanelRow? tryAnywayRow(PlayTogetherOffer offer, String id) => !canTryAnyway(offer)
+      ? null
+      : PanelRow(
+          id: id,
+          title: T.text('togetherTryAnyway'),
+          detail: T.text('togetherTryAnywayDetail'),
+          kind: ActionRow(() => unawaited(tryAnywayPlayTogether(offer))),
+        );
+
   Future<void> _joinTogether(PlayTogetherOffer offer, Game game) async {
-    app.show(T.format('togetherJoining', [offer.hostName, game.name]));
+    final anyway = togetherTryAnyway.contains(offer.sessionId);
+    app.show(
+      anyway ? T.format('togetherTryingAnyway', [game.name]) : T.format('togetherJoining', [offer.hostName, game.name]),
+    );
     try {
       final joined = await hub.games.join(
         offer.sessionId,
         gameVersion: gameVersion(game),
         engineBuild: engineBuild(game),
+        overrideVersion: anyway,
       );
+      togetherTryAnyway.remove(offer.sessionId);
       _enterTogether(joined, game);
     } on TogetherProblem catch (problem) {
       final refusal = JoinRefusal.of(problem);
       if (refusal != null) {
+        // The party panel offers Try Anyway for a version the server would let by on request.
+        if (refusal.overridable && !anyway) togetherVersionRefused.add(offer.sessionId);
         final verdict = refusal.engine
             ? OtherEngine(have: refusal.actual, need: refusal.expected, youUpdate: refusal.youUpdate)
             : OtherGameVersion(have: refusal.actual, need: refusal.expected, youUpdate: refusal.youUpdate);
@@ -230,6 +272,7 @@ extension TogetherPlay on TogetherModel {
             detail: [
               if (userId == together.hostId) T.text('togetherHost'),
               userId == me ? T.text('togetherYou') : (mine ? linkText(userId) : T.text('togetherInGame')),
+              if (together.versionOverrides.contains(userId)) T.text('togetherTriedAnyway'),
             ].join(' · '),
             person: TogetherModel.card(person, status: PersonStatus.playing),
             kind: const InfoRow(''),
@@ -254,6 +297,7 @@ extension TogetherPlay on TogetherModel {
           kind: ActionRow(() => unawaited(joinPlayTogether(offer))),
         ),
       );
+      if (tryAnywayRow(offer, 'together-try-anyway') case final PanelRow anyway) rows.add(anyway);
     } else {
       if (hosting) {
         rows.add(
@@ -265,11 +309,14 @@ extension TogetherPlay on TogetherModel {
           ),
         );
       }
-      rows.add(
-        PanelRow(
-          id: 'together-leave',
-          title: hosting ? T.text('togetherEnd') : T.text('togetherLeave'),
-          kind: ActionRow(() => unawaited(leavePlayTogether()), destructive: true),
+      rows.addAll(
+        askingFirst(
+          PanelRow(
+            id: 'together-leave',
+            title: hosting ? T.text('togetherEnd') : T.text('togetherLeave'),
+            kind: ActionRow(() => unawaited(leavePlayTogether()), destructive: true),
+          ),
+          T.text(hosting ? 'askEndTogether' : 'askLeaveTogether'),
         ),
       );
     }
@@ -279,13 +326,15 @@ extension TogetherPlay on TogetherModel {
   /// The friends panel's offers: "Mira started Minecraft — Join".
   List<PanelRow> togetherOfferRows() => [
     for (final offer in togetherOffers)
-      if (offer.sessionId != hub.games.session?.id)
+      if (offer.sessionId != hub.games.session?.id) ...[
         PanelRow(
           id: 'together-offer-${offer.sessionId}',
           title: T.format('togetherOffer', [offer.hostName, gameName(offer.titleId)]),
           detail: T.text('togetherJoinDetail'),
           kind: ActionRow(() => unawaited(joinPlayTogether(offer))),
         ),
+        ?tryAnywayRow(offer, 'together-offer-anyway-${offer.sessionId}'),
+      ],
   ];
 
   // Events.

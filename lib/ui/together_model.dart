@@ -38,6 +38,7 @@ import 'strings.dart';
 import 'voice_webrtc.dart';
 
 part 'together_messages.dart';
+part 'together_ask.dart';
 part 'together_party.dart';
 part 'together_play.dart';
 part 'together_profile.dart';
@@ -208,6 +209,17 @@ class TogetherModel {
   (String, PlayTogetherOffer)? togetherAfterUnlock;
   String? togetherSession;
 
+  /// Play Together games the user chose to join with a game version that does not fit (Try
+  /// anyway), and games the server refused for the version though the check here let them by.
+  Set<String> togetherTryAnyway = {};
+  Set<String> togetherVersionRefused = {};
+
+  /// The row whose social step is asking first (together_ask.dart): it shows the question instead.
+  String? askingRow;
+
+  /// Update Required was shown for AnyTogether's client_too_old (once a run).
+  bool _updateRequiredShown = false;
+
   /// A handle typed in the friends panel, and the friend whose options are open.
   String friendHandle = '';
   Friend? chosen;
@@ -243,6 +255,11 @@ class TogetherModel {
   }
 
   void _accountChanged() {
+    // AnyTogether retired this version: Update Required, once.
+    if (account.tooOld case final ClientTooOld old when !_updateRequiredShown) {
+      _updateRequiredShown = true;
+      app.showUpdateRequired(old);
+    }
     final id = account.user?.id;
     if (id != _signedIn) {
       _signedIn = id;
@@ -761,10 +778,13 @@ class TogetherModel {
           title: T.format('partyInvite', [friend.person.displayName]),
           kind: ActionRow(() => unawaited(inviteToParty(friend.person))),
         ),
-      PanelRow(
-        id: 'friend-remove',
-        title: T.text('friendsRemove'),
-        kind: ActionRow(() => unawaited(removeFriend(friend)), destructive: true),
+      ...askingFirst(
+        PanelRow(
+          id: 'friend-remove',
+          title: T.text('friendsRemove'),
+          kind: ActionRow(() => unawaited(removeFriend(friend)), destructive: true),
+        ),
+        T.format('askRemoveFriend', [friend.person.displayName]),
       ),
       PanelRow(id: 'friend-back', title: T.text('back'), kind: ActionRow(() => app.open(Layer.friends))),
     ];

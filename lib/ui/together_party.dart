@@ -132,10 +132,13 @@ extension TogetherParty on TogetherModel {
       if (leader)
         for (final member in party.members)
           if (member.id != me.id)
-            PanelRow(
-              id: 'party-kick-${member.id}',
-              title: T.format('partyKick', [member.displayName]),
-              kind: ActionRow(() => unawaited(kick(member)), destructive: true),
+            ...askingFirst(
+              PanelRow(
+                id: 'party-kick-${member.id}',
+                title: T.format('partyKick', [member.displayName]),
+                kind: ActionRow(() => unawaited(kick(member)), destructive: true),
+              ),
+              T.format('askKick', [member.displayName]),
             ),
       if (leader)
         PanelRow(
@@ -172,11 +175,14 @@ extension TogetherParty on TogetherModel {
         );
       }
     }
-    rows.add(
-      PanelRow(
-        id: 'party-leave',
-        title: T.text('partyLeave'),
-        kind: ActionRow(() => unawaited(leaveParty()), destructive: true),
+    rows.addAll(
+      askingFirst(
+        PanelRow(
+          id: 'party-leave',
+          title: T.text('partyLeave'),
+          kind: ActionRow(() => unawaited(leaveParty()), destructive: true),
+        ),
+        T.text('askLeaveParty'),
       ),
     );
     return rows;

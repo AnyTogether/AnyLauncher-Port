@@ -282,6 +282,10 @@ void main() {
       (ana.kind as ActionRow).run();
       final remove = model.panelCategories().single.rows.firstWhere((row) => row.id == 'friend-remove');
       (remove.kind as ActionRow).run();
+      // It asks first.
+      expect(server.callsTo('me/friends/u-ana', method: 'DELETE'), isEmpty);
+      final sure = model.panelCategories().single.rows.firstWhere((row) => row.id == 'friend-remove-yes');
+      (sure.kind as ActionRow).run();
       await until(() => model.together.hub.friends.byId('u-ana') == null);
       expect(model.overlay, Layer.friends);
       expect(server.callsTo('me/friends/u-ana', method: 'DELETE'), hasLength(1));
@@ -516,6 +520,82 @@ void main() {
     PanelRow row(String id) => model.panelCategories()[model.panelCategory].rows.firstWhere((row) => row.id == id);
 
     void run(String id) => (row(id).kind as ActionRow).run();
+
+    test('removing someone, leaving the party and removing a friend ask first; Back answers Cancel', () async {
+      final ana = FakeTogether.card('u-ana', 'ana', 'Ana');
+      server.inParty([ana], leader: 'u-me');
+      await model.together.hub.parties.refresh();
+      final partyId = model.together.hub.parties.party!.id;
+      model.open(Layer.party);
+      run('party-kick-u-ana');
+      expect(rowIds(), containsAllInOrder(['party-kick-u-ana-ask', 'party-kick-u-ana-yes', 'party-kick-u-ana-cancel']));
+      expect(rowIds(), isNot(contains('party-kick-u-ana')));
+      expect(row('party-kick-u-ana-ask').title, 'Remove Ana from the party? They need a new invite to come back.');
+      expect(rowIds()[model.panelRow], 'party-kick-u-ana-cancel', reason: 'Cancel takes the focus');
+      expect(server.callsTo('parties/$partyId/kick'), isEmpty);
+      model.handle(launcher.Command.back);
+      expect(model.overlay, Layer.party, reason: 'Back answers the question, the panel stays');
+      expect(rowIds(), contains('party-kick-u-ana'));
+      expect(rowIds()[model.panelRow], 'party-kick-u-ana');
+      run('party-kick-u-ana');
+      run('party-kick-u-ana-yes');
+      await until(() => server.callsTo('parties/$partyId/kick').isNotEmpty);
+
+      run('party-leave');
+      expect(rowIds(), containsAllInOrder(['party-leave-ask', 'party-leave-yes', 'party-leave-cancel']));
+      expect(server.callsTo('parties/$partyId/leave'), isEmpty);
+      run('party-leave-cancel');
+      expect(rowIds(), contains('party-leave'));
+      run('party-leave');
+      run('party-leave-yes');
+      await until(() => model.together.hub.parties.party == null);
+
+      model.together.openFriend(model.together.hub.friends.friends.firstWhere((f) => f.person.id == 'u-ana'));
+      run('friend-remove');
+      expect(
+        row('friend-remove-ask').title,
+        'Remove Ana from your friends? You need a new request to be friends again.',
+      );
+      expect(server.callsTo('me/friends/u-ana', method: 'DELETE'), isEmpty);
+      model.handle(launcher.Command.back);
+      expect(model.overlay, Layer.friendOptions, reason: 'Back answers the question first');
+      run('friend-remove');
+      run('friend-remove-yes');
+      await until(() => server.callsTo('me/friends/u-ana', method: 'DELETE').isNotEmpty);
+
+      T.language = Language.turkish;
+      model.open(Layer.party);
+      expect(T.format('askKick', ['Ana']), 'Ana partiden çıkarılsın mı? Geri gelmek için yeni bir davet gerekir.');
+    });
+
+    test('AnyTogether retiring this version opens Update Required once, with the update', () async {
+      server.answers['me/friends'] = (
+        426,
+        {
+          'code': 'client_too_old',
+          'status': 426,
+          'title': 'This version is too old. Update to 9.0.0 or newer.',
+          'client': 'launcher-linux',
+          'current': '0.1.7',
+          'minimum': '9.0.0',
+          'downloadUrl': 'https://anytogether.test/download',
+        },
+      );
+      await model.together.hub.friends.refresh().catchError((Object _) {});
+      await until(() => model.overlay == Layer.updateRequired);
+      expect(model.panelCategories().single.title, 'Update Required');
+      expect(rowIds().first, 'required-why');
+      expect(row('required-why').title, contains('0.1.7'));
+      expect(rowIds(), contains('required-later'));
+      expect(rowIds(), contains('required-download'), reason: 'no newer release found here: the downloads page');
+      run('required-download');
+      expect(fixture.opened.last, Uri.parse('https://anytogether.test/download'));
+      model.handle(launcher.Command.back);
+      expect(model.overlay, isNull);
+      await model.together.hub.friends.refresh().catchError((Object _) {});
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(model.overlay, isNull, reason: 'once is enough');
+    });
 
     /// The party as the server would send it in party.updated, with [changes].
     Map<String, dynamic> partyView(Map<String, dynamic> changes) => {...server.party!, ...changes};
@@ -1373,6 +1453,35 @@ void main() {
       model.open(Layer.friends);
       expect(rowIds(), isNot(contains('together-offer-gs-lan')), reason: 'joined, the offer is gone');
     });
+
+    test(
+      'Play Together: Try Anyway joins with another game version, never another engine; who tried is shown',
+      () async {
+        server.inParty([ana], leader: 'u-ana');
+        server.hostSession('gs-v', ana, kind: 'lan', gameVersion: '01.001.000');
+        (server.party!['together'] as Map)['versionOverrides'] = ['u-ana'];
+        await model.together.hub.parties.refresh();
+        model.open(Layer.party);
+        List<String> ids() => model.panelCategories().single.rows.map((row) => row.id).toList();
+        PanelRow row(String id) => model.panelCategories().single.rows.firstWhere((row) => row.id == id);
+        expect(ids(), containsAllInOrder(['together-join', 'together-try-anyway']));
+        expect(row('together-try-anyway').title, 'Try Anyway');
+        expect(row('together-player-u-ana').detail, contains('Tried anyway'));
+        (row('together-try-anyway').kind as ActionRow).run();
+        await until(() => server.callsTo('game-sessions/gs-v/join').isNotEmpty);
+        expect(server.callsTo('game-sessions/gs-v/join').single.body, {
+          'gameVersion': '01.000.000',
+          'engineBuild': 'toolkit-1',
+          'overrideVersion': true,
+        });
+
+        server.gameSessions.remove('gs-v');
+        server.hostSession('gs-e', ana, kind: 'lan', gameVersion: '01.001.000', engineBuild: '0.2.13-a1b2c3d4e5f6');
+        await model.together.hub.parties.refresh();
+        model.open(Layer.party);
+        expect(ids(), isNot(contains('together-try-anyway')), reason: 'another engine is never tried anyway');
+      },
+    );
 
     test('Play Together: a different version or engine is named, a locked copy is unlocked first', () async {
       server.inParty([ana], leader: 'u-ana');

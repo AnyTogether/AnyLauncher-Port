@@ -5,6 +5,10 @@ release when it is made.
 
 ## Next release
 
+Nothing yet.
+
+## 0.1.8
+
 - **Online play (experimental), as on the Mac.** **Settings → AnyTogether → Online play
   (experimental)**, off by default, starts games with the launcher's online bridge: a loopback
   service on 127.0.0.1 the engine connects to with a fresh secret every start (both sides prove
@@ -29,6 +33,24 @@ release when it is made.
   on the virtual LAN. The party panel shows who plays and whether each connection is up; the
   host can hand out a join code for someone outside the party, and it ends for everyone when the
   host's game exits. Friends see "Playing <game> together (2/8)".
+- **Human Fall Flat online: Host Public and Join work.** Player Sessions answer as the platform
+  does (201 for every request that makes something, with Content-Type and Content-Length), so
+  hosting a public game no longer crashes it; a join into a session made on the host's machine
+  is taken, and the session fetch after the join is answered from its session IDs header, so
+  Join gets into the host's game.
+- **Games that stream between players play online too.** Stream P2P sockets (TCP between
+  players) ride the bridge and a second, reliable data channel next to the game's packets,
+  byte for byte as the Mac launcher carries them, so a PC and a Mac stream to each other. A
+  stream a game or player closed stays closed; one left open when a game or player goes is
+  reset on the other side. A Mac that restarted its answer is met with a fresh connection.
+- **Try Anyway in Play Together.** When only the game version keeps you out (never the engine),
+  Join offers **Try Anyway**, and the party sees who tried anyway.
+- **Asks first.** Leaving the party, removing someone from it, ending or leaving Play Together
+  and removing a friend ask first, with Cancel focused; Back answers Cancel.
+- **Update Required.** When AnyTogether retires this version, the launcher says so once, with
+  its own download and restart, or the downloads page.
+- **The newest engine is offered.** When a release keeps an older AnyPS5-ARM engine beside a
+  newer one, the newest upload is the one offered.
 
 ## 0.1.7
 

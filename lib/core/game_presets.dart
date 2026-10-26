@@ -133,8 +133,8 @@ class GamePresets {
   );
 }
 
-/// Where the presets are kept: one small file of their own, so that a profile can own its file
-/// later (each profile's folder holding a GamePresets.json) without touching the rest.
+/// Where a profile's presets are kept: one small file of their own in the profile's folder
+/// (`Profiles/<id>/GamePresets.json`).
 class GamePresetsStore {
   const GamePresetsStore(this.file);
 

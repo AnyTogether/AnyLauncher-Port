@@ -329,8 +329,8 @@ are reported; nothing contacts PlayStation servers.
 **Settings › Game Presets** sets, once for every game, what the PS5 keeps under that name:
 difficulty, Performance Mode or Resolution Mode, inverted vertical and horizontal view for
 first-person and third-person games, subtitles and the audio language (`lib/core/game_presets.dart`).
-They are kept in `GamePresets.json` in the settings folder, a file of their own so that a profile
-can own one later, and each start passes them as `ANYPS5_GAME_PRESETS` (nothing when none is set),
+Each profile has its own, kept in `Profiles/<id>/GamePresets.json` in the settings folder, and
+each start passes the playing profile's as `ANYPS5_GAME_PRESETS` (nothing when none is set),
 which the engine's `sceUserServiceGetGamePresets` answers with. Games that keep their own settings
 use those once changed in the game.
 

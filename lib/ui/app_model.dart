@@ -1387,14 +1387,30 @@ class AppModel extends ChangeNotifier {
   /// Whether choices are written to disk (off in previews and tests).
   final bool persist;
 
-  /// Settings › Game Presets, in a file of their own ([GamePresetsStore]): every game starts with
-  /// them. One set for now; a profile can own its own file once there are profiles.
-  late GamePresets gamePresets = persist ? GamePresetsStore(paths.gamePresetsFile).load() : const GamePresets();
+  /// Settings › Game Presets of the profile playing, in a file of their own in its folder
+  /// ([GamePresetsStore]): every game it starts begins with them. Read again when another
+  /// profile plays.
+  GamePresets get gamePresets {
+    final owner = _presetsOwner;
+    if (_presets == null || owner != _cachedPresetsOwner) {
+      _presets = persist ? GamePresetsStore(gamePresetsFile(owner)).load() : const GamePresets();
+      _cachedPresetsOwner = owner;
+    }
+    return _presets!;
+  }
+
+  GamePresets? _presets;
+  String? _cachedPresetsOwner;
+  String get _presetsOwner => profiles.book.currentProfile?.id ?? LauncherProfile.legacyId;
+
+  /// Where profile [id]'s presets are kept: beside its other files, under the profiles folder.
+  String gamePresetsFile(String id) => p.join(profiles.folder, id, 'GamePresets.json');
 
   void setGamePresets(GamePresets presets) {
     if (presets == gamePresets) return;
-    gamePresets = presets;
-    if (persist) GamePresetsStore(paths.gamePresetsFile).save(presets);
+    _presets = presets;
+    _cachedPresetsOwner = _presetsOwner;
+    if (persist) GamePresetsStore(gamePresetsFile(_presetsOwner)).save(presets);
     _changed();
   }
 

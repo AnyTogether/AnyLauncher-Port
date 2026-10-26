@@ -10,6 +10,7 @@ import 'glibc.dart';
 import 'game_process.dart';
 import 'game_presets.dart';
 import 'game_settings.dart';
+import 'profiles/profiles.dart';
 import 'host.dart';
 import 'installer.dart';
 import 'remote/mdns.dart';
@@ -151,7 +152,7 @@ Future<int> runCli(
             trace: trace,
           ),
           ...game.addonEnvironment,
-          ...GamePresetsStore(paths.gamePresetsFile).load().environment,
+          ...GamePresetsStore(_gamePresetsFile(paths)).load().environment,
         },
         logFile: paths.logFile(game.titleId),
         traced: trace || settings.trace == true,
@@ -438,4 +439,10 @@ Future<int> _steam(
       errors.writeln(usage);
       return 2;
   }
+}
+
+/// The Game Presets of the profile the launcher last played as.
+String _gamePresetsFile(AppPaths paths) {
+  final store = ProfileStore(paths.profilesFolder, existing: const ExistingSetup(onboarded: false, name: ''), persist: false);
+  return p.join(paths.profilesFolder, store.book.currentProfile?.id ?? LauncherProfile.legacyId, 'GamePresets.json');
 }

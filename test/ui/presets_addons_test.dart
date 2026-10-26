@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:anyps5_desktop/core/game_presets.dart';
 import 'package:anyps5_desktop/core/installer.dart';
+import 'package:anyps5_desktop/core/profiles/profiles.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/launcher.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
@@ -96,6 +97,16 @@ void main() {
     (presetsCategory().rows.last.kind as ActionRow).run();
     expect(model.gamePresets.isEmpty, isTrue);
     expect(presetsCategory().rows.map((row) => row.id), isNot(contains('presetsReset')));
+  });
+
+  test('each profile has its own presets', () {
+    final first = model.profiles.book.currentProfile!.id;
+    model.setGamePresets(const GamePresets(difficulty: PresetDifficulty.hard));
+    final sam = model.profiles.add(name: 'Sam', mode: ProfileMode.offline);
+    model.profiles.select(sam.id);
+    expect(model.gamePresets.isEmpty, isTrue, reason: "another profile's presets are not this one's");
+    expect(model.gamePresetsFile(sam.id), isNot(model.gamePresetsFile(first)));
+    expect(model.gamePresetsFile(sam.id), endsWith(p.join(sam.id, 'GamePresets.json')));
   });
 
   test('a game without presets, update or add-ons starts without their variables', () async {

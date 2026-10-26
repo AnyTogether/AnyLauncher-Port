@@ -84,7 +84,7 @@ void main() {
       expect(game.addons, isEmpty);
     });
 
-    test("a content ID folder of another game, or one with an eboot, is not an add-on", () {
+    test('a content ID folder of another game, or one with an eboot, is not an add-on', () {
       final folder = makeDump(root, 'PPSA01234', titleId: 'PPSA01234');
       makeAddon('UP0000-PPSA09999_00-EXPANSION0000001');
       makeDump(root, 'UP0000-PPSA01234_00-FULLGAME00000000', titleId: 'PPSA01234');

@@ -1511,6 +1511,8 @@ class GalleryView extends StatelessWidget {
     final muted = Colors.white.withValues(alpha: 0.6);
     if (model.galleryViewing && shots.isNotEmpty) {
       final index = model.galleryIndex.clamp(0, shots.length - 1);
+      // The ‹ › are for the mouse: with a controller ← and → do it.
+      final arrows = !InputScope.pad(context);
       return ColoredBox(
         color: Colors.black.withValues(alpha: 0.94),
         child: WithBackPill(
@@ -1522,13 +1524,16 @@ class GalleryView extends StatelessWidget {
                 Expanded(
                   child: Row(
                     children: [
-                      _StepArrow(
-                        key: const ValueKey('shot-previous'),
-                        icon: Icons.chevron_left_rounded,
-                        enabled: index > 0,
-                        focused: false,
-                        onTap: () => model.handle(Command.left),
-                      ),
+                      if (arrows)
+                        _StepArrow(
+                          key: const ValueKey('shot-previous'),
+                          icon: Icons.chevron_left_rounded,
+                          enabled: index > 0,
+                          focused: false,
+                          onTap: () => model.handle(Command.left),
+                        )
+                      else
+                        SizedBox(width: 32 * scale),
                       SizedBox(width: 16 * scale),
                       Expanded(
                         child: Pressable(
@@ -1544,13 +1549,16 @@ class GalleryView extends StatelessWidget {
                         ),
                       ),
                       SizedBox(width: 16 * scale),
-                      _StepArrow(
-                        key: const ValueKey('shot-next'),
-                        icon: Icons.chevron_right_rounded,
-                        enabled: index < shots.length - 1,
-                        focused: false,
-                        onTap: () => model.handle(Command.right),
-                      ),
+                      if (arrows)
+                        _StepArrow(
+                          key: const ValueKey('shot-next'),
+                          icon: Icons.chevron_right_rounded,
+                          enabled: index < shots.length - 1,
+                          focused: false,
+                          onTap: () => model.handle(Command.right),
+                        )
+                      else
+                        SizedBox(width: 32 * scale),
                     ],
                   ),
                 ),

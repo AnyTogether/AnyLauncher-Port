@@ -119,6 +119,17 @@ class RemoteServer {
   final List<RawDatagramSocket> _bridges = [];
   final List<(InternetAddress, int)?> _gameAddresses = [];
   final List<int?> _gamePlayers = [];
+
+  /// Whether each bridge's game said (in its hello) that its engine takes presses.
+  final List<bool> _gameTakesPresses = [];
+
+  /// When each bridge's game last said hello (it does every second): one quiet for longer has
+  /// ended, and its address no longer takes presses.
+  final List<DateTime?> _gameHelloAt = [];
+  static const _helloLapse = Duration(seconds: 3);
+
+  /// The next press's id: a random start, one more for each press.
+  int _pressId = Random().nextInt(0x7FFFFFFF);
   static final _random = Random.secure();
 
   /// Starts with the preferred ports, else ports the system picks; returns the started server.
@@ -170,6 +181,8 @@ class RemoteServer {
     _bridges.clear();
     _gameAddresses.clear();
     _gamePlayers.clear();
+    _gameTakesPresses.clear();
+    _gameHelloAt.clear();
     await http?.close(force: true);
   }
 
@@ -428,6 +441,8 @@ class RemoteServer {
       _bridges.add(bridge);
       _gameAddresses.add(null);
       _gamePlayers.add(null);
+      _gameTakesPresses.add(false);
+      _gameHelloAt.add(null);
       bridge.listen((event) {
         if (event == RawSocketEvent.read) _fromGame(slot);
       });
@@ -476,6 +491,8 @@ class RemoteServer {
       final data = datagram.data;
       if (RemotePacket.isHello(data)) {
         _gameAddresses[slot] = (datagram.address, datagram.port);
+        _gameTakesPresses[slot] = RemotePacket.helloTakesPresses(data);
+        _gameHelloAt[slot] = DateTime.now();
         final player = RemotePacket.helloPlayer(data);
         if (_gamePlayers[slot] != player) {
           _gamePlayers[slot] = player;
@@ -500,6 +517,48 @@ class RemoteServer {
         }
       }
     }
+  }
+
+  /// Whether a game's bridge said it takes presses ([pressButtons] can reach it).
+  bool get gameTakesPresses => _pressSlot != null;
+
+  /// The first bridge whose game said hello lately and takes presses.
+  int? get _pressSlot {
+    final now = DateTime.now();
+    for (var slot = 0; slot < _bridges.length; slot++) {
+      final said = _gameHelloAt[slot];
+      if (_gameAddresses[slot] != null &&
+          _gameTakesPresses[slot] &&
+          said != null &&
+          now.difference(said) < _helloLapse) {
+        return slot;
+      }
+    }
+    return null;
+  }
+
+  /// Holds [buttons] (the input packet's bits) [holdMs] on the game's first player's pad,
+  /// whoever drives it, through the first bridge whose game takes presses: the same datagram sent
+  /// three times, 40 ms apart, against loss (the engine drops the copies). False when no game
+  /// said it takes them (an older engine, or none started with the bridges).
+  Future<bool> pressButtons(int buttons, {int holdMs = 160, Duration gap = const Duration(milliseconds: 40)}) async {
+    final slot = _pressSlot;
+    if (slot != null) {
+      final game = _gameAddresses[slot]!;
+      final packet = RemotePacket.press(id: _pressId, buttons: buttons, holdMs: holdMs);
+      _pressId = (_pressId + 1) & 0xFFFFFFFF;
+      final bridge = _bridges[slot];
+      for (var copy = 0; copy < 3; copy++) {
+        if (copy > 0) await Future<void>.delayed(gap);
+        try {
+          bridge.send(packet, game.$1, game.$2);
+        } on Object {
+          // Closing.
+        }
+      }
+      return true;
+    }
+    return false;
   }
 
   /// Remote Play's packets to every phone that wants them: by UDP to where its pad comes from, or

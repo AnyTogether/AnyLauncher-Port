@@ -480,10 +480,15 @@ abstract final class RemotePacket {
   static const inputMagic = 0x49525041;
   static const outputMagic = 0x4F525041;
   static const helloMagic = 0x48525041;
+  static const pressMagic = 0x50525041;
   static const version = 1;
   static const inputSize = 80;
   static const outputSize = 32;
   static const helloSize = 16;
+  static const pressSize = 24;
+
+  /// The input packet's Options bit (offset 32), which a press holds to pause a game.
+  static const options = 0x0008;
 
   /// The session of a well-formed input packet (its 64 bits as a Dart int), null for anything else.
   static int? inputSession(List<int> data) {
@@ -501,14 +506,34 @@ abstract final class RemotePacket {
     return data[8] == 0 ? null : data[8];
   }
 
+  /// Whether a game's hello says its engine takes presses ([press]): bit 0 of byte 9. An engine
+  /// without it drops them unread.
+  static bool helloTakesPresses(List<int> data) => isHello(data) && data[9] & 1 != 0;
+
   /// A game hello, as the engine's bridge sends it (for tests and tools).
-  static Uint8List hello({int player = 0}) {
+  static Uint8List hello({int player = 0, bool takesPresses = false}) {
     final bytes = Uint8List(helloSize);
     ByteData.sublistView(bytes)
       ..setUint32(0, helloMagic, Endian.little)
       ..setUint16(4, version, Endian.little)
       ..setUint16(6, helloSize, Endian.little);
     bytes[8] = player;
+    bytes[9] = takesPresses ? 1 : 0;
+    return bytes;
+  }
+
+  /// A press (APRP): [buttons] (the input packet's bits) held [holdMs] on the game's first
+  /// player's pad without taking a player. The engine drops a copy with the same [id], so a press
+  /// is sent a few times against loss and the next one gets another id.
+  static Uint8List press({required int id, required int buttons, int holdMs = 160}) {
+    final bytes = Uint8List(pressSize);
+    ByteData.sublistView(bytes)
+      ..setUint32(0, pressMagic, Endian.little)
+      ..setUint16(4, version, Endian.little)
+      ..setUint16(6, pressSize, Endian.little)
+      ..setUint32(8, id & 0xFFFFFFFF, Endian.little)
+      ..setUint32(12, buttons, Endian.little)
+      ..setUint16(16, holdMs.clamp(50, 2000), Endian.little);
     return bytes;
   }
 

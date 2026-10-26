@@ -2910,10 +2910,21 @@ class AppModel extends ChangeNotifier {
     final front = _frontForGuide;
     quickMenuPaused = false;
     if (!front && preferences.pauseOnMenu) {
-      final key = optionsKey(game);
-      final paused = key != null && await desktop.pressKey(run.pid, key);
-      quickMenuPaused = paused;
-      _padLog?.call('quick menu: ${paused ? 'pressed $key in the game' : 'could not pause the game'}');
+      // An engine that takes presses: Options held on player 1's pad through the remote pad
+      // bridge, whoever drives it (sent three times, 40 ms apart; the menu ~210 ms after the
+      // first). Otherwise the key the game's Options is on, typed into its window.
+      final server = remote;
+      if (server != null && server.gameTakesPresses) {
+        final sent = server.pressButtons(RemotePacket.options);
+        await Future<void>.delayed(const Duration(milliseconds: 210));
+        quickMenuPaused = await sent;
+        _padLog?.call('quick menu: ${quickMenuPaused ? 'Options pressed through the bridge' : 'no bridge took it'}');
+      } else {
+        final key = optionsKey(game);
+        final paused = key != null && await desktop.pressKey(run.pid, key);
+        quickMenuPaused = paused;
+        _padLog?.call('quick menu: ${paused ? 'pressed $key in the game' : 'could not pause the game'}');
+      }
     }
     if (running?.$2 != run) return;
     final index = games.indexOf(game);
@@ -4616,6 +4627,9 @@ class AppModel extends ChangeNotifier {
     _pulses.stop();
     _pads?.stop();
     _focusWatch?.cancel();
+    _captureTimer?.cancel();
+    // The replay buffer's segments go with the launcher.
+    unawaited(_stopReplay());
     _navigator?.dispose();
     _installer?.cancel();
     _preparer?.cancel();

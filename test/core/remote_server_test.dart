@@ -30,8 +30,11 @@ class FakeGame {
       .cast<Datagram>()
       .asBroadcastStream();
 
-  void hello({int player = 0}) =>
-      socket.send(server.RemotePacket.hello(player: player), InternetAddress.loopbackIPv4, port);
+  void hello({int player = 0, bool takesPresses = false}) => socket.send(
+    server.RemotePacket.hello(player: player, takesPresses: takesPresses),
+    InternetAddress.loopbackIPv4,
+    port,
+  );
 
   /// An output packet answering [sequence].
   void answer(int sequence) {
@@ -467,5 +470,51 @@ void main() {
       expect(server.RemotePacket.helloPlayer(server.RemotePacket.hello()), isNull);
       expect(server.RemotePacket.isOutput(Uint8List(32)), isFalse);
     });
+
+    test('a press (APRP): its 24 bytes, and the hello bit that says the engine takes it', () {
+      final press = server.RemotePacket.press(id: 0x01020304, buttons: server.RemotePacket.options);
+      expect(press, [
+        0x41, 0x50, 0x52, 0x50, // APRP
+        1, 0, 24, 0, // version 1, size 24
+        0x04, 0x03, 0x02, 0x01, // the id
+        0x08, 0, 0, 0, // Options
+        160, 0, // held 160 ms
+        0, 0, 0, 0, 0, 0,
+      ]);
+      expect(server.RemotePacket.helloTakesPresses(server.RemotePacket.hello(takesPresses: true)), isTrue);
+      expect(server.RemotePacket.helloTakesPresses(server.RemotePacket.hello(player: 1)), isFalse);
+      expect(server.RemotePacket.helloTakesPresses(Uint8List(16)), isFalse, reason: 'not a hello');
+    });
+  });
+
+  test('Options pressed on the game\'s first player only when its hello says the engine takes presses', () async {
+    final game = await FakeGame.open(remote.bridgePorts.first);
+    final got = <Uint8List>[];
+    final listening = game.received.listen((datagram) => got.add(datagram.data));
+    expect(await remote.pressButtons(server.RemotePacket.options), isFalse, reason: 'no game said hello');
+    game.hello(player: 1);
+    await settle();
+    expect(remote.gameTakesPresses, isFalse);
+    expect(await remote.pressButtons(server.RemotePacket.options), isFalse, reason: 'an older engine drops presses');
+    game.hello(player: 1, takesPresses: true);
+    await settle();
+    expect(remote.gameTakesPresses, isTrue);
+    expect(await remote.pressButtons(server.RemotePacket.options), isTrue);
+    await settle();
+    expect(got, hasLength(3), reason: 'the same press three times against loss');
+    expect(got.toSet().map((bytes) => bytes.join(',')).toSet(), hasLength(1));
+    final view = ByteData.sublistView(got.first);
+    expect(view.getUint32(0, Endian.little), server.RemotePacket.pressMagic);
+    expect(view.getUint32(12, Endian.little), 0x0008);
+    final first = view.getUint32(8, Endian.little);
+    expect(await remote.pressButtons(server.RemotePacket.options), isTrue);
+    await settle();
+    expect(
+      ByteData.sublistView(got.last).getUint32(8, Endian.little),
+      (first + 1) & 0xFFFFFFFF,
+      reason: 'a new id each press',
+    );
+    await listening.cancel();
+    game.socket.close();
   });
 }

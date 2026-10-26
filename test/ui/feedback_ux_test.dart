@@ -5,6 +5,7 @@ import 'package:anyps5_desktop/core/gamepad/guide_switch.dart';
 import 'package:anyps5_desktop/core/gamepad/pad_navigation.dart';
 import 'package:anyps5_desktop/core/gamepad/shortcuts.dart';
 import 'package:anyps5_desktop/core/host.dart';
+import 'package:anyps5_desktop/core/remote/remote_protocol.dart';
 import 'package:anyps5_desktop/core/installer.dart';
 import 'package:anyps5_desktop/core/replay_buffer.dart';
 import 'package:anyps5_desktop/core/screenshots.dart';
@@ -335,6 +336,39 @@ void main() {
       await playing;
       expect(model.running, isNull);
       expect(model.overlay, isNull);
+    }, skip: Platform.isWindows ? 'the fake game is a shell script' : false);
+
+    test('an engine that takes presses: Options held on player 1 through the bridge, no key typed', () async {
+      await model.startPhoneServer();
+      final game = await RawDatagramSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final got = <Uint8List>[];
+      game.listen((event) {
+        if (event == RawSocketEvent.read) got.add(game.receive()!.data);
+      });
+      game.send(
+        RemotePacket.hello(player: 1, takesPresses: true),
+        InternetAddress.loopbackIPv4,
+        model.remote!.bridgePorts.first,
+      );
+      await until(() => model.remote!.gameTakesPresses);
+      final playing = (await startOrbit()).done;
+      // A running game says hello every second.
+      game.send(
+        RemotePacket.hello(player: 1, takesPresses: true),
+        InternetAddress.loopbackIPv4,
+        model.remote!.bridgePorts.first,
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      desktop.focused = false;
+      pads.press(PadButton.guide);
+      await until(() => desktop.calls.contains('raise'));
+      expect(desktop.calls, ['raise'], reason: 'no key into the window');
+      expect(got.where((data) => data.length == RemotePacket.pressSize), hasLength(3));
+      expect(model.quickMenuPaused, isTrue);
+      game.close();
+      model.stopGame();
+      await playing;
+      await model.stopPhoneServer();
     }, skip: Platform.isWindows ? 'the fake game is a shell script' : false);
 
     test('a remapped Options key is the one pressed', () async {

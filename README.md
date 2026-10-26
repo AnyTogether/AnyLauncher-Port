@@ -313,6 +313,11 @@ Downloaded engines: `~/.local/share/AnyPS5/Toolkits`, `%LOCALAPPDATA%\AnyPS5\Too
   `anyps5-desktop_<version>_amd64.deb` (`/opt/anyps5-desktop`, `/usr/bin/anyps5-desktop`).
   Build them on Ubuntu 22.04 so they run on glibc 2.34 and newer; GTK 3 comes from the system.
 
+## Credits
+
+- Online play speaks the engine bridge protocol of [AnyPS5-ARM](https://github.com/utkuhalis/AnyPS5-ARM/blob/main/docs/dev/ONLINE_PLAY.md), whose design is based on AnyPlay's bridge spec ([anyplaynet/network](https://github.com/anyplaynet/network/blob/main/spec/bridge-protocol.md), MIT/Apache-2.0): the frame header, the message numbering, the virtual LAN range and the screening of games. Stream P2P sockets followed AnyPlay's engine bridge ([anyplaynet/AnyPS5](https://github.com/anyplaynet/AnyPS5)).
+- Some features follow ideas AnyPlay shipped first ([anyplaynet/launcher](https://github.com/anyplaynet/launcher)): "Try anyway" on a Play Together version mismatch, an "Update required" screen for retired versions, asking before leave party / remove friend and similar actions, and a phone browser as a controller via a QR code. The code is written independently.
+
 ## License
 
 GPL-2.0, as the AnyPS5-ARM launcher it is ported from (see `LICENSE`). LibAtrac9 in

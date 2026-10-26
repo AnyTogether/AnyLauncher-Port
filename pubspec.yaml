@@ -1,7 +1,7 @@
 name: anyps5_desktop
 description: "AnyPS5 launcher for Windows and Linux."
 publish_to: 'none'
-version: 0.1.8+9
+version: 0.1.9+10
 
 environment:
   sdk: ^3.13.1
@@ -20,6 +20,7 @@ dependencies:
   native_toolchain_c: ^0.19.5
   path: ^1.9.1
   pinenacl: ^0.6.0
+  qr: ^3.0.2
 
 dev_dependencies:
   fake_async: ^1.3.3
@@ -34,6 +35,9 @@ flutter:
     - shaders/background.frag
   assets:
     - assets/fonts/Figtree-OFL.txt
+    # Play from a browser: the pad page phones get (lib/core/remote/browser_pad_server.dart), a copy
+    # of the macOS launcher's tools/macos/launcher/BrowserPad/index.html (tool/sync_browser_pad.sh).
+    - assets/browser_pad/index.html
     # The Noto fonts games get in place of the console's system fonts (SIL Open Font License
     # 1.1, OFL.txt beside them). The engine reads them from disk, from data/flutter_assets.
     - assets/system-fonts/

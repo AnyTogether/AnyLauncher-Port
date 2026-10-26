@@ -11,6 +11,7 @@ import '../core/gamepad/feel.dart';
 import '../core/gamepad/shortcuts.dart';
 import '../core/together/levels.dart';
 import 'app_model.dart';
+import 'browser_play.dart';
 import 'compare_view.dart';
 import 'components.dart';
 import 'controller_test_view.dart';
@@ -391,6 +392,7 @@ class _LauncherShellState extends State<LauncherShell> {
                                               Layer.log => LogView(model: model),
                                               Layer.crashReport => CrashReportView(model: model),
                                               Layer.controllerTest => ControllerTestView(model: model),
+                                              Layer.browserPlay => BrowserPlayView(model: model),
                                               Layer.trophies => TrophyView(model: model),
                                               Layer.gallery => GalleryView(model: model),
                                               Layer.profilePicker => ProfilePickerView(model: model),

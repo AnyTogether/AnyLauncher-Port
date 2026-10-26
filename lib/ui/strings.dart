@@ -1,3 +1,4 @@
+import 'browser_play.dart';
 import 'strings_controllers.dart';
 import 'strings_family.dart';
 import 'strings_feedback.dart';
@@ -229,6 +230,7 @@ abstract final class T {
                   playTogetherTurkish[key] ??
                   updatesTurkish[key] ??
                   controllersTurkish[key] ??
+                  browserPlayTurkish[key] ??
                   familyTurkish[key] ??
                   fontsTurkish[key] ??
                   steamTurkish[key] ??
@@ -242,6 +244,7 @@ abstract final class T {
         playTogetherEnglish[key] ??
         updatesEnglish[key] ??
         controllersEnglish[key] ??
+        browserPlayEnglish[key] ??
         familyEnglish[key] ??
         fontsEnglish[key] ??
         steamEnglish[key] ??

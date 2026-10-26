@@ -59,6 +59,7 @@ import '../core/online/online_peer_mesh.dart';
 import '../core/together/voice_mesh.dart';
 import '../core/trophies.dart';
 import '../core/unlock_space.dart';
+import 'browser_play.dart';
 import 'components.dart';
 import 'controllers_model.dart';
 import 'crash_model.dart';
@@ -100,6 +101,8 @@ class Preferences {
     }
     ..glassArtwork = json['glassArtwork'] == true
     ..phoneServer = json['phoneServer'] as bool? ?? true
+    ..browserPlay = json['browserPlay'] as bool? ?? true
+    ..browserPlayAlways = json['browserPlayAlways'] == true
     ..togetherServer = json['togetherServer'] as String?
     ..friendsJoin = json['friendsJoin'] as bool? ?? true
     ..onlinePlay = json['onlinePlay'] == true
@@ -162,6 +165,10 @@ class Preferences {
   int? glassTransparency;
   bool glassArtwork = false;
   bool phoneServer = true;
+
+  /// Play from a browser (browser_play.dart), and whether its server stays up all the time.
+  bool browserPlay = true;
+  bool browserPlayAlways = false;
 
   /// Another AnyTogether server than AnyTogether's own; null for that one.
   String? togetherServer;
@@ -255,6 +262,8 @@ class Preferences {
     'glassTransparency': glassTransparency,
     'glassArtwork': glassArtwork,
     'phoneServer': phoneServer,
+    'browserPlay': browserPlay,
+    'browserPlayAlways': browserPlayAlways,
     'togetherServer': togetherServer,
     'friendsJoin': friendsJoin,
     'onlinePlay': onlinePlay,
@@ -455,6 +464,9 @@ enum Layer {
 
   /// Settings › Controllers › Test Buttons and Sticks.
   controllerTest,
+
+  /// Settings › Phones › Play from a browser: the QR code a phone scans (browser_play.dart).
+  browserPlay,
 
   /// PS in a game: the game paused under Resume, Game Settings and Close Game.
   quickMenu,
@@ -1327,6 +1339,7 @@ class AppModel extends ChangeNotifier {
 
   /// The system fonts games get: the folder put together for them, the CJK download.
   late final FontsModel fonts = FontsModel(this);
+  late final BrowserPlayModel browserPlay = BrowserPlayModel(this);
 
   /// AnyPS5 and its games in the Steam library (Settings › Steam).
   late final SteamModel steam = SteamModel(this);
@@ -2810,6 +2823,9 @@ class AppModel extends ChangeNotifier {
       case Layer.crashReport:
         crash.command(command);
         return;
+      case Layer.browserPlay:
+        browserPlay.command(command);
+        return;
       case Layer.controllerTest:
         // Only the keyboard and the mouse get here (the pads' buttons are being tried).
         if (command == Command.back) closeControllerTest();
@@ -3617,6 +3633,7 @@ class AppModel extends ChangeNotifier {
               unawaited(value ? startPhoneServer() : stopPhoneServer());
             }),
           ),
+          if (preferences.phoneServer) ...browserPlay.settingsRows(),
           if (remote?.port case final int port)
             PanelRow(
               id: 'address',
@@ -4537,6 +4554,7 @@ class AppModel extends ChangeNotifier {
       }
       remote = server;
       server.togetherServer = together.account.base.toString();
+      unawaited(browserPlay.update());
       remoteError = null;
       if (services.cable) {
         final adb = await AdbTunnel.locate();
@@ -4562,6 +4580,7 @@ class AppModel extends ChangeNotifier {
   }
 
   Future<void> stopPhoneServer() async {
+    await browserPlay.stop();
     await _adb?.stop();
     _adb = null;
     await _advertiser?.stop();

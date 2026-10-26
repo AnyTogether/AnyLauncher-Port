@@ -262,6 +262,18 @@ class TogetherAccount with Notifier {
   /// The session ended on another device or the website: forgotten here too.
   Future<void> signedOutElsewhere() => _forget();
 
+  /// Lets go of the session here without ending it or touching where it is kept: another
+  /// launcher profile's session comes next (its store is put in, then [restore]).
+  void detach() {
+    user = null;
+    _access = null;
+    _refresh = null;
+    _accessExpiry = DateTime.fromMillisecondsSinceEpoch(0);
+    _waiting++;
+    step = const SignInIdle();
+    notifyListeners();
+  }
+
   Future<void> _forget() async {
     user = null;
     _access = null;
@@ -305,6 +317,19 @@ class TogetherAccount with Notifier {
   Future<Map<String, dynamic>> call(String method, String path, [Map<String, dynamic>? body]) =>
       _authorized(method, path, body);
 
+  /// A signed-in call that sends [bytes] as they are (a picture), [contentType] said; JSON back.
+  Future<Map<String, dynamic>> upload(String method, String path, List<int> bytes, String contentType) async {
+    Future<Map<String, dynamic>> send() async =>
+        _send(method, path, null, token: await _accessToken(), raw: (bytes, contentType));
+    try {
+      return await send();
+    } on TogetherProblem catch (problem) {
+      if (problem.status != 401 || _refresh == null) rethrow;
+      _accessExpiry = DateTime.fromMillisecondsSinceEpoch(0);
+      return send();
+    }
+  }
+
   /// The access token for the realtime gateway; [renew] refreshes it first, after the gateway
   /// turned it down.
   Future<String> accessToken({bool renew = false}) {
@@ -341,7 +366,13 @@ class TogetherAccount with Notifier {
     }
   }
 
-  Future<Map<String, dynamic>> _send(String method, String path, Map<String, dynamic>? body, {String? token}) async {
+  Future<Map<String, dynamic>> _send(
+    String method,
+    String path,
+    Map<String, dynamic>? body, {
+    String? token,
+    (List<int>, String)? raw,
+  }) async {
     final request = await _http.openUrl(
       method,
       Uri.parse('${base.toString().replaceAll(RegExp(r'/+$'), '')}/api/v1/$path'),
@@ -350,7 +381,11 @@ class TogetherAccount with Notifier {
       ..set('AnyTogether-Client', clientName)
       ..set(HttpHeaders.acceptHeader, 'application/json');
     if (token != null) request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
-    if (body != null) {
+    if (raw != null) {
+      request.headers.contentType = ContentType.parse(raw.$2);
+      request.contentLength = raw.$1.length;
+      request.add(raw.$1);
+    } else if (body != null) {
       request.headers.contentType = ContentType.json;
       request.write(jsonEncode(body));
     }

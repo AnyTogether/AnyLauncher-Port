@@ -2,13 +2,22 @@ import 'levels.dart';
 
 /// Someone on AnyTogether as the API's name cards show them.
 class Person {
-  const Person({required this.id, required this.handle, required this.displayName, this.avatar});
+  const Person({
+    required this.id,
+    required this.handle,
+    required this.displayName,
+    this.avatar,
+    this.privateName,
+    this.privateAvatar,
+  });
 
   factory Person.fromJson(Map<String, dynamic> json) => Person(
     id: json['userId'] as String,
     handle: json['handle'] as String,
     displayName: json['displayName'] as String,
     avatar: json['avatar'] as String?,
+    privateName: json['privateName'] is String ? json['privateName'] as String : null,
+    privateAvatar: json['privateAvatar'] is String ? json['privateAvatar'] as String : null,
   );
 
   final String id;
@@ -18,7 +27,20 @@ class Person {
   /// The picture's full address, or null for none.
   final String? avatar;
 
-  Map<String, Object?> toJson() => {'userId': id, 'handle': handle, 'displayName': displayName, 'avatar': avatar};
+  /// The friends-only name and picture (docs/private-identity.md): on the cards of friends in
+  /// the answers that carry them, null when not set or not for this user to see. The picture is
+  /// a signed link that runs out.
+  final String? privateName;
+  final String? privateAvatar;
+
+  Map<String, Object?> toJson() => {
+    'userId': id,
+    'handle': handle,
+    'displayName': displayName,
+    'avatar': avatar,
+    'privateName': ?privateName,
+    'privateAvatar': ?privateAvatar,
+  };
 }
 
 enum PresenceState { inGame, online, away, offline }

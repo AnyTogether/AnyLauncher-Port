@@ -31,6 +31,11 @@ class SelfProfile with Notifier {
   /// turned off.
   bool readReceipts = true;
   bool loaded = false;
+
+  /// The name and picture only accepted friends see (null when not set, or an older server);
+  /// the picture is a signed link that runs out, read again with the profile.
+  String? privateName;
+  String? privateAvatar;
   int _changing = 0;
   int _changingReceipts = 0;
 
@@ -43,6 +48,8 @@ class SelfProfile with Notifier {
       // Not while a change of ours is on its way: that answer decides.
       if (_changing == 0) appearOffline = profile['appearOffline'] == true;
       if (_changingReceipts == 0) readReceipts = profile['readReceipts'] != false;
+      privateName = _text(profile['privateName']);
+      privateAvatar = _text(profile['privateAvatar']);
     }
     loaded = true;
     notifyListeners();
@@ -85,7 +92,34 @@ class SelfProfile with Notifier {
     }
   }
 
+  static String? _text(Object? value) => value is String && value.trim().isNotEmpty ? value : null;
+
+  /// The friends-only name (PATCH /me/profile); blank clears it.
+  Future<void> setPrivateName(String name) async {
+    final trimmed = name.trim();
+    final answer = await account.call('PATCH', 'me/profile', {'privateName': trimmed.isEmpty ? null : trimmed});
+    privateName = answer.containsKey('privateName') ? _text(answer['privateName']) : (trimmed.isEmpty ? null : trimmed);
+    notifyListeners();
+  }
+
+  /// The friends-only picture (PUT /me/avatar/private): a PNG or JPEG, at most 5 MB; the public
+  /// picture stays.
+  Future<void> uploadPrivateAvatar(List<int> picture) async {
+    final png = picture.length > 8 && picture[0] == 0x89 && picture[1] == 0x50;
+    final answer = await account.upload('PUT', 'me/avatar/private', picture, png ? 'image/png' : 'image/jpeg');
+    privateAvatar = _text(answer['privateAvatar']);
+    notifyListeners();
+  }
+
+  Future<void> removePrivateAvatar() async {
+    await account.call('DELETE', 'me/avatar/private');
+    privateAvatar = null;
+    notifyListeners();
+  }
+
   void clear() {
+    privateName = null;
+    privateAvatar = null;
     level = null;
     appearOffline = false;
     readReceipts = true;

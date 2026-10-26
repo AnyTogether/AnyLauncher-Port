@@ -26,6 +26,8 @@ class TogetherProfile {
     this.country,
     this.friendship = 'none',
     this.trophyLevel,
+    this.privateName,
+    this.privateAvatar,
   });
 
   factory TogetherProfile.fromJson(Map<String, dynamic> json) => TogetherProfile(
@@ -37,6 +39,8 @@ class TogetherProfile {
     country: json['country'] as String?,
     friendship: json['friendship'] as String? ?? 'none',
     trophyLevel: TrophyLevel.fromJson(json['trophyLevel']),
+    privateName: json['privateName'] is String ? json['privateName'] as String : null,
+    privateAvatar: json['privateAvatar'] is String ? json['privateAvatar'] as String : null,
   );
 
   final String userId;
@@ -52,6 +56,20 @@ class TogetherProfile {
   /// Their trophy level; null when their trophies are kept from this user (or the server is
   /// older than levels).
   final TrophyLevel? trophyLevel;
+
+  /// The friends-only name and picture, for a friend (or the user) signed in.
+  final String? privateName;
+  final String? privateAvatar;
+
+  /// The profile as a name card, its private name and picture with it.
+  Person get card => Person(
+    id: userId,
+    handle: handle,
+    displayName: displayName,
+    avatar: avatar,
+    privateName: privateName,
+    privateAvatar: privateAvatar,
+  );
 
   bool get isMe => friendship == 'me';
 }

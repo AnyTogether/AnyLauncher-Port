@@ -38,6 +38,31 @@ release when it is made.
 
 ## 0.1.6
 
+- **Smooth on laptops and integrated graphics, and nothing drawn behind your game.** On Windows
+  the launcher now draws with Skia instead of Impeller's OpenGL ES backend, which needed dozens
+  of offscreen passes a frame for the launcher's glass and panels (on a Ryzen 7 3700U with Vega
+  graphics a Glass settings panel drew at 3 to 13 frames a second; now it scrolls at 60, a frame
+  drawn in about 4 ms). Glass draws each card, button and row once and reuses the picture, its
+  frost is a small repeated tile, it no longer blurs behind every surface (only a full-screen
+  layer is blurred, once; on the see-through window the home screen fades out under it instead),
+  and its text plates are drawn in one step. The themes' animated backgrounds move at 30 steps a
+  second (Glass 20) at half the window's resolution, which you cannot tell apart from before and
+  costs a fraction. While a game is in front, or the launcher is behind any other window, the
+  launcher draws nothing at all: every animation stops and the GPU is the game's (before, the
+  background kept drawing behind the game and took a quarter of the GPU from it). If the
+  graphics card still falls behind with Glass, it turns solid by itself after a few seconds and
+  stays solid at the next starts; picking Glass again in **Settings → Appearance** tries once
+  more. New installs start in Cosmic; Glass is yours to pick.
+- **PS/Guide switches between the game and the launcher, both ways.** In the game, PS brings the
+  launcher in front; in the launcher, PS takes you back to the game (on Windows the game window
+  could refuse to come back; it is now brought in front reliably, with the launcher right behind
+  it). One press is one switch, and the press that switched does nothing on the other side.
+- **The game leaves the controller alone while the launcher is in front.** Games read the pad
+  only while their own window is in front (SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=0 in the game's
+  environment), so moving through the launcher over a running game no longer also plays the game.
+- For testers: `ANYPS5_FRAME_LOG=<file>` writes how many frames the launcher drew each second and
+  how long they took; `ANYPS5_RENDERER=impeller` brings Impeller back on Windows.
+
 - **Glass, a new theme.** The launcher's window turns see-through: your desktop and the
   windows behind it show through, blurred under a light tint so the wallpaper's colors glow,
   like a Windows 11 Acrylic window; the text sits on soft dark plates and panes of glass, so it

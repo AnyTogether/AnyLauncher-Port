@@ -5,7 +5,22 @@ release when it is made.
 
 ## Next release
 
-Nothing yet.
+- **Online play (experimental), as on the Mac.** **Settings → AnyTogether → Online play
+  (experimental)**, off by default, starts games with the launcher's online bridge: a loopback
+  service on 127.0.0.1 the engine connects to with a fresh secret every start (both sides prove
+  it, the secret never crosses the socket). Games see you signed in as your AnyTogether handle,
+  with your AnyTogether friends, their profiles and presence, an empty block list and no
+  communication restriction; Player Sessions (`sessionManager`) are kept by the launcher for the
+  game run, with push events to the game when someone joins or leaves. Game packets ride WebRTC
+  data channels to the other players of the AnyTogether game session, signalled through
+  AnyTogether's gateway with its STUN and TURN, each player at the same virtual address on every
+  computer, broadcasts and LAN-style discovery included; Windows, Linux and Mac launchers play
+  together. Nothing ever goes to Sony; groups the launcher does not know answer "not offered",
+  as offline. What each game asks for is written to its online log (Windows
+  `%LOCALAPPDATA%\AnyPS5\Logs\Online\<TitleID>.jsonl`, Linux `~/.local/state/AnyPS5/online/`),
+  opened from **Open online log**; a crash report carries the last lines of it. Needs an engine
+  with the online bridge (AnyPS5-ARM's engine, once its Windows and Linux toolkits carry it);
+  with an engine without it the setting changes nothing.
 
 ## 0.1.7
 

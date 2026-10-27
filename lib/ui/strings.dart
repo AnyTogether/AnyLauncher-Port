@@ -125,7 +125,7 @@ abstract final class T {
     'engineArmUse': 'Use the AnyPS5-ARM engine %@',
     'engineArmNone': 'AnyPS5-ARM has no engine for this system yet',
     'engineArmUpToDate': 'The AnyPS5-ARM engine is up to date',
-    'engineArmSource': 'From GitHub · utkuhalis/AnyPS5-ARM',
+    'engineArmSource': 'From GitHub · AnyTogether/AnyPS5-ARM',
   };
 
   static const _turkish = <String, String>{
@@ -220,7 +220,7 @@ abstract final class T {
     'engineArmUse': 'AnyPS5-ARM motoru %@ kullan',
     'engineArmNone': 'AnyPS5-ARM\'ın bu sistem için henüz motoru yok',
     'engineArmUpToDate': 'AnyPS5-ARM motoru güncel',
-    'engineArmSource': 'GitHub\'dan · utkuhalis/AnyPS5-ARM',
+    'engineArmSource': 'GitHub\'dan · AnyTogether/AnyPS5-ARM',
   };
 
   /// The text for [key] in the current language, English when the language has none.

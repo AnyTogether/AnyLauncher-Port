@@ -88,7 +88,7 @@ void main() {
 
   test('the launcher reads its own repository with the built-in keys', () {
     final source = LauncherUpdates.source();
-    expect(source.repository, 'utkuhalis/AnyPS5-Desktop');
+    expect(source.repository, 'AnyTogether/AnyPS5-Desktop');
     expect(source.signingKeys, isNotEmpty);
   });
 }

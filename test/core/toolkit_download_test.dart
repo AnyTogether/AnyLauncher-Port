@@ -270,8 +270,8 @@ void main() {
     late GitHubReleases signedReleases;
 
     setUp(() async {
-      ours = await FakeGitHub.start(repository: 'utkuhalis/AnyPS5-ARM');
-      signedReleases = GitHubReleases(api: ours.api, repository: 'utkuhalis/AnyPS5-ARM', signingKeys: [key.key]);
+      ours = await FakeGitHub.start(repository: 'AnyTogether/AnyPS5-ARM');
+      signedReleases = GitHubReleases(api: ours.api, repository: 'AnyTogether/AnyPS5-ARM', signingKeys: [key.key]);
     });
     tearDown(() => ours.close());
 

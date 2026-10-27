@@ -626,10 +626,10 @@ class IssueDraft {
   static const engineRepository = 'boykopovar/AnyPS5';
 
   /// AnyPS5-ARM, for a game run with its engine.
-  static const armRepository = 'utkuhalis/AnyPS5-ARM';
+  static const armRepository = 'AnyTogether/AnyPS5-ARM';
 
   /// This launcher, for a bug in the launcher itself.
-  static const launcherRepository = 'utkuhalis/AnyPS5-Desktop';
+  static const launcherRepository = 'AnyTogether/AnyPS5-Desktop';
 
   static const maximumLength = 7000;
 

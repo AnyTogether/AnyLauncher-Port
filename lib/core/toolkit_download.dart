@@ -175,7 +175,7 @@ class ArmToolkitPackage extends ToolkitPackage {
   ArmToolkitPackage({required super.release, required this.archive, required this.commit})
     : super(relinker: archive, libraries: archive);
 
-  static const repository = 'utkuhalis/AnyPS5-ARM';
+  static const repository = 'AnyTogether/AnyPS5-ARM';
   static final _name = RegExp(r'^AnyPS5-toolkit-(windows|linux)-([0-9a-f]{7,40})\.(zip|tar\.gz)$');
 
   final ReleaseAsset archive;

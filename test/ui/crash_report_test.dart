@@ -148,7 +148,7 @@ void main() {
       model
         ..handle(Command.down)
         ..handle(Command.select);
-      expect(fixture.opened.last.path, '/utkuhalis/AnyPS5-Desktop/issues/new');
+      expect(fixture.opened.last.path, '/AnyTogether/AnyPS5-Desktop/issues/new');
       // Back steps out of the shared text onto Open an Issue; Back again closes.
       model.handle(Command.back);
       expect(model.crash.current!.sharing, isFalse);

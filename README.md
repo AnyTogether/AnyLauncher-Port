@@ -1,6 +1,6 @@
 # AnyPS5 Desktop
 
-The [AnyPS5-ARM](https://github.com/utkuhalis/AnyPS5-ARM) launcher, ported to **Windows** and
+The [AnyPS5-ARM](https://github.com/AnyTogether/AnyPS5-ARM) launcher, ported to **Windows** and
 **Linux** with Flutter: the same PS5-style home screen, library, unlocking, controls, trophies,
 saves and phone controller, for the PCs [AnyPS5](https://github.com/boykopovar/AnyPS5) runs on.
 
@@ -14,7 +14,7 @@ systems: it finds dumps in a games folder, unwraps their SELF executables, runs 
 for the host, lays out the game with the system libraries, starts it, and keeps controls,
 settings, saves and trophies per game. A phone running the AnyPS5 Remote app pairs with it and
 works as a controller (the protocol in section 12.4 of the
-[AnyTogether platform notes](https://github.com/utkuhalis/AnyPS5-ARM/blob/anytogether/docs/en/12-platforms.md)).
+[AnyTogether platform notes](https://github.com/AnyTogether/AnyPS5-ARM/blob/anytogether/docs/en/12-platforms.md)).
 
 A phone without the app plays too: **Settings › Phones › Show QR code**, scanned with the
 phone's camera, turns its browser into a touch DualSense (sticks, D-pad, face buttons, L1/R1,
@@ -137,7 +137,7 @@ switches with F11) it sizes the game's window once it opens, or presses F11 for 
 
 Settings → AnyPS5 Engine → *Engine* switches to the **AnyPS5-ARM engine**: the fork's toolkit,
 built for Windows (and Linux, when published) and attached to
-[AnyPS5-ARM's releases](https://github.com/utkuhalis/AnyPS5-ARM/releases) as one archive,
+[AnyPS5-ARM's releases](https://github.com/AnyTogether/AnyPS5-ARM/releases) as one archive,
 `AnyPS5-toolkit-<windows|linux>-<commit>.zip` (relinker, `libs/`, `version.txt`). The launcher
 takes it from the newest release that has one, checks it against the release's signed
 `SHA256SUMS`, and keeps it as `Toolkits/arm-<commit>` with `version.txt` `arm-<commit>`. That
@@ -151,7 +151,7 @@ unlocked; they would not start there.
 
 ## AnyTogether
 
-The launcher signs in to [AnyTogether](https://github.com/utkuhalis/AnyTogether), the AnyPS5
+The launcher signs in to [AnyTogether](https://github.com/AnyTogether/AnyTogether), the AnyPS5
 online layer (Settings → AnyTogether): with a code sent by email, with a code approved on the
 website (it opens in the browser; passkeys and the website's other sign-ins work there), or with
 the paired phone, which approves the launcher with one tap when it is signed in (the phone
@@ -347,7 +347,7 @@ use those once changed in the game.
 
 ## Credits
 
-- Online play speaks the engine bridge protocol of [AnyPS5-ARM](https://github.com/utkuhalis/AnyPS5-ARM/blob/main/docs/dev/ONLINE_PLAY.md), whose design is based on AnyPlay's bridge spec ([anyplaynet/network](https://github.com/anyplaynet/network/blob/main/spec/bridge-protocol.md), MIT/Apache-2.0): the frame header, the message numbering, the virtual LAN range and the screening of games. Stream P2P sockets followed AnyPlay's engine bridge ([anyplaynet/AnyPS5](https://github.com/anyplaynet/AnyPS5)).
+- Online play speaks the engine bridge protocol of [AnyPS5-ARM](https://github.com/AnyTogether/AnyPS5-ARM/blob/main/docs/dev/ONLINE_PLAY.md), whose design is based on AnyPlay's bridge spec ([anyplaynet/network](https://github.com/anyplaynet/network/blob/main/spec/bridge-protocol.md), MIT/Apache-2.0): the frame header, the message numbering, the virtual LAN range and the screening of games. Stream P2P sockets followed AnyPlay's engine bridge ([anyplaynet/AnyPS5](https://github.com/anyplaynet/AnyPS5)).
 - Some features follow ideas AnyPlay shipped first ([anyplaynet/launcher](https://github.com/anyplaynet/launcher)): "Try anyway" on a Play Together version mismatch, an "Update required" screen for retired versions, asking before leave party / remove friend and similar actions, and a phone browser as a controller via a QR code ([LudusCtrl](https://github.com/parl0v/ludusctrl)'s browser client by Josip Parlov, @parl0v, shipped in AnyPlay). The code is written independently.
 
 ## License

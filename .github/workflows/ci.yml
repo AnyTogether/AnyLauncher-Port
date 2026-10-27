@@ -47,7 +47,7 @@ jobs:
           if-no-files-found: ignore
 
   goldens:
-    name: golden tests (macOS, where the goldens are made)
+    name: golden tests and the recursive watcher (macOS)
     runs-on: macos-26
     timeout-minutes: 30
     steps:
@@ -60,8 +60,10 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - name: Run the test files that compare goldens
-        run: flutter test $(grep -rl matchesGoldenFile test | sort)
+      # The goldens are made on macOS; the library watcher's one recursive watch is the macOS and
+      # Windows mode, which the Linux job skips.
+      - name: Run the test files that compare goldens, and the library watcher's
+        run: flutter test $(grep -rl matchesGoldenFile test | sort) test/core/library_watch_test.dart
       - uses: actions/upload-artifact@v7
         if: failure()
         with:

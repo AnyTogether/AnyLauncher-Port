@@ -96,6 +96,9 @@ void main() {
       await model.steam.scan();
       await model.steam.add();
     });
+    // The "Added to Steam" toast runs on a real 4 s timer (it was made inside runAsync), so whether
+    // it is still up when the golden is taken depends on the machine's speed. The golden is the page.
+    model.toast = null;
     model.open(Layer.settings);
     model.selectCategory(model.panelCategories().indexWhere((category) => category.id == 'steam'));
     await pumpLauncher(tester, model);

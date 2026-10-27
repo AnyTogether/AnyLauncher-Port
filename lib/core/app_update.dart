@@ -100,7 +100,7 @@ abstract final class LauncherUpdates {
   /// copied beside it, made executable and renamed over it, so the running launcher keeps its
   /// own (already open) copy and the next start is the new one.
   static void swapAppImage(String file, String appImage) {
-    final staged = '\$appImage.new';
+    final staged = '$appImage.new';
     File(file).copySync(staged);
     final chmod = Process.runSync('chmod', ['755', staged]);
     if (chmod.exitCode != 0) {

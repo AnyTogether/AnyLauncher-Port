@@ -20,7 +20,7 @@ void main() {
       'invited': <Object>[],
       'joinCode': {
         'code': 'K7QM3XPA',
-        'url': 'https://anytogether.kodla.agency/join/K7QM3XPA',
+        'url': 'https://anytogether.net/join/K7QM3XPA',
         'expiresAt': '2026-10-26T20:00:00Z',
       },
       'discord': 'https://discord.gg/abc',
@@ -34,7 +34,7 @@ void main() {
     });
     expect(party.joinCode!.code, 'K7QM3XPA');
     expect(party.joinCode!.shown, 'K7QM-3XPA');
-    expect(party.joinCode!.url.toString(), 'https://anytogether.kodla.agency/join/K7QM3XPA');
+    expect(party.joinCode!.url.toString(), 'https://anytogether.net/join/K7QM3XPA');
     expect(party.joinCode!.expiresAt, DateTime.utc(2026, 10, 26, 20));
     expect(party.discord, 'https://discord.gg/abc');
     expect(party.requests.single.displayName, 'Cem');
@@ -74,8 +74,8 @@ void main() {
   test('a code as typed or pasted: case, dashes, spaces and the link do not matter', () {
     expect(JoinCode.clean('k7qm-3xpa'), 'K7QM3XPA');
     expect(JoinCode.clean(' K7QM 3XPA '), 'K7QM3XPA');
-    expect(JoinCode.clean('https://anytogether.kodla.agency/join/K7QM3XPA'), 'K7QM3XPA');
-    expect(JoinCode.clean('anytogether.kodla.agency/join/k7qm-3xpa/'), 'K7QM3XPA');
+    expect(JoinCode.clean('https://anytogether.net/join/K7QM3XPA'), 'K7QM3XPA');
+    expect(JoinCode.clean('anytogether.net/join/k7qm-3xpa/'), 'K7QM3XPA');
     expect(JoinCode.clean('K7QM3XP'), isNull, reason: 'too short');
     expect(JoinCode.clean('K7QM3XP0'), isNull, reason: 'no 0 in a code');
     expect(JoinCode.clean('K7QM3XPI'), isNull, reason: 'no I in a code');

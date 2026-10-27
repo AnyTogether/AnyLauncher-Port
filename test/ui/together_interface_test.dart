@@ -279,7 +279,7 @@ void main() {
         muted: {'u-ana'},
         joinCode: JoinCode(
           code: 'K7QM3XPA',
-          url: Uri(scheme: 'https', host: 'anytogether.kodla.agency', path: '/join/K7QM3XPA'),
+          url: Uri(scheme: 'https', host: 'anytogether.net', path: '/join/K7QM3XPA'),
         ),
         discord: 'https://discord.gg/anyps5',
         requests: [const Person(id: 'u-cem', handle: 'cem', displayName: 'Cem')],

@@ -836,7 +836,7 @@ class FakeTogether {
           final code = nextCodes.removeAt(0);
           final joinCode = party!['joinCode'] = {
             'code': code,
-            'url': 'https://anytogether.kodla.agency/join/$code',
+            'url': 'https://anytogether.net/join/$code',
             'expiresAt': '2026-10-26T20:00:00Z',
           };
           return (201, joinCode);

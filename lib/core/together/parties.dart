@@ -22,7 +22,7 @@ class JoinCode {
     final url = json['url'] is String ? Uri.tryParse(json['url'] as String) : null;
     return JoinCode(
       code: code,
-      url: url ?? Uri.parse('https://anytogether.kodla.agency/join/$code'),
+      url: url ?? Uri.parse('https://anytogether.net/join/$code'),
       expiresAt: json['expiresAt'] is String ? DateTime.tryParse(json['expiresAt'] as String) : null,
     );
   }

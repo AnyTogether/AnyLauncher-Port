@@ -43,7 +43,7 @@ Maintainer: Utku Halis <personal@utkuhalis.com.tr>
 Installed-Size: $size
 Depends: $depends
 Recommends: libsecret-tools, libsdl2-2.0-0
-Homepage: https://github.com/AnyTogether/AnyPS5-Desktop
+Homepage: https://github.com/AnyTogether/AnyLauncher-Port
 Description: PS5-style launcher for AnyPS5
  Finds PS5 game dumps in a games folder, unlocks them with the AnyPS5 toolkit
  (relinker and system libraries) and starts them, with controls, settings,

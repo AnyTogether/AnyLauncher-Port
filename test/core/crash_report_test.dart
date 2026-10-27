@@ -235,9 +235,9 @@ void main() {
       expect(IssueDraft.engine(report(engine: 'arm-1a2b3c4')).url.path, '/AnyTogether/AnyPS5-ARM/issues/new');
     });
 
-    test('a launcher bug goes to AnyTogether/AnyPS5-Desktop\'s crash form', () {
+    test('a launcher bug goes to AnyTogether/AnyLauncher-Port\'s crash form', () {
       final draft = IssueDraft.launcher(report());
-      expect(draft.url.path, '/AnyTogether/AnyPS5-Desktop/issues/new');
+      expect(draft.url.path, '/AnyTogether/AnyLauncher-Port/issues/new');
       final query = draft.url.queryParameters;
       expect(query['template'], 'crash.yml');
       expect(query['title'], 'Crash: Orbit Runner (PPSA01001)');

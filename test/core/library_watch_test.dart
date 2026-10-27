@@ -142,7 +142,11 @@ void main() {
 
   for (final recursive in [true, false]) {
     final mode = recursive ? 'one watch on the whole folder' : 'a watch per folder (Linux)';
-    group('the watcher, $mode', () {
+    // The launcher watches the whole tree in one go only on macOS and Windows. On Linux, Dart's
+    // recursive watch adds a folder's watch after the folder is made, so a folder made right
+    // under it in the same moment can be missed: the launcher watches folder by folder there.
+    final skip = recursive && Platform.isLinux ? 'one recursive watch is the macOS and Windows mode' : null;
+    group('the watcher, $mode', skip: skip, () {
       late Directory root;
       late LibraryWatcher watcher;
       late List<List<Game>> scans;

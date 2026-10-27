@@ -2,7 +2,7 @@
 /// anyone: the user may pick another server, and ANYTOGETHER_URL overrides both (staging, a
 /// local one).
 abstract final class TogetherServer {
-  static final standard = Uri.parse('https://anytogether.kodla.agency');
+  static final standard = Uri.parse('https://anytogether.net');
 
   /// The server ANYTOGETHER_URL forces, when it is set to an address.
   static Uri? forced(Map<String, String> environment) {

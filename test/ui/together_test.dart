@@ -625,7 +625,7 @@ void main() {
       expect(fixture.copied.last, 'K7QM-3XPA');
       expect(model.toast, 'Code copied');
       run('party-code-link');
-      expect(fixture.copied.last, 'https://anytogether.kodla.agency/join/K7QM3XPA');
+      expect(fixture.copied.last, 'https://anytogether.net/join/K7QM3XPA');
       expect(model.toast, 'Link copied');
 
       run('party-code-new');
@@ -695,7 +695,7 @@ void main() {
         partyView({
           'leaderId': 'u-ana',
           'requests': [FakeTogether.card('u-emre', 'emre', 'Emre')],
-          'joinCode': {'code': 'K7QM3XPA', 'url': 'https://anytogether.kodla.agency/join/K7QM3XPA'},
+          'joinCode': {'code': 'K7QM3XPA', 'url': 'https://anytogether.net/join/K7QM3XPA'},
         }),
       );
       await until(() => together.hub.parties.party!.leaderId == 'u-ana');
@@ -802,7 +802,7 @@ void main() {
         'max': 4,
         'state': 'none',
       };
-      (row('party-code-enter').kind as TextRow).set('https://anytogether.kodla.agency/join/H8NZ4WRB');
+      (row('party-code-enter').kind as TextRow).set('https://anytogether.net/join/H8NZ4WRB');
       run('party-code-look');
       await until(() => together.codePreview != null);
       expect(rowIds(), isNot(contains('party-code-ask')));

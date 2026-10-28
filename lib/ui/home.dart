@@ -53,6 +53,7 @@ class Backdrop extends StatelessWidget {
           game?.background != null;
       return RepaintBoundary(
         child: AnimatedSwitcher(
+          layoutBuilder: uniqueSwitcherLayout(),
           duration: Motion.fade,
           switchInCurve: Motion.settle,
           child: shown
@@ -94,6 +95,7 @@ class Backdrop extends StatelessWidget {
         ),
         RepaintBoundary(
           child: AnimatedSwitcher(
+            layoutBuilder: uniqueSwitcherLayout(),
             duration: Motion.fade,
             switchInCurve: Motion.settle,
             child: artwork
@@ -143,6 +145,7 @@ class HomeView extends StatelessWidget {
             const Spacer(),
             if (game != null)
               AnimatedSwitcher(
+                layoutBuilder: uniqueSwitcherLayout(),
                 duration: Motion.layout,
                 switchInCurve: Motion.settle,
                 transitionBuilder: (child, animation) => FadeTransition(
@@ -360,6 +363,7 @@ class TopBar extends StatelessWidget {
         ],
         const Spacer(),
         AnimatedSwitcher(
+          layoutBuilder: uniqueSwitcherLayout(),
           duration: Motion.focus,
           child: model.updates.showsNotice
               ? Padding(

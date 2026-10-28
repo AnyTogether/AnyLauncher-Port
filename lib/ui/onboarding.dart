@@ -62,8 +62,7 @@ class OnboardingView extends StatelessWidget {
                     child: child,
                   ),
                 ),
-                layoutBuilder: (current, previous) =>
-                    Stack(alignment: Alignment.topLeft, children: [...previous, ?current]),
+                layoutBuilder: uniqueSwitcherLayout(alignment: Alignment.topLeft),
                 child: KeyedSubtree(
                   key: ValueKey(step),
                   child: switch (step) {

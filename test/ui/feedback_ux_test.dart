@@ -13,8 +13,9 @@ import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/components.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:anyps5_desktop/ui/theme.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart' show ValueKey;
+import 'package:flutter/widgets.dart' show IgnorePointer, Offset, ValueKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
@@ -25,10 +26,17 @@ import 'desktop_features_test.dart' show FakeDesktop, FakePads;
 /// The window's full screen as asked.
 class FakeWindow implements LauncherWindow {
   final List<bool> asked = [];
+  int minimized = 0;
 
   @override
   Future<bool> setFullscreen(bool on) async {
     asked.add(on);
+    return true;
+  }
+
+  @override
+  Future<bool> minimize() async {
+    minimized++;
     return true;
   }
 }
@@ -76,6 +84,90 @@ void main() {
       expect(appearance, contains('fullscreen'));
       await settle(tester);
       expect(find.text('Full Screen'), findsWidgets);
+    });
+  });
+
+  group('window buttons', () {
+    late FakeWindow window;
+    late List<int> quits;
+    late AppModel model;
+    late TestGesture mouse;
+
+    Finder buttons() => find.byKey(const ValueKey('window-buttons'));
+    Finder button(String id) => find.byKey(ValueKey('window-$id'));
+    bool shown(WidgetTester tester) => !tester.widget<IgnorePointer>(buttons()).ignoring;
+
+    Future<void> start(WidgetTester tester) async {
+      window = FakeWindow();
+      quits = [];
+      final fixture = makeFixture(window: window, quit: quits.add);
+      addTearDown(fixture.dispose);
+      model = fixture.model;
+      await model.applyLauncherWindow();
+      await pumpLauncher(tester, model);
+      mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: const Offset(800, 450));
+      addTearDown(mouse.removePointer);
+    }
+
+    Future<void> moveTo(WidgetTester tester, Offset to) async {
+      await mouse.moveTo(to);
+      await settle(tester);
+    }
+
+    Future<void> click(WidgetTester tester, String id) async {
+      await moveTo(tester, tester.getCenter(button(id)));
+      await mouse.down(tester.getCenter(button(id)));
+      await mouse.up();
+      await settle(tester);
+    }
+
+    testWidgets('full screen, the pointer at the top edge brings them down; they go up when it leaves', (tester) async {
+      await start(tester);
+      expect(model.windowFullscreen, isTrue);
+      expect(shown(tester), isFalse);
+      await moveTo(tester, const Offset(1200, 1));
+      expect(shown(tester), isTrue);
+      await moveTo(tester, tester.getCenter(button('minimize')));
+      expect(find.text('Minimize'), findsOneWidget, reason: 'the button under the pointer says what it does');
+      await click(tester, 'minimize');
+      expect(window.minimized, 1);
+      await moveTo(tester, const Offset(800, 450));
+      expect(shown(tester), isFalse, reason: 'a moment after the pointer leaves');
+      await tester.tapAt(const Offset(1200, 2));
+      await settle(tester);
+      expect(window.minimized, 1, reason: 'hidden, they take no clicks');
+    });
+
+    testWidgets('Leave Full Screen makes a window with the system\'s title bar, and they are gone; Quit quits', (
+      tester,
+    ) async {
+      await start(tester);
+      await moveTo(tester, const Offset(1200, 1));
+      await click(tester, 'windowed');
+      expect(window.asked.last, isFalse);
+      expect(model.windowFullscreen, isFalse);
+      expect(buttons(), findsNothing, reason: 'a window has the system\'s own buttons');
+      await model.setLauncherFullscreen(true);
+      await settle(tester);
+      await moveTo(tester, const Offset(800, 450));
+      await moveTo(tester, const Offset(1200, 1));
+      await click(tester, 'quit');
+      expect(quits, [0]);
+    });
+
+    testWidgets('Settings › Appearance turns them off; on by default', (tester) async {
+      await start(tester);
+      expect(model.preferences.windowButtons, isTrue);
+      model.open(Layer.settings);
+      final row = model.panelCategories().first.rows.firstWhere((row) => row.id == 'windowButtons');
+      (row.kind as ToggleRow).set(false);
+      expect(Preferences.fromJson(model.preferences.toJson()).windowButtons, isFalse);
+      model.closeOverlay();
+      await settle(tester);
+      expect(buttons(), findsNothing);
+      await moveTo(tester, const Offset(1200, 1));
+      expect(buttons(), findsNothing);
     });
   });
 

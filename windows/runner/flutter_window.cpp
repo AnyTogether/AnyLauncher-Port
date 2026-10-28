@@ -47,6 +47,15 @@ bool FlutterWindow::OnCreate() {
           result->Success(flutter::EncodableValue(SetFullscreen(*on)));
           return;
         }
+        // The launcher's own Minimize, full screen having no title bar.
+        if (call.method_name() == "minimize") {
+          HWND hwnd = GetHandle();
+          if (hwnd != nullptr) {
+            ::ShowWindow(hwnd, SW_MINIMIZE);
+          }
+          result->Success(flutter::EncodableValue(hwnd != nullptr));
+          return;
+        }
         result->NotImplemented();
       });
 

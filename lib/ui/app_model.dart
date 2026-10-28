@@ -135,6 +135,7 @@ class Preferences {
     }
     ..prepareNewGames = json['prepareNewGames'] as bool? ?? true
     ..launcherFullscreen = json['launcherFullscreen'] as bool?
+    ..windowButtons = json['windowButtons'] as bool? ?? true
     ..pauseOnMenu = json['pauseOnMenu'] as bool? ?? true
     ..replayBuffer = json['replayBuffer'] == true
     ..replaySeconds = switch (json['replaySeconds']) {
@@ -244,6 +245,10 @@ class Preferences {
   /// screen then), the choice after.
   bool? launcherFullscreen;
 
+  /// Settings › Appearance: full screen, the pointer at the top edge brings down Minimize, Leave
+  /// Full Screen and Quit.
+  bool windowButtons = true;
+
   /// Settings › Behaviour: before the quick menu covers a game, its Options is pressed so it
   /// pauses.
   bool pauseOnMenu = true;
@@ -296,6 +301,7 @@ class Preferences {
     'cjkGames': cjkGames.toList()..sort(),
     'prepareNewGames': prepareNewGames,
     'launcherFullscreen': launcherFullscreen,
+    'windowButtons': windowButtons,
     'pauseOnMenu': pauseOnMenu,
     'replayBuffer': replayBuffer,
     'replaySeconds': replaySeconds,
@@ -3347,11 +3353,29 @@ class AppModel extends ChangeNotifier {
   Future<void> setLauncherFullscreen(bool on) async {
     preferences.launcherFullscreen = on;
     savePreferences();
-    await services.window?.setFullscreen(on);
+    await _setWindowFullscreen(on);
   }
 
   /// At launch: full screen the first time, then as the user left it.
-  Future<void> applyLauncherWindow() async => services.window?.setFullscreen(launcherFullscreen);
+  Future<void> applyLauncherWindow() => _setWindowFullscreen(launcherFullscreen);
+
+  Future<void> _setWindowFullscreen(bool on) async {
+    if (await services.window?.setFullscreen(on) ?? false) {
+      windowFullscreen = on;
+      _changed();
+    }
+  }
+
+  /// Whether the window is full screen now, with no title bar of the system's: set as the
+  /// launcher makes it so (and by main.dart for Steam's --fullscreen).
+  bool windowFullscreen = false;
+
+  /// The launcher's own window buttons wait at the top edge: full screen, the setting on, not
+  /// in Steam's Game Mode (gamescope has no windows to go back to).
+  bool get showsWindowButtons => windowFullscreen && preferences.windowButtons && !steamLaunch.gameMode;
+
+  /// The window buttons' Minimize.
+  void minimizeLauncher() => unawaited(services.window?.minimize());
 
   static const libraryColumns = 6;
 
@@ -3760,6 +3784,15 @@ class AppModel extends ChangeNotifier {
               keyLabel(preferences.shortcuts[LauncherAction.toggleFullscreen].key) ?? '—',
             ]),
             kind: ToggleRow(launcherFullscreen, (value) => unawaited(setLauncherFullscreen(value))),
+          ),
+          PanelRow(
+            id: 'windowButtons',
+            title: T.text('windowButtons'),
+            detail: T.text('windowButtonsDetail'),
+            kind: ToggleRow(preferences.windowButtons, (value) {
+              preferences.windowButtons = value;
+              savePreferences();
+            }),
           ),
           PanelRow(
             id: 'motion',

@@ -12,7 +12,8 @@
 struct _MyApplication {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
-  // "anyps5/window": the launcher asks for full screen and back (F11, its setting).
+  // "anyps5/window": the launcher asks for full screen and back (F11, its setting), and to
+  // minimize (its window buttons in full screen).
   FlMethodChannel* window_channel;
 };
 
@@ -23,8 +24,8 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
 }
 
-// The launcher's "setFullscreen" (a bool): the window full screen or back. GTK asks the
-// window manager, which works on X11 and Wayland alike.
+// The launcher's "setFullscreen" (a bool): the window full screen or back; "minimize". GTK
+// asks the window manager, which works on X11 and Wayland alike.
 static void window_method_cb(FlMethodChannel* channel,
                              FlMethodCall* method_call, gpointer user_data) {
   GtkWindow* window = GTK_WINDOW(user_data);
@@ -43,6 +44,11 @@ static void window_method_cb(FlMethodChannel* channel,
       g_autoptr(FlValue) result = fl_value_new_bool(TRUE);
       response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
     }
+  } else if (strcmp(fl_method_call_get_name(method_call), "minimize") == 0) {
+    // The launcher's own Minimize, full screen having no title bar.
+    gtk_window_iconify(window);
+    g_autoptr(FlValue) result = fl_value_new_bool(TRUE);
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
   } else {
     response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
   }

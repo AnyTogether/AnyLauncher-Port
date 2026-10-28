@@ -35,6 +35,10 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze
+      # The language files (TRANSLATING.md): valid JSON, no unknown keys, English's placeholders;
+      # the log has each language's coverage.
+      - name: Check the language files in assets/l10n
+        run: dart run tool/check_translations.dart
       # The goldens are made on macOS and compared in the goldens job (test/flutter_test_config.dart).
       - run: flutter test
         env:

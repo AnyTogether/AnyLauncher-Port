@@ -29,6 +29,7 @@ import 'profiles_view.dart';
 import 'strings.dart';
 import 'theme.dart';
 import 'together_model.dart';
+import 'window_buttons.dart';
 
 /// The launcher's whole screen: the backdrop, the home screen or the first-start steps, and the
 /// layers over them. Keys move through it as a pad would.
@@ -418,6 +419,13 @@ class _LauncherShellState extends State<LauncherShell> {
                                       if (model.starting != null) _StartingCard(model: model),
                                       if (model.pairing != null) PairingCard(model: model),
                                       _Toast(message: model.toast, level: model.toastLevel, icon: model.toastIcon),
+                                      if (model.showsWindowButtons)
+                                        WindowButtons(
+                                          accent: model.accentChoice.color,
+                                          onMinimize: model.minimizeLauncher,
+                                          onWindowed: () => unawaited(model.setLauncherFullscreen(false)),
+                                          onQuit: model.quitLauncher,
+                                        ),
                                     ],
                                   ),
                                 ),

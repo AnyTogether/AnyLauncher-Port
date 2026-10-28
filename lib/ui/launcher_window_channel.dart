@@ -10,9 +10,14 @@ class ChannelLauncherWindow implements LauncherWindow {
   static const _channel = MethodChannel('anyps5/window');
 
   @override
-  Future<bool> setFullscreen(bool on) async {
+  Future<bool> setFullscreen(bool on) => _call('setFullscreen', on);
+
+  @override
+  Future<bool> minimize() => _call('minimize');
+
+  Future<bool> _call(String method, [Object? argument]) async {
     try {
-      return await _channel.invokeMethod<bool>('setFullscreen', on) ?? false;
+      return await _channel.invokeMethod<bool>(method, argument) ?? false;
     } on PlatformException {
       return false;
     } on MissingPluginException {

@@ -93,6 +93,8 @@ Future<void> main(List<String> arguments) async {
   // Full screen the first time, then as the user left it (F11, Settings › Appearance); Steam's
   // --fullscreen and Game Mode keep the whole screen whatever the choice.
   if (!options.fullscreen && !model.steamLaunch.gameMode) unawaited(model.applyLauncherWindow());
+  // The runner made Steam's --fullscreen window full screen: the window buttons wait at its top.
+  if (options.fullscreen) model.windowFullscreen = true;
   unawaited(model.startAudio());
   model.startPads();
   if (model.preferences.onboarded) model.rescan();

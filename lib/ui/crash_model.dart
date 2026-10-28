@@ -159,10 +159,9 @@ class CrashModel {
       titleId: game.titleId,
       gameVersion: game.version,
       settings: app.currentSettings(game),
-      system: await (_system ??=
-          app.services.systemInfo?.call() ?? SystemInfo.current(app.system, environment: app.services.environment)),
+      system: await systemInfo(),
       platform: app.system == HostSystem.windows ? 'Windows' : 'Linux',
-      privacy: _privacy(),
+      privacy: privacy(),
       unlockedWith: app.records[game.id]?.toolkit,
       engineNow: app.toolkitVersion,
       exitCode: last?.exitCode,
@@ -183,7 +182,13 @@ class CrashModel {
     app.refresh();
   }
 
-  ReportPrivacy _privacy() {
+  /// This computer, read once (away from the interface where it costs).
+  Future<SystemInfo> systemInfo() => _system ??=
+      app.services.systemInfo?.call() ?? SystemInfo.current(app.system, environment: app.services.environment);
+
+  /// What a report takes out: the home folder, the names of the user, the computer, the
+  /// AnyTogether account and the profile, and the account's tokens.
+  ReportPrivacy privacy() {
     final user = app.together.user;
     final profile = app.preferences.profileName.trim();
     return ReportPrivacy.current(

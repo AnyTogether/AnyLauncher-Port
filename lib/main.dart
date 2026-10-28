@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show AppExitResponse, PlatformDispatcher;
 
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
@@ -15,6 +17,7 @@ import 'core/controllers/pad_reader.dart';
 import 'core/controllers/troubleshooter.dart';
 import 'core/app_update.dart';
 import 'core/host.dart';
+import 'core/launcher_health.dart';
 import 'core/release_signing.dart';
 import 'core/steam/steam_launch.dart';
 import 'core/toolkit_download.dart';
@@ -23,7 +26,13 @@ import 'ui/crash_model.dart';
 import 'ui/launcher.dart';
 import 'ui/launcher_window_channel.dart';
 import 'ui/strings.dart';
+import 'ui/together_model.dart' show launcherVersion;
 import 'ui/theme.dart';
+
+/// Takes the window's close (and the other ways the launcher quits) to the launcher's health: a
+/// run that closed as it should is no crash next time.
+// ignore: unused_element
+late final AppLifecycleListener _exit;
 
 Future<void> main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -49,8 +58,21 @@ Future<void> main(List<String> arguments) async {
     final LinuxDesktop linux => LinuxBackdrop(linux),
     _ => Platform.isWindows ? WindowsBackdrop() : const NoBackdrop(),
   };
+  final paths = AppPaths.forSystem(HostSystem.current);
+  // The launcher's own crashes and long stalls, offered as a report at the next start.
+  final health = LauncherHealth(
+    p.join(paths.logs, 'Launcher'),
+    version: launcherVersion,
+    platform: Platform.isWindows ? 'Windows' : 'Linux',
+  );
+  StallWatch? watch;
+  void closing() {
+    watch?.closing();
+    health.closed();
+  }
+
   final model = AppModel(
-    paths: AppPaths.forSystem(HostSystem.current),
+    paths: paths,
     services: LauncherServices(
       pickFolder: (title) => getDirectoryPath(confirmButtonText: title),
       openFolder: (folder) => unawaited(Process.run(Platform.isWindows ? 'explorer' : 'xdg-open', [folder])),
@@ -84,10 +106,46 @@ Future<void> main(List<String> arguments) async {
       desktop: desktop,
       backdrop: backdrop,
       window: const ChannelLauncherWindow(),
+      quit: (code) {
+        closing();
+        exit(code);
+      },
     ),
   );
   // An update left for this launch (Later) goes in first: its installer opens the launcher again.
   if (await model.updates.applyPendingAtLaunch()) exit(0);
+  model
+    ..launcherProblem = health.start()
+    ..onLauncherProblemDone = health.forget;
+  _exit = AppLifecycleListener(
+    onExitRequested: () async {
+      closing();
+      return AppExitResponse.exit;
+    },
+  );
+  // Errors the launcher's code does not catch: the first is kept for a report, shown as before.
+  FlutterError.onError = (details) {
+    model.firstError ??= '${details.exceptionAsString()}\n${details.stack ?? ''}';
+    FlutterError.presentError(details);
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    model.firstError ??= '$error\n$stack';
+    return false;
+  };
+  // The watchdog, from its own isolate; not under a debugger, whose pauses would read as stalls.
+  if (!kDebugMode) {
+    unawaited(
+      StallWatch.start(health, started: DateTime.now()).then((started) {
+        watch = started;
+        var beats = 0;
+        Timer.periodic(const Duration(milliseconds: 250), (_) {
+          // Every four seconds the last seconds go along, for the run's marker.
+          final full = ++beats % 16 == 0;
+          started.ping(lines: full ? List.of(model.recentLines) : null, error: full ? model.firstError : null);
+        });
+      }),
+    );
+  }
   model.crash.traceAll = options.trace;
   model.steamLaunch = SteamLaunch.detect(arguments, Platform.environment);
   // Full screen the first time, then as the user left it (F11, Settings › Appearance); Steam's

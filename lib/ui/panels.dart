@@ -175,6 +175,7 @@ class PanelView extends StatelessWidget {
       Layer.closeGame,
       Layer.homeMenu,
       Layer.confirmQuit,
+      Layer.launcherReport,
       Layer.profileMenu,
       Layer.signIn,
     }.contains(model.overlay);
@@ -184,6 +185,7 @@ class PanelView extends StatelessWidget {
       Layer.closeGame,
       Layer.homeMenu,
       Layer.confirmQuit,
+      Layer.launcherReport,
       Layer.profileMenu,
     }.contains(model.overlay);
     // The quick menu and Close Game? are about the game playing: its icon by the heading.
@@ -209,7 +211,14 @@ class PanelView extends StatelessWidget {
           height:
               (psMenu
                   // The Options menu's rows say what each does: a line more each.
-                  ? 168 + (model.overlay == Layer.profileMenu ? 74 : 62) * category.rows.length
+                  ? 168 +
+                        switch (model.overlay) {
+                              Layer.profileMenu => 74,
+                              // Send Report says what it sends: two lines more.
+                              Layer.launcherReport => 98,
+                              _ => 62,
+                            } *
+                            category.rows.length
                   : compact
                   ? (tall ? 560 : 420)
                   : 720) *
@@ -244,6 +253,15 @@ class PanelView extends StatelessWidget {
                             if (model.overlay == Layer.profileMenu)
                               Text(
                                 T.text('profileMenuTitle').toUpperCase(),
+                                style: AppText.display(
+                                  12 * scale,
+                                  weight: FontWeight.w700,
+                                  color: model.accentChoice.color,
+                                ).copyWith(letterSpacing: 1.4 * scale),
+                              ),
+                            if (model.overlay == Layer.launcherReport)
+                              Text(
+                                T.text('launcherReportWhen').toUpperCase(),
                                 style: AppText.display(
                                   12 * scale,
                                   weight: FontWeight.w700,

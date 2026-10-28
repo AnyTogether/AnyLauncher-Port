@@ -16,7 +16,8 @@ import '../core/audio/tones.dart';
 import '../core/controllers/pad_info.dart';
 import '../core/controllers/troubleshooter.dart';
 import '../core/controls.dart';
-import '../core/crash_report.dart' show Diagnosis, SystemInfo;
+import '../core/crash_report.dart' show Diagnosis, IssueDraft, SystemInfo;
+import '../core/launcher_health.dart';
 import '../core/desktop_notice.dart';
 import '../core/desktop/desktop.dart';
 import '../core/desktop/launcher_window.dart';
@@ -506,6 +507,9 @@ enum Layer {
 
   /// Options (or a right click) on Home: the game's settings, Switch Profile, online or offline.
   profileMenu,
+
+  /// At start, after the launcher itself crashed or stopped responding: Send Report, Not Now.
+  launcherReport,
 }
 
 /// A settings row the panels draw and the keyboard moves through.
@@ -1423,6 +1427,66 @@ class AppModel extends ChangeNotifier {
   /// The crash report of a game's last start, and detailed logging.
   late final CrashModel crash = CrashModel(this);
 
+  // The launcher's own crashes and stalls (core/launcher_health.dart).
+
+  /// What an earlier run left to report, offered once the home screen is free.
+  LauncherProblem? launcherProblem;
+
+  /// Called once that report was sent or put aside (problem.json goes).
+  void Function()? onLauncherProblemDone;
+
+  /// The first error this run's code did not catch, with its stack, for a report.
+  String? firstError;
+
+  /// A line a second of what the launcher drew and showed (LauncherShell's FrameLog), the newest
+  /// last: a report's last seconds.
+  final List<String> recentLines = [];
+
+  void addRecentLine(String line) {
+    recentLines.add(line);
+    if (recentLines.length > LauncherHealth.keptLines) recentLines.removeAt(0);
+  }
+
+  bool _problemOffered = false;
+
+  /// Send Report? once, when nothing else is on the home screen (after "Who's playing?").
+  void offerLauncherReport() {
+    if (_problemOffered || launcherProblem == null || !preferences.onboarded) return;
+    if (overlay != null || running != null || starting != null || pairing != null) return;
+    _problemOffered = true;
+    open(Layer.launcherReport);
+  }
+
+  /// Opens the pre-filled GitHub issue; nothing is sent until the user submits it there.
+  Future<void> sendLauncherReport() async {
+    final problem = launcherProblem;
+    if (problem == null) return;
+    _launcherProblemDone();
+    final system = await crash.systemInfo();
+    services.openUrl?.call(IssueDraft.launcherProblem(problem, system: system, privacy: crash.privacy()).url);
+  }
+
+  void _launcherProblemDone() {
+    launcherProblem = null;
+    onLauncherProblemDone?.call();
+    closeOverlay();
+  }
+
+  List<PanelRow> _launcherReportRows() => [
+    PanelRow(
+      id: 'sendReport',
+      title: T.text('launcherReportSend'),
+      detail: T.text('launcherReportSendDetail'),
+      kind: ActionRow(() => unawaited(sendLauncherReport())),
+    ),
+    PanelRow(
+      id: 'notNow',
+      title: T.text('launcherReportLater'),
+      detail: T.text('launcherReportLaterDetail'),
+      kind: ActionRow(_launcherProblemDone),
+    ),
+  ];
+
   /// The text row the cursor is in, by id; null while the keys move through the launcher.
   String? editingRow;
 
@@ -1868,6 +1932,7 @@ class AppModel extends ChangeNotifier {
   String? get root => preferences.gamesFolder;
 
   void _changed() {
+    if (launcherProblem != null) offerLauncherReport();
     notifyListeners();
     _publishLibrary();
     _prepareWhenChanged();
@@ -3090,6 +3155,7 @@ class AppModel extends ChangeNotifier {
           Layer.closeGame ||
           Layer.homeMenu ||
           Layer.confirmQuit ||
+          Layer.launcherReport ||
           Layer.profileMenu:
         _panelCommand(command);
         return;
@@ -3572,6 +3638,21 @@ class AppModel extends ChangeNotifier {
                 kind: ActionRow(quitLauncher, destructive: true),
               ),
             ],
+          ),
+        ];
+      case Layer.launcherReport when launcherProblem != null:
+        final problem = launcherProblem!;
+        return [
+          PanelCategory(
+            id: 'launcherReport',
+            title: switch (problem.kind) {
+              LauncherProblemKind.crash => T.text('launcherReportCrash'),
+              LauncherProblemKind.hang when problem.recovered => T.format('launcherReportHang', [
+                problem.stalledFor?.inSeconds ?? LauncherHealth.stall.inSeconds,
+              ]),
+              LauncherProblemKind.hang => T.text('launcherReportHangEnded'),
+            },
+            rows: _launcherReportRows(),
           ),
         ];
       case Layer.confirmQuit:

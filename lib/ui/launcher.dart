@@ -71,20 +71,25 @@ class _LauncherShellState extends State<LauncherShell> {
   /// ANYPS5_FRAME_LOG: the frames drawn each second and how long they took.
   late final FrameLog? _frameLog = FrameLog.forPath(
     (widget.model.services.environment ?? Platform.environment)['ANYPS5_FRAME_LOG'],
-    describe: () {
-      final model = widget.model;
-      return 'look ${model.look.name}${model.solidGlass ? ' solid' : ''}'
-          '${model.glassWindow.seeThrough ? ' see-through' : ''} layer ${model.overlay?.name ?? 'home'}'
-          '${model.running != null ? ' game running' : ''} ${model.active ? 'in front' : 'behind'}';
-    },
+    describe: _onScreen,
   );
+
+  /// The same lines kept in memory (the newest 30): what a report of the launcher's own crash or
+  /// stall says of its last seconds.
+  late final FrameLog _recent = FrameLog(widget.model.addRecentLine, describe: _onScreen);
+
+  String _onScreen() {
+    final model = widget.model;
+    return 'look ${model.look.name}${model.solidGlass ? ' solid' : ''}'
+        '${model.glassWindow.seeThrough ? ' see-through' : ''} layer ${model.overlay?.name ?? 'home'}'
+        '${model.running != null ? ' game running' : ''} ${model.active ? 'in front' : 'behind'}';
+  }
 
   void _timings(List<FrameTiming> timings) {
     final model = widget.model;
-    if (_frameLog case final log?) {
-      for (final timing in timings) {
-        log.add(timing.buildDuration, timing.rasterDuration);
-      }
+    for (final timing in timings) {
+      _frameLog?.add(timing.buildDuration, timing.rasterDuration);
+      _recent.add(timing.buildDuration, timing.rasterDuration);
     }
     // Only Glass's own frames count: not while a game shares the GPU, nor once it is solid.
     if (model.look != LookStyle.glass || model.solidGlass || model.running != null || model.resting) {
@@ -99,6 +104,7 @@ class _LauncherShellState extends State<LauncherShell> {
     super.initState();
     SchedulerBinding.instance.addTimingsCallback(_timings);
     _frameLog?.start();
+    _recent.start();
     _frontWatch = Timer.periodic(const Duration(milliseconds: 400), (_) => widget.model.checkFront());
     widget.model.addListener(_modelChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => widget.model.applyBackdrop());
@@ -134,6 +140,7 @@ class _LauncherShellState extends State<LauncherShell> {
   void dispose() {
     SchedulerBinding.instance.removeTimingsCallback(_timings);
     _frameLog?.stop();
+    _recent.stop();
     _frontWatch.cancel();
     widget.model.removeListener(_modelChanged);
     _keys.stop();

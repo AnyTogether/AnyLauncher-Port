@@ -378,6 +378,7 @@ class _LauncherShellState extends State<LauncherShell> {
                                           duration: Motion.overlay,
                                           curve: Motion.settle,
                                           child: AnimatedSwitcher(
+                                            layoutBuilder: uniqueSwitcherLayout(),
                                             duration: Motion.fade,
                                             switchInCurve: Motion.settle,
                                             child: model.preferences.onboarded
@@ -392,6 +393,7 @@ class _LauncherShellState extends State<LauncherShell> {
                                       ),
                                       RepaintBoundary(
                                         child: AnimatedSwitcher(
+                                          layoutBuilder: uniqueSwitcherLayout(),
                                           duration: Motion.overlay,
                                           reverseDuration: Motion.overlay,
                                           switchInCurve: Motion.settle,
@@ -546,6 +548,7 @@ class _Toast extends StatelessWidget {
       child: IgnorePointer(
         child: Center(
           child: AnimatedSwitcher(
+            layoutBuilder: uniqueSwitcherLayout(),
             duration: Motion.overlay,
             switchInCurve: Motion.settle,
             transitionBuilder: (child, animation) => FadeTransition(

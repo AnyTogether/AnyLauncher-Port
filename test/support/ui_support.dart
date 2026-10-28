@@ -10,6 +10,7 @@ import 'package:anyps5_desktop/core/desktop/desktop.dart';
 import 'package:anyps5_desktop/core/desktop/launcher_window.dart';
 import 'package:anyps5_desktop/core/desktop/window_backdrop.dart';
 import 'package:anyps5_desktop/core/font_download.dart';
+import 'package:anyps5_desktop/core/game_library.dart';
 import 'package:anyps5_desktop/core/gamepad/pad_navigation.dart';
 import 'package:anyps5_desktop/core/host.dart';
 import 'package:anyps5_desktop/core/power.dart';
@@ -26,6 +27,7 @@ import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/background.dart';
 import 'package:anyps5_desktop/ui/components.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
+import 'package:flutter/foundation.dart' show SynchronousFuture;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -158,6 +160,7 @@ Fixture makeFixture({
   int? Function(String folder)? freeSpace,
   LauncherWindow? window,
   ReplayBuffer? Function(int seconds)? replay,
+  Future<int> Function(String folder)? folderSize,
 }) {
   final opened = <Uri>[];
   final copied = <String>[];
@@ -231,6 +234,8 @@ Fixture makeFixture({
       quit: quit,
       window: window,
       replay: replay,
+      // The size at once, as a finished measurement: the screens and goldens show it.
+      folderSize: folderSize ?? (folder) => SynchronousFuture(GameLibrary.size(folder)),
       systemInfo: () async =>
           const SystemInfo(os: 'Ubuntu 24.04.1 LTS, kernel 6.8.0-45-generic', cpu: 'AMD Ryzen 7 5800X', memoryGB: 32),
     ),

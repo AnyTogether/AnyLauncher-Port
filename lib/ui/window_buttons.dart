@@ -146,8 +146,7 @@ class _WindowButtonsState extends State<WindowButtons> {
                   child: AnimatedSwitcher(
                     duration: Motion.focus,
                     switchInCurve: Motion.settle,
-                    layoutBuilder: (current, previous) =>
-                        Stack(alignment: Alignment.centerRight, children: [...previous, ?current]),
+                    layoutBuilder: uniqueSwitcherLayout(alignment: Alignment.centerRight),
                     child: Text(
                       _label ?? 'AnyPS5',
                       key: ValueKey(_label),

@@ -21,6 +21,21 @@ class LayoutScale extends InheritedWidget {
   bool updateShouldNotify(LayoutScale oldWidget) => oldWidget.scale != scale;
 }
 
+/// AnimatedSwitcher's layout without two children of one key: a child switched back to while an
+/// earlier copy of it still fades out (a game passed and come back to within the fade, a layer
+/// closed and opened again, a toast said twice) takes that copy's place. AnimatedSwitcher keys
+/// each child's transition by the child's own key, so the copies collided: an error on every
+/// such frame, and elements tangled in a release build, when input came fast.
+AnimatedSwitcherLayoutBuilder uniqueSwitcherLayout({AlignmentGeometry alignment = Alignment.center}) =>
+    (current, previous) {
+      final seen = <Key?>{?current?.key};
+      final kept = [
+        for (final child in previous.reversed)
+          if (seen.add(child.key)) child,
+      ];
+      return Stack(alignment: alignment, children: [...kept.reversed, ?current]);
+    };
+
 /// A dark, frosted panel.
 class Glass extends StatelessWidget {
   const Glass({

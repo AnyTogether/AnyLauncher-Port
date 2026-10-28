@@ -675,7 +675,12 @@ class LauncherServices {
     this.quit,
     this.window,
     this.replay,
+    this.folderSize,
   });
+
+  /// A game folder's size on disk, read away from the interface (Isolate.run by default): a
+  /// dump holds tens of thousands of files.
+  final Future<int> Function(String folder)? folderSize;
 
   /// The launcher's own window: full screen or not; nothing when not given.
   final LauncherWindow? window;
@@ -1992,11 +1997,27 @@ class AppModel extends ChangeNotifier {
   }
 
   /// The size of the selected game, measured once.
+  /// The selected game's size, read away from the interface: walking a dump's tens of thousands
+  /// of files here stalled the launcher for seconds at each game a held direction passed. One
+  /// walk at a time; when it ends, the game the selection rests on by then is the next.
   void measureSelected() {
     final game = selectedGame;
-    if (game == null || sizes.containsKey(game.id)) return;
-    sizes[game.id] = GameLibrary.size(game.folder);
+    if (game == null || sizes.containsKey(game.id) || _measuring) return;
+    _measuring = true;
+    final size = services.folderSize ?? (folder) => Isolate.run(() => GameLibrary.size(folder));
+    unawaited(
+      size(game.folder)
+          .then((bytes) => sizes[game.id] = bytes, onError: (Object _) => sizes[game.id] = 0)
+          .whenComplete(() {
+            _measuring = false;
+            if (_disposed) return;
+            notifyListeners();
+            measureSelected();
+          }),
+    );
   }
+
+  bool _measuring = false;
 
   GameState stateOf(Game game) {
     if (running?.$1 == game) return const Running();

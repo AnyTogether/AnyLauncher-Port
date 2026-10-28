@@ -2070,8 +2070,16 @@ class AppModel extends ChangeNotifier {
   Future<void> chooseToolkit() async {
     final folder = await services.pickFolder?.call(T.text('toolkitChoose'));
     if (folder == null) return;
+    useOwnFolder(folder);
+  }
+
+  /// Settings › AnyPS5 Engine › Use My Own Folder: [folder] as it is, and what that means for the
+  /// games unlocked with another engine.
+  void useOwnFolder(String folder) {
     preferences.toolkitFolder = folder;
     savePreferences();
+    if (!preferences.onboarded) return;
+    show(engine.withGames(T.text('engineOwnChosen')));
   }
 
   // Installing.

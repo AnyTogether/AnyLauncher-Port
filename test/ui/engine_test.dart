@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:anyps5_desktop/core/game_library.dart';
 import 'package:anyps5_desktop/core/installer.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
@@ -8,6 +9,7 @@ import 'package:path/path.dart' as p;
 
 import '../support/fake_elf.dart';
 import '../support/fake_github.dart';
+import '../support/fake_toolkit.dart';
 import '../support/ui_support.dart';
 
 /// The AnyPS5 engine downloaded by the launcher itself: onboarding, settings, updates. (The
@@ -69,7 +71,8 @@ void main() {
       expect(toolkit.root, p.join(model.paths.toolkits, '0.1.3'));
       expect(model.preferences.toolkitFolder, toolkit.root);
       expect(model.onboardingChoice, 2, reason: 'next comes Start');
-      expect(model.toast, 'AnyPS5 engine v0.1.3 is ready');
+      // Orbit Runner was unlocked with the fixture's toolkit: Play will offer Update and Play.
+      expect(model.toast, 'AnyPS5 engine v0.1.3 is ready · Update and Play offered for installed games: 1');
       model.onboardingConfirm();
       expect(model.onboardingStep, 4, reason: 'then offline or online');
       model.onboardingConfirm();
@@ -117,7 +120,7 @@ void main() {
       expect(row('engine-0.1.2').detail, 'Downloaded · select to use');
       choose('engine-0.1.2');
       expect(model.toolkit!.version, 'upstream-v0.1.2');
-      expect(model.toast, 'Now using the AnyPS5 engine v0.1.2');
+      expect(model.toast, 'Now using the AnyPS5 engine v0.1.2 · Update and Play offered for installed games: 1');
       expect(row('engineDeleteOld').detail, 'Downloaded versions not in use: 1');
       choose('engineDeleteOld');
       expect(model.engine.downloaded.map((kit) => p.basename(kit.root)), ['0.1.2']);
@@ -175,11 +178,65 @@ void main() {
       final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
       expect(model.stateOf(orbit), isA<Installed>().having((state) => state.outdated, 'outdated', isFalse));
       model.open(Layer.settings);
-      expect(row('engineOwn').detail, fixture.toolkit);
+      expect(row('engineOwn').detail, T.format('engineOwnInUse', [fixture.toolkit]));
       expect(
         model.panelCategories().expand((category) => category.rows).map((row) => row.id),
         isNot(contains('engineDownload')),
       );
+    });
+  });
+
+  group('an engine changed under installed games', () {
+    late Fixture fixture;
+    late AppModel model;
+
+    setUp(() {
+      fixture = makeFixture();
+      model = fixture.model;
+    });
+
+    tearDown(() {
+      model.dispose();
+      fixture.dispose();
+    });
+
+    Game orbit() => model.games.firstWhere((game) => game.titleId == 'PPSA01001');
+    bool outdated() => (model.stateOf(orbit()) as Installed).outdated;
+
+    void installedWith(String toolkit) {
+      final installed = Installer.installedFolder(orbit(), model.root!);
+      File(p.join(installed, Installer.recordName)).writeAsStringSync(
+        '{"date":"2026-10-24T12:00:00Z","source":"${orbit().folder}","system":"linux","titleID":"PPSA01001",'
+        '"toolkit":"$toolkit"}',
+      );
+      model.rescan();
+    }
+
+    test('a folder of the user\'s own built again in place: its games offer Update and Play', () {
+      final own = makeFakeToolkit(p.join(fixture.temp.path, 'own'));
+      File(p.join(own, 'version.txt')).deleteSync();
+      model.preferences.toolkitFolder = own;
+      installedWith(model.toolkitVersion!);
+      expect(outdated(), isFalse);
+
+      // A git pull and a build in a terminal, the launcher behind it.
+      File(p.join(own, 'libs', 'libkernel.prx')).writeAsStringSync('kernel library, built again');
+      model.setActive(false);
+      model.setActive(true);
+      expect(outdated(), isTrue, reason: 'the games were made with the libraries before the build');
+      model.select(model.games.indexOf(orbit()));
+      model.primaryAction(orbit());
+      expect(model.overlay, Layer.updateChoice);
+    });
+
+    test('choosing another engine says the installed games will offer Update and Play', () async {
+      installedWith(model.toolkitVersion!);
+      final other = makeFakeToolkit(p.join(fixture.temp.path, 'other'), version: 'toolkit-2');
+      model.preferences.toolkitFolder = null;
+      model.useOwnFolder(other);
+      expect(model.toolkitVersion, 'toolkit-2');
+      expect(outdated(), isTrue);
+      expect(model.toast, '${T.text('engineOwnChosen')} · ${T.format('engineGamesToUpdate', [1])}');
     });
   });
 

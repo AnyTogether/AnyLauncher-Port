@@ -255,6 +255,20 @@ void main() {
       expect(model.overlay, Layer.settings);
     });
 
+    testWidgets('with no games, Up still reaches the top bar and its Settings', (tester) async {
+      fixture = makeFixture();
+      final model = fixture.model;
+      await pumpLauncher(tester, model);
+      model.games = [];
+      await press(tester, LogicalKeyboardKey.arrowUp);
+      expect(model.focus, const HomeFocus.top(1));
+      await press(tester, LogicalKeyboardKey.enter);
+      expect(model.overlay, Layer.settings);
+      await press(tester, LogicalKeyboardKey.escape);
+      await press(tester, LogicalKeyboardKey.arrowDown);
+      expect(model.focus, HomeFocus.tiles);
+    });
+
     testWidgets('settings: Q and E change the category, arrows change a value', (tester) async {
       fixture = makeFixture();
       final model = fixture.model;

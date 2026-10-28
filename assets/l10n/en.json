@@ -755,6 +755,8 @@
   "switchProfile": "Switch Profile",
   "quitLauncher": "Quit AnyPS5",
   "quitLauncherGame": "%@ closes too",
+  "quitQuestion": "Quit AnyPS5?",
+  "quitStay": "Stay on the home screen",
   "captures": "Captures",
   "replayBuffer": "Replay Buffer",
   "replayBufferDetail": "While you play, the last minutes are kept in a temporary folder, never saved unless you press Share. Costs about one CPU core (720p, 30 fps)",

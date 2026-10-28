@@ -486,6 +486,9 @@ enum Layer {
   /// PS held in the launcher: Switch Profile, Quit AnyPS5.
   homeMenu,
 
+  /// Escape on the home screen: Quit AnyPS5? (Cancel first).
+  confirmQuit,
+
   /// "Who's playing?": the profiles' tiles and Add Profile (profiles_model.dart).
   profilePicker,
 
@@ -3009,6 +3012,7 @@ class AppModel extends ChangeNotifier {
           Layer.quickMenu ||
           Layer.closeGame ||
           Layer.homeMenu ||
+          Layer.confirmQuit ||
           Layer.profileMenu:
         _panelCommand(command);
         return;
@@ -3167,6 +3171,16 @@ class AppModel extends ChangeNotifier {
     sounds.play(Cue.select);
     stopGame();
     _changed();
+  }
+
+  /// Escape on the home screen, the games in focus and nothing over them, asks Quit AnyPS5?
+  /// (Cancel first); everywhere else Escape keeps its meaning.
+  bool askQuit() {
+    if (!preferences.onboarded || overlay != null || pairing != null || starting != null || !focus.isTiles) {
+      return false;
+    }
+    open(Layer.confirmQuit);
+    return true;
   }
 
   /// Quit AnyPS5 (the home menu): the game playing closes with it.
@@ -3459,6 +3473,27 @@ class AppModel extends ChangeNotifier {
               PanelRow(
                 id: 'quit',
                 title: T.text('quitLauncher'),
+                detail: running == null ? null : T.format('quitLauncherGame', [running!.$1.name]),
+                kind: ActionRow(quitLauncher, destructive: true),
+              ),
+            ],
+          ),
+        ];
+      case Layer.confirmQuit:
+        return [
+          PanelCategory(
+            id: 'confirmQuit',
+            title: T.text('quitQuestion'),
+            rows: [
+              PanelRow(
+                id: 'cancel',
+                title: T.text('cancel'),
+                detail: T.text('quitStay'),
+                kind: ActionRow(closeOverlay),
+              ),
+              PanelRow(
+                id: 'quit',
+                title: T.text('quit'),
                 detail: running == null ? null : T.format('quitLauncherGame', [running!.$1.name]),
                 kind: ActionRow(quitLauncher, destructive: true),
               ),

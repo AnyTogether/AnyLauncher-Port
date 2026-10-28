@@ -6,7 +6,7 @@ import '../host.dart';
 import 'pad_info.dart';
 
 /// What can keep a controller from the launcher on Windows and Linux, and what to do about it.
-/// The texts are the launcher's (strings_controllers.dart), by [PadFinding.id].
+/// The texts are the launcher's, in assets/l10n by [PadFinding.id] (`padFinding_<id>`).
 class PadFinding {
   const PadFinding(this.id, {this.problem = false, this.arguments = const [], this.command});
 

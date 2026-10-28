@@ -52,7 +52,7 @@ void main() {
       expect(Accent.ice.index, Accent.values.length - 1, reason: 'new accents go last');
       expect(LookStyle.glass.title, 'Glass');
       expect(Accent.ice.title, 'Ice');
-      T.language = Language.turkish;
+      T.language = Language.byCode('tr');
       expect(LookStyle.glass.title, 'Cam');
       expect(Accent.ice.title, 'Buz');
     });
@@ -351,7 +351,7 @@ void main() {
     });
 
     testWidgets('home, in Turkish, a locked game with the unlock button focused', (tester) async {
-      fixture = makeFixture(theme: 3, language: Language.turkish);
+      fixture = makeFixture(theme: 3, language: Language.byCode('tr'));
       final model = fixture.model;
       model.select(indexOf(model, 'PPSA02002'));
       model.handle(Command.down);
@@ -384,7 +384,7 @@ void main() {
     });
 
     testWidgets('game settings, in Turkish', (tester) async {
-      fixture = makeFixture(theme: 3, language: Language.turkish);
+      fixture = makeFixture(theme: 3, language: Language.byCode('tr'));
       final model = fixture.model;
       keyArt(model);
       model.select(indexOf(model, 'PPSA01001'));
@@ -406,7 +406,7 @@ void main() {
     });
 
     testWidgets('settings, appearance, in Turkish', (tester) async {
-      fixture = makeFixture(theme: 3, language: Language.turkish);
+      fixture = makeFixture(theme: 3, language: Language.byCode('tr'));
       final model = fixture.model;
       model.open(Layer.settings);
       model.handle(Command.down);
@@ -426,7 +426,7 @@ void main() {
     });
 
     testWidgets('a friend\'s profile, in Turkish', (tester) async {
-      fixture = makeFixture(theme: 3, language: Language.turkish);
+      fixture = makeFixture(theme: 3, language: Language.byCode('tr'));
       final model = fixture.model;
       keyArt(model);
       signedInPreview(model);
@@ -507,7 +507,7 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
     });
 
-    for (final language in [Language.english, Language.turkish]) {
+    for (final language in [Language.english, Language.byCode('tr')]) {
       testWidgets('the trophy card over a game, ${language.code}', (tester) async {
         fixture = makeFixture(theme: 3);
         T.language = language;
@@ -516,8 +516,8 @@ void main() {
           number: 3,
           grade: TrophyGrade.gold,
           hidden: false,
-          name: language == Language.turkish ? 'Kalenin Kalbine' : 'Into the Citadel',
-          detail: language == Language.turkish ? 'Pharloom\'un kalbine ulaş' : 'Reach the heart of Pharloom',
+          name: language == Language.byCode('tr') ? 'Kalenin Kalbine' : 'Into the Citadel',
+          detail: language == Language.byCode('tr') ? 'Pharloom\'un kalbine ulaş' : 'Reach the heart of Pharloom',
           icon: iconArt(0xF2C14E, 0x5C3B0B, size: 64),
         );
         final card = await tester.runAsync(() async {

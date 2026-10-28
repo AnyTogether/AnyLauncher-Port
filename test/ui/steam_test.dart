@@ -210,7 +210,7 @@ void main() {
   });
 
   test('Turkish', () async {
-    T.language = Language.turkish;
+    T.language = Language.byCode('tr');
     await openSteam();
     expect(row('steamAdd').title, "Steam'e Ekle");
     expect(row('steamGames').title, 'Oyunlarımı da Ekle');

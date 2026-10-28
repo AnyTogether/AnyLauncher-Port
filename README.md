@@ -27,6 +27,9 @@ connected, or always with Keep browser play on. Plain HTTP, so no tilt (browsers
 sensors to HTTPS pages only). The page is the macOS launcher's own file
 (`assets/browser_pad/index.html`, copied by `tool/sync_browser_pad.sh`).
 
+**Languages:** English and Turkish, one JSON file each in `assets/l10n`. A new language is one
+more file there, no code: see [TRANSLATING.md](TRANSLATING.md).
+
 ## Layout
 
 - `lib/core/` platform-independent logic in pure Dart (no Flutter), unit tested:
@@ -64,6 +67,9 @@ sensors to HTTPS pages only). The page is the macOS launcher's own file
   trophies, onboarding, pairing card; `shaders/background.frag` is the macOS launcher's Metal
   background shader in GLSL (cosmic, aurora, sunset); `soloud_audio.dart` plays the sounds
   through `flutter_soloud` (miniaudio: WASAPI on Windows, PulseAudio or ALSA on Linux).
+- `assets/l10n/` every text, one JSON file per language (`T.text` in `lib/ui/strings.dart`
+  reads them through the asset manifest; English for a text a language lacks);
+  `tool/check_translations.dart` checks them in CI ([TRANSLATING.md](TRANSLATING.md)).
 - `test/` unit, widget and golden tests; `test/support/` synthetic fixtures (made-up dumps,
   SELF containers, PNGs, trophy packages, a fake relinker and adb, and the phone app's own
   protocol code as the fake phone). No real game files.
@@ -84,6 +90,7 @@ dart run tool/anyps5_tool.dart unwrap eboot.bin eboot.elf
 dart run tool/anyps5_tool.dart engine --folder ~/toolkits   # upstream's latest toolkit for this system
 ANYPS5_TOOLKIT=~/toolkit dart run tool/anyps5_tool.dart install ~/Games/PPSA01234 ~/Games
 dart run tool/anyps5_tool.dart remote --allow-all   # a phone server until Ctrl-C
+dart run tool/check_translations.dart   # the language files: keys, placeholders, coverage
 ```
 
 The SELF test compares the Dart unwrapper with upstream's Python script on 300 random

@@ -187,20 +187,22 @@ class _LanguageStep extends StatelessWidget {
           ).copyWith(letterSpacing: 0.8),
         ),
         SizedBox(height: 16 * scale),
-        Row(
+        // A row of cards, a second one when the language files are more than fit.
+        Wrap(
+          runSpacing: 20 * scale,
           children: [
-            for (final language in Language.values) ...[
+            for (final (index, language) in T.languages.indexed) ...[
               _ChoiceCard(
-                focused: model.onboardingChoice == language.index,
+                focused: model.onboardingChoice == index,
                 width: 280 * scale,
                 height: 150 * scale,
                 onTap: () {
-                  model.onboardingChoice = language.index;
+                  model.onboardingChoice = index;
                   model.onboardingConfirm();
                 },
                 child: Builder(
                   builder: (context) {
-                    final color = model.onboardingChoice == language.index ? Colors.black : Colors.white;
+                    final color = model.onboardingChoice == index ? Colors.black : Colors.white;
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.end,

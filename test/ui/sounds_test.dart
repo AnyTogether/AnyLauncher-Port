@@ -135,7 +135,7 @@ void main() {
   });
 
   test('Behaviour in Turkish', () {
-    T.language = Language.turkish;
+    T.language = Language.byCode('tr');
     model.open(Layer.settings);
     final behaviour = model.panelCategories().firstWhere((category) => category.id == 'general');
     expect(behaviour.title, 'Davranış');

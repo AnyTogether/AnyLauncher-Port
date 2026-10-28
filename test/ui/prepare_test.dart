@@ -10,7 +10,6 @@ import 'package:anyps5_desktop/core/unlock_space.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/launcher.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
-import 'package:anyps5_desktop/ui/strings_prepare.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
@@ -74,12 +73,8 @@ void main() {
       expect(toggle.title, 'Prepare New Games Automatically');
       (toggle.kind as ToggleRow).set(true);
       expect(model.preferences.prepareNewGames, isTrue);
-      T.language = Language.turkish;
+      T.language = Language.byCode('tr');
       expect(T.text('prepareNewGames'), 'Yeni Oyunları Otomatik Hazırla');
-    });
-
-    test('the texts cover the same keys in both languages', () {
-      expect(prepareEnglish.keys.toSet(), prepareTurkish.keys.toSet());
     });
   });
 
@@ -249,7 +244,7 @@ void main() {
         ], skipped: const SpaceShort(SpaceShortage(needed: 2, free: 1, folder: '/g', copying: false))),
         'New game: A · Not enough space to prepare it',
       );
-      T.language = Language.turkish;
+      T.language = Language.byCode('tr');
       expect(AppModel.newGameText(['Comet'], preparing: true), 'Yeni oyun: Comet · Hazırlanıyor…');
       expect(T.format('readyToPlay', ['Comet']), 'Comet · Oynamaya hazır');
     });
@@ -272,7 +267,7 @@ void main() {
     });
 
     testWidgets('golden: not enough space, Turkish, Windows', (tester) async {
-      fixture = makeFixture(freeSpace: (_) => 3100000000, language: Language.turkish, system: HostSystem.windows);
+      fixture = makeFixture(freeSpace: (_) => 3100000000, language: Language.byCode('tr'), system: HostSystem.windows);
       model = fixture.model;
       final neon = named('PPSA02002');
       model.select(model.games.indexOf(neon));
@@ -301,7 +296,7 @@ void main() {
     });
 
     testWidgets('golden: paused while a game plays, Turkish', (tester) async {
-      fixture = makeFixture(language: Language.turkish);
+      fixture = makeFixture(language: Language.byCode('tr'));
       model = fixture.model;
       final neon = named('PPSA02002');
       model.select(model.games.indexOf(neon));

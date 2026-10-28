@@ -53,7 +53,7 @@ enum Accent {
   final Color color;
 
   String get title {
-    final turkish = T.language == Language.turkish;
+    final turkish = T.language.code == 'tr';
     return switch (this) {
       Accent.blue => turkish ? 'Mavi' : 'Blue',
       Accent.mint => turkish ? 'Nane' : 'Mint',

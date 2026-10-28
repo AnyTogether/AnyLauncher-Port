@@ -43,7 +43,7 @@ void main() {
     });
 
     testWidgets('golden: the code step, in Turkish', (tester) async {
-      fixture = makeFixture(language: Language.turkish);
+      fixture = makeFixture(language: Language.byCode('tr'));
       model = fixture.model;
       model.together.account.step = const SignInCodeSent('utku@example.com');
       openTogether();
@@ -86,7 +86,7 @@ void main() {
     });
 
     testWidgets('golden: home with the friends button and its badge, in Turkish', (tester) async {
-      fixture = makeFixture(language: Language.turkish);
+      fixture = makeFixture(language: Language.byCode('tr'));
       model = fixture.model;
       signedInPreview(model);
       model.handle(launcher.Command.up);
@@ -262,7 +262,7 @@ void main() {
     testWidgets('golden: a party, in Turkish, led by Utku with Ana muted in voice, a join code and a request', (
       tester,
     ) async {
-      fixture = makeFixture(language: Language.turkish);
+      fixture = makeFixture(language: Language.byCode('tr'));
       model = fixture.model;
       signedInPreview(model);
       model.together.hub.parties.party = Party(

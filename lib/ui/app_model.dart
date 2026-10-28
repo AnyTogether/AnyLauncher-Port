@@ -3764,11 +3764,15 @@ class AppModel extends ChangeNotifier {
           PanelRow(
             id: 'language',
             title: T.text('language'),
-            kind: ChoiceRow([for (final language in Language.values) language.displayName], T.language.index, (index) {
-              T.language = Language.values[index];
-              preferences.language = T.language.code;
-              savePreferences();
-            }),
+            kind: ChoiceRow(
+              [for (final language in T.languages) language.displayName],
+              T.languages.indexOf(T.language),
+              (index) {
+                T.language = T.languages[index];
+                preferences.language = T.language.code;
+                savePreferences();
+              },
+            ),
           ),
           PanelRow(id: 'profile', title: T.text('profileName'), kind: InfoRow(preferences.profileName)),
           PanelRow(
@@ -4278,7 +4282,7 @@ class AppModel extends ChangeNotifier {
   }
 
   static String padActionTitle(PadAction action) {
-    final turkish = T.language == Language.turkish;
+    final turkish = T.language.code == 'tr';
     String direction(String key) => T.text(key);
     return switch (action) {
       PadAction.cross => 'Cross',
@@ -4558,7 +4562,7 @@ class AppModel extends ChangeNotifier {
   set onboardingChoice(int value) => _onboardingChoices[onboardingStep] = value;
 
   int _defaultChoice(int step) => switch (step) {
-    0 => T.language.index,
+    0 => T.languages.indexOf(T.language),
     1 => look.index,
     2 => preferences.gamesFolder == null ? 0 : 1,
     3 => toolkit == null ? 0 : 2,
@@ -4566,7 +4570,7 @@ class AppModel extends ChangeNotifier {
   };
 
   int get _onboardingCount => switch (onboardingStep) {
-    0 => Language.values.length,
+    0 => T.languages.length,
     1 => LookStyle.values.length,
     2 => preferences.gamesFolder == null ? 1 : 2,
     _ => 3,
@@ -4602,7 +4606,7 @@ class AppModel extends ChangeNotifier {
   /// The language and theme steps show their choice at once.
   void _previewChoice() {
     if (onboardingStep == 0) {
-      T.language = Language.values[onboardingChoice];
+      T.language = T.languages[onboardingChoice];
       preferences.language = T.language.code;
     }
     if (onboardingStep == 1) preferences.theme = onboardingChoice;

@@ -43,7 +43,7 @@ void main() {
     });
 
     testWidgets('home, aurora, in Turkish, a locked game with the play button focused', (tester) async {
-      fixture = makeFixture(theme: 1, language: Language.turkish);
+      fixture = makeFixture(theme: 1, language: Language.byCode('tr'));
       final model = fixture.model;
       model.select(indexOf(model, 'PPSA02002'));
       model.handle(Command.down);
@@ -116,7 +116,7 @@ void main() {
     });
 
     testWidgets('onboarding: the engine downloading, in Turkish', (tester) async {
-      fixture = makeFixture(onboarded: false, withToolkit: false, theme: 1, language: Language.turkish);
+      fixture = makeFixture(onboarded: false, withToolkit: false, theme: 1, language: Language.byCode('tr'));
       final model = fixture.model;
       model.onboardingStep = 3;
       final release = sampleRelease('0.1.3');
@@ -290,7 +290,7 @@ void main() {
       await press(tester, LogicalKeyboardKey.keyE);
       expect(model.panelCategories()[model.panelCategory].id, 'general');
       await press(tester, LogicalKeyboardKey.arrowRight);
-      expect(T.language, Language.turkish);
+      expect(T.language, Language.byCode('tr'));
       expect(find.text('Dil'), findsWidgets);
     });
 
@@ -374,7 +374,7 @@ void main() {
       await pumpLauncher(tester, model);
       expect(find.text('Welcome to AnyPS5'), findsOneWidget);
       await press(tester, LogicalKeyboardKey.arrowRight);
-      expect(T.language, Language.turkish);
+      expect(T.language, Language.byCode('tr'));
       expect(find.text("AnyPS5'e hoş geldin"), findsOneWidget);
       await press(tester, LogicalKeyboardKey.enter);
       expect(model.onboardingStep, 1);

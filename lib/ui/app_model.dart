@@ -3016,8 +3016,11 @@ class AppModel extends ChangeNotifier {
         break;
     }
     final game = selectedGame;
-    if (game == null) {
+    // With no games the top bar still works: Up reaches it, and Select on the empty shelf picks
+    // the games folder.
+    if (game == null && (focus.area == 'tiles' || focus.area == 'actions')) {
       if (command == Command.select) unawaited(chooseGamesFolder());
+      if (command == Command.up) _moveFocus(const HomeFocus.top(1));
       return;
     }
     // The notice went (Later, or the update went in): its focus goes to the top bar.
@@ -3033,7 +3036,7 @@ class AppModel extends ChangeNotifier {
       case ('tiles', Command.up):
         _moveFocus(const HomeFocus.top(1));
       case ('tiles', Command.select):
-        primaryAction(game);
+        primaryAction(game!);
       case ('top', Command.left) when focus.index == 0 && updates.showsNotice:
         _moveFocus(HomeFocus.notice(updates.restartAfterGame ? 0 : 1));
       case ('top', Command.left):
@@ -3064,7 +3067,7 @@ class AppModel extends ChangeNotifier {
         _moveFocus(HomeFocus.tiles);
       case ('actions', Command.select):
         if (focus.index == 0) {
-          primaryAction(game);
+          primaryAction(game!);
         } else if (focus.index == 1 && actionCount == 3) {
           open(Layer.trophies);
         } else {

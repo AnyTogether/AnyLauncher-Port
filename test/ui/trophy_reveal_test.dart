@@ -120,7 +120,7 @@ void main() {
   });
 
   test('in Turkish', () {
-    T.language = Language.turkish;
+    T.language = Language.byCode('tr');
     model.open(Layer.settings);
     final general = model.panelCategories().firstWhere((category) => category.id == 'general');
     final row = general.rows.firstWhere((row) => row.id == 'hiddenTrophies');

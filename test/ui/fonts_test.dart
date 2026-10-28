@@ -229,7 +229,7 @@ void main() {
 
     test('in Turkish', () {
       setUpModel();
-      T.language = Language.turkish;
+      T.language = Language.byCode('tr');
       expect(info('fontLatin'), 'Noto Sans · Yerleşik');
       expect(info('fontCjk'), 'Bir oyun ilk istediğinde iner (100 MB)');
       expect(row('cjkDownload').title, 'Japonca, Çince ve Korece fontları şimdi indir');

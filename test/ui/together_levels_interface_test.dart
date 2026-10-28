@@ -30,7 +30,7 @@ void main() {
     Future<void> Function(WidgetTester tester) screen, {
     Future<void> Function(WidgetTester tester)? after,
   }) {
-    for (final language in previewAll ? Language.values : [kept]) {
+    for (final language in previewAll ? T.languages : [kept]) {
       testWidgets('golden: $name (${language.code})', (tester) async {
         fixture = makeFixture(language: language);
         model = fixture.model;
@@ -67,7 +67,7 @@ void main() {
     expect(find.text(T.text('compareTrophies')), findsNothing, reason: 'nothing to compare with yourself');
   });
 
-  golden('friends', Language.turkish, (tester) async {
+  golden('friends', Language.byCode('tr'), (tester) async {
     model.open(Layer.friends);
     await pumpLauncher(tester, model);
     expect(
@@ -126,7 +126,7 @@ void main() {
     expect(find.text(T.text('showcaseTitle')), findsOneWidget);
   });
 
-  golden('compare_games', Language.turkish, (tester) async {
+  golden('compare_games', Language.byCode('tr'), (tester) async {
     model.open(Layer.compare);
     model.together
       ..compareReturn = Layer.profile
@@ -151,7 +151,7 @@ void main() {
     expect(find.text(T.text('compareNotYet')), findsWidgets);
   });
 
-  golden('compare_private', Language.turkish, (tester) async {
+  golden('compare_private', Language.byCode('tr'), (tester) async {
     model.open(Layer.compare);
     model.together
       ..compareWith = bora
@@ -160,7 +160,7 @@ void main() {
     expect(find.text(T.format('comparePrivate', ['Bora'])), findsOneWidget);
   });
 
-  golden('toast', Language.turkish, (tester) async {
+  golden('toast', Language.byCode('tr'), (tester) async {
     await pumpLauncher(tester, model);
     model.show(T.format('levelUp', [12]), level: LevelBadge.of(12));
     await settle(tester);

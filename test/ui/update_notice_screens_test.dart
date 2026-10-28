@@ -37,7 +37,7 @@ void main() {
     return model;
   }
 
-  for (final language in Language.values) {
+  for (final language in T.languages) {
     testWidgets('the notice beside the top bar, Restart Now focused (${language.code})', (tester) async {
       final model = ready(language);
       expect(model.updates.showsNotice, isTrue);
@@ -71,7 +71,7 @@ void main() {
   });
 
   testWidgets('waiting for the game (tr)', (tester) async {
-    final model = ready(Language.turkish);
+    final model = ready(Language.byCode('tr'));
     model.starting = model.games.first;
     await model.updates.restartNow();
     model.starting = null;

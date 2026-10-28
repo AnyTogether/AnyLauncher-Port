@@ -207,7 +207,7 @@ void main() {
         reason: 'it is unlocked all the same',
       );
       model.cancelUnlock(locked);
-      T.language = Language.turkish;
+      T.language = Language.byCode('tr');
       expect(row(model, 'engineGlibc')?.title, 'Oyunlar glibc 2.38 veya daha yenisini istiyor; bu sistemde 2.35 var');
     });
 

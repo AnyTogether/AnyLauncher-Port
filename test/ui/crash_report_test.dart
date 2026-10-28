@@ -299,7 +299,7 @@ void main() {
     });
 
     testWidgets('what is shared, in Turkish', (tester) async {
-      T.language = Language.turkish;
+      T.language = Language.byCode('tr');
       model.select(model.games.indexOf(orbit()));
       model.crash.show(orbit(), sample(settings: const GameSettings(trace: true)), afterCrash: true, sharing: true);
       await pumpLauncher(tester, model);

@@ -131,7 +131,7 @@ void main() {
     });
 
     testWidgets('browser play: no network, in Turkish', (tester) async {
-      final fixture = current = makeFixture(language: Language.turkish);
+      final fixture = current = makeFixture(language: Language.byCode('tr'));
       final model = fixture.model;
       model.browserPlay.preview(unavailable: true);
       model.open(Layer.browserPlay);

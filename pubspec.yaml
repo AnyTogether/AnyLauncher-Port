@@ -41,6 +41,9 @@ flutter:
     # The Noto fonts games get in place of the console's system fonts (SIL Open Font License
     # 1.1, OFL.txt beside them). The engine reads them from disk, from data/flutter_assets.
     - assets/system-fonts/
+    # The launcher's languages, one JSON file each (TRANSLATING.md): a new file there is a new
+    # language in Settings, found through the asset manifest.
+    - assets/l10n/
   fonts:
     - family: Figtree
       fonts:

@@ -311,7 +311,7 @@ void main() {
     });
 
     testWidgets('the first start: offline or online, in Turkish', (tester) async {
-      fixture = makeFixture(onboarded: false, language: Language.turkish);
+      fixture = makeFixture(onboarded: false, language: Language.byCode('tr'));
       final model = fixture.model;
       model.onboardingStep = 4;
       model.profileFlow.modeChoice = 1;

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 
 import 'ui/soloud_audio.dart';
 import 'core/desktop/desktop.dart';
@@ -21,10 +22,13 @@ import 'ui/app_model.dart';
 import 'ui/crash_model.dart';
 import 'ui/launcher.dart';
 import 'ui/launcher_window_channel.dart';
+import 'ui/strings.dart';
 import 'ui/theme.dart';
 
 Future<void> main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
+  // The built-in languages, and any file a translator put in the Languages folder to try it.
+  await T.load(tryOut: Directory(p.join(AppPaths.forSystem(HostSystem.current).config, 'Languages')));
   final options = LaunchOptions.parse(arguments);
   final padLog = Platform.environment['ANYPS5_PAD_LOG'];
   final DesktopWindows desktop = Platform.isWindows

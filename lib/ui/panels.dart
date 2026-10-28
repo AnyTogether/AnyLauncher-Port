@@ -610,7 +610,7 @@ class _RowView extends StatelessWidget {
                     color: focused ? ink.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.12),
                   ),
                   child: Text(
-                    Controls.label(source, turkish: T.language == Language.turkish),
+                    Controls.label(source, turkish: T.language.code == 'tr'),
                     style: AppText.display(13 * scale, weight: FontWeight.w600, color: titleColor),
                   ),
                 ),

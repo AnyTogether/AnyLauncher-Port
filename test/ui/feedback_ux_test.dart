@@ -698,13 +698,13 @@ void main() {
       'shortcutHeld',
       'captures',
     ];
-    for (final language in Language.values) {
+    for (final language in T.languages) {
       T.language = language;
       for (final key in keys) {
         expect(T.text(key), isNot(key), reason: '$key in ${language.code}');
       }
     }
-    T.language = Language.turkish;
+    T.language = Language.byCode('tr');
     expect(T.text('quickResume'), 'Devam Et');
     expect(AppModel.padLabel(PadChord.of(PadButton.misc, hold: true)), 'Share (basılı)');
   });

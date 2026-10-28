@@ -1,11 +1,9 @@
 import 'dart:io';
 
 import 'package:anyps5_desktop/ui/strings.dart';
-import 'package:anyps5_desktop/ui/strings_family.dart';
-import 'package:anyps5_desktop/ui/strings_fonts.dart';
-import 'package:anyps5_desktop/ui/strings_table.dart';
-import 'package:anyps5_desktop/ui/strings_together.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../support/language_files.dart';
 
 void main() {
   tearDown(() => T.language = Language.english);
@@ -22,21 +20,34 @@ void main() {
     }
     expect(keys.length, greaterThan(80));
     final missing = <String>[];
-    for (final key in keys) {
-      for (final language in Language.values) {
-        T.language = language;
-        if (T.text(key) == key) missing.add('$key (${language.code})');
-      }
+    for (final code in ['en', 'tr']) {
+      final texts = languageFile(code);
+      missing.addAll([
+        for (final key in keys)
+          if (!texts.containsKey(key)) '$key ($code)',
+      ]);
     }
     expect(missing, isEmpty);
   });
 
+  test('Turkish has every English text and no other', () {
+    expect(languageFile('tr').keys.toSet(), languageFile('en').keys.toSet());
+  });
+
   test('the Mac is not named where the PC is meant', () {
-    for (final language in Language.values) {
+    for (final language in T.languages) {
       T.language = language;
       for (final key in ['welcomeSubtitle', 'startingText', 'stepRelink', 'aboutText', 'showInFinder', 'themesOnMac']) {
         expect(T.text(key), isNot(contains('Mac')), reason: '$key in ${language.code}');
         expect(T.text(key), isNot(contains('Finder')), reason: '$key in ${language.code}');
+      }
+    }
+    // Only the two texts of the macOS launcher's tables this one never shows name it.
+    for (final code in ['en', 'tr']) {
+      for (final MapEntry(:key, :value) in languageFile(code).entries) {
+        if (key == 'rosettaMissing' || key == 'clipsDetail') continue;
+        expect(value, isNot(contains('Mac')), reason: '$key in $code');
+        expect(value, isNot(contains('⌥')), reason: '$key in $code');
       }
     }
   });
@@ -45,18 +56,13 @@ void main() {
     T.language = Language.english;
     expect(T.format('gamesFound', [4]), '4 games found');
     expect(T.format('lastBackup', ['today']), 'Last backup: today');
-    T.language = Language.turkish;
+    T.language = Language.byCode('tr');
     expect(T.format('gamesFound', [4]), '4 oyun bulundu');
     expect(T.format('updateDownloading', [42]), 'İndiriliyor… %42');
   });
 
-  test('the family texts cover the same keys in both languages', () {
-    expect(familyEnglish.keys.toSet(), familyTurkish.keys.toSet());
-  });
-
-  test('the font and hidden trophy texts cover the same keys in both languages', () {
-    expect(fontsEnglish.keys.toSet(), fontsTurkish.keys.toSet());
-    T.language = Language.turkish;
+  test('the font and hidden trophy texts in both languages', () {
+    T.language = Language.byCode('tr');
     expect(T.format('fontsCjkDownloading', [42]), 'İniyor… %42');
     expect(T.text('fontsBuiltIn'), 'Yerleşik');
     T.language = Language.english;
@@ -69,34 +75,24 @@ void main() {
         key.startsWith('trace') ||
         key.startsWith('lastSession') ||
         key.startsWith('diagnosis');
-    expect(englishTable.keys.where(crash).toSet(), turkishTable.keys.where(crash).toSet());
-    for (final language in Language.values) {
+    final keys = languageFile('en').keys.where(crash).toSet();
+    expect(keys, isNotEmpty);
+    expect(languageFile('tr').keys.where(crash).toSet(), keys);
+    for (final language in T.languages) {
       T.language = language;
-      for (final key in englishTable.keys.where(crash)) {
+      for (final key in keys) {
         expect(T.text(key), isNot(contains('Mac')), reason: '$key in ${language.code}');
       }
       expect(T.text('reportSave'), contains('crash_log.txt'));
     }
-    T.language = Language.turkish;
+    T.language = Language.byCode('tr');
     expect(T.format('reportStopped', ['Stray']), 'Stray durdu');
-  });
-
-  test('the tables cover the same keys', () {
-    expect(englishTable.keys.toSet(), turkishTable.keys.toSet());
-  });
-
-  test('the AnyTogether tables cover the same keys, with the PC named where the Mac was', () {
-    expect(togetherEnglish.keys.toSet(), togetherTurkish.keys.toSet());
-    for (final text in [...togetherEnglish.values, ...togetherTurkish.values]) {
-      expect(text, isNot(contains('Mac')));
-      expect(text, isNot(contains('⌥')));
-    }
   });
 
   test('positional placeholders take the argument they name', () {
     T.language = Language.english;
     expect(T.format('gameJoined', ['Utku', 'Orbit Runner']), 'Starting Orbit Runner with Utku');
-    T.language = Language.turkish;
+    T.language = Language.byCode('tr');
     expect(T.format('gameJoined', ['Utku', 'Orbit Runner']), 'Utku ile Orbit Runner başlıyor');
   });
 }

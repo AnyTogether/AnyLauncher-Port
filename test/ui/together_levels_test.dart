@@ -192,7 +192,7 @@ void main() {
     });
 
     test('in Turkish', () async {
-      T.language = Language.turkish;
+      T.language = Language.byCode('tr');
       server.push('level.up', {'userId': 'u-me', 'level': 12, 'tier': 'bronze', 'frame': 1});
       await until(() => model.toast == 'Kupa seviyesi 12');
     });

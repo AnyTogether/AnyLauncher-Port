@@ -563,7 +563,7 @@ void main() {
       run('friend-remove-yes');
       await until(() => server.callsTo('me/friends/u-ana', method: 'DELETE').isNotEmpty);
 
-      T.language = Language.turkish;
+      T.language = Language.byCode('tr');
       model.open(Layer.party);
       expect(T.format('askKick', ['Ana']), 'Ana partiden çıkarılsın mı? Geri gelmek için yeni bir davet gerekir.');
     });
@@ -638,7 +638,7 @@ void main() {
       expect(rowIds(), isNot(contains('party-code')));
       expect(rowIds(), contains('party-code-new'));
 
-      T.language = Language.turkish;
+      T.language = Language.byCode('tr');
       expect(row('party-code-new').title, 'Katılma kodu oluştur');
     });
 
@@ -1511,7 +1511,7 @@ void main() {
       final engine = model.panelCategories().single.rows.firstWhere((row) => row.id == 'together-join');
       expect(engine.detail, 'Ana plays on AnyPS5 0.2.13 (a1b2c3); yours is toolkit (1). Ask them to update');
 
-      T.language = Language.turkish;
+      T.language = Language.byCode('tr');
       expect(
         model.together.presenceText(
           Presence.fromJson({

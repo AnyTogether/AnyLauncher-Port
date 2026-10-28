@@ -10,12 +10,12 @@ import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/components.dart';
 import 'package:anyps5_desktop/ui/launcher.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
-import 'package:anyps5_desktop/ui/strings_controllers.dart';
 import 'package:anyps5_desktop/ui/theme.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/fake_sdl.dart';
+import '../support/language_files.dart';
 import '../support/ui_support.dart';
 
 void main() {
@@ -75,7 +75,7 @@ void main() {
     });
 
     testWidgets('controllers: nothing connected on Windows, Steam and DS4Windows in the way, in Turkish', (tester) async {
-      final fixture = start(makeFixture(system: HostSystem.windows, language: Language.turkish));
+      final fixture = start(makeFixture(system: HostSystem.windows, language: Language.byCode('tr')));
       final model = fixture.model;
       model.controllers.preview(
         const [],
@@ -149,7 +149,7 @@ void main() {
     });
 
     testWidgets('controller test: an Xbox pad, in Turkish', (tester) async {
-      final fixture = start(makeFixture(language: Language.turkish));
+      final fixture = start(makeFixture(language: Language.byCode('tr')));
       final model = fixture.model;
       model.controllers.preview(
         [xbox],
@@ -316,18 +316,20 @@ void main() {
     });
 
     test('every controller text has its Turkish', () {
-      expect(controllersTurkish.keys.toSet(), controllersEnglish.keys.toSet());
-      for (final light in PadLight.values) {
-        expect(controllersEnglish.containsKey('padLight_${light.name}'), isTrue, reason: light.name);
-      }
+      final english = languageFile('en');
+      final turkish = languageFile('tr');
+      final keys = [for (final light in PadLight.values) 'padLight_${light.name}'];
       const ids = [
         'noControllers', 'usbCable', 'bluetoothPairing', 'dualShock3Windows', 'dualShock3Linux', 'unmapped', 'lowBattery',
         'steamPlayStation', 'steamRunning', 'steamLaunched', 'ds4windows', 'dualSenseX', 'hidHide', 'vigem',
         'linuxPermission', 'linuxHidraw', 'sdlMissingWindows', 'sdlMissingLinux', //
       ];
       for (final id in ids) {
-        expect(controllersEnglish.containsKey('padFinding_$id'), isTrue, reason: id);
-        expect(controllersEnglish.containsKey('padFinding_${id}Detail'), isTrue, reason: id);
+        keys.addAll(['padFinding_$id', 'padFinding_${id}Detail']);
+      }
+      for (final key in keys) {
+        expect(english.containsKey(key), isTrue, reason: key);
+        expect(turkish.containsKey(key), isTrue, reason: key);
       }
     });
   });

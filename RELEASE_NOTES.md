@@ -7,6 +7,16 @@ release when it is made.
 
 Nothing yet.
 
+## 0.1.12
+
+- **AnyTogether moved to anytogether.net.** The default server and the join links use the new
+  address; the old one keeps working.
+- **AppImage updates are staged beside the AppImage.** The new AppImage was written to a file
+  literally named `$appImage.new` in the current folder and renamed from there, which fails
+  across file systems; it now goes next to the AppImage it replaces.
+- **New engine.** AnyPS5-ARM 0.2.26's Windows and Linux engine brings about 3,500 upstream
+  commits (**Settings → AnyPS5 Engine**).
+
 ## 0.1.11
 
 - **Gyro aiming for every game.** Each game's **Controls** page starts with **Aim with the

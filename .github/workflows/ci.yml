@@ -87,11 +87,12 @@ jobs:
           channel: stable
           cache: true
       - run: flutter build linux --release
-      - name: Package the AppImage and the .deb
+      - name: Package the AppImage, the .deb and the .tar.gz
         if: github.event_name != 'pull_request'
         run: |
           SKIP_BUILD=1 bash packaging/linux/build-appimage.sh
           SKIP_BUILD=1 bash packaging/linux/build-deb.sh
+          tar -C build/linux/x64/release -czf build/packages/AnyPS5-Desktop-linux-x64.tar.gz --transform 's#^bundle#AnyPS5-Desktop#' bundle
       - uses: actions/upload-artifact@v7
         if: github.event_name != 'pull_request'
         with:

@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'game_log.dart';
 import 'game_settings.dart';
 import 'host.dart';
+import 'launcher_health.dart';
 
 /// Takes out of a report what names the user or lets someone act as them: the home folder and
 /// other users' folders, the user's names and the computer's, e-mail addresses, private network
@@ -720,6 +721,53 @@ class IssueDraft {
       report: report,
       logLines: logLines,
     );
+  }
+
+  /// This launcher's own crash or stall (.github/ISSUE_TEMPLATE/launcher_crash.yml): what
+  /// happened, the system, the version, the first uncaught error and the launcher's last seconds,
+  /// every field through [privacy]. The oldest lines go first until the link is short enough.
+  static IssueDraft launcherProblem(
+    LauncherProblem problem, {
+    required SystemInfo system,
+    required ReportPrivacy privacy,
+  }) {
+    final at = problem.at.toUtc().toIso8601String().substring(0, 19).replaceFirst('T', ' ');
+    final seconds = problem.stalledFor?.inSeconds;
+    final (title, what) = switch (problem.kind) {
+      LauncherProblemKind.crash => (
+        'Launcher crash',
+        'The launcher closed without being closed (a crash, or ended from the task manager). Last seen alive $at UTC.',
+      ),
+      LauncherProblemKind.hang when problem.recovered => (
+        'Launcher stopped responding (${seconds}s)',
+        'The interface did not answer for $seconds s from $at UTC, then went on.',
+      ),
+      LauncherProblemKind.hang => (
+        'Launcher stopped responding',
+        'The interface stopped answering at $at UTC and did not answer again (${seconds}s or more) before it was closed.',
+      ),
+    };
+    String cut(String line) => line.length > lineLimit ? '${line.substring(0, lineLimit)}…' : line;
+    var error = problem.error == null
+        ? 'None caught.'
+        : const LineSplitter().convert(privacy.clean(problem.error!)).take(40).map(cut).join('\n');
+    final lines = [for (final line in problem.lines) cut(privacy.clean(line))];
+    while (true) {
+      final fields = [
+        IssueField('what', 'What happened', '$what\nWhat I was doing: '),
+        IssueField('system', 'System', privacy.clean(system.line)),
+        IssueField('versions', 'Version', 'Launcher ${problem.version} (${problem.platform})'),
+        IssueField('error', 'Uncaught error', error),
+        IssueField('log', 'Last seconds', lines.isEmpty ? '(none kept)' : lines.join('\n')),
+      ];
+      final link = _link(launcherRepository, 'launcher_crash.yml', title, fields);
+      if (link.length <= maximumLength) return IssueDraft._(launcherRepository, title, fields, Uri.parse(link));
+      if (lines.isNotEmpty) {
+        lines.removeAt(0);
+      } else {
+        error = '${error.substring(0, error.length * 3 ~/ 4)}…';
+      }
+    }
   }
 
   /// The newest log lines that fit: the oldest go first until the link is short enough.

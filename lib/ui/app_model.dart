@@ -859,6 +859,48 @@ class AppModel extends ChangeNotifier {
     usedKeyboard();
   }
 
+  /// The mouse's Back button (XBUTTON1, button 8) and a Back key: Circle wherever the user is.
+  /// A field typed in lets go first and a key or button waited for is given up, as Esc does.
+  void mouseBack() {
+    usedKeyboard();
+    _forward = null;
+    if (editingRow != null) return stopEditing();
+    if (together.capturingTalkKey) {
+      together.capturingTalkKey = false;
+      return refresh();
+    }
+    if (shortcutCapture != null) return cancelShortcutCapture();
+    final (from, game) = (overlay, selected);
+    command(Command.back);
+    if (from != null && overlay != from && _forwardLayers.contains(from)) _forward = (from, overlay, game);
+  }
+
+  /// The mouse's Forward button (XBUTTON2, button 9): the layer Back just closed opens again,
+  /// as a browser goes forward; nothing when the user has gone elsewhere since.
+  void mouseForward() {
+    usedKeyboard();
+    final forward = _forward;
+    _forward = null;
+    if (forward == null || editingRow != null || pairing != null) return;
+    final (layer, landed, game) = forward;
+    if (overlay != landed || selected != game) return;
+    open(layer);
+  }
+
+  /// What Forward opens again: the layer, where Back left the user, and the game selected then.
+  (Layer, Layer?, int)? _forward;
+
+  /// The layers Forward may open again: plain screens, never a question or a running step.
+  static const _forwardLayers = {
+    Layer.library,
+    Layer.settings,
+    Layer.gameSettings,
+    Layer.controls,
+    Layer.trophies,
+    Layer.gallery,
+    Layer.friends,
+  };
+
   /// What a command may change where the eye is: a direction that changed none of it and asked
   /// for no sound hit the end of its row.
   Object _focusMark() => (

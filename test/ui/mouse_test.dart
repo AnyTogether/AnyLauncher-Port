@@ -111,6 +111,59 @@ void main() {
     expect(model.overlay, isNull, reason: 'the right button is Back');
   });
 
+  testWidgets('the mouse\'s Back button is Back (Circle) everywhere; Forward opens again what it closed', (
+    tester,
+  ) async {
+    Future<void> side(int button) async {
+      await tester.tapAt(const Offset(800, 450), buttons: button, kind: PointerDeviceKind.mouse);
+      await settle(tester);
+    }
+
+    await openGameSettings(tester);
+    model.open(Layer.controls);
+    await settle(tester);
+    await side(kBackMouseButton);
+    expect(model.overlay, Layer.gameSettings, reason: 'as Circle: the controls go back to the game settings');
+    await side(kBackMouseButton);
+    expect(model.overlay, isNull, reason: 'and the game settings close');
+    await side(kForwardMouseButton);
+    expect(model.overlay, Layer.gameSettings, reason: 'Forward opens again the layer Back closed');
+    await side(kForwardMouseButton);
+    expect(model.overlay, Layer.gameSettings, reason: 'once: nothing further ahead');
+
+    model.open(Layer.library);
+    await settle(tester);
+    await side(kBackMouseButton);
+    expect(model.overlay, isNull);
+    await press(tester, LogicalKeyboardKey.arrowRight);
+    await side(kForwardMouseButton);
+    expect(model.overlay, isNull, reason: 'another game chosen since: Forward has nothing to open again');
+
+    model.open(Layer.settings);
+    await settle(tester);
+    model.startEditing('name');
+    await side(kBackMouseButton);
+    expect(model.editingRow, isNull, reason: 'a field typed in lets go first, as Esc does');
+    expect(model.overlay, Layer.settings);
+    await side(kBackMouseButton);
+    expect(model.overlay, isNull);
+  });
+
+  testWidgets('a keyboard\'s or a mouse driver\'s Back and Forward keys do the same', (tester) async {
+    model.open(Layer.settings);
+    await pumpLauncher(tester, model);
+    Future<void> key(LogicalKeyboardKey key, PhysicalKeyboardKey physical) async {
+      await tester.sendKeyDownEvent(key, physicalKey: physical, platform: 'windows');
+      await tester.sendKeyUpEvent(key, physicalKey: physical, platform: 'windows');
+      await settle(tester);
+    }
+
+    await key(LogicalKeyboardKey.browserBack, PhysicalKeyboardKey.browserBack);
+    expect(model.overlay, isNull);
+    await key(LogicalKeyboardKey.browserForward, PhysicalKeyboardKey.browserForward);
+    expect(model.overlay, Layer.settings);
+  });
+
   testWidgets('the controls go back to the game settings, not home', (tester) async {
     await openGameSettings(tester);
     model.open(Layer.controls);

@@ -143,6 +143,16 @@ class _LauncherShellState extends State<LauncherShell> {
 
   KeyEventResult _key(FocusNode node, KeyEvent event) {
     final model = widget.model;
+    // A keyboard's Back and Forward keys (and mouse drivers that send them for the side
+    // buttons) are the mouse's side buttons.
+    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.browserBack) {
+      model.mouseBack();
+      return KeyEventResult.handled;
+    }
+    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.browserForward) {
+      model.mouseForward();
+      return KeyEventResult.handled;
+    }
     // Typing in a field: the keys are the field's, Esc gives them back.
     if (model.editingRow != null) {
       if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
@@ -270,10 +280,12 @@ class _LauncherShellState extends State<LauncherShell> {
   double _wheel = 0;
 
   /// The right button is Back everywhere (as Esc is); on the home screen the wheel moves
-  /// between games, in lists it scrolls them.
+  /// between games, in lists it scrolls them. The side buttons are Back (Circle) and Forward.
   void _pointerDown(PointerDownEvent event) {
     final model = widget.model;
     model.usedKeyboard();
+    if (event.kind == PointerDeviceKind.mouse && event.buttons & kBackMouseButton != 0) return model.mouseBack();
+    if (event.kind == PointerDeviceKind.mouse && event.buttons & kForwardMouseButton != 0) return model.mouseForward();
     if (event.kind != PointerDeviceKind.mouse || event.buttons & kSecondaryMouseButton == 0) return;
     if (model.editingRow != null || model.capturing != null) return;
     // On Home the right button opens the Options menu (Switch Profile, online or offline).

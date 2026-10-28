@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import 'host.dart';
@@ -11,7 +13,7 @@ import 'host.dart';
 /// toolkit/
 ///     relinker | relinker.exe
 ///     libs/*.prx          (and the mingw runtime DLLs on Windows)
-///     version.txt         changes when the relinker or libraries change
+///     version.txt         changes when the relinker or libraries change (a fingerprint without it)
 ///     patches/<TITLE>.toml  per-title byte patches (optional)
 /// ```
 class Toolkit {
@@ -49,14 +51,44 @@ class Toolkit {
   }
 
   /// Changes whenever the relinker or the libraries change: a game installed with another toolkit
-  /// can be installed again.
-  String get version {
+  /// can be installed again. version.txt, or for a folder someone put together without one (a
+  /// build of their own), "local-" and a fingerprint of the relinker, libs/ and patches/: built
+  /// again in place, its games offer Update and Play. Read once per Toolkit.
+  late final String version = () {
     try {
       final text = File(p.join(root, 'version.txt')).readAsStringSync().trim();
-      return text.isEmpty ? 'unknown' : text;
+      if (text.isNotEmpty) return text;
     } on FileSystemException {
-      return 'unknown';
+      // A folder of the user's own.
     }
+    return fingerprint() ?? 'unknown';
+  }();
+
+  /// "local-" and 12 hex digits from the name, size and modification time of the relinker, each
+  /// library and each patch (no file is read: a build's libraries are hundreds of megabytes);
+  /// null without a relinker.
+  String? fingerprint() {
+    final relinkerFile = File(relinker);
+    if (!relinkerFile.existsSync()) return null;
+    final lines = <String>[];
+    void add(File file) {
+      try {
+        final stat = file.statSync();
+        lines.add('${p.relative(file.path, from: root)} ${stat.size} ${stat.modified.microsecondsSinceEpoch}');
+      } on FileSystemException {
+        lines.add(p.basename(file.path));
+      }
+    }
+
+    add(relinkerFile);
+    libraryFiles.map(File.new).forEach(add);
+    try {
+      final patchFiles = Directory(patches).listSync().whereType<File>().where((file) => file.path.endsWith('.toml'));
+      (patchFiles.toList()..sort((a, b) => a.path.compareTo(b.path))).forEach(add);
+    } on FileSystemException {
+      // No patches.
+    }
+    return 'local-${sha256.convert(utf8.encode(lines.join('\n'))).toString().substring(0, 12)}';
   }
 
   /// What is wrong with the toolkit, null when it can be used.

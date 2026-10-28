@@ -329,7 +329,7 @@ class EngineModel {
       app.savePreferences();
       removeUnused();
       app.sounds.play(Cue.unlocked);
-      app.show(glibcWarning(kit) ?? T.format('engineReady', [label(kit)]));
+      app.show(glibcWarning(kit) ?? switched(kit, 'engineReady'));
       return true;
     } on ToolkitFailure catch (failure) {
       switch (failure.kind) {
@@ -361,7 +361,23 @@ class EngineModel {
   void use(Toolkit kit) {
     app.preferences.toolkitFolder = kit.root;
     app.savePreferences();
-    app.show(glibcWarning(kit) ?? T.format('engineSwitched', [label(kit)]));
+    app.show(glibcWarning(kit) ?? switched(kit, 'engineSwitched'));
+  }
+
+  /// "Now using …", and when installed games were unlocked with another engine, that Play offers
+  /// Update and Play for them (unlocking again with this one; saves and trophies stay).
+  String switched(Toolkit kit, String key) => withGames(T.format(key, [label(kit)]));
+
+  /// [message], and the installed games unlocked with another engine when there are any.
+  String withGames(String message) {
+    final games = gamesFromOtherEngines();
+    return games == 0 ? message : '$message · ${T.format('engineGamesToUpdate', [games])}';
+  }
+
+  /// The installed games unlocked with another engine than the one in use now.
+  int gamesFromOtherEngines() {
+    final version = app.toolkitVersion;
+    return version == null ? 0 : app.records.values.where((record) => record.toolkit != version).length;
   }
 
   /// Keeps the toolkit in use, the newest two and those installed games were made with.
@@ -410,7 +426,9 @@ class EngineModel {
         PanelRow(
           id: 'engineOwn',
           title: T.text('engineOwn'),
-          detail: current != null && !isDownloaded(current) ? current.root : T.text('engineOwnFolderDetail'),
+          detail: current != null && !isDownloaded(current)
+              ? T.format('engineOwnInUse', [current.root])
+              : T.text('engineOwnDetail'),
           kind: ActionRow(() => unawaited(app.chooseToolkit())),
         ),
       ];
@@ -508,7 +526,9 @@ class EngineModel {
       PanelRow(
         id: 'engineOwn',
         title: T.text('engineOwn'),
-        detail: current != null && !isDownloaded(current) ? current.root : T.text('engineOwnFolderDetail'),
+        detail: current != null && !isDownloaded(current)
+            ? T.format('engineOwnInUse', [current.root])
+            : T.text('engineOwnDetail'),
         kind: ActionRow(() => unawaited(app.chooseToolkit())),
       ),
     );

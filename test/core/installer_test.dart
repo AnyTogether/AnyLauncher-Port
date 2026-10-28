@@ -568,6 +568,20 @@ void main() {
       expect(Toolkit(toolkitFolder).libraryFiles.map(p.basename), ['libSceVideoOut.prx', 'libkernel.prx']);
     });
 
+    test('a folder put together without version.txt is named by its files; rebuilt, the name changes', () {
+      final own = makeFakeToolkit(p.join(temp.path, 'own'));
+      File(p.join(own, 'version.txt')).deleteSync();
+      final first = Toolkit(own).version;
+      expect(first, matches(RegExp(r'^local-[0-9a-f]{12}$')));
+      expect(Toolkit(own).version, first, reason: 'the same files, the same name');
+      File(p.join(own, 'libs', 'libkernel.prx')).writeAsStringSync('kernel library, built again');
+      expect(Toolkit(own).version, allOf(startsWith('local-'), isNot(first)));
+      File(p.join(own, 'libs', 'README.txt')).writeAsStringSync('still not a library, longer now');
+      final second = Toolkit(own).version;
+      File(p.join(own, 'libs', 'README.txt')).writeAsStringSync('changed again');
+      expect(Toolkit(own).version, second, reason: 'only the relinker, the libraries and the patches count');
+    });
+
     test('app paths follow XDG on Linux and APPDATA on Windows', () {
       final linux = AppPaths.forSystem(HostSystem.linux, environment: {'HOME': '/home/u', 'XDG_CONFIG_HOME': '/cfg'});
       expect(linux.config, '/cfg/AnyPS5');

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:flutter/services.dart';

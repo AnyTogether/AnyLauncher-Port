@@ -255,6 +255,41 @@ void main() {
       expect(model.overlay, Layer.settings);
     });
 
+    testWidgets('Escape on the home screen asks "Quit AnyPS5?", Cancel first; elsewhere it keeps its meaning', (
+      tester,
+    ) async {
+      final quits = <int>[];
+      fixture = makeFixture(quit: quits.add);
+      final model = fixture.model;
+      await pumpLauncher(tester, model);
+      await press(tester, LogicalKeyboardKey.escape);
+      expect(model.overlay, Layer.confirmQuit);
+      expect(model.panelCategories().single.rows.map((row) => row.id), ['cancel', 'quit']);
+      expect(model.panelRow, 0, reason: 'Cancel is where the focus starts: a second Enter does not quit');
+      expect(find.text(T.text('quitQuestion')), findsOneWidget);
+      await press(tester, LogicalKeyboardKey.enter);
+      expect(model.overlay, isNull);
+      await press(tester, LogicalKeyboardKey.escape);
+      await press(tester, LogicalKeyboardKey.escape);
+      expect(model.overlay, isNull, reason: 'Escape on the question is Cancel');
+      model.handle(Command.back);
+      expect(model.overlay, isNull, reason: 'Circle on the home screen asks nothing');
+      expect(quits, isEmpty);
+
+      await press(tester, LogicalKeyboardKey.arrowUp);
+      await press(tester, LogicalKeyboardKey.escape);
+      expect(model.focus, HomeFocus.tiles, reason: 'from the top bar Escape still comes back to the games');
+      expect(model.overlay, isNull);
+      model.open(Layer.settings);
+      await press(tester, LogicalKeyboardKey.escape);
+      expect(model.overlay, isNull, reason: 'a panel open: Escape closes it, as before');
+
+      await press(tester, LogicalKeyboardKey.escape);
+      await press(tester, LogicalKeyboardKey.arrowDown);
+      await press(tester, LogicalKeyboardKey.enter);
+      expect(quits, [0]);
+    });
+
     testWidgets('with no games, Up still reaches the top bar and its Settings', (tester) async {
       fixture = makeFixture();
       final model = fixture.model;

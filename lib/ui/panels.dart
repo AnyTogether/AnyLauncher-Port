@@ -174,11 +174,18 @@ class PanelView extends StatelessWidget {
       Layer.quickMenu,
       Layer.closeGame,
       Layer.homeMenu,
+      Layer.confirmQuit,
       Layer.profileMenu,
       Layer.signIn,
     }.contains(model.overlay);
     // PS's menus: a heading that may be long (the game's name), and only as tall as their rows.
-    final psMenu = const {Layer.quickMenu, Layer.closeGame, Layer.homeMenu, Layer.profileMenu}.contains(model.overlay);
+    final psMenu = const {
+      Layer.quickMenu,
+      Layer.closeGame,
+      Layer.homeMenu,
+      Layer.confirmQuit,
+      Layer.profileMenu,
+    }.contains(model.overlay);
     // The quick menu and Close Game? are about the game playing: its icon by the heading.
     final gameIcon = model.overlay == Layer.quickMenu || model.overlay == Layer.closeGame
         ? model.running?.$1.icon

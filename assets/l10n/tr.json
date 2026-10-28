@@ -755,6 +755,8 @@
   "switchProfile": "Profil Değiştir",
   "quitLauncher": "AnyPS5'ten Çık",
   "quitLauncherGame": "%@ da kapanır",
+  "quitQuestion": "AnyPS5'ten çıkılsın mı?",
+  "quitStay": "Ana ekranda kal",
   "captures": "Yakalamalar",
   "replayBuffer": "Tekrar Arabelleği",
   "replayBufferDetail": "Oynarken son dakikalar geçici bir klasörde tutulur, Paylaş'a basmadıkça kaydedilmez. Yaklaşık bir işlemci çekirdeği kullanır (720p, 30 fps)",

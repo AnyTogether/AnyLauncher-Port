@@ -222,6 +222,11 @@ class _LauncherShellState extends State<LauncherShell> {
       _keys.holdQuietly(command, by: key);
       return KeyEventResult.handled;
     }
+    // Escape on the home screen asks Quit AnyPS5? rather than doing nothing.
+    if (!repeat && key == LogicalKeyboardKey.escape && model.askQuit()) {
+      model.usedKeyboard();
+      return KeyEventResult.handled;
+    }
     if (!repeat) {
       if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter || key == LogicalKeyboardKey.space) {
         command = Command.select;

@@ -92,7 +92,8 @@ enum PadCommand {
 
 /// Controller input as launcher commands, the way the macOS launcher's Input.swift reads a pad:
 /// the D-pad and the left stick move (a held direction repeats on [KeyRepeat]'s pace, the same
-/// as the arrow keys; the stick has hysteresis, [StickGate]), Cross/A selects, Circle/B goes
+/// as the arrow keys; the stick has hysteresis and keeps up and down harder to reach,
+/// [StickGate]), Cross/A selects, Circle/B goes
 /// back, Triangle/Y and Options open the options. Any number of pads at once; a pad that goes
 /// away lets go of what it held.
 ///
@@ -265,7 +266,8 @@ class PadNavigator {
     if (state.pressed.contains(PadButton.dpadUp)) y -= 1;
     if (state.pressed.contains(PadButton.dpadDown)) y += 1;
     final Direction? direction;
-    if (x != 0 || y != 0) {
+    final fromStick = x == 0 && y == 0;
+    if (!fromStick) {
       // The D-pad wins over the stick; a diagonal is its horizontal half.
       direction = x != 0 ? (x > 0 ? Direction.right : Direction.left) : (y > 0 ? Direction.down : Direction.up);
     } else {
@@ -283,7 +285,9 @@ class PadNavigator {
     if (command == _repeater.held && (_repeater.heldBy == pad || command == null)) return;
     if (command == null) return _repeater.stop();
     _sending = pad;
-    _repeater.hold(command, by: pad);
+    // Up and down on the stick wait longer before repeating (StickGate).
+    final vertical = fromStick && StickGate.isVertical(direction!);
+    _repeater.hold(command, by: pad, firstDelay: vertical ? StickGate.verticalFirstDelay : null);
     _sending = null;
   }
 

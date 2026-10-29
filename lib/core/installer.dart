@@ -757,6 +757,18 @@ class Installer {
         'exec ./app.elf "\$@"\n';
   }
 
+  /// PATH with [folders] first (a checkout's compiler folder, whose DLLs a relinker built with
+  /// MinGW loads); null to keep the launcher's environment.
+  static Map<String, String>? _toolEnvironment(List<String> folders) {
+    if (folders.isEmpty) return null;
+    final environment = Platform.environment;
+    final key = environment.keys.firstWhere((name) => name.toUpperCase() == 'PATH', orElse: () => 'PATH');
+    final rest = environment[key];
+    return {
+      key: [...folders, if (rest != null && rest.isNotEmpty) rest].join(Platform.isWindows ? ';' : ':'),
+    };
+  }
+
   Future<void> _runTool(
     String tool,
     List<String> arguments, {
@@ -766,7 +778,12 @@ class Installer {
     _checkCancelled();
     final Process process;
     try {
-      process = await Process.start(tool, arguments, workingDirectory: workingDirectory);
+      process = await Process.start(
+        tool,
+        arguments,
+        workingDirectory: workingDirectory,
+        environment: _toolEnvironment(toolkit.toolFolders),
+      );
     } on ProcessException catch (error) {
       throw InstallError('${p.basename(tool)} could not start: ${error.message}');
     }

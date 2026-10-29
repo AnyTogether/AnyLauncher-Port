@@ -136,6 +136,41 @@ toolkit/
                         the per-game resolution choice
 ```
 
+### Update from Git
+
+The engine folder can also be a **git checkout of the engine's source** (upstream's AnyPS5 or
+AnyPS5-ARM) built with CMake: choose the checkout's top folder. The launcher spots it
+(`CMakeLists.txt`, `core/relinker/`, `core/libs/`, `.git`) and takes the relinker from
+`build/core/relinker/relinker[.exe]` and the libraries from `build/core/libs/libs/` (another
+configured folder at the top, `build-*` or `cmake-build-*` with a `CMakeCache.txt`, when
+`build/` is not one). On Windows the MinGW runtime DLLs come from the compiler's folder that
+`CMakeCache.txt` names, and that folder is put first on `PATH` for the relinker.
+
+Settings → AnyPS5 Engine → *Update from Git* then runs, in the checkout:
+
+```text
+git pull --ff-only
+git submodule update --init --recursive
+cmake --build <build folder> --target relinker libs
+```
+
+It refuses a tree with uncommitted changes (`git status --porcelain`), says so when git or CMake
+is missing, and never configures a build folder itself: without one it points to the
+[build guide](https://github.com/AnyTogether/AnyPS5-ARM/blob/main/docs/dev/WINDOWS_LINUX_ENGINE.md).
+The row shows the step and the last lines printed, and selecting it stops the update; a failure
+keeps the end of the output, copied with one select. git never prompts (`GIT_TERMINAL_PROMPT=0`,
+SSH in batch mode), so a remote that wants a password fails instead of hanging. The build changes
+the folder's fingerprint, so installed games offer *Update and Play*; *Relink all installed games
+now* unlocks them all again at once.
+
+*Update from Git before playing* (off by default) runs `git fetch` before a game starts and,
+when the remote has new commits (or the checkout was pulled by hand since the launcher last
+built it), pulls and builds first, then unlocks the game again and starts it. Offline, or with no
+upstream branch, it says nothing and the game starts; when nothing could be pulled (uncommitted
+changes, no CMake) the current build plays and the reason is shown; a failed build starts
+nothing. The *Upstream* engine choice is different: it downloads upstream's release builds and
+never touches a clone of yours.
+
 Some environment variables the launcher passes exist only in the fork's engine
 (`ANYPS5_FULLSCREEN`, `ANYPS5_WINDOW_SIZE`, `ANYPS5_OVERLAY_STYLE`, `ANYPS5_FRAME_GEN`,
 `ANYPS5_REMOTE_PAD*`); with upstream's libraries they are ignored. For full screen and window

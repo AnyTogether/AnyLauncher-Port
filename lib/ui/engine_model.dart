@@ -9,6 +9,7 @@ import '../core/toolkit.dart';
 import '../core/toolkit_download.dart';
 import 'app_model.dart';
 import 'components.dart';
+import 'engine_git_model.dart';
 import 'strings.dart';
 
 /// The AnyPS5 engine (upstream's relinker and system libraries) as the launcher gets it by
@@ -21,6 +22,9 @@ class EngineModel {
 
   final AppModel app;
   final ToolkitStore store;
+
+  /// Update from Git, for an engine folder that is a git checkout.
+  late final EngineGitModel git = EngineGitModel(app);
 
   /// The downloaded toolkits, newest first.
   List<Toolkit> downloaded = const [];
@@ -423,14 +427,8 @@ class EngineModel {
           kind: InfoRow(current == null ? T.text('toolkitMissing') : label(current)),
         ),
         ..._armRows(current),
-        PanelRow(
-          id: 'engineOwn',
-          title: T.text('engineOwn'),
-          detail: current != null && !isDownloaded(current)
-              ? T.format('engineOwnInUse', [current.root])
-              : T.text('engineOwnDetail'),
-          kind: ActionRow(() => unawaited(app.chooseToolkit())),
-        ),
+        _ownRow(current),
+        ...git.rows(),
       ];
     }
     final rows = <PanelRow>[
@@ -522,16 +520,8 @@ class EngineModel {
         );
       }
     }
-    rows.add(
-      PanelRow(
-        id: 'engineOwn',
-        title: T.text('engineOwn'),
-        detail: current != null && !isDownloaded(current)
-            ? T.format('engineOwnInUse', [current.root])
-            : T.text('engineOwnDetail'),
-        kind: ActionRow(() => unawaited(app.chooseToolkit())),
-      ),
-    );
+    rows.add(_ownRow(current));
+    rows.addAll(git.rows());
     final others = downloaded.where((kit) => current == null || !p.equals(kit.root, current.root)).length;
     if (others > 0) {
       rows.add(
@@ -544,6 +534,22 @@ class EngineModel {
       );
     }
     return rows;
+  }
+
+  /// Use My Own Folder: what the folder in use is, a git checkout the launcher can update or a
+  /// folder used as it is.
+  PanelRow _ownRow(Toolkit? current) {
+    final checkout = git.checkout;
+    return PanelRow(
+      id: 'engineOwn',
+      title: T.text('engineOwn'),
+      detail: checkout != null
+          ? T.format('engineOwnCheckout', [checkout.root])
+          : current != null && !isDownloaded(current)
+          ? T.format('engineOwnInUse', [current.root])
+          : T.text('engineOwnDetail'),
+      kind: ActionRow(() => unawaited(app.chooseToolkit())),
+    );
   }
 
   /// 42 MB of 97 MB, or the step after the download.

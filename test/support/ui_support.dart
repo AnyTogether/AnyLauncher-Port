@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:anyps5_desktop/core/engine_checkout.dart';
 import 'package:anyps5_desktop/core/audio/atrac9.dart';
 import 'package:anyps5_desktop/core/audio/audio_out.dart';
 import 'package:anyps5_desktop/core/crash_report.dart';
@@ -162,6 +163,7 @@ Fixture makeFixture({
   ReplayBuffer? Function(int seconds)? replay,
   Future<int> Function(String folder)? folderSize,
   Future<String?> Function(String title)? pickFolder,
+  CommandRunner? commands,
 }) {
   final opened = <Uri>[];
   final copied = <String>[];
@@ -237,6 +239,7 @@ Fixture makeFixture({
       replay: replay,
       // The size at once, as a finished measurement: the screens and goldens show it.
       folderSize: folderSize ?? (folder) => SynchronousFuture(GameLibrary.size(folder)),
+      commands: commands,
       systemInfo: () async =>
           const SystemInfo(os: 'Ubuntu 24.04.1 LTS, kernel 6.8.0-45-generic', cpu: 'AMD Ryzen 7 5800X', memoryGB: 32),
     ),

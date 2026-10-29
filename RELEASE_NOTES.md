@@ -5,6 +5,18 @@ release when it is made.
 
 ## Next release
 
+- **Update from Git for an engine you build yourself.** **Use My Own Folder** now takes a git
+  checkout of the engine's source (AnyPS5 or AnyPS5-ARM) as it is: the relinker and libraries
+  are read from its CMake build folder (`build/core/relinker`, `build/core/libs/libs`, plus the
+  MinGW runtime DLLs on Windows). **Update from Git** pulls it (`git pull --ff-only`), updates
+  its submodules and builds the relinker and libraries, with the step and the last output lines
+  shown as it goes; selecting it again stops it. A tree with uncommitted changes, a missing git
+  or CMake, or a folder never configured with CMake is said up front (the last one opens the
+  build guide), and a failed pull or build shows the end of its output with a way to copy it.
+  Afterwards installed games offer **Update and Play**, or **Relink All Installed Games Now**
+  does them at once. **Update from Git Before Playing** (off by default) checks the remote
+  before a game starts and pulls and builds first when there are new commits; offline it just
+  plays. The Upstream choice still downloads release builds and never pulls a clone.
 - **Default display settings for every game.** **Settings → Default Display** sets Window or
   Full Screen, the window size and vertical sync once for all games. A game's own choice in its
   Game Settings still wins; there **Display** and **Vertical Sync** now start with

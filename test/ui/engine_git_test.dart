@@ -37,7 +37,7 @@ void main() {
   });
 
   Future<void> until(bool Function() condition) async {
-    for (var tries = 0; tries < 500 && !condition(); tries++) {
+    for (var tries = 0; tries < 2000 && !condition(); tries++) {
       await Future<void>.delayed(const Duration(milliseconds: 5));
     }
     expect(condition(), isTrue);
@@ -176,7 +176,17 @@ void main() {
       model.preferences.engineGitBeforePlay = true;
       model.select(model.games.indexOf(orbit()));
       model.toast = null;
+      // The game keeps running until stopped: a game that ends at once could be gone (and its
+      // end said) before the test looks.
+      final executable = File(p.join(Installer.installedFolder(orbit(), model.root!), 'app.elf'));
+      executable.writeAsStringSync('#!/bin/sh\nsleep 20\n');
+      if (!Platform.isWindows) Process.runSync('chmod', ['755', executable.path]);
     });
+
+    Future<void> stop() async {
+      model.stopGame();
+      await until(() => model.running == null);
+    }
 
     test('new commits: pulled and built, then the game is unlocked again and started', () async {
       commands.results['git rev-list'] = const FakeResult(lines: ['2']);
@@ -196,27 +206,27 @@ void main() {
     test('offline: nothing is said and the game starts', () async {
       commands.results['git fetch'] = const FakeResult(code: 128, lines: ['fatal: unable to access']);
       model.primaryAction(orbit());
-      await until(() => model.starting != null || model.running != null);
+      await until(() => model.running != null);
       expect(commands.lines.where((line) => line.startsWith('git pull')), isEmpty);
       expect(model.toast, isNull);
-      model.stopGame();
+      await stop();
     });
 
     test('up to date: the game starts without a build', () async {
       commands.results['git rev-list'] = const FakeResult(lines: ['0']);
       model.primaryAction(orbit());
-      await until(() => model.starting != null || model.running != null);
+      await until(() => model.running != null);
       expect(commands.lines.where((line) => line.contains('--build')), isEmpty);
-      model.stopGame();
+      await stop();
     });
 
     test('a tree with changes: the current build plays, and it is said', () async {
       commands.results['git rev-list'] = const FakeResult(lines: ['1']);
       commands.results['git status'] = const FakeResult(lines: [' M README.md']);
       model.primaryAction(orbit());
-      await until(() => model.starting != null || model.running != null);
+      await until(() => model.running != null);
       expect(model.toast, T.format('engineGitPlayAnyway', [T.text('engineGitDirty')]));
-      model.stopGame();
+      await stop();
     });
 
     test('a failed build starts nothing', () async {

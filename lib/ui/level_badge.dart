@@ -30,17 +30,8 @@ abstract final class LevelColors {
     LevelTier.platinum => 'levelTierPlatinum',
   });
 
-  /// 1,234 in English, 1.234 in Turkish.
-  static String number(int value) {
-    final digits = value.abs().toString();
-    final separator = T.language.code == 'tr' ? '.' : ',';
-    final out = StringBuffer(value < 0 ? '-' : '');
-    for (var index = 0; index < digits.length; index++) {
-      if (index > 0 && (digits.length - index) % 3 == 0) out.write(separator);
-      out.write(digits[index]);
-    }
-    return out.toString();
-  }
+  /// 1,234 in English, 1.234 in Turkish: the language's thousands separator.
+  static String number(int value) => T.number(value);
 }
 
 /// A trophy level as the website draws it: the number in a hexagon of its tier's metal, with a

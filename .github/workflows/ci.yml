@@ -35,9 +35,10 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze
-      # The language files (TRANSLATING.md): valid JSON, no unknown keys, English's placeholders;
-      # the log has each language's coverage.
-      - name: Check the language files in assets/l10n
+      # The language files (TRANSLATING.md): flat JSON for Weblate, no unknown keys, English's
+      # placeholders; the log has each language's coverage. Then lib: no text picked by the
+      # language's code and no Turkish words outside the files.
+      - name: Check the language files in assets/l10n and the texts in lib
         run: dart run tool/check_translations.dart
       # The goldens are made on macOS and compared in the goldens job (test/flutter_test_config.dart).
       - run: flutter test

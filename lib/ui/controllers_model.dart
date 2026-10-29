@@ -315,7 +315,7 @@ class ControllersModel {
           min: 0,
           max: StickDeadzone.maximum,
           step: StickDeadzone.step,
-          format: (value) => value == 0 ? T.text('off') : '$value%',
+          format: (value) => value == 0 ? T.text('off') : T.percent(value),
           set: (value) {
             preferences.stickDeadzone = value;
             app.savePreferences();

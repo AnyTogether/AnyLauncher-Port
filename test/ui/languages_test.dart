@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:anyps5_desktop/core/game_settings.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:flutter/foundation.dart';
@@ -38,11 +39,12 @@ class _Bundle extends CachingAssetBundle {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  // The files as Weblate keeps them: every value a text, the language's own name one of them.
   const english =
-      '{"@meta": {"name": "English", "consoleLanguage": 1}, "language": "Language", '
+      '{"languageName": "English", "language": "Language", '
       '"gamesFound": "%d games found", "back": "Back"}';
   const german =
-      '{"@meta": {"name": "Deutsch", "consoleLanguage": 4}, "language": "Sprache", '
+      '{"languageName": "Deutsch", "language": "Sprache", '
       '"gamesFound": "%d Spiele gefunden"}';
 
   tearDown(() async {
@@ -88,16 +90,19 @@ void main() {
     await T.load(
       bundle: _Bundle({
         'assets/l10n/en.json': english,
-        'assets/l10n/fr.json': '{"@meta": {"name": "Français", ',
+        'assets/l10n/fr.json': '{"languageName": "Français", ',
         'assets/l10n/it.json': '["not", "an", "object"]',
         'assets/l10n/nl.json': '{"language": "Taal", "back": 7}',
+        'assets/l10n/xx.json': '{"back": "Bak"}',
       }),
     );
-    // Without its name and number a language is listed by its code and starts games in English.
-    expect([for (final language in T.languages) language.code], ['en', 'nl']);
+    // Without its name a language is listed by its code; its console language comes from the
+    // code, English for a code the console does not know.
+    expect([for (final language in T.languages) language.code], ['en', 'nl', 'xx']);
     final dutch = Language.byCode('nl');
     expect(dutch.displayName, 'nl');
-    expect(dutch.consoleLanguage, 1);
+    expect(dutch.consoleLanguage, 6);
+    expect(Language.byCode('xx').consoleLanguage, 1);
     T.language = dutch;
     expect(T.text('language'), 'Taal');
     expect(T.text('back'), 'Back');
@@ -112,9 +117,8 @@ void main() {
     final folder = Directory.systemTemp.createTempSync('anyps5_languages');
     addTearDown(() => folder.deleteSync(recursive: true));
     File('${folder.path}/de.json').writeAsStringSync(german);
-    File('${folder.path}/tr.json')
-        .writeAsStringSync('{"@meta": {"name": "Türkçe", "consoleLanguage": 19}, "back": "Dön"}');
-    File('${folder.path}/en.json').writeAsStringSync('{"@meta": ');
+    File('${folder.path}/tr.json').writeAsStringSync('{"languageName": "Türkçe", "back": "Dön"}');
+    File('${folder.path}/en.json').writeAsStringSync('{"languageName": ');
     File('${folder.path}/notes.txt').writeAsStringSync('not a language');
     await T.load(tryOut: folder);
     expect([for (final language in T.languages) language.code], ['en', 'de', 'tr']);
@@ -127,6 +131,74 @@ void main() {
 
     await T.load(tryOut: Directory('${folder.path}/missing'));
     expect([for (final language in T.languages) language.code], ['en', 'tr']);
+  });
+
+  test('the console language comes from the file\'s code, not from the file', () async {
+    await T.load(
+      bundle: _Bundle({
+        'assets/l10n/en.json': english,
+        'assets/l10n/de.json': german,
+        'assets/l10n/pt-BR.json': '{"languageName": "Português (Brasil)"}',
+        'assets/l10n/pt.json': '{"languageName": "Português"}',
+        'assets/l10n/zh-Hant.json': '{"languageName": "繁體中文"}',
+        'assets/l10n/es_419.json': '{"languageName": "Español (Latinoamérica)"}',
+      }),
+    );
+    expect(Language.byCode('de').consoleLanguage, 4);
+    expect(Language.byCode('pt-BR').consoleLanguage, 17);
+    expect(Language.byCode('pt').consoleLanguage, 7);
+    expect(Language.byCode('zh-Hant').consoleLanguage, 10);
+    expect(Language.byCode('es_419').consoleLanguage, 20);
+    expect(Language.english.consoleLanguage, 1);
+    expect(ConsoleLanguage.forLocale('tr'), 19);
+    expect(ConsoleLanguage.forLocale('en-GB'), 18);
+    expect(ConsoleLanguage.forLocale('de-AT'), 4);
+    expect(ConsoleLanguage.forLocale('zh'), 11);
+    expect(ConsoleLanguage.forLocale('nb'), 15);
+    expect(ConsoleLanguage.forLocale('eo'), isNull);
+  });
+
+  test('a file in the old format still works: its name and console language from "@meta"', () async {
+    final folder = Directory.systemTemp.createTempSync('anyps5_languages');
+    addTearDown(() => folder.deleteSync(recursive: true));
+    File('${folder.path}/de.json')
+        .writeAsStringSync('{"@meta": {"name": "Deutsch (alt)", "consoleLanguage": 4}, "back": "Zurück"}');
+    // A code the console does not know keeps the number its file gave.
+    File('${folder.path}/x-pirate.json')
+        .writeAsStringSync('{"@meta": {"name": "Pirate", "consoleLanguage": 18}, "back": "Avast"}');
+    await T.load(tryOut: folder);
+    final deutsch = Language.byCode('de');
+    expect(deutsch.displayName, 'Deutsch (alt)');
+    expect(deutsch.consoleLanguage, 4);
+    expect(Language.byCode('x-pirate').displayName, 'Pirate');
+    expect(Language.byCode('x-pirate').consoleLanguage, 18);
+    T.language = deutsch;
+    expect(T.text('back'), 'Zurück');
+    // "@meta" is never a text.
+    expect(T.text('@meta'), '@meta');
+  });
+
+  test('numbers follow the language: its thousands separator and decimal mark', () async {
+    await T.load(
+      bundle: _Bundle({
+        'assets/l10n/en.json':
+            '{"languageName": "English", "numberGroupSeparator": ",", "numberDecimalSeparator": "."}',
+        'assets/l10n/fr.json':
+            '{"languageName": "Français", "numberGroupSeparator": "\u202f", "numberDecimalSeparator": ","}',
+        'assets/l10n/de.json': german,
+      }),
+    );
+    expect(T.number(1234567), '1,234,567');
+    expect(T.number(-1200), '-1,200');
+    expect(T.number(999), '999');
+    expect(T.decimal(12.345, 1), '12.3');
+    T.language = Language.byCode('fr');
+    expect(T.number(1234567), '1\u202f234\u202f567');
+    expect(T.decimal(12.345, 1), '12,3');
+    // A language without them uses English's.
+    T.language = Language.byCode('de');
+    expect(T.number(1234), '1,234');
+    expect(T.decimal(0.5, 1), '0.5');
   });
 
   test('Settings lists a new language and switching to it is kept', () async {

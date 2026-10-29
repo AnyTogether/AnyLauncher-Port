@@ -357,7 +357,7 @@ class _TrophyRow extends StatelessWidget {
     final rarity = TogetherProfiles.rarity(trophy.rarityLabel);
     final percent = trophy.rarity == null
         ? null
-        : '${(trophy.rarity! * 100).toStringAsFixed(trophy.rarity! < 0.1 ? 1 : 0)}%';
+        : T.percent(T.decimal(trophy.rarity! * 100, trophy.rarity! < 0.1 ? 1 : 0));
     return PaneRow(
       focused: focused,
       radius: 14 * scale,

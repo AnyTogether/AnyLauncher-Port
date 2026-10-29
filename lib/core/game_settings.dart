@@ -380,6 +380,31 @@ abstract final class ConsoleLanguage {
 
   /// The locale tag of a console language number, as the engine's trophy library maps them.
   static String? tag(int number) => number >= 0 && number < _tags.length ? _tags[number] : null;
+
+  /// Locale codes the console has its own language for, beyond the languages in [_tags].
+  static const _aliases = {
+    'en': 1, 'es': 3, 'pt': 7, 'zh': 11, 'zh-tw': 10, 'zh-hk': 10, 'zh-mo': 10, 'zh-cn': 11, //
+    'zh-sg': 11, 'no': 15, 'nb': 15, 'nn': 15, 'es-mx': 20, 'es-ar': 20, 'es-co': 20, 'es-cl': 20,
+  };
+
+  /// The console language a launcher language starts games in, by its file's locale code (de,
+  /// pt-BR, zh-Hant, es_419): the code itself, then its language alone; null when the console has
+  /// no language of that code (the caller starts games in English then).
+  static int? forLocale(String code) {
+    final wanted = code.replaceAll('_', '-').toLowerCase();
+    int? find(String tag) {
+      final index = _tags.indexWhere((known) => known.toLowerCase() == tag);
+      return index >= 0 ? index : _aliases[tag];
+    }
+
+    final exact = find(wanted);
+    if (exact != null) return exact;
+    final language = wanted.split('-').first;
+    final alone = find(language);
+    if (alone != null) return alone;
+    final regional = _tags.indexWhere((known) => known.toLowerCase().startsWith('$language-'));
+    return regional >= 0 ? regional : null;
+  }
 }
 
 /// A title's resolution patch: the title's patch file in the toolkit (patches/<TITLE ID>.toml,

@@ -330,24 +330,27 @@ abstract final class Controls {
   };
 
   /// A source as the launcher shows it: the key's name, or the mouse button or wheel in words.
-  static String label(String source, {bool turkish = false}) {
+  /// [format] gives the words, the launcher's T.format: the keys mouseLeft, mouseRight,
+  /// mouseMiddle, mouseButton (with the button's name), wheelUp, wheelDown, keySuper and keyEnter
+  /// in assets/l10n.
+  static String label(String source, String Function(String key, List<Object> arguments) format) {
     final colon = source.indexOf(':');
     final kind = colon < 0 ? '' : source.substring(0, colon);
     final name = colon < 0 ? source : source.substring(colon + 1);
     switch (kind) {
       case 'MOUSE':
         return switch (name) {
-          'Left' => turkish ? 'Sol tık' : 'Left click',
-          'Right' => turkish ? 'Sağ tık' : 'Right click',
-          'Middle' => turkish ? 'Orta tık' : 'Middle click',
-          _ => turkish ? 'Fare $name' : 'Mouse $name',
+          'Left' => format('mouseLeft', const []),
+          'Right' => format('mouseRight', const []),
+          'Middle' => format('mouseMiddle', const []),
+          _ => format('mouseButton', [name]),
         };
       case 'WHEEL':
-        return name == 'Up' ? (turkish ? 'Tekerlek yukarı' : 'Wheel up') : (turkish ? 'Tekerlek aşağı' : 'Wheel down');
+        return format(name == 'Up' ? 'wheelUp' : 'wheelDown', const []);
       default:
         return switch (name) {
-          'Left GUI' || 'Right GUI' => turkish ? 'Windows tuşu' : 'Super',
-          'Return' => 'Enter',
+          'Left GUI' || 'Right GUI' => format('keySuper', const []),
+          'Return' => format('keyEnter', const []),
           _ => name,
         };
     }

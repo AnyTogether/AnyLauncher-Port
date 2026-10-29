@@ -635,7 +635,7 @@ class _RowView extends StatelessWidget {
                     color: focused ? ink.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.12),
                   ),
                   child: Text(
-                    Controls.label(source, turkish: T.language.code == 'tr'),
+                    Controls.label(source, T.format),
                     style: AppText.display(13 * scale, weight: FontWeight.w600, color: titleColor),
                   ),
                 ),
@@ -1114,7 +1114,7 @@ class TrophyView extends StatelessWidget {
                       style: AppText.display(18 * scale, color: Colors.white.withValues(alpha: 0.6)),
                     ),
                     SizedBox(height: 34 * scale),
-                    Text('${set.percent}%', style: AppText.display(64 * scale, weight: FontWeight.w200)),
+                    Text(T.percent(set.percent), style: AppText.display(64 * scale, weight: FontWeight.w200)),
                     SizedBox(height: 10 * scale),
                     ProgressLine(fraction: set.percent / 100, color: accent, height: 6 * scale),
                     SizedBox(height: 28 * scale),

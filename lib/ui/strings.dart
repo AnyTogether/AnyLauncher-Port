@@ -4,8 +4,11 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-/// A launcher language: one file in assets/l10n named by its code (de.json is German), with its
-/// name and console language in the file's "@meta".
+import '../core/game_settings.dart';
+
+/// A launcher language: one file in assets/l10n named by its locale code (de.json is German,
+/// pt-BR.json Brazilian Portuguese), its own name the text "languageName" and its console
+/// language found from the code ([ConsoleLanguage.forLocale]).
 @immutable
 class Language {
   const Language(this.code, this.displayName, this.consoleLanguage);
@@ -40,8 +43,13 @@ class Language {
 abstract final class T {
   static const folder = 'assets/l10n/';
 
-  /// The reserved key of a file's name and console language; never a text.
-  static const meta = '@meta';
+  /// The key of a language's own name ("Deutsch"), translated like every other text.
+  static const nameKey = 'languageName';
+
+  /// Where a file had its name and console language before the files were made for Weblate:
+  /// {"@meta": {"name": "Deutsch", "consoleLanguage": 4}}. A file in the Languages folder may still
+  /// have it, so it is read, and never a text.
+  static const legacyMeta = '@meta';
 
   static Language language = Language.english;
   static List<Language> languages = const [Language.english];
@@ -82,18 +90,20 @@ abstract final class T {
         try {
           final json = jsonDecode(await read());
           if (json is! Map<String, Object?>) throw const FormatException('not a JSON object');
-          final about = json[meta];
-          final name = about is Map<String, Object?> ? about['name'] : null;
-          final console = about is Map<String, Object?> ? about['consoleLanguage'] : null;
-          texts[code] = {
+          final about = json[legacyMeta];
+          final legacyName = about is Map<String, Object?> ? about['name'] : null;
+          final legacyConsole = about is Map<String, Object?> ? about['consoleLanguage'] : null;
+          final file = texts[code] = {
             for (final MapEntry(:key, :value) in json.entries)
-              if (key != meta && value is String) key: value,
+              if (key != legacyMeta && value is String) key: value,
           };
+          final name = file[nameKey] ?? legacyName;
           found.add(
             Language(
               code,
               name is String && name.trim().isNotEmpty ? name.trim() : code,
-              console is int ? console : Language.english.consoleLanguage,
+              ConsoleLanguage.forLocale(code) ??
+                  (legacyConsole is int ? legacyConsole : Language.english.consoleLanguage),
             ),
           );
           break;
@@ -114,6 +124,27 @@ abstract final class T {
 
   /// The text for [key] in the current language, English when the language has none.
   static String text(String key) => _texts[language.code]?[key] ?? _texts['en']?[key] ?? key;
+
+  /// 1,234,567 or 1.234.567: [value]'s digits grouped by the language's thousands separator.
+  static String number(int value) {
+    final digits = value.abs().toString();
+    final separator = _textOr('numberGroupSeparator', ',');
+    final out = StringBuffer(value < 0 ? '-' : '');
+    for (var index = 0; index < digits.length; index++) {
+      if (index > 0 && (digits.length - index) % 3 == 0) out.write(separator);
+      out.write(digits[index]);
+    }
+    return out.toString();
+  }
+
+  /// 85% or %85: a percentage as the language writes it (the text "percent").
+  static String percent(Object value) => format('percent', [value]);
+
+  /// [value] with [digits] decimals and the language's decimal mark: 12.3 or 12,3.
+  static String decimal(double value, int digits) =>
+      value.toStringAsFixed(digits).replaceAll('.', _textOr('numberDecimalSeparator', '.'));
+
+  static String _textOr(String key, String fallback) => _texts[language.code]?[key] ?? _texts['en']?[key] ?? fallback;
 
   /// [text] with its %@ and %d placeholders filled in order (%1\$@ names its argument);
   /// %% is a percent sign.

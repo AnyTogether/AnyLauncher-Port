@@ -4,7 +4,8 @@ import 'dart:math' as math;
 // How the launcher feels under a thumb, a finger and a pointer: one repeat for the pad and the
 // keys, a stick that does not flutter, a bump at the end of a row, a tick when the pointer
 // arrives on something and soft pulses in the controller. The macOS launcher
-// (Sources/AnyPS5Core/Feel.swift) uses the same numbers.
+// (Sources/AnyPS5Core/Feel.swift) uses the same numbers, but for the stick's up and down
+// ([StickGate]), made harder to reach here after a player found them too sensitive.
 
 /// A held direction, keyboard or controller alike: it moves at once, again after 0.40 s, then
 /// every 0.08 s and, after six repeats, every 0.06 s.
@@ -43,16 +44,19 @@ class HoldRepeater<C extends Object> {
   Timer? _timer;
   int _repeats = 0;
   bool _repeating = false;
+  Duration? _firstDelay;
 
   C? get held => _held;
   Object? get heldBy => _by;
   bool get repeating => _repeating;
 
-  /// Starts holding [command] for [by] (a pad, a key): it is handed on at once, then repeated.
-  void hold(C command, {Object? by}) {
+  /// Starts holding [command] for [by] (a pad, a key): it is handed on at once, then repeated;
+  /// [firstDelay] in place of [KeyRepeat.firstDelay] before the first repeat.
+  void hold(C command, {Object? by, Duration? firstDelay}) {
     stop();
     _held = command;
     _by = by;
+    _firstDelay = firstDelay;
     onCommand(command);
     _schedule();
   }
@@ -71,10 +75,12 @@ class HoldRepeater<C extends Object> {
     _held = null;
     _by = null;
     _repeats = 0;
+    _firstDelay = null;
   }
 
   void _schedule() {
-    _timer = Timer(KeyRepeat.delayBefore(_repeats + 1), () {
+    final wait = _repeats == 0 && _firstDelay != null ? _firstDelay! : KeyRepeat.delayBefore(_repeats + 1);
+    _timer = Timer(wait, () {
       final held = _held;
       if (held == null) return;
       _repeats++;
@@ -92,36 +98,70 @@ class HoldRepeater<C extends Object> {
 /// The four directions a stick or a D-pad gives.
 enum Direction { left, right, up, down }
 
-/// The left stick as a direction with hysteresis: it engages past 0.5 and lets go only below
-/// 0.3, so a stick resting near the line does not flutter; the other axis takes over only when
-/// it leads by a quarter (no jumping near the diagonal); a flick through the middle turns at once.
+/// The left stick as a direction with hysteresis: left and right engage past 0.5 and let go
+/// below 0.3, so a stick resting near the line does not flutter; a flick through the middle
+/// turns at once.
+///
+/// Up and down are harder to reach, as on Home one of them leaves the tiles for the top bar or
+/// the buttons: they engage only past 0.65 and with the stick clearly upright (Y at least 1.2
+/// times X; a diagonal goes sideways), let go below 0.4, take over from a held left or right
+/// only when Y leads by half again, and repeat first after [verticalFirstDelay]. A thumb
+/// sweeping in an arc on its way to the side, a light push or a wobble moved up or down before.
+///
+/// A reader sends a sample as two events, X then Y, so the gate also sees the new X with the
+/// old Y: a stick snapping back from a diagonal looks upright for that moment. Letting go of
+/// one axis, the other therefore engages only from the next sample.
 class StickGate {
   static const engage = 0.5;
   static const release = 0.3;
+  static const verticalEngage = 0.65;
+  static const verticalRelease = 0.4;
+
+  /// How much Y must lead X for up or down to engage.
+  static const verticalLead = 1.2;
+
+  /// How much the other axis must lead to take over a held direction: left or right from up or
+  /// down, up or down from left or right.
   static const switchRatio = 1.25;
+  static const verticalSwitchRatio = 1.5;
+
+  /// Up and down held on the stick repeat first after this (the D-pad and the keys, and left
+  /// and right, after [KeyRepeat.firstDelay]).
+  static const verticalFirstDelay = Duration(milliseconds: 550);
 
   Direction? held;
+
+  static bool isVertical(Direction direction) => direction == Direction.up || direction == Direction.down;
 
   /// [x] right positive, [y] down positive (as the readers give the stick), both -1 to 1.
   Direction? update(double x, double y) {
     if (held case final Direction direction) {
-      final horizontal = direction == Direction.left || direction == Direction.right;
+      final vertical = isVertical(direction);
       final along = _along(direction, x, y);
-      if (along >= release) {
-        final other = horizontal ? y : x;
-        if (other.abs() >= engage && other.abs() > along * switchRatio) {
-          held = horizontal
-              ? (other > 0 ? Direction.down : Direction.up)
-              : (other > 0 ? Direction.right : Direction.left);
+      if (along >= (vertical ? verticalRelease : release)) {
+        final other = vertical ? x : y;
+        final takesOver = vertical
+            ? other.abs() >= engage && other.abs() > along * switchRatio
+            : other.abs() >= verticalEngage && other.abs() > along * verticalSwitchRatio;
+        if (takesOver) {
+          held = vertical
+              ? (other > 0 ? Direction.right : Direction.left)
+              : (other > 0 ? Direction.down : Direction.up);
         }
         return held;
       }
       held = null;
+      final next = _engaged(x, y);
+      if (next != null && isVertical(next) == vertical) held = next;
+      return held;
     }
-    if (math.max(x.abs(), y.abs()) >= engage) {
-      held = x.abs() >= y.abs() ? (x > 0 ? Direction.right : Direction.left) : (y > 0 ? Direction.down : Direction.up);
-    }
-    return held;
+    return held = _engaged(x, y);
+  }
+
+  static Direction? _engaged(double x, double y) {
+    if (y.abs() >= verticalEngage && y.abs() >= x.abs() * verticalLead) return y > 0 ? Direction.down : Direction.up;
+    if (x.abs() >= engage && x.abs() >= y.abs()) return x > 0 ? Direction.right : Direction.left;
+    return null;
   }
 
   static double _along(Direction direction, double x, double y) => switch (direction) {

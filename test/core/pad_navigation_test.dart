@@ -103,6 +103,94 @@ void main() {
       expect(commands.last, PadCommand.right);
     });
 
+    group('the stick up and down on Home (a player: "too sensitive up and down")', () {
+      // As a reader sends a stick sample: X first, then Y (PadSnapshot.diff).
+      void stick(double x, double y) => navigator
+        ..handle(PadAxisEvent('a', PadAxis.leftX, x))
+        ..handle(PadAxisEvent('a', PadAxis.leftY, y));
+
+      test('a push right whose first sample is on the thumb\'s arc moves right only', () {
+        // Pushed right with the thumb, the stick sweeps through up-and-right on its way out.
+        stick(0.35, -0.55);
+        stick(0.75, -0.5);
+        stick(0.95, -0.2);
+        stick(0, 0);
+        expect(commands, [PadCommand.right]);
+      });
+
+      test('a small push up or down moves nothing', () {
+        stick(0.05, 0.55);
+        stick(0, 0);
+        stick(-0.1, -0.6);
+        stick(0, 0);
+        expect(commands, isEmpty);
+      });
+
+      test('a stick wobbling near the line moves once at most', () {
+        for (final y in [0.52, 0.28, 0.55, 0.25, 0.58, 0.27, 0.5]) {
+          stick(0, y);
+        }
+        stick(0, 0);
+        expect(commands, isEmpty, reason: 'it never went far enough down');
+        for (final y in [0.7, 0.45, 0.72, 0.42, 0.75]) {
+          stick(0, y);
+        }
+        stick(0, 0);
+        expect(commands, [PadCommand.down], reason: 'pushed once, the wobble on top of it is not more');
+      });
+
+      test('browsing right, the thumb drifting up does not leave the tiles', () {
+        fakeAsync((async) {
+          stick(0.9, 0);
+          stick(0.65, -0.75);
+          stick(0.6, -0.8);
+          async.elapse(const Duration(milliseconds: 200));
+          stick(0, 0);
+          expect(commands, [PadCommand.right]);
+        });
+      });
+
+      test('a diagonal goes the way of the bigger lean, and sideways when it is even', () {
+        stick(0.7, 0.7);
+        stick(0, 0);
+        stick(0.45, 0.8);
+        stick(0, 0);
+        expect(commands, [PadCommand.right, PadCommand.down]);
+      });
+
+      test('a push up held a little longer than a flick moves once; a long hold repeats', () {
+        fakeAsync((async) {
+          stick(0, -0.9);
+          async.elapse(const Duration(milliseconds: 450));
+          expect(commands, [PadCommand.up], reason: 'a short hold is one move (Home: one area)');
+          async.elapse(const Duration(milliseconds: 150));
+          expect(commands, [PadCommand.up, PadCommand.up], reason: 'held on, it repeats');
+          stick(0, 0);
+        });
+      });
+
+      test('right and left feel as before: half way engages, the first repeat after 0.40 s', () {
+        fakeAsync((async) {
+          stick(0.52, 0);
+          expect(commands, [PadCommand.right]);
+          async.elapse(const Duration(milliseconds: 401));
+          expect(commands, [PadCommand.right, PadCommand.right]);
+          stick(0, 0);
+          stick(-0.52, 0.3);
+          expect(commands.last, PadCommand.left);
+        });
+      });
+
+      test('the D-pad keeps its pace up and down', () {
+        fakeAsync((async) {
+          navigator.handle(down(PadButton.dpadUp));
+          async.elapse(const Duration(milliseconds: 401));
+          expect(commands, [PadCommand.up, PadCommand.up]);
+          navigator.handle(up(PadButton.dpadUp));
+        });
+      });
+    });
+
     test('several pads at once: one letting go does not stop another holding', () {
       fakeAsync((async) {
         navigator.handle(down(PadButton.dpadUp, 'one'));

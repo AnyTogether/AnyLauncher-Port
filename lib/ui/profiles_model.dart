@@ -122,14 +122,13 @@ extension LauncherProfiles on AppModel {
   /// The profile playing has its saves in every installed game's folder (and the game about to
   /// start in particular).
   void activateProfileSaves([Game? only]) {
-    final folder = root;
     final profile = currentProfile;
     final owner = profiles.book.legacyOwner;
-    if (folder == null || profile == null || owner == null) return;
+    if (root == null || profile == null || owner == null) return;
     for (final game in only == null ? games : [only]) {
       if (records[game.id] == null) continue;
       try {
-        ProfileSaves.activate(profile.id, Installer.installedFolder(game, folder), legacyOwner: owner);
+        ProfileSaves.activate(profile.id, Installer.installedFolder(game, rootOf(game)!), legacyOwner: owner);
       } on FileSystemException {
         show(T.format('profileSavesNotSwapped', [game.name]));
       }
@@ -584,12 +583,11 @@ extension LauncherProfiles on AppModel {
     final profile = profiles.profile(id);
     if (profile == null) return;
     if (_modeChangeRefusal() case final refusal?) return tell(refusal);
-    final folder = root;
     final owner = profiles.book.legacyOwner;
-    if (folder != null && owner != null) {
+    if (root != null && owner != null) {
       for (final game in games) {
         if (records[game.id] == null) continue;
-        final installed = Installer.installedFolder(game, folder);
+        final installed = Installer.installedFolder(game, rootOf(game)!);
         final place = ProfileSaves.owner(installed, legacyOwner: owner) == id
             ? installed
             : ProfileSaves.parked(id, installed);

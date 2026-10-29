@@ -289,6 +289,9 @@ the troubleshooter's findings without the window.
 
 ## Installed games
 
+With several games folders (**Settings → Game Library → Add Folder**) the library is all of them,
+a title found in more than one shown once from the folder listed first, and each game is unlocked
+into the store of the folder it was found in, so its files are linked on their own drive.
 `<games folder>/.AnyPS5/Games/<TITLE>-<hash>/` holds `app.elf`/`app.exe`, `libs/`, `app0/`
 (the dump's files as hard links where the volume allows, symbolic links otherwise, on Windows
 with Developer Mode on or the launcher elevated; copies only where neither works, which the

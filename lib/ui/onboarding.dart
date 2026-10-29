@@ -328,7 +328,7 @@ class _FolderStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
-    final folder = model.preferences.gamesFolder;
+    final folder = model.preferences.gamesFolders.firstOrNull;
     final accent = model.accentChoice.color;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

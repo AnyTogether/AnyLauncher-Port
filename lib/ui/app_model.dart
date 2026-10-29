@@ -92,7 +92,7 @@ class Preferences {
     }
     ..accent = json['accent'] as String?
     ..profileName = json['profileName'] as String? ?? 'Player'
-    ..gamesFolder = json['gamesFolder'] as String?
+    ..gamesFolders = _folders(json['gamesFolders'], json['gamesFolder'])
     ..toolkitFolder = json['toolkitFolder'] as String?
     ..onboarded = json['onboarded'] as bool? ?? false
     ..gameArtwork = json['gameArtwork'] as bool? ?? true
@@ -153,7 +153,10 @@ class Preferences {
   int theme = 0;
   String? accent;
   String profileName = 'Player';
-  String? gamesFolder;
+
+  /// The games folders in order (a library over several drives); the first holds the store, where
+  /// games are unlocked. A folder whose drive is unplugged stays in the list.
+  List<String> gamesFolders = [];
   String? toolkitFolder;
   bool onboarded = false;
   bool gameArtwork = true;
@@ -266,7 +269,9 @@ class Preferences {
     'theme': theme,
     'accent': accent,
     'profileName': profileName,
-    'gamesFolder': gamesFolder,
+    'gamesFolders': gamesFolders,
+    // The first one under the old name too, for an older launcher started again.
+    'gamesFolder': gamesFolders.firstOrNull,
     'toolkitFolder': toolkitFolder,
     'onboarded': onboarded,
     'gameArtwork': gameArtwork,
@@ -308,6 +313,18 @@ class Preferences {
     'replaySeconds': replaySeconds,
     if (!shortcuts.isDefault) 'shortcuts': shortcuts.toJson(),
   };
+
+  /// The saved list of games folders, or a file from before with one (`gamesFolder`) as a list of
+  /// one; what is not a path, and a folder listed twice, is left out.
+  static List<String> _folders(Object? list, Object? single) {
+    final folders = <String>[];
+    for (final folder in list is List<dynamic> ? list : [single]) {
+      if (folder is String && folder.isNotEmpty && !folders.any((known) => p.equals(known, folder))) {
+        folders.add(folder);
+      }
+    }
+    return folders;
+  }
 
   static Preferences load(String file) {
     try {
@@ -1022,7 +1039,8 @@ class AppModel extends ChangeNotifier {
     // Back in front: a toolkit rebuilt meanwhile is read again.
     if (value) _forgetDiskFacts();
     // Something copied in while the launcher was away shows at once.
-    if (value) _library?.rescanSoon();
+    // (One watcher's scan reads every games folder.)
+    if (value) _libraries.values.firstOrNull?.rescanSoon();
     notifyListeners();
   }
 
@@ -1929,7 +1947,18 @@ class AppModel extends ChangeNotifier {
     _gameFacts.clear();
   }
 
-  String? get root => preferences.gamesFolder;
+  /// The first games folder.
+  String? get root => preferences.gamesFolders.firstOrNull;
+
+  /// The games folder [game] was found in: its store (.AnyPS5) holds the game unlocked, so the
+  /// game's files are linked on their own drive, never copied to another, and a game and its
+  /// unlock come and go together with their drive.
+  String? rootOf(Game game) => _gameRoots[game.id] ?? root;
+
+  Map<String, String> _gameRoots = {};
+
+  /// What the last scan found in each games folder: its games, null while it is not there.
+  Map<String, int?> folderCounts = {};
 
   void _changed() {
     if (launcherProblem != null) offerLauncherReport();
@@ -1946,40 +1975,73 @@ class AppModel extends ChangeNotifier {
 
   // Library.
 
-  /// Scans the games folder, reads the installed records and the sizes.
+  /// Scans every games folder, reads the installed records and the sizes.
   void rescan() {
-    final folder = root;
-    if (folder == null) {
+    final folders = preferences.gamesFolders;
+    if (folders.isEmpty) {
       games = [];
+      folderCounts = {};
       _changed();
       return;
     }
-    if (folder != _scannedFolder) {
-      // A new games folder: what its first scan finds is not new.
+    final key = folders.join('\n');
+    if (key != _scannedFolders) {
+      // Other games folders: what their first scan finds is not new.
       _tracker.reset();
-      _scannedFolder = folder;
+      _connected.clear();
+      _scannedFolders = key;
     }
-    _takeScan(folder, GameLibrary.survey(folder).games);
+    final survey = GameLibrary.surveyAll(folders);
+    folderCounts = survey.folders;
+    _gameRoots = survey.roots;
+    _takeScan(survey.games, quiet: _newlyConnected());
   }
 
-  /// The watcher's scans: nothing is read again when the library is the same.
+  /// The games folders seen connected since the list last changed.
+  final Set<String> _connected = {};
+
+  /// The folders connected in the last scan that were not before (a drive plugged in that was not
+  /// when the launcher started): what they hold is the library coming back, not new games.
+  Set<String> _newlyConnected() {
+    final fresh = {
+      for (final entry in folderCounts.entries)
+        if (entry.value != null && !_connected.contains(entry.key)) entry.key,
+    };
+    _connected.addAll(fresh);
+    return fresh;
+  }
+
+  /// A watcher's scans (of [folder], one of the games folders): nothing is read again when the
+  /// library is the same. Gives the dumps still being copied in [folder].
   List<String> _watchedScan(String folder) {
-    if (_disposed || root != folder) return const [];
-    final survey = GameLibrary.survey(folder);
-    if (folder != _scannedFolder || !GameLibrary.sameListing(games, survey.games)) {
-      if (folder != _scannedFolder) {
+    final folders = preferences.gamesFolders;
+    if (_disposed || !folders.contains(folder)) return const [];
+    final survey = GameLibrary.surveyAll(folders);
+    final key = folders.join('\n');
+    final counted = !mapEquals(folderCounts, survey.folders);
+    folderCounts = survey.folders;
+    if (key != _scannedFolders || !GameLibrary.sameListing(games, survey.games)) {
+      if (key != _scannedFolders) {
         _tracker.reset();
-        _scannedFolder = folder;
+        _connected.clear();
+        _scannedFolders = key;
       }
-      _takeScan(folder, survey.games);
+      _gameRoots = survey.roots;
+      _takeScan(survey.games, quiet: _newlyConnected());
+    } else if (counted) {
+      _newlyConnected();
+      notifyListeners();
     }
-    return survey.incomplete;
+    return [
+      for (final path in survey.incomplete)
+        if (p.equals(path, folder) || p.isWithin(folder, path)) path,
+    ];
   }
 
   /// A scan's games: the records and trophies read again, the selection kept on the game it
-  /// was on, and the games not seen before announced. An unlock going on is left as it is: its
-  /// record is written only when it is done.
-  void _takeScan(String folder, List<Game> found) {
+  /// was on, and the games not seen before announced (but those in the [quiet] folders). An
+  /// unlock going on is left as it is: its record is written only when it is done.
+  void _takeScan(List<Game> found, {Set<String> quiet = const {}}) {
     final previous = selectedGame?.id;
     final focusedInLibrary = libraryIndex >= 0 && libraryIndex < games.length ? games[libraryIndex].id : null;
     _forgetDiskFacts();
@@ -1987,7 +2049,7 @@ class AppModel extends ChangeNotifier {
     records.clear();
     trophies.clear();
     for (final game in games) {
-      final installed = Installer.installedFolder(game, folder);
+      final installed = Installer.installedFolder(game, rootOf(game)!);
       final record = Installer.record(installed, system: system);
       if (record != null) records[game.id] = record;
       _loadTrophies(game);
@@ -1996,7 +2058,10 @@ class AppModel extends ChangeNotifier {
     selected = index >= 0 ? index : selected.clamp(0, games.isEmpty ? 0 : games.length - 1);
     final libraryAt = games.indexWhere((game) => game.id == focusedInLibrary);
     libraryIndex = libraryAt >= 0 ? libraryAt : libraryIndex.clamp(0, games.isEmpty ? 0 : games.length - 1);
-    final added = _tracker.update(found);
+    final added = [
+      for (final game in _tracker.update(found))
+        if (!quiet.any((folder) => p.isWithin(folder, game.folder))) game,
+    ];
     if (added.isNotEmpty) _announceNewGames(added);
     _changed();
   }
@@ -2030,7 +2095,7 @@ class AppModel extends ChangeNotifier {
   }
 
   void _loadTrophies(Game game) {
-    final folder = root;
+    final folder = rootOf(game);
     if (folder == null) return;
     final installed = Installer.installedFolder(game, folder);
     final language = ConsoleLanguage.tag(T.language.consoleLanguage);
@@ -2043,22 +2108,23 @@ class AppModel extends ChangeNotifier {
     }
   }
 
-  LibraryWatcher? _library;
-  String? _watched;
+  /// A watcher for each games folder, by folder.
+  final Map<String, LibraryWatcher> _libraries = {};
   final LibraryTracker _tracker = LibraryTracker();
-  String? _scannedFolder;
+  String? _scannedFolders;
 
-  /// Watches the games folder and everything in it (library_watch.dart): a dump copied in, in a
+  /// Watches every games folder and everything in it (library_watch.dart): a dump copied in, in a
   /// subfolder too, shows up on its own a moment after its copy is far enough along, and one
-  /// removed goes. An unlock going on does not hold the scans back.
-  void watchGamesFolder() {
-    final folder = root;
-    if (folder == _watched) return;
-    _library?.stop();
-    _library = null;
-    _watched = folder;
-    if (folder == null) return;
-    _library = LibraryWatcher(folder, onScan: () => _watchedScan(folder))..start();
+  /// removed goes. A folder that is not there (its drive unplugged) is looked for until it is
+  /// back, and its games come with it. An unlock going on does not hold the scans back.
+  void watchGamesFolders() {
+    final folders = preferences.gamesFolders;
+    for (final gone in _libraries.keys.where((folder) => !folders.contains(folder)).toList()) {
+      _libraries.remove(gone)?.stop();
+    }
+    for (final folder in folders) {
+      _libraries[folder] ??= LibraryWatcher(folder, onScan: () => _watchedScan(folder))..start();
+    }
   }
 
   /// The size of the selected game, measured once.
@@ -2123,13 +2189,68 @@ class AppModel extends ChangeNotifier {
 
   GameSettings currentSettings(Game game) => _cachedSettings.putIfAbsent(game.slug, () => settingsFor(game));
 
+  /// Onboarding: the first games folder, picked (or picked again: it changes).
   Future<void> chooseGamesFolder() async {
     final folder = await services.pickFolder?.call(T.text('chooseFolder'));
     if (folder == null) return;
-    preferences.gamesFolder = folder;
+    final others = preferences.gamesFolders.skip(1).where((known) => !p.equals(known, folder));
+    _setGamesFolders([folder, ...others]);
+  }
+
+  /// Settings › Game Library › Add Folder and Select on the empty shelf: another games folder,
+  /// after the others (one already in the list is said, not added again).
+  Future<void> addGamesFolder() async {
+    final folder = await services.pickFolder?.call(T.text('chooseFolder'));
+    if (folder == null) return;
+    if (preferences.gamesFolders.any((known) => p.equals(known, folder))) {
+      show(T.text('folderAlreadyAdded'));
+      return;
+    }
+    _setGamesFolders([...preferences.gamesFolders, folder]);
+  }
+
+  /// The copy warning's folder fixes: the picked folder becomes the first (the one unlocked games
+  /// go to), the others stay in the library after it.
+  Future<void> chooseFirstGamesFolder() async {
+    final folder = await services.pickFolder?.call(T.text('chooseFolder'));
+    if (folder == null) return;
+    _setGamesFolders([folder, ...preferences.gamesFolders.where((known) => !p.equals(known, folder))]);
+  }
+
+  /// Settings › Game Library: [folder] out of the library; nothing on its drive is touched. With
+  /// the last one gone the library is empty.
+  void removeGamesFolder(String folder) {
+    _setGamesFolders([...preferences.gamesFolders.where((known) => known != folder)]);
+    show(T.text('folderRemoved'));
+  }
+
+  void _setGamesFolders(List<String> folders) {
+    preferences.gamesFolders = folders;
     savePreferences();
     rescan();
-    watchGamesFolder();
+    watchGamesFolders();
+  }
+
+  /// Settings › Game Library: a row for each games folder, its path and how many games it holds (or
+  /// that its drive is not connected); choosing it takes the folder out of the library.
+  List<PanelRow> folderRows() {
+    final folders = preferences.gamesFolders;
+    return [
+      for (final (index, folder) in folders.indexed)
+        PanelRow(
+          id: 'folder-$index',
+          title: folder,
+          detail: [
+            switch (folderCounts[folder]) {
+              null => T.text('folderNotConnected'),
+              1 => T.text('folderOneGame'),
+              final int count => T.format('folderGames', [count]),
+            },
+            T.text('folderRemove'),
+          ].join(' · '),
+          kind: ActionRow(() => removeGamesFolder(folder), destructive: true),
+        ),
+    ];
   }
 
   Future<void> chooseToolkit() async {
@@ -2185,7 +2306,7 @@ class AppModel extends ChangeNotifier {
   /// Queues [game]'s unlock; when its files would be copied (the games folder cannot link to the
   /// dump) and [copy] does not say so already, asks first.
   void unlock(Game game, {bool copy = false}) {
-    final folder = root;
+    final folder = rootOf(game);
     if (folder == null) return;
     final kit = toolkit;
     if (kit == null) return show(T.text('noToolkit'));
@@ -2263,12 +2384,12 @@ class AppModel extends ChangeNotifier {
   }
 
   void _startNext() {
-    final folder = root;
     final kit = toolkit;
-    if (_installer != null || queue.isEmpty || folder == null || kit == null) return;
+    if (_installer != null || queue.isEmpty || root == null || kit == null) return;
     final id = queue.removeAt(0);
     final game = games.where((game) => game.id == id).firstOrNull;
     if (game == null) return _startNext();
+    final folder = rootOf(game)!;
     _installer = _runUnlock(
       game,
       kit,
@@ -2402,17 +2523,17 @@ class AppModel extends ChangeNotifier {
   /// Takes the queue's steps until it has nothing more to do now; the skips are told unless
   /// [quiet] (the caller tells them), and returned.
   List<(String, PrepareSkip)> _stepPrepare({bool quiet = false}) {
-    final folder = root;
     final kit = toolkit;
     final skipped = <(String, PrepareSkip)>[];
-    if (folder == null || kit == null || _disposed) return skipped;
+    if (root == null || kit == null || _disposed) return skipped;
     final conditions = _prepareConditions;
     while (true) {
       final action = prepare.step(
         conditions,
         shortage: (id) {
           final game = games.where((game) => game.id == id).firstOrNull;
-          if (game == null) return null;
+          final folder = game == null ? null : rootOf(game);
+          if (game == null || folder == null) return null;
           try {
             final plan = Installer.plan(
               game,
@@ -2442,7 +2563,7 @@ class AppModel extends ChangeNotifier {
           );
           return skipped;
         case PrepareStart(:final id):
-          _startPreparing(id, kit, folder);
+          _startPreparing(id, kit);
         case PreparePause():
           _preparer?.pause();
           notifyListeners();
@@ -2466,7 +2587,7 @@ class AppModel extends ChangeNotifier {
     _prepareTimer ??= Timer.periodic(const Duration(seconds: 30), (_) => _stepPrepare());
   }
 
-  void _startPreparing(String id, Toolkit kit, String folder) {
+  void _startPreparing(String id, Toolkit kit) {
     final game = games.where((game) => game.id == id).firstOrNull;
     if (game == null || stateOf(game) is! Locked) {
       prepare.finished(id);
@@ -2475,7 +2596,7 @@ class AppModel extends ChangeNotifier {
     _preparer = _runUnlock(
       game,
       kit,
-      folder,
+      rootOf(game)!,
       background: true,
       done: (error) {
         final promoted = prepare.promoted;
@@ -2569,7 +2690,7 @@ class AppModel extends ChangeNotifier {
   }
 
   void uninstall(Game game) {
-    final folder = root;
+    final folder = rootOf(game);
     if (folder == null) return;
     Installer.uninstall(game, folder);
     records.remove(game.id);
@@ -2592,7 +2713,7 @@ class AppModel extends ChangeNotifier {
   }
 
   void backUpSaves(Game game) {
-    final folder = root;
+    final folder = rootOf(game);
     if (folder == null) return;
     try {
       SaveBackup.backUp(Installer.installedFolder(game, folder), backupFolder(game), DateTime.now());
@@ -2605,7 +2726,7 @@ class AppModel extends ChangeNotifier {
   }
 
   void restoreLatestSaves(Game game) {
-    final folder = root;
+    final folder = rootOf(game);
     final latest = SaveBackup.backups(backupFolder(game)).firstOrNull;
     if (folder == null || latest == null) return;
     if (running?.$1 == game) return show(T.text('closeGameFirst'));
@@ -2643,7 +2764,7 @@ class AppModel extends ChangeNotifier {
 
   /// Plays [game]; [trace] turns detailed logging on for this start only.
   Future<void> play(Game game, {bool trace = false}) async {
-    final folder = root;
+    final folder = rootOf(game);
     if (folder == null || starting != null || running != null) return;
     // The profile's own saves and trophies in the game's folder before anything reads them.
     activateProfileSaves(game);
@@ -2762,7 +2883,7 @@ class AppModel extends ChangeNotifier {
 
   /// While a game runs, a trophy it earns shows and goes to the phones.
   void _watchTrophies(Game game) {
-    final folder = root;
+    final folder = rootOf(game);
     if (folder == null) return;
     final installed = Installer.installedFolder(game, folder);
     _earned = Trophies.earned(installed);
@@ -3163,10 +3284,10 @@ class AppModel extends ChangeNotifier {
         break;
     }
     final game = selectedGame;
-    // With no games the top bar still works: Up reaches it, and Select on the empty shelf picks
-    // the games folder.
+    // With no games the top bar still works: Up reaches it, and Select on the empty shelf adds a
+    // games folder.
     if (game == null && (focus.area == 'tiles' || focus.area == 'actions')) {
-      if (command == Command.select) unawaited(chooseGamesFolder());
+      if (command == Command.select) unawaited(addGamesFolder());
       if (command == Command.up) _moveFocus(const HomeFocus.top(1));
       return;
     }
@@ -3753,7 +3874,7 @@ class AppModel extends ChangeNotifier {
           detail: T.text('copyFixFolderDetail'),
           kind: ActionRow(() {
             dismiss();
-            unawaited(chooseGamesFolder());
+            unawaited(chooseFirstGamesFolder());
           }),
         )
       else
@@ -3763,7 +3884,7 @@ class AppModel extends ChangeNotifier {
           detail: T.text('noSpaceFolderDetail'),
           kind: ActionRow(() {
             dismiss();
-            unawaited(chooseGamesFolder());
+            unawaited(chooseFirstGamesFolder());
           }),
         ),
       if (windows && copying)
@@ -3921,12 +4042,8 @@ class AppModel extends ChangeNotifier {
         id: 'library',
         title: T.text('library'),
         rows: [
-          PanelRow(
-            id: 'folder',
-            title: T.text('folder'),
-            detail: preferences.gamesFolder ?? '—',
-            kind: ActionRow(() => unawaited(chooseGamesFolder())),
-          ),
+          ...folderRows(),
+          PanelRow(id: 'addFolder', title: T.text('addFolder'), kind: ActionRow(() => unawaited(addGamesFolder()))),
           PanelRow(id: 'rescan', title: T.text('rescan'), kind: ActionRow(rescan)),
           PanelRow(
             id: 'prepareNewGames',
@@ -4330,7 +4447,7 @@ class AppModel extends ChangeNotifier {
         PanelRow(
           id: 'folder',
           title: T.text('showInFinder'),
-          kind: ActionRow(() => services.openFolder?.call(Installer.installedFolder(game, root!))),
+          kind: ActionRow(() => services.openFolder?.call(Installer.installedFolder(game, rootOf(game)!))),
         ),
         PanelRow(id: 'cache', title: T.text('clearShaderCache'), kind: ActionRow(() => clearShaderCache(game))),
         PanelRow(
@@ -4784,7 +4901,7 @@ class AppModel extends ChangeNotifier {
   int _defaultChoice(int step) => switch (step) {
     0 => T.languages.indexOf(T.language),
     1 => look.index,
-    2 => preferences.gamesFolder == null ? 0 : 1,
+    2 => preferences.gamesFolders.isEmpty ? 0 : 1,
     3 => toolkit == null ? 0 : 2,
     _ => 0,
   };
@@ -4792,7 +4909,7 @@ class AppModel extends ChangeNotifier {
   int get _onboardingCount => switch (onboardingStep) {
     0 => T.languages.length,
     1 => LookStyle.values.length,
-    2 => preferences.gamesFolder == null ? 1 : 2,
+    2 => preferences.gamesFolders.isEmpty ? 1 : 2,
     _ => 3,
   };
 
@@ -4838,13 +4955,13 @@ class AppModel extends ChangeNotifier {
         _previewChoice();
         onboardingStep++;
       case 2:
-        if (onboardingChoice == 1 && preferences.gamesFolder != null) {
+        if (onboardingChoice == 1 && preferences.gamesFolders.isNotEmpty) {
           onboardingStep++;
           _enterToolkitStep();
         } else {
           unawaited(
             chooseGamesFolder().then((_) {
-              if (preferences.gamesFolder != null) onboardingChoice = 1;
+              if (preferences.gamesFolders.isNotEmpty) onboardingChoice = 1;
               notifyListeners();
             }),
           );
@@ -5151,7 +5268,9 @@ class AppModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _library?.stop();
+    for (final watcher in _libraries.values) {
+      watcher.stop();
+    }
     _trophyWatch?.cancel();
     _toastTimer?.cancel();
     _pulses.stop();

@@ -5,7 +5,14 @@ release when it is made.
 
 ## Next release
 
-Nothing yet.
+- **More than one games folder.** **Settings → Game Library** lists each folder with its game
+  count, takes one out of the library (nothing on its drive is deleted) and has **Add Folder**,
+  with the keys and a controller as well as the mouse; Select on the empty shelf adds one too.
+  The library is all the folders together; a game in more than one shows once, from the folder
+  listed first. A folder whose drive is unplugged stays in the list as **Not connected** and its
+  games come back when the drive does. Each game is unlocked into the folder it was found in,
+  so its files are linked on their own drive instead of copied to another; games unlocked
+  before stay where they are. The saved single folder carries over as the first.
 
 ## 0.1.12
 

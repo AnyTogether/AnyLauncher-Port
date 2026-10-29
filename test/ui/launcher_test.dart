@@ -404,7 +404,7 @@ void main() {
     testWidgets('onboarding: language, theme, folder, toolkit, then the home screen', (tester) async {
       fixture = makeFixture(onboarded: false, withToolkit: false);
       final model = fixture.model;
-      model.preferences.gamesFolder = null;
+      model.preferences.gamesFolders = [];
       model.games = [];
       await pumpLauncher(tester, model);
       expect(find.text('Welcome to AnyPS5'), findsOneWidget);
@@ -421,7 +421,7 @@ void main() {
       await press(tester, LogicalKeyboardKey.enter);
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
       await settle(tester);
-      expect(model.preferences.gamesFolder, isNotNull, reason: 'the picker answered');
+      expect(model.preferences.gamesFolders, isNotEmpty, reason: 'the picker answered');
       expect(model.games, hasLength(4));
       expect(model.onboardingChoice, 1);
       await press(tester, LogicalKeyboardKey.enter);

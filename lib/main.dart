@@ -156,7 +156,7 @@ Future<void> main(List<String> arguments) async {
   unawaited(model.startAudio());
   model.startPads();
   if (model.preferences.onboarded) model.rescan();
-  model.watchGamesFolder();
+  model.watchGamesFolders();
   unawaited(model.startPhoneServer());
   // Several profiles (or Ask every time): "Who's playing?" first, the session waiting for the pick.
   model.startProfiles();

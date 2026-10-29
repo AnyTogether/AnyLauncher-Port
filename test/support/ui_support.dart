@@ -161,6 +161,7 @@ Fixture makeFixture({
   LauncherWindow? window,
   ReplayBuffer? Function(int seconds)? replay,
   Future<int> Function(String folder)? folderSize,
+  Future<String?> Function(String title)? pickFolder,
 }) {
   final opened = <Uri>[];
   final copied = <String>[];
@@ -187,7 +188,7 @@ Fixture makeFixture({
   makeDump(root, 'broken', titleId: 'PPSA04004', names: {'en-US': 'Sealed Archive'}, eboot: const [1, 2, 3, 4]);
   final preferences = Preferences()
     ..onboarded = onboarded
-    ..gamesFolder = root
+    ..gamesFolders = [root]
     ..theme = theme
     ..language = language.code
     ..profileName = 'Utku'
@@ -201,7 +202,7 @@ Fixture makeFixture({
     persist: false,
     services: LauncherServices(
       computerName: 'Desk',
-      pickFolder: (_) async => root,
+      pickFolder: pickFolder ?? (_) async => root,
       advertise: false,
       preferredPorts: false,
       cable: false,

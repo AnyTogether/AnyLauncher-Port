@@ -173,7 +173,7 @@ void main() {
       expect(model.preferences.theme, 0, reason: 'a new profile starts from the defaults');
       expect(model.preferences.sounds, isTrue);
       expect(model.preferences.profileName, 'Selin');
-      expect(model.preferences.gamesFolder, isNotNull, reason: "the computer's settings stay");
+      expect(model.preferences.gamesFolders, isNotEmpty, reason: "the computer's settings stay");
       model.preferences.theme = 1;
       await model.switchProfile(LauncherProfile.legacyId);
       expect(model.preferences.theme, 2);

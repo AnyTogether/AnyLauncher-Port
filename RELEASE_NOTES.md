@@ -5,6 +5,10 @@ release when it is made.
 
 ## Next release
 
+Nothing yet.
+
+## 0.1.14
+
 - **Update from Git for an engine you build yourself.** **Use My Own Folder** now takes a git
   checkout of the engine's source (AnyPS5 or AnyPS5-ARM) as it is: the relinker and libraries
   are read from its CMake build folder (`build/core/relinker`, `build/core/libs/libs`, plus the
@@ -32,6 +36,13 @@ release when it is made.
   0.5, letting go below 0.4), a diagonal goes sideways, a held left or right gives way only to
   a clearly vertical push, and held up or down repeats first after 0.55 s instead of 0.40 s.
   Left and right, the D-pad and the keys feel as before.
+- **Every text is in the language files, ready for Weblate.** The accent colour names, the
+  mouse button, wheel and key labels, the controls' button names and the number formats were
+  still in the code; they are in `assets/l10n` now, so a translation covers them too. Turkish
+  sizes and percentages read `52,5 GB` and `%75`. The files are flat JSON objects with the
+  language's name as the text `languageName`, the format Weblate reads; a file in the old
+  format in the `Languages` folder still loads. **TRANSLATING.md** is now the guide for the
+  Mac launcher, this launcher and the phone app.
 
 ## 0.1.13
 

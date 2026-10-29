@@ -24,14 +24,73 @@ enum OverlayCorner {
 /// How the performance overlay looks: one line of figures, or the panel with its graph.
 enum OverlayStyle { minimal, detailed }
 
+/// Settings › Default Display: how a game starts that made no display choice of its own (Game
+/// Settings › Display, Window Size and Vertical Sync left at Default). The built-in values are
+/// the ones every game started with before there were defaults.
+class DisplayDefaults {
+  const DisplayDefaults({this.fullscreen = false, this.windowSize = 75, this.vsync = true});
+
+  /// A value missing or of the wrong kind is the built-in one.
+  factory DisplayDefaults.fromJson(Object? json) {
+    if (json is! Map) return const DisplayDefaults();
+    const builtIn = DisplayDefaults();
+    final size = json['windowSize'];
+    return DisplayDefaults(
+      fullscreen: json['fullscreen'] is bool ? json['fullscreen'] as bool : builtIn.fullscreen,
+      windowSize: size is num ? size.toInt().clamp(minimumWindowSize, 100) : builtIn.windowSize,
+      vsync: json['vsync'] is bool ? json['vsync'] as bool : builtIn.vsync,
+    );
+  }
+
+  static const minimumWindowSize = 30;
+
+  /// The defaults the launcher saved in its preferences file (`displayDefaults`), for a game
+  /// started without the launcher's window (the command line); the built-in ones when there are
+  /// none or the file cannot be read.
+  static DisplayDefaults load(String preferencesFile) {
+    try {
+      final json = jsonDecode(File(preferencesFile).readAsStringSync());
+      return DisplayDefaults.fromJson(json is Map ? json['displayDefaults'] : null);
+    } on Object {
+      return const DisplayDefaults();
+    }
+  }
+
+  final bool fullscreen;
+
+  /// The share of the display the window takes, in percent.
+  final int windowSize;
+  final bool vsync;
+
+  bool get isBuiltIn => this == const DisplayDefaults();
+
+  DisplayDefaults copyWith({bool? fullscreen, int? windowSize, bool? vsync}) => DisplayDefaults(
+    fullscreen: fullscreen ?? this.fullscreen,
+    windowSize: windowSize ?? this.windowSize,
+    vsync: vsync ?? this.vsync,
+  );
+
+  Map<String, Object?> toJson() => {'fullscreen': fullscreen, 'windowSize': windowSize, 'vsync': vsync};
+
+  @override
+  bool operator ==(Object other) =>
+      other is DisplayDefaults &&
+      other.fullscreen == fullscreen &&
+      other.windowSize == windowSize &&
+      other.vsync == vsync;
+
+  @override
+  int get hashCode => Object.hash(fullscreen, windowSize, vsync);
+}
+
 /// The per-game choices the launcher passes to a started game as environment variables. Stored
 /// as JSON with the macOS launcher's keys, so a settings file reads the same on every system.
 class GameSettings {
   const GameSettings({
     this.resolution,
-    this.fullscreen = false,
-    this.windowSize = 75,
-    this.vsync = true,
+    bool? fullscreen,
+    int? windowSize,
+    bool? vsync,
     this.overlay = OverlayCorner.off,
     this.overlayStyle,
     this.frameGeneration,
@@ -42,7 +101,14 @@ class GameSettings {
     this.phoneLayout,
     this.trace,
     this.gyro,
-  });
+  }) : ownFullscreen = fullscreen,
+       ownWindowSize = windowSize,
+       ownVsync = vsync;
+
+  /// Written in every file since display choices can follow [DisplayDefaults]: there the
+  /// display keys are present only for a game's own choices. A file without it (an older
+  /// launcher's, the macOS launcher's) always had them all; see [GameSettings.fromJson].
+  static const version = 2;
 
   factory GameSettings.fromJson(Map<String, dynamic> json) {
     T? named<T extends Enum>(List<T> values, Object? name) {
@@ -54,11 +120,24 @@ class GameSettings {
 
     final controls = json['controls'];
     final tuning = json['tuning'];
+    var fullscreen = json['fullscreen'] is bool ? json['fullscreen'] as bool : null;
+    var windowSize = (json['windowSize'] as num?)?.toInt();
+    var vsync = json['vsync'] is bool ? json['vsync'] as bool : null;
+    if ((json['settingsVersion'] as num? ?? 1) < version) {
+      // A file from before the defaults wrote every display key, changed or not: a value that
+      // is the old built-in one was most likely never chosen, so it follows the defaults (which
+      // start as those same values: nothing changes until they do). Windowed with a size of its
+      // own was chosen, though.
+      const builtIn = DisplayDefaults();
+      if (windowSize == builtIn.windowSize) windowSize = null;
+      if (fullscreen == builtIn.fullscreen && windowSize == null) fullscreen = null;
+      if (vsync == builtIn.vsync) vsync = null;
+    }
     return GameSettings(
       resolution: json['resolution'] as String?,
-      fullscreen: json['fullscreen'] as bool? ?? false,
-      windowSize: (json['windowSize'] as num?)?.toInt() ?? 75,
-      vsync: json['vsync'] as bool? ?? true,
+      fullscreen: fullscreen,
+      windowSize: windowSize,
+      vsync: vsync,
       overlay: named(OverlayCorner.values, json['overlay']) ?? OverlayCorner.off,
       overlayStyle: named(OverlayStyle.values, json['overlayStyle']),
       frameGeneration: json['frameGeneration'] as bool?,
@@ -81,11 +160,32 @@ class GameSettings {
   /// A WIDTHxHEIGHT the title's patch file can set (see [ResolutionPatch]), null for the title's
   /// own. Taking effect needs the game installed again, as the value is written at relink time.
   final String? resolution;
-  final bool fullscreen;
+
+  /// The game's own display choices; null follows Settings › Default Display ([withDefaults]).
+  final bool? ownFullscreen;
 
   /// The share of the display the window takes, in percent.
-  final int windowSize;
-  final bool vsync;
+  final int? ownWindowSize;
+  final bool? ownVsync;
+
+  /// The display as the game starts: its own choice, else the built-in default. A game is
+  /// started with [withDefaults] applied, so these are the user's defaults there.
+  bool get fullscreen => ownFullscreen ?? const DisplayDefaults().fullscreen;
+  int get windowSize => ownWindowSize ?? const DisplayDefaults().windowSize;
+  bool get vsync => ownVsync ?? const DisplayDefaults().vsync;
+
+  /// Whether the game made no display choice of its own.
+  bool get followsDisplayDefaults => ownFullscreen == null && ownWindowSize == null && ownVsync == null;
+
+  /// These settings with [defaults] in place of the display choices the game did not make.
+  GameSettings withDefaults(DisplayDefaults defaults) => copyWith(
+    fullscreen: ownFullscreen ?? defaults.fullscreen,
+    windowSize: ownWindowSize ?? defaults.windowSize,
+    vsync: ownVsync ?? defaults.vsync,
+  );
+
+  /// These settings with every display choice back to following the defaults.
+  GameSettings followingDisplayDefaults() => copyWith(fullscreen: null, windowSize: null, vsync: null);
   final OverlayCorner overlay;
 
   /// null is minimal.
@@ -117,9 +217,10 @@ class GameSettings {
   final GyroAiming? gyro;
 
   Map<String, Object?> toJson() => {
-    'fullscreen': fullscreen,
-    'windowSize': windowSize,
-    'vsync': vsync,
+    'settingsVersion': version,
+    if (ownFullscreen != null) 'fullscreen': ownFullscreen,
+    if (ownWindowSize != null) 'windowSize': ownWindowSize,
+    if (ownVsync != null) 'vsync': ownVsync,
     'overlay': overlay.name,
     if (resolution != null) 'resolution': resolution,
     if (overlayStyle != null) 'overlayStyle': overlayStyle!.name,
@@ -138,9 +239,9 @@ class GameSettings {
   /// A copy with some choices changed; pass null explicitly to clear an optional one.
   GameSettings copyWith({
     Object? resolution = _keep,
-    bool? fullscreen,
-    int? windowSize,
-    bool? vsync,
+    Object? fullscreen = _keep,
+    Object? windowSize = _keep,
+    Object? vsync = _keep,
     OverlayCorner? overlay,
     Object? overlayStyle = _keep,
     Object? frameGeneration = _keep,
@@ -153,9 +254,9 @@ class GameSettings {
     Object? gyro = _keep,
   }) => GameSettings(
     resolution: identical(resolution, _keep) ? this.resolution : resolution as String?,
-    fullscreen: fullscreen ?? this.fullscreen,
-    windowSize: windowSize ?? this.windowSize,
-    vsync: vsync ?? this.vsync,
+    fullscreen: identical(fullscreen, _keep) ? ownFullscreen : fullscreen as bool?,
+    windowSize: identical(windowSize, _keep) ? ownWindowSize : windowSize as int?,
+    vsync: identical(vsync, _keep) ? ownVsync : vsync as bool?,
     overlay: overlay ?? this.overlay,
     overlayStyle: identical(overlayStyle, _keep) ? this.overlayStyle : overlayStyle as OverlayStyle?,
     frameGeneration: identical(frameGeneration, _keep) ? this.frameGeneration : frameGeneration as bool?,

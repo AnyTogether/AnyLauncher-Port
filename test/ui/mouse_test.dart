@@ -45,6 +45,9 @@ void main() {
     expect(settings().fullscreen, isFalse);
     await press(tester, LogicalKeyboardKey.arrowLeft);
     expect(settings().fullscreen, isFalse, reason: 'already at the first option: ← stays');
+    expect(settings().ownFullscreen, isNull, reason: 'at the first option, Default');
+    await press(tester, LogicalKeyboardKey.arrowRight);
+    expect(settings().ownFullscreen, isFalse, reason: 'Window');
     await press(tester, LogicalKeyboardKey.arrowRight);
     expect(settings().fullscreen, isTrue);
     await press(tester, LogicalKeyboardKey.arrowLeft);
@@ -84,6 +87,9 @@ void main() {
     expect(model.panelRow, vsync, reason: 'the focus follows the pointer');
     await press(tester, LogicalKeyboardKey.arrowDown);
     expect(model.panelRow, vsync + 1, reason: 'the keys carry on from there; a still pointer does not pull it back');
+    // Default, On, Off.
+    await tester.tap(find.byKey(const ValueKey('row-vsync')));
+    await settle(tester);
     await tester.tap(find.byKey(const ValueKey('row-vsync')));
     await settle(tester);
     expect(settings().vsync, isFalse);

@@ -139,7 +139,10 @@ Future<int> runCli(
         return fail("the game's dump moved ($missing is gone): unlock it again or put the dump back");
       }
       final paths = AppPaths.forSystem(host, environment: env);
-      final settings = GameSettingsStore(paths.gameSettingsFolder).load(game.slug);
+      // Settings › Default Display for the display choices the game left at Default.
+      final settings = GameSettingsStore(paths.gameSettingsFolder)
+          .load(game.slug)
+          .withDefaults(DisplayDefaults.load(paths.preferencesFile));
       final inputFile = p.join(paths.inputFilesFolder, '${game.slug}.ini');
       settings.writeInputFile(inputFile);
       final running = await GameProcess.start(
@@ -443,7 +446,11 @@ Future<int> _steam(
 
 /// The Game Presets of the profile the launcher last played as.
 String _gamePresetsFile(AppPaths paths) {
-  final store = ProfileStore(paths.profilesFolder, existing: const ExistingSetup(onboarded: false, name: ''), persist: false);
+  final store = ProfileStore(
+    paths.profilesFolder,
+    existing: const ExistingSetup(onboarded: false, name: ''),
+    persist: false,
+  );
   return p.join(paths.profilesFolder, store.book.currentProfile?.id ?? LauncherProfile.legacyId, 'GamePresets.json');
 }
 

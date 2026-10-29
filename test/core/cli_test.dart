@@ -97,6 +97,18 @@ void main() {
     final again = File(p.join(temp.path, 'home', '.local', 'state', 'AnyPS5', 'logs', 'PPSA07007.log'))
         .readAsStringSync();
     expect(RegExp(r'^--- \S+ \S+ trace$', multiLine: true).hasMatch(again), isTrue);
+    expect(again, contains('ANYPS5_FULLSCREEN=0'));
+    // Settings › Default Display reaches a game started here too.
+    final preferences = File(AppPaths.forSystem(HostSystem.linux, environment: environment).preferencesFile)
+      ..createSync(recursive: true)
+      ..writeAsStringSync('{"displayDefaults":{"fullscreen":true,"windowSize":75,"vsync":true}}');
+    expect(preferences.existsSync(), isTrue);
+    final full = await run(['play', game, root], environment: environment);
+    expect(full.$1, 0, reason: full.$3);
+    final log3 = File(p.join(temp.path, 'home', '.local', 'state', 'AnyPS5', 'logs', 'PPSA07007.log'))
+        .readAsStringSync();
+    final last = log3.substring(log3.lastIndexOf('relinked game'));
+    expect(last, contains('ANYPS5_FULLSCREEN=1'));
   });
 
   test('remote: a phone is let in with --allow-all and sees the games', () async {

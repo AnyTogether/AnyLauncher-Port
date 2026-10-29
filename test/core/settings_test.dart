@@ -284,6 +284,133 @@ StickModifier = KEY:F24
     });
   });
 
+  group('display defaults', () {
+    test('the built-in defaults are what a game with no settings always started with', () {
+      const defaults = DisplayDefaults();
+      expect(defaults.fullscreen, isFalse);
+      expect(defaults.windowSize, 75);
+      expect(defaults.vsync, isTrue);
+      expect(
+        const GameSettings().withDefaults(defaults).environment(launcherLanguage: 1),
+        const GameSettings().environment(launcherLanguage: 1),
+      );
+    });
+
+    test('a game with no choice of its own follows the defaults; its own choice wins', () {
+      const defaults = DisplayDefaults(fullscreen: true, windowSize: 60, vsync: false);
+      final following = const GameSettings().withDefaults(defaults);
+      expect(following.fullscreen, isTrue);
+      expect(following.windowSize, 60);
+      expect(following.vsync, isFalse);
+      expect(following.environment(launcherLanguage: 1)['ANYPS5_FULLSCREEN'], '1');
+      expect(following.environment(launcherLanguage: 1)['ANYPS5_PRESENT_MODE'], 'immediate');
+
+      final own = const GameSettings(fullscreen: false, windowSize: 90, vsync: true).withDefaults(defaults);
+      expect(own.fullscreen, isFalse);
+      expect(own.windowSize, 90);
+      expect(own.vsync, isTrue);
+
+      // Only the windowed choice set: the size still comes from the defaults.
+      final mixed = const GameSettings(fullscreen: false).withDefaults(defaults);
+      expect(mixed.fullscreen, isFalse);
+      expect(mixed.windowSize, 60);
+    });
+
+    test('which choices are the game\'s own, and clearing one follows the default again', () {
+      const settings = GameSettings(fullscreen: true, vsync: false);
+      expect(settings.ownFullscreen, isTrue);
+      expect(settings.ownWindowSize, isNull);
+      expect(settings.ownVsync, isFalse);
+      expect(settings.followsDisplayDefaults, isFalse);
+      final cleared = settings.copyWith(fullscreen: null, vsync: null);
+      expect(cleared.ownFullscreen, isNull);
+      expect(cleared.ownVsync, isNull);
+      expect(cleared.followsDisplayDefaults, isTrue);
+      expect(const GameSettings(windowSize: 50).followsDisplayDefaults, isFalse);
+      expect(settings.followingDisplayDefaults().followsDisplayDefaults, isTrue);
+      expect(settings.followingDisplayDefaults().ownFullscreen, isNull);
+    });
+
+    test('a file written now keeps "the default" apart from a choice that equals it', () {
+      for (final settings in const [
+        GameSettings(),
+        GameSettings(fullscreen: false),
+        GameSettings(fullscreen: false, windowSize: 75, vsync: true),
+        GameSettings(fullscreen: true),
+        GameSettings(vsync: false, language: 4),
+      ]) {
+        final json = jsonDecode(jsonEncode(settings.toJson())) as Map<String, dynamic>;
+        expect(GameSettings.fromJson(json), settings);
+        expect(GameSettings.fromJson(json).ownFullscreen, settings.ownFullscreen);
+        expect(GameSettings.fromJson(json).ownWindowSize, settings.ownWindowSize);
+        expect(GameSettings.fromJson(json).ownVsync, settings.ownVsync);
+      }
+      expect(const GameSettings().toJson().containsKey('fullscreen'), isFalse);
+    });
+
+    test('files from before keep their choices; the old built-in values follow the defaults', () {
+      GameSettings old(String text) => GameSettings.fromJson(jsonDecode(text) as Map<String, dynamic>);
+      // Never changed: everything was written as the built-in values.
+      final untouched = old('{"fullscreen":false,"windowSize":75,"vsync":true,"overlay":"off"}');
+      expect(untouched.followsDisplayDefaults, isTrue);
+      // Full screen chosen.
+      final full = old('{"fullscreen":true,"windowSize":75,"vsync":true,"overlay":"off"}');
+      expect(full.ownFullscreen, isTrue);
+      expect(full.ownWindowSize, isNull);
+      expect(full.withDefaults(const DisplayDefaults()).fullscreen, isTrue);
+      // A window of its own size: windowed is the game's own choice too.
+      final window = old('{"fullscreen":false,"windowSize":60,"vsync":true,"overlay":"off"}');
+      expect(window.ownFullscreen, isFalse);
+      expect(window.ownWindowSize, 60);
+      expect(window.withDefaults(const DisplayDefaults(fullscreen: true)).fullscreen, isFalse);
+      // Vertical sync turned off.
+      final tearing = old('{"fullscreen":false,"windowSize":75,"vsync":false,"overlay":"off"}');
+      expect(tearing.ownVsync, isFalse);
+      expect(tearing.ownFullscreen, isNull);
+      // Unchanged after the update: with the built-in defaults each starts as it did.
+      for (final settings in [untouched, full, window, tearing]) {
+        final text = jsonEncode(jsonDecode(jsonEncode(settings.toJson())));
+        expect(
+          settings.withDefaults(const DisplayDefaults()).environment(launcherLanguage: 1),
+          GameSettings.fromJson(jsonDecode(text) as Map<String, dynamic>)
+              .withDefaults(const DisplayDefaults())
+              .environment(launcherLanguage: 1),
+        );
+      }
+      expect(
+        untouched.withDefaults(const DisplayDefaults()).environment(launcherLanguage: 1)['ANYPS5_FULLSCREEN'],
+        '0',
+      );
+      expect(window.withDefaults(const DisplayDefaults()).environment(launcherLanguage: 1)['ANYPS5_WINDOW_SIZE'], '60');
+      expect(
+        tearing.withDefaults(const DisplayDefaults()).environment(launcherLanguage: 1)['ANYPS5_PRESENT_MODE'],
+        'immediate',
+      );
+    });
+
+    test('the defaults as JSON, and a broken or missing value as the built-in one', () {
+      const defaults = DisplayDefaults(fullscreen: true, windowSize: 55, vsync: false);
+      expect(DisplayDefaults.fromJson(jsonDecode(jsonEncode(defaults.toJson()))), defaults);
+      expect(DisplayDefaults.fromJson(null), const DisplayDefaults());
+      expect(DisplayDefaults.fromJson('nonsense'), const DisplayDefaults());
+      expect(DisplayDefaults.fromJson(const {'windowSize': 500}).windowSize, 100);
+      expect(DisplayDefaults.fromJson(const {'windowSize': 1}).windowSize, 30);
+      expect(const DisplayDefaults().isBuiltIn, isTrue);
+      expect(defaults.isBuiltIn, isFalse);
+    });
+
+    test('read from the launcher\'s preferences file; built-in when it is missing or broken', () {
+      final folder = temporaryFolder('preferences');
+      addTearDown(() => folder.deleteSync(recursive: true));
+      final file = p.join(folder.path, 'preferences.json');
+      expect(DisplayDefaults.load(file), const DisplayDefaults());
+      File(file).writeAsStringSync('{broken');
+      expect(DisplayDefaults.load(file), const DisplayDefaults());
+      File(file).writeAsStringSync('{"theme":1,"displayDefaults":{"fullscreen":true}}');
+      expect(DisplayDefaults.load(file), const DisplayDefaults(fullscreen: true));
+    });
+  });
+
   group('resolution patch', () {
     const toml = '''
 format = 1

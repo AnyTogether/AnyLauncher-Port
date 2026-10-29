@@ -5,7 +5,14 @@ release when it is made.
 
 ## Next release
 
-Nothing yet.
+- **Default display settings for every game.** **Settings → Default Display** sets Window or
+  Full Screen, the window size and vertical sync once for all games. A game's own choice in its
+  Game Settings still wins; there **Display** and **Vertical Sync** now start with
+  **Default (…)**, which shows what the default is, the window size reads **Default (75%)**
+  until the game picks one, and **Use Default Display** puts a game back on the defaults.
+  Choices made before the update stay: a game set to Full Screen, a window size of its own or
+  vertical sync off keeps it; values never changed follow the defaults, which start as
+  before (Window, 75%, vertical sync on).
 
 ## 0.1.13
 

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
+import 'engine_checkout.dart';
 import 'host.dart';
 
 /// The tools a game is made with, for one system: the relinker and the system libraries built
@@ -16,6 +17,9 @@ import 'host.dart';
 ///     version.txt         changes when the relinker or libraries change (a fingerprint without it)
 ///     patches/<TITLE>.toml  per-title byte patches (optional)
 /// ```
+///
+/// Or a git checkout of the engine's source built in place ([EngineCheckout]): the relinker and
+/// the libraries then come from its build folder.
 class Toolkit {
   Toolkit(this.root, {this.system = HostSystem.linux, this.relinkerOverride});
 
@@ -37,9 +41,19 @@ class Toolkit {
   /// A relinker set apart from the toolkit (a setting), null for the toolkit's own.
   final String? relinkerOverride;
 
+  /// The engine's source tree when [root] is one (no relinker and no version.txt at its top),
+  /// null for a toolkit folder. Read once per Toolkit.
+  late final EngineCheckout? checkout =
+      File(p.join(root, system.relinkerName)).existsSync() || File(p.join(root, 'version.txt')).existsSync()
+      ? null
+      : EngineCheckout.at(root, system: system);
+
   /// The relinker: the toolkit's own unless another was set.
-  String get relinker => relinkerOverride ?? p.join(root, system.relinkerName);
-  String get libraries => p.join(root, 'libs');
+  String get relinker => relinkerOverride ?? checkout?.relinker ?? p.join(root, system.relinkerName);
+  String get libraries => checkout?.libraries ?? p.join(root, 'libs');
+
+  /// Folders the relinker needs on PATH (a checkout's compiler, for its runtime DLLs).
+  List<String> get toolFolders => checkout?.pathFolders ?? const [];
 
   /// Per-title patch files for the relinker, patches/<TITLE ID>.toml.
   String get patches => p.join(root, 'patches');
@@ -98,13 +112,19 @@ class Toolkit {
     return null;
   }
 
-  /// The files an installed game's libs/ gets: every .prx, and on Windows the DLLs beside them.
+  /// The files an installed game's libs/ gets: every .prx, and on Windows the DLLs beside them
+  /// (for a checkout, also the MinGW runtime from the compiler's folder).
   List<String> get libraryFiles {
     try {
       final files = Directory(libraries).listSync().whereType<File>().map((file) => file.path).where((path) {
         final extension = p.extension(path).toLowerCase();
         return extension == '.prx' || (system == HostSystem.windows && extension == '.dll');
       }).toList()..sort();
+      final runtime = checkout?.runtimeLibraries ?? const <String>[];
+      if (runtime.isNotEmpty && files.isNotEmpty) {
+        final names = {for (final file in files) p.basename(file).toLowerCase()};
+        files.addAll(runtime.where((file) => !names.contains(p.basename(file).toLowerCase())));
+      }
       return files;
     } on FileSystemException {
       return const [];

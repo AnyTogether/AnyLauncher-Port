@@ -51,6 +51,7 @@ import '../core/replay_buffer.dart';
 import '../core/save_backup.dart';
 import '../core/steam/steam_launch.dart';
 import '../core/screenshots.dart';
+import '../core/engine_checkout.dart';
 import '../core/toolkit.dart';
 import '../core/toolkit_download.dart';
 import '../core/profiles/profile_saves.dart';
@@ -117,6 +118,11 @@ class Preferences {
     ..soundVolume = (json['soundVolume'] as num?)?.toInt()
     ..musicVolume = (json['musicVolume'] as num?)?.toInt()
     ..engineSource = json['engineSource'] as String? ?? 'upstream'
+    ..engineGitBeforePlay = json['engineGitBeforePlay'] == true
+    ..engineGitBuilt = {
+      for (final entry in (json['engineGitBuilt'] as Map<String, dynamic>? ?? const {}).entries)
+        if (entry.value is String) entry.key: entry.value as String,
+    }
     ..fontsFolder = json['fontsFolder'] as String?
     ..showHiddenTrophies = json['showHiddenTrophies'] as bool? ?? false
     ..controllerVibration = json['controllerVibration'] as bool? ?? true
@@ -212,6 +218,13 @@ class Preferences {
   /// with the phone controller, full screen and window size).
   String engineSource = 'upstream';
 
+  /// Settings › AnyPS5 Engine › Update from Git Before Playing, for an engine folder that is a
+  /// git checkout: pulled and built before a game starts when the remote has new commits.
+  bool engineGitBeforePlay = false;
+
+  /// The commit each engine checkout was last built at by the launcher, by its folder.
+  Map<String, String> engineGitBuilt = {};
+
   /// A folder of the user's own fonts (the console's, say) games get first; null for none.
   String? fontsFolder;
 
@@ -299,6 +312,8 @@ class Preferences {
     'musicVolume': musicVolume,
     'lastPlayed': lastPlayed,
     'engineSource': engineSource,
+    'engineGitBeforePlay': engineGitBeforePlay,
+    'engineGitBuilt': engineGitBuilt,
     'fontsFolder': fontsFolder,
     'showHiddenTrophies': showHiddenTrophies,
     'controllerVibration': controllerVibration,
@@ -703,7 +718,12 @@ class LauncherServices {
     this.window,
     this.replay,
     this.folderSize,
+    this.commands,
   });
+
+  /// Runs git and CMake for an engine folder that is a git checkout (Update from Git); the
+  /// system's processes when not given.
+  final CommandRunner? commands;
 
   /// A game folder's size on disk, read away from the interface (Isolate.run by default): a
   /// dump holds tens of thousands of files.
@@ -1974,6 +1994,12 @@ class AppModel extends ChangeNotifier {
   /// The log shown in the log layer, read as it opens.
   String shownLog = '';
 
+  /// Reads the toolkit and the games' facts again (after the engine was built in place).
+  void reloadDiskFacts() {
+    _forgetDiskFacts();
+    notifyListeners();
+  }
+
   /// Reads the disk again for what the screen keeps (the toolkit, a game's facts).
   void _forgetDiskFacts() {
     _toolkitEpoch++;
@@ -2302,7 +2328,7 @@ class AppModel extends ChangeNotifier {
     preferences.toolkitFolder = folder;
     savePreferences();
     if (!preferences.onboarded) return;
-    show(engine.withGames(T.text('engineOwnChosen')));
+    show(engine.withGames(T.text(engine.git.checkout != null ? 'engineOwnCheckoutChosen' : 'engineOwnChosen')));
   }
 
   // Installing.
@@ -2310,7 +2336,11 @@ class AppModel extends ChangeNotifier {
   void primaryAction(Game game) {
     switch (stateOf(game)) {
       case Installed(:final outdated):
-        outdated ? open(Layer.updateChoice) : play(game);
+        // The engine is being built in place: its relinker and libraries are not whole yet.
+        if (engine.git.running) return show(engine.git.progressText());
+        void go() => outdated ? open(Layer.updateChoice) : unawaited(play(game));
+        // Settings › AnyPS5 Engine › Update from Git Before Playing: the checkout's remote first.
+        engine.git.updatesBeforePlay ? unawaited(engine.git.beforePlay(game, go)) : go();
       case Locked() || Failed():
         unlock(game);
       case Installing(preparing: true):
@@ -2347,6 +2377,7 @@ class AppModel extends ChangeNotifier {
     if (folder == null) return;
     final kit = toolkit;
     if (kit == null) return show(T.text('noToolkit'));
+    if (engine.git.running) return show(engine.git.progressText());
     // Asked for while it is being prepared: it becomes the user's own.
     if (prepare.active == game.id) return _promotePreparation(game);
     prepare.cancel(game.id);

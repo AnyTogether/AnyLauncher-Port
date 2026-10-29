@@ -13,6 +13,13 @@ release when it is made.
   Choices made before the update stay: a game set to Full Screen, a window size of its own or
   vertical sync off keeps it; values never changed follow the defaults, which start as
   before (Window, 75%, vertical sync on).
+- **The stick's up and down on Home are calmer.** With an Xbox pad (or any pad) a push to the
+  side could also move up or down and leave the tiles for the top bar or the buttons: the
+  thumb's arc on the way out, a light push or a stick snapping back from a diagonal counted as
+  up or down. Up and down on the stick now need a firmer, clearly upright push (0.65 instead of
+  0.5, letting go below 0.4), a diagonal goes sideways, a held left or right gives way only to
+  a clearly vertical push, and held up or down repeats first after 0.55 s instead of 0.40 s.
+  Left and right, the D-pad and the keys feel as before.
 
 ## 0.1.13
 

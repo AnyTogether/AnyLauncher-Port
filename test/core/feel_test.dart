@@ -91,7 +91,7 @@ void main() {
     });
 
     test('down is positive; the bigger axis wins at first', () {
-      expect(StickGate().update(0.3, -0.6), Direction.up);
+      expect(StickGate().update(0.3, -0.7), Direction.up);
       expect(StickGate().update(-0.7, 0.6), Direction.left);
       expect(StickGate().update(0.1, 0.9), Direction.down);
     });
@@ -100,7 +100,8 @@ void main() {
       final stick = StickGate();
       expect(stick.update(0.7, 0), Direction.right);
       expect(stick.update(0.6, -0.7), Direction.right, reason: 'near the diagonal the held direction stays');
-      expect(stick.update(0.5, -0.7), Direction.up, reason: '0.7 is more than 1.25 × 0.5');
+      expect(stick.update(0.4, -0.7), Direction.up, reason: '0.7 is more than 1.5 × 0.4');
+      expect(stick.update(-0.6, -0.45), Direction.left, reason: 'and back: 0.6 is more than 1.25 × 0.45');
     });
 
     test('a flick through the middle turns at once', () {

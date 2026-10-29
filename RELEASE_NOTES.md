@@ -5,6 +5,10 @@ release when it is made.
 
 ## Next release
 
+Nothing yet.
+
+## 0.1.13
+
 - **More than one games folder.** **Settings → Game Library** lists each folder with its game
   count, takes one out of the library (nothing on its drive is deleted) and has **Add Folder**,
   with the keys and a controller as well as the mouse; Select on the empty shelf adds one too.
@@ -13,6 +17,33 @@ release when it is made.
   games come back when the drive does. Each game is unlocked into the folder it was found in,
   so its files are linked on their own drive instead of copied to another; games unlocked
   before stay where they are. The saved single folder carries over as the first.
+- **A controller reaches the top bar with no games.** With an empty library the home screen
+  answered only Select, so an Xbox pad (or any pad) could not get to Settings. Up from the
+  empty shelf now moves to the top bar, as it does with games.
+- **Languages are JSON files.** Every text is in `assets/l10n/en.json` and `tr.json`; a new
+  language is one more file there and shows in **Settings → Language** and on the first start.
+  A file in the `Languages` folder beside the settings (`%APPDATA%\AnyPS5\Languages`,
+  `~/.config/AnyPS5/Languages`) comes first, so a translation can be tried in a released
+  launcher. **TRANSLATING.md** is the guide for translators; CI checks every language file.
+- **Mouse side buttons.** Back does what Circle does everywhere (closes a panel, goes back a
+  step); Forward opens again the screen Back just closed. A keyboard's Browser Back / Forward
+  keys do the same.
+- **Escape on the home screen asks "Quit AnyPS5?"**, with **Cancel** first. Everywhere else
+  Escape keeps its meaning.
+- **Window buttons in full screen.** The pointer at the top edge brings down **Minimize**,
+  **Leave Full Screen** and **Quit AnyPS5**. **Settings → Appearance → Window Buttons at the
+  Top Edge** turns them off.
+- **No stalls on fast input.** A game's size was measured by walking its folder on the
+  interface thread for every game passed, which froze the launcher for seconds while a
+  direction was held; it now runs in the background, for the game the selection rests on.
+  Switching back before a fade ended put two items with one key on screen, a likely cause of
+  the rare crashes; that is fixed too.
+- **Engine settings say where each engine comes from.** Upstream and AnyPS5-ARM are release
+  downloads, and your own folder is used as it is (nothing is pulled or built). A folder you
+  rebuild in place now makes installed games offer **Update and Play**, as a new engine does.
+- **Reports for the launcher's own crashes and stalls.** After a crash or a freeze of 5 seconds
+  or more, the next start offers **Send Report**: a GitHub issue filled in with the version, the
+  system and the last seconds, without your paths or names. Nothing is sent by itself.
 
 ## 0.1.12
 

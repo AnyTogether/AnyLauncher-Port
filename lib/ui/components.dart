@@ -934,7 +934,7 @@ String byteText(int? bytes) {
     value /= 1000;
     unit++;
   }
-  return unit == 0 ? '$bytes B' : '${value.toStringAsFixed(value >= 100 ? 0 : 1)} ${units[unit]}';
+  return unit == 0 ? '$bytes B' : '${T.decimal(value, value >= 100 ? 0 : 1)} ${units[unit]}';
 }
 
 /// Whether the focus was last moved by the pointer (a hover or a click), which [KeepVisible]

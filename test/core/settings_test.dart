@@ -7,6 +7,7 @@ import 'package:anyps5_desktop/core/game_settings.dart';
 import 'package:anyps5_desktop/core/installer.dart';
 import 'package:anyps5_desktop/core/host.dart';
 import 'package:anyps5_desktop/core/toolkit.dart';
+import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -135,11 +136,18 @@ StickModifier = KEY:F24
     });
 
     test('labels', () {
-      expect(Controls.label('KEY:Left Shift'), 'Left Shift');
-      expect(Controls.label('KEY:Return'), 'Enter');
-      expect(Controls.label('MOUSE:Left'), 'Left click');
-      expect(Controls.label('MOUSE:Right', turkish: true), 'Sağ tık');
-      expect(Controls.label('WHEEL:Down'), 'Wheel down');
+      expect(Controls.label('KEY:Left Shift', T.format), 'Left Shift');
+      expect(Controls.label('KEY:Return', T.format), 'Enter');
+      expect(Controls.label('MOUSE:Left', T.format), 'Left click');
+      expect(Controls.label('MOUSE:X1', T.format), 'Mouse X1');
+      expect(Controls.label('WHEEL:Down', T.format), 'Wheel down');
+      expect(Controls.label('KEY:Left GUI', T.format), 'Super');
+      T.language = Language.byCode('tr');
+      addTearDown(() => T.language = Language.english);
+      expect(Controls.label('MOUSE:Right', T.format), 'Sağ tık');
+      expect(Controls.label('MOUSE:X1', T.format), 'Fare X1');
+      expect(Controls.label('WHEEL:Up', T.format), 'Tekerlek yukarı');
+      expect(Controls.label('KEY:Right GUI', T.format), 'Windows tuşu');
     });
 
     test('write is atomic and leaves no temporary file', () {

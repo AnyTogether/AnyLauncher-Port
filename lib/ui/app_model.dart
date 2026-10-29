@@ -4237,7 +4237,7 @@ class AppModel extends ChangeNotifier {
     ];
   }
 
-  static String _percent(int value) => value == 0 ? T.text('off') : '$value%';
+  static String _percent(int value) => value == 0 ? T.text('off') : T.percent(value);
 
   List<PanelRow> _captureRows() {
     final unavailable = replayUnavailable;
@@ -4449,7 +4449,7 @@ class AppModel extends ChangeNotifier {
             max: 100,
             step: 5,
             // The default's size until the game picks one.
-            format: (value) => settings.ownWindowSize == null ? byDefault('$value%') : '$value%',
+            format: (value) => settings.ownWindowSize == null ? byDefault(T.percent(value)) : T.percent(value),
             set: (value) => change(settings.copyWith(windowSize: value)),
           ),
         ),
@@ -4633,7 +4633,7 @@ class AppModel extends ChangeNotifier {
             min: GyroAiming.sensitivityMin,
             max: GyroAiming.sensitivityMax,
             step: 1,
-            format: (value) => (value / 10).toStringAsFixed(1),
+            format: (value) => T.decimal(value / 10, 1),
             set: (value) => change(aim.copyWith(sensitivity: value)),
           ),
         ),
@@ -4725,14 +4725,13 @@ class AppModel extends ChangeNotifier {
   }
 
   static String padActionTitle(PadAction action) {
-    final turkish = T.language.code == 'tr';
     String direction(String key) => T.text(key);
     return switch (action) {
-      PadAction.cross => 'Cross',
-      PadAction.circle => 'Circle',
-      PadAction.square => 'Square',
-      PadAction.triangle => 'Triangle',
-      PadAction.options => 'Options',
+      PadAction.cross => T.text('buttonCross'),
+      PadAction.circle => T.text('buttonCircle'),
+      PadAction.square => T.text('buttonSquare'),
+      PadAction.triangle => T.text('buttonTriangle'),
+      PadAction.options => T.text('buttonOptions'),
       PadAction.touchLeft => T.text('touchpadLeft'),
       PadAction.touchRight => T.text('touchpadRight'),
       PadAction.up => '${T.text('dpad')} · ${direction('directionUp')}',
@@ -4747,7 +4746,7 @@ class AppModel extends ChangeNotifier {
       PadAction.rightStickDown => '${T.text('rightStick')} · ${direction('directionDown')}',
       PadAction.rightStickLeft => '${T.text('rightStick')} · ${direction('directionLeft')}',
       PadAction.rightStickRight => '${T.text('rightStick')} · ${direction('directionRight')}',
-      PadAction.stickModifier => turkish ? 'Yavaş yürüme' : T.text('stickModifier'),
+      PadAction.stickModifier => T.text('padStickModifier'),
       _ => action.key,
     };
   }

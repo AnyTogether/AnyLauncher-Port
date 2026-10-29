@@ -968,7 +968,7 @@ class HeroInfo extends StatelessWidget {
                           ),
                           const Spacer(),
                           Text(
-                            '${(state.overall * 100).round()}%',
+                            T.percent((state.overall * 100).round()),
                             style: AppText.display(
                               15 * scale,
                               weight: FontWeight.w600,

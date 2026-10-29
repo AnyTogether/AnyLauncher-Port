@@ -52,18 +52,8 @@ enum Accent {
   const Accent(this.color);
   final Color color;
 
-  String get title {
-    final turkish = T.language.code == 'tr';
-    return switch (this) {
-      Accent.blue => turkish ? 'Mavi' : 'Blue',
-      Accent.mint => turkish ? 'Nane' : 'Mint',
-      Accent.coral => turkish ? 'Mercan' : 'Coral',
-      Accent.violet => turkish ? 'Mor' : 'Violet',
-      Accent.gold => turkish ? 'Altın' : 'Gold',
-      Accent.white => turkish ? 'Beyaz' : 'White',
-      Accent.ice => turkish ? 'Buz' : 'Ice',
-    };
-  }
+  /// The colour's name in the launcher's language: accentBlue, accentMint, … in assets/l10n.
+  String get title => T.text('accent${name[0].toUpperCase()}${name.substring(1)}');
 
   /// The ink for words and glyphs drawn on this accent: dark on the light ones.
   Color get ink => Contrast.inkOn(color);

@@ -1156,7 +1156,7 @@ class EmptyLibrary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
-    final folder = model.preferences.gamesFolder;
+    final folders = model.preferences.gamesFolders;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1185,12 +1185,13 @@ class EmptyLibrary extends StatelessWidget {
               ),
             ),
           ),
-          if (folder != null) ...[
+          if (folders.isNotEmpty) ...[
             SizedBox(height: 12 * scale),
             Legible(
               softness: 10,
               child: Text(
-                folder,
+                folders.join('\n'),
+                textAlign: TextAlign.center,
                 style: AppText.display(
                   13 * scale,
                   color: Colors.white.withValues(alpha: LookScope.isSeeThrough(context) ? 0.7 : 0.45),
@@ -1200,10 +1201,10 @@ class EmptyLibrary extends StatelessWidget {
           ],
           SizedBox(height: 28 * scale),
           ConsoleButton(
-            title: T.text('changeFolder'),
-            icon: Icons.folder_rounded,
+            title: T.text(folders.isEmpty ? 'pickFolder' : 'addFolder'),
+            icon: folders.isEmpty ? Icons.folder_rounded : Icons.create_new_folder_rounded,
             focused: true,
-            onPressed: model.chooseGamesFolder,
+            onPressed: model.addGamesFolder,
           ),
         ],
       ),

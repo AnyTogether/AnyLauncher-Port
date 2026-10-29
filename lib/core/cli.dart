@@ -25,7 +25,8 @@ import 'toolkit_download.dart';
 
 const usage = '''usage: anyps5_tool <command>
   unwrap <self> <elf>                      a decrypted SELF container as a clean ELF
-  scan <games folder>                      the dumps found, one per line
+  scan <games folder>...                   the dumps found, one per line (a title in several
+                                           folders once, from the first)
   engine [<version>] [--folder <dir>]      download upstream's toolkit for this system (the latest
                                            release unless a version is given) into the launcher's
                                            toolkits folder, or <dir>; prints the toolkit's folder
@@ -33,10 +34,10 @@ const usage = '''usage: anyps5_tool <command>
   play <game folder> <games folder> [--trace]
                                            start an installed game with its saved settings;
                                            --trace turns on the engine's detailed logging
-  remote [--allow-all] [--hidden] [--port <port>] [--devices <file>] [--games <folder>]
+  remote [--allow-all] [--hidden] [--port <port>] [--devices <file>] [--games <folder>]...
                                            the phone server until stopped
   steam status                             the Steam folders and accounts found, AnyPS5's shortcuts
-  steam add --program <launcher> [--games <folder>] [--fullscreen] [--user <id>] [--close-steam]
+  steam add --program <launcher> [--games <folder>]... [--fullscreen] [--user <id>] [--close-steam]
                                            AnyPS5 (and with --games each unlocked game) as non-Steam
                                            games, without artwork (Settings > Steam draws it)
   steam remove [--user <id>] [--close-steam]
@@ -75,10 +76,11 @@ Future<int> runCli(
       } on FileSystemException catch (error) {
         return fail('FAIL: ${arguments[1]}: ${error.message}');
       }
-    case 'scan' when arguments.length == 2:
-      final root = arguments[1];
-      for (final game in GameLibrary.scan(root)) {
-        final installed = Installer.record(Installer.installedFolder(game, root), system: host) != null;
+    case 'scan' when arguments.length >= 2:
+      final library = GameLibrary.surveyAll(arguments.sublist(1));
+      for (final game in library.games) {
+        final installed =
+            Installer.record(Installer.installedFolder(game, library.roots[game.id]!), system: host) != null;
         output.writeln(
           [game.titleId, game.name, game.executable.name, installed ? 'installed' : 'locked', game.folder].join('\t'),
         );
@@ -284,8 +286,7 @@ Future<int> _remote(
   final hidden = options.contains('--hidden');
   final port = int.tryParse(value('--port') ?? '') ?? RemoteServer.preferredPort;
   final devices = PairedDevices(value('--devices') ?? AppPaths.forSystem(host, environment: env).pairedDevicesFile);
-  final gamesFolder = value('--games');
-  final games = gamesFolder == null ? const <Game>[] : GameLibrary.scan(gamesFolder);
+  final games = GameLibrary.surveyAll(_values(options, '--games')).games;
   late final RemoteServer server;
   void publishLibrary() => server.publish(
     RemoteLibrary(
@@ -411,11 +412,10 @@ Future<int> _steam(
         return 2;
       }
       final fullscreen = options.contains('--fullscreen');
-      final folder = value('--games');
+      final library = GameLibrary.surveyAll(_values(options, '--games'));
       final games = [
-        if (folder != null)
-          for (final game in GameLibrary.scan(folder))
-            if (Installer.record(Installer.installedFolder(game, folder), system: host) != null) game,
+        for (final game in library.games)
+          if (Installer.record(Installer.installedFolder(game, library.roots[game.id]!), system: host) != null) game,
       ];
       final change = shortcuts.put([
         SteamEntry(SteamPlan.launcher(program, fullscreen: fullscreen, into: shortcuts)),
@@ -446,3 +446,9 @@ String _gamePresetsFile(AppPaths paths) {
   final store = ProfileStore(paths.profilesFolder, existing: const ExistingSetup(onboarded: false, name: ''), persist: false);
   return p.join(paths.profilesFolder, store.book.currentProfile?.id ?? LauncherProfile.legacyId, 'GamePresets.json');
 }
+
+/// Every value given for the option [name] (`--games A --games B`), in order.
+List<String> _values(List<String> options, String name) => [
+  for (var at = 0; at + 1 < options.length; at++)
+    if (options[at] == name) options[at + 1],
+];

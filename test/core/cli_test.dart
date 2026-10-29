@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:anyps5_desktop/core/cli.dart';
+import 'package:anyps5_desktop/core/game_library.dart';
 import 'package:anyps5_desktop/core/host.dart';
+import 'package:anyps5_desktop/core/installer.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -51,6 +53,22 @@ void main() {
     makeDump(root, 'G', titleId: 'PPSA07007', names: {'en-US': 'Seven'});
     final scanned = await run(['scan', root]);
     expect(scanned.$2.trim().split('\t').take(4), ['PPSA07007', 'Seven', 'elf', 'locked']);
+    // Several folders, as the launcher's library: a title in both once, from the first.
+    final second = p.join(temp.path, 'Drive2');
+    makeDump(second, 'G', titleId: 'PPSA07007', names: {'en-US': 'Seven'});
+    makeDump(second, 'E', titleId: 'PPSA08008', names: {'en-US': 'Eight'});
+    final both = (await run(['scan', root, second, p.join(temp.path, 'unplugged')])).$2.trim().split('\n');
+    expect(both.map((line) => line.split('\t').first), ['PPSA08008', 'PPSA07007']);
+    expect(both.last, endsWith(p.join(root, 'G')));
+    // Unlocked into the second folder's store, it is installed there.
+    final eight = makeDump(second, 'E', titleId: 'PPSA08008', names: {'en-US': 'Eight'});
+    final store = Installer.installedFolder(GameLibrary.inspect(eight)!, second);
+    Directory(store).createSync(recursive: true);
+    File(p.join(store, 'app.elf')).writeAsStringSync('');
+    File(p.join(store, Installer.recordName)).writeAsStringSync(
+      '{"date":"2026-10-24T12:00:00Z","source":"$eight","system":"linux","titleID":"PPSA08008","toolkit":"t"}',
+    );
+    expect((await run(['scan', root, second])).$2, contains('PPSA08008\tEight\telf\tinstalled'));
   });
 
   test('install with the toolkit from ANYPS5_TOOLKIT, then play', () async {

@@ -103,10 +103,17 @@ class Game {
 /// What a look through the games folder found: the games, and the folders that look like a dump
 /// still being copied (a sce_sys folder or an eboot.bin, but no whole game yet).
 class LibrarySurvey {
-  const LibrarySurvey(this.games, this.incomplete);
+  const LibrarySurvey(this.games, this.incomplete, {this.folders = const {}, this.roots = const {}});
 
   final List<Game> games;
   final List<String> incomplete;
+
+  /// From [GameLibrary.surveyAll]: each games folder in order, with the games found in it; null
+  /// for a folder that is not there (its drive unplugged).
+  final Map<String, int?> folders;
+
+  /// From [GameLibrary.surveyAll]: the games folder each game was found in, by [Game.id].
+  final Map<String, String> roots;
 }
 
 abstract final class GameLibrary {
@@ -129,11 +136,43 @@ abstract final class GameLibrary {
       found.removeWhere((game) => GameAddons.isClaimed(game.folder, claimed));
       incomplete.removeWhere((folder) => GameAddons.isClaimed(folder, claimed));
     }
-    found.sort((a, b) {
-      final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
-      return byName != 0 ? byName : a.folder.compareTo(b.folder);
-    });
+    found.sort(_byName);
     return LibrarySurvey(found, incomplete);
+  }
+
+  /// The library of several games folders ([roots], in order): every folder's games, sorted as
+  /// [survey] sorts them. A title found in more than one folder shows once, from the folder that
+  /// comes first; two dumps of one title in the same folder both show, as they do in one folder.
+  /// A folder that is not there is skipped and counted as null.
+  static LibrarySurvey surveyAll(List<String> roots) {
+    final games = <Game>[];
+    final incomplete = <String>[];
+    final folders = <String, int?>{};
+    final titles = <String>{};
+    final found = <String, String>{};
+    for (final root in roots) {
+      if (!Directory(root).existsSync()) {
+        folders[root] = null;
+        continue;
+      }
+      final here = survey(root);
+      folders[root] = here.games.length;
+      final earlier = {...titles};
+      for (final game in here.games) {
+        titles.add(game.titleId);
+        if (earlier.contains(game.titleId) || found.containsKey(game.id)) continue;
+        games.add(game);
+        found[game.id] = root;
+      }
+      incomplete.addAll(here.incomplete.where((folder) => !incomplete.contains(folder)));
+    }
+    games.sort(_byName);
+    return LibrarySurvey(games, incomplete, folders: folders, roots: found);
+  }
+
+  static int _byName(Game a, Game b) {
+    final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    return byName != 0 ? byName : a.folder.compareTo(b.folder);
   }
 
   /// Whether two scans show the same library: the same folders, names, art and states.
@@ -159,7 +198,8 @@ abstract final class GameLibrary {
   }
 
   static bool _sameAddons(List<GameAddon> a, List<GameAddon> b) =>
-      a.length == b.length && [for (var index = 0; index < a.length; index++) a[index] == b[index]].every((same) => same);
+      a.length == b.length &&
+      [for (var index = 0; index < a.length; index++) a[index] == b[index]].every((same) => same);
 
   static bool _sameNames(Map<String, String> a, Map<String, String> b) =>
       a.length == b.length && a.entries.every((entry) => b[entry.key] == entry.value);

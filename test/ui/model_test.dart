@@ -126,7 +126,7 @@ void main() {
   });
 
   test('a dump copied into the games folder shows up on its own', () async {
-    model.watchGamesFolder();
+    model.watchGamesFolders();
     await Future<void>.delayed(const Duration(milliseconds: 300));
     makeDump(model.root!, 'late', titleId: 'PPSA09009', names: {'en-US': 'Late Arrival'});
     await until(() => model.games.any((game) => game.titleId == 'PPSA09009'));
@@ -159,7 +159,7 @@ void main() {
     }
 
     test('copied into a subfolder in steps, it shows up, is selected and announced', () async {
-      model.watchGamesFolder();
+      model.watchGamesFolders();
       await Future<void>.delayed(const Duration(milliseconds: 300));
       final folder = await copyInSteps(p.join(model.root!, 'More', 'Games'), 'late', 'PPSA09019', 'Late Arrival');
       await until(() => model.games.any((game) => game.titleId == 'PPSA09019'));
@@ -170,7 +170,7 @@ void main() {
     });
 
     test('with the launcher in the background a desktop notice says it too', () async {
-      model.watchGamesFolder();
+      model.watchGamesFolders();
       model.setActive(false);
       await Future<void>.delayed(const Duration(milliseconds: 300));
       makeDump(model.root!, 'late', titleId: 'PPSA09029', names: {'en-US': 'Night Shift'});
@@ -195,7 +195,7 @@ void main() {
     test('a new games folder is a new start, not a pile of new games', () async {
       final other = Directory(p.join(fixture.temp.path, 'other'))..createSync();
       makeDump(other.path, 'one', titleId: 'PPSA08001', names: {'en-US': 'Other One'});
-      model.preferences.gamesFolder = other.path;
+      model.preferences.gamesFolders = [other.path];
       model.rescan();
       expect(model.games.single.titleId, 'PPSA08001');
       expect(model.toast, isNull);
@@ -204,7 +204,7 @@ void main() {
     test('an unlock going on does not hold the new game back, nor is it disturbed', () async {
       final stray = model.games[indexOf('PPSA02002')];
       File(p.join(stray.folder, 'eboot.bin')).writeAsBytesSync(typicalSelf());
-      model.watchGamesFolder();
+      model.watchGamesFolders();
       model.unlock(stray);
       expect(model.stateOf(stray), isA<Installing>());
       makeDump(model.root!, 'during', titleId: 'PPSA09039', names: {'en-US': 'Meanwhile'});

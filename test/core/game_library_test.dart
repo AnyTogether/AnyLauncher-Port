@@ -137,6 +137,64 @@ void main() {
     expect(GameLibrary.scan(p.join(root.path, 'missing')), isEmpty);
   });
 
+  group('several games folders', () {
+    late String first;
+    late String second;
+
+    setUp(() {
+      first = p.join(root.path, 'first');
+      second = p.join(root.path, 'second');
+    });
+
+    test('the library is every folder\'s games, sorted by name, with each folder\'s count', () {
+      makeDump(first, 'zeta', titleId: 'PPSA00026', names: {'en-US': 'Zeta'});
+      makeDump(second, 'alpha', titleId: 'PPSA00001', names: {'en-US': 'Alpha'});
+      makeDump(p.join(second, 'more'), 'mid', titleId: 'PPSA00013', names: {'en-US': 'Mid'});
+      final survey = GameLibrary.surveyAll([first, second]);
+      expect(survey.games.map((game) => game.name), ['Alpha', 'Mid', 'Zeta']);
+      expect(survey.folders, {first: 1, second: 2});
+      expect(survey.roots[survey.games.first.id], second);
+      expect(survey.roots[survey.games.last.id], first);
+    });
+
+    test('a title in two folders shows once, from the folder that comes first; two dumps in one folder both show', () {
+      final kept = makeDump(second, 'copy', titleId: 'PPSA00042', names: {'en-US': 'Shared'});
+      makeDump(first, 'copy', titleId: 'PPSA00042', names: {'en-US': 'Shared'});
+      makeDump(second, 'copy2', titleId: 'PPSA00042', names: {'en-US': 'Shared'});
+      makeDump(first, 'other', titleId: 'PPSA00043', names: {'en-US': 'Other'});
+      final survey = GameLibrary.surveyAll([second, first]);
+      expect(survey.games.where((game) => game.titleId == 'PPSA00042').map((game) => game.folder), [
+        kept,
+        p.join(second, 'copy2'),
+      ], reason: 'both of the first folder\'s dumps, none of the later one\'s');
+      expect(survey.games.map((game) => game.titleId), contains('PPSA00043'));
+      expect(survey.folders, {second: 2, first: 2}, reason: 'the counts are what each folder holds');
+    });
+
+    test('a folder inside another adds nothing twice', () {
+      makeDump(p.join(first, 'inner'), 'one', titleId: 'PPSA00051', names: {'en-US': 'One'});
+      final survey = GameLibrary.surveyAll([first, p.join(first, 'inner')]);
+      expect(survey.games.map((game) => game.titleId), ['PPSA00051']);
+    });
+
+    test('a folder that is not there (its drive unplugged) is not connected; its games come back with it', () {
+      makeDump(first, 'here', titleId: 'PPSA00061', names: {'en-US': 'Here'});
+      var survey = GameLibrary.surveyAll([first, second]);
+      expect(survey.games.map((game) => game.titleId), ['PPSA00061']);
+      expect(survey.folders, {first: 1, second: null});
+      makeDump(second, 'back', titleId: 'PPSA00062', names: {'en-US': 'Back'});
+      survey = GameLibrary.surveyAll([first, second]);
+      expect(survey.games.map((game) => game.titleId), ['PPSA00062', 'PPSA00061']);
+      expect(survey.folders, {first: 1, second: 1});
+    });
+
+    test('dumps still being copied are listed from every folder', () {
+      Directory(p.join(first, 'half', 'sce_sys')).createSync(recursive: true);
+      Directory(p.join(second, 'part', 'sce_sys')).createSync(recursive: true);
+      expect(GameLibrary.surveyAll([first, second]).incomplete, [p.join(first, 'half'), p.join(second, 'part')]);
+    });
+  });
+
   test('size adds up the files', () {
     final folder = makeDump(root.path, 'Sized', files: {'data/a.bin': '12345', 'b.bin': '123'});
     expect(GameLibrary.size(folder), greaterThanOrEqualTo(8));

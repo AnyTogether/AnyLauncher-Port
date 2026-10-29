@@ -139,7 +139,7 @@ void main() {
   testWidgets('a click that wobbles less than the drag threshold still clicks', (tester) async {
     await openGameSettings(tester);
     final list = rowsList(tester);
-    final vsync = settings().vsync;
+    expect(settings().ownVsync, isNull, reason: 'vertical sync follows the default');
     final gesture = await mouse(tester);
     await gesture.down(tester.getCenter(row('vsync')));
     await tester.pump();
@@ -147,7 +147,7 @@ void main() {
     await tester.pump();
     await gesture.up();
     await settle(tester);
-    expect(settings().vsync, !vsync, reason: 'four pixels is a click');
+    expect(settings().ownVsync, isTrue, reason: 'four pixels is a click: Default goes to On');
     expect(list.pixels, 0);
   });
 

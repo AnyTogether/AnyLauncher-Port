@@ -135,6 +135,7 @@ class Preferences {
         if (id is String) id,
     }
     ..prepareNewGames = json['prepareNewGames'] as bool? ?? true
+    ..displayDefaults = DisplayDefaults.fromJson(json['displayDefaults'])
     ..launcherFullscreen = json['launcherFullscreen'] as bool?
     ..windowButtons = json['windowButtons'] as bool? ?? true
     ..pauseOnMenu = json['pauseOnMenu'] as bool? ?? true
@@ -245,6 +246,10 @@ class Preferences {
   /// Settings › Game Library: new games unlocked in the background like a console installing them.
   bool prepareNewGames = true;
 
+  /// Settings › Default Display: how the games without display choices of their own start.
+  /// The same for every profile, as the game settings are.
+  DisplayDefaults displayDefaults = const DisplayDefaults();
+
   /// Settings › Appearance › Full Screen: null until the user chooses (the launcher starts full
   /// screen then), the choice after.
   bool? launcherFullscreen;
@@ -306,6 +311,7 @@ class Preferences {
     'assistPlayerOne': assistPlayerOne,
     'cjkGames': cjkGames.toList()..sort(),
     'prepareNewGames': prepareNewGames,
+    if (!displayDefaults.isBuiltIn) 'displayDefaults': displayDefaults.toJson(),
     'launcherFullscreen': launcherFullscreen,
     'windowButtons': windowButtons,
     'pauseOnMenu': pauseOnMenu,
@@ -1569,7 +1575,14 @@ class AppModel extends ChangeNotifier {
 
   List<PanelRow> _presetRows() {
     final presets = gamePresets;
-    const difficultyNames = ['presetGameDefault', 'presetEasiest', 'presetEasy', 'presetNormal', 'presetHard', 'presetHardest'];
+    const difficultyNames = [
+      'presetGameDefault',
+      'presetEasiest',
+      'presetEasy',
+      'presetNormal',
+      'presetHard',
+      'presetHardest',
+    ];
     const priorityNames = ['presetGameDefault', 'presetPerformance', 'presetResolution'];
     const subtitleNames = ['presetGameDefault', 'presetShow', 'presetHide'];
     const languages = ConsoleLanguage.all;
@@ -1595,10 +1608,26 @@ class AppModel extends ChangeNotifier {
           setGamePresets(presets.copyWith(priority: PresetPriority.values[index]));
         }),
       ),
-      toggle('presetInvertVerticalFirst', presets.invertVerticalFirstPerson, (on) => presets.copyWith(invertVerticalFirstPerson: on)),
-      toggle('presetInvertHorizontalFirst', presets.invertHorizontalFirstPerson, (on) => presets.copyWith(invertHorizontalFirstPerson: on)),
-      toggle('presetInvertVerticalThird', presets.invertVerticalThirdPerson, (on) => presets.copyWith(invertVerticalThirdPerson: on)),
-      toggle('presetInvertHorizontalThird', presets.invertHorizontalThirdPerson, (on) => presets.copyWith(invertHorizontalThirdPerson: on)),
+      toggle(
+        'presetInvertVerticalFirst',
+        presets.invertVerticalFirstPerson,
+        (on) => presets.copyWith(invertVerticalFirstPerson: on),
+      ),
+      toggle(
+        'presetInvertHorizontalFirst',
+        presets.invertHorizontalFirstPerson,
+        (on) => presets.copyWith(invertHorizontalFirstPerson: on),
+      ),
+      toggle(
+        'presetInvertVerticalThird',
+        presets.invertVerticalThirdPerson,
+        (on) => presets.copyWith(invertVerticalThirdPerson: on),
+      ),
+      toggle(
+        'presetInvertHorizontalThird',
+        presets.invertHorizontalThirdPerson,
+        (on) => presets.copyWith(invertHorizontalThirdPerson: on),
+      ),
       PanelRow(
         id: 'presetSubtitles',
         title: T.text('presetSubtitles'),
@@ -1616,7 +1645,11 @@ class AppModel extends ChangeNotifier {
         ),
       ),
       if (!presets.isEmpty)
-        PanelRow(id: 'presetsReset', title: T.text('presetsReset'), kind: ActionRow(() => setGamePresets(const GamePresets()))),
+        PanelRow(
+          id: 'presetsReset',
+          title: T.text('presetsReset'),
+          kind: ActionRow(() => setGamePresets(const GamePresets())),
+        ),
     ];
   }
 
@@ -2188,6 +2221,10 @@ class AppModel extends ChangeNotifier {
   final Map<String, GameSettings> _cachedSettings = {};
 
   GameSettings currentSettings(Game game) => _cachedSettings.putIfAbsent(game.slug, () => settingsFor(game));
+
+  /// The settings [game] starts with: its own, and Settings › Default Display for the display
+  /// choices it left at Default.
+  GameSettings launchSettings(Game game) => currentSettings(game).withDefaults(preferences.displayDefaults);
 
   /// Onboarding: the first games folder, picked (or picked again: it changes).
   Future<void> chooseGamesFolder() async {
@@ -2770,7 +2807,7 @@ class AppModel extends ChangeNotifier {
     activateProfileSaves(game);
     final allowed = together.family.beforePlay(game);
     if (!(allowed is bool ? allowed : await allowed) || starting != null || running != null) return;
-    var settings = currentSettings(game);
+    var settings = launchSettings(game);
     // Settings › Controllers › Stick Dead Zone, for a game that set none of its own.
     if (preferences.stickDeadzone > 0) {
       settings = settings.copyWith(tuning: StickDeadzone.tuning(settings.tuning, preferences.stickDeadzone));
@@ -4180,6 +4217,7 @@ class AppModel extends ChangeNotifier {
       ),
       PanelCategory(id: 'steam', title: T.text('steam'), rows: steam.settingsRows()),
       PanelCategory(id: 'controllers', title: T.text('padTitle'), rows: controllers.rows()),
+      PanelCategory(id: 'displayDefaults', title: T.text('displayDefaults'), rows: _displayDefaultRows()),
       PanelCategory(id: 'presets', title: T.text('presetsTitle'), rows: _presetRows()),
       PanelCategory(id: 'captures', title: T.text('captures'), rows: _captureRows()),
       PanelCategory(id: 'shortcuts', title: T.text('shortcuts'), rows: _shortcutRows()),
@@ -4329,9 +4367,50 @@ class AppModel extends ChangeNotifier {
     return chord.hold ? T.format('shortcutHeld', [names]) : names;
   }
 
+  /// Settings › Default Display: what the games that left their display at Default start with.
+  List<PanelRow> _displayDefaultRows() {
+    final defaults = preferences.displayDefaults;
+    void change(DisplayDefaults next) {
+      preferences.displayDefaults = next;
+      savePreferences();
+    }
+
+    return [
+      PanelRow(
+        id: 'defaultDisplay',
+        title: T.text('display'),
+        detail: T.text('displayDefaultsDetail'),
+        kind: ChoiceRow([T.text('windowed'), T.text('fullscreen')], defaults.fullscreen ? 1 : 0, (index) {
+          change(defaults.copyWith(fullscreen: index == 1));
+        }),
+      ),
+      if (!defaults.fullscreen)
+        PanelRow(
+          id: 'defaultWindowSize',
+          title: T.text('windowSize'),
+          kind: StepperRow(
+            value: defaults.windowSize,
+            min: DisplayDefaults.minimumWindowSize,
+            max: 100,
+            step: 5,
+            format: _percent,
+            set: (value) => change(defaults.copyWith(windowSize: value)),
+          ),
+        ),
+      PanelRow(
+        id: 'defaultVsync',
+        title: T.text('vsync'),
+        kind: ToggleRow(defaults.vsync, (value) => change(defaults.copyWith(vsync: value))),
+      ),
+    ];
+  }
+
   List<PanelRow> _gameRows(Game game) {
     final settings = currentSettings(game);
     void change(GameSettings next) => saveSettings(game, next);
+    final defaults = preferences.displayDefaults;
+    final display = settings.withDefaults(defaults);
+    String byDefault(String value) => T.format('followDefault', [value]);
     final installed = records.containsKey(game.id);
     final supportsResolution = _factsOf(game).resolution;
     final languages = ConsoleLanguage.all;
@@ -4344,21 +4423,33 @@ class AppModel extends ChangeNotifier {
         title: T.text('display'),
         // Upstream's engine ignores the choice: the launcher presses F11 for it, and says so.
         detail: engine.readsDisplaySettings ? null : T.text('displayUpstream'),
-        kind: ChoiceRow([T.text('windowed'), T.text('fullscreen')], settings.fullscreen ? 1 : 0, (index) {
-          change(settings.copyWith(fullscreen: index == 1));
-        }),
+        // Default (Settings › Default Display), then the game's own choices.
+        kind: ChoiceRow(
+          [
+            byDefault(T.text(defaults.fullscreen ? 'fullscreen' : 'windowed')),
+            T.text('windowed'),
+            T.text('fullscreen'),
+          ],
+          switch (settings.ownFullscreen) {
+            null => 0,
+            false => 1,
+            true => 2,
+          },
+          (index) => change(settings.copyWith(fullscreen: index == 0 ? null : index == 2)),
+        ),
       ),
-      if (!settings.fullscreen)
+      if (!display.fullscreen)
         PanelRow(
           id: 'windowSize',
           title: T.text('windowSize'),
           detail: engine.readsDisplaySettings ? null : T.text('windowSizeUpstream'),
           kind: StepperRow(
-            value: settings.windowSize,
-            min: 30,
+            value: display.windowSize,
+            min: DisplayDefaults.minimumWindowSize,
             max: 100,
             step: 5,
-            format: (value) => '$value%',
+            // The default's size until the game picks one.
+            format: (value) => settings.ownWindowSize == null ? byDefault('$value%') : '$value%',
             set: (value) => change(settings.copyWith(windowSize: value)),
           ),
         ),
@@ -4376,8 +4467,23 @@ class AppModel extends ChangeNotifier {
       PanelRow(
         id: 'vsync',
         title: T.text('vsync'),
-        kind: ToggleRow(settings.vsync, (value) => change(settings.copyWith(vsync: value))),
+        kind: ChoiceRow(
+          [byDefault(T.text(defaults.vsync ? 'on' : 'off')), T.text('on'), T.text('off')],
+          switch (settings.ownVsync) {
+            null => 0,
+            true => 1,
+            false => 2,
+          },
+          (index) => change(settings.copyWith(vsync: index == 0 ? null : index == 1)),
+        ),
       ),
+      if (!settings.followsDisplayDefaults)
+        PanelRow(
+          id: 'useDisplayDefaults',
+          title: T.text('useDisplayDefaults'),
+          detail: T.text('useDisplayDefaultsDetail'),
+          kind: ActionRow(() => change(settings.followingDisplayDefaults())),
+        ),
       PanelRow(
         id: 'overlay',
         title: T.text('overlay'),

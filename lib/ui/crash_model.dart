@@ -158,7 +158,7 @@ class CrashModel {
       gameName: game.name,
       titleId: game.titleId,
       gameVersion: game.version,
-      settings: app.currentSettings(game),
+      settings: app.launchSettings(game),
       system: await systemInfo(),
       platform: app.system == HostSystem.windows ? 'Windows' : 'Linux',
       privacy: privacy(),

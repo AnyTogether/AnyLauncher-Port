@@ -336,12 +336,16 @@ void main() {
       await pumpLauncher(tester, model);
       await press(tester, LogicalKeyboardKey.keyO);
       expect(model.overlay, Layer.gameSettings);
+      // Default, Window, Full Screen.
+      await press(tester, LogicalKeyboardKey.arrowRight);
       await press(tester, LogicalKeyboardKey.arrowRight);
       expect(model.currentSettings(game).fullscreen, isTrue);
       final environment = model.currentSettings(game).environment(launcherLanguage: 1);
       expect(environment['ANYPS5_FULLSCREEN'], '1');
       // Window size is hidden in fullscreen; the next row is vertical sync.
       await press(tester, LogicalKeyboardKey.arrowDown);
+      // Default, On, Off.
+      await press(tester, LogicalKeyboardKey.enter);
       await press(tester, LogicalKeyboardKey.enter);
       expect(model.currentSettings(game).vsync, isFalse);
     });

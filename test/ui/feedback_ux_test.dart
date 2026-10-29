@@ -281,7 +281,10 @@ void main() {
       pads.press(PadButton.dpadRight);
       pads.press(PadButton.dpadLeft);
       expect(model.currentSettings(game).fullscreen, isFalse);
+      expect(model.currentSettings(game).ownFullscreen, isNull);
       pads.press(PadButton.south);
+      pads.press(PadButton.dpadRight);
+      expect(model.currentSettings(game).ownFullscreen, isFalse, reason: 'Default, then Window');
       pads.press(PadButton.dpadRight);
       expect(model.currentSettings(game).fullscreen, isTrue);
     });

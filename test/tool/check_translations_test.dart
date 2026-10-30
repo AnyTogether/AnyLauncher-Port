@@ -87,6 +87,39 @@ void main() {
     expect(again.toString(), contains('de: 50.0 %'));
   });
 
+  test('a description ends as a sentence; a label, a placeholder or a line of facts need not', () {
+    const descriptions = {
+      'languageName': 'English',
+      'back': 'Back',
+      'gyroDetail': 'Turn the controller to move the right stick.',
+      'clipsDetail': 'Saves the last %d seconds to the gallery',
+      'presenceHint': 'Friends see you as offline!',
+      'updateChoiceText': 'An update is ready for this game',
+      'sdlMissingDetail': 'Reinstall AnyPS5 Desktop. (%@)',
+      'profileNameHint': 'Name',
+      'engineDownloadDetail': 'Version %@ · %@ · from GitHub',
+    };
+    final problems = punctuationProblems('en.json', descriptions);
+    expect(problems, hasLength(2), reason: problems.join('\n'));
+    expect(problems.join(), allOf(contains('clipsDetail'), contains('updateChoiceText')));
+    expect(isDescription('back'), isFalse);
+    expect(isDescription('profileNameHint'), isFalse);
+    expect(isDescription('padTestDetail'), isTrue);
+    // A translation too, in its own script's marks.
+    final german = checkLanguage('de', '{"languageName": "Deutsch", "gyroDetail": "Den Controller drehen"}', {
+      ...english,
+      'gyroDetail': 'Turn the controller.',
+    });
+    expect(german.problems.single, contains('gyroDetail'));
+    expect(
+      checkLanguage('ja', '{"languageName": "日本語", "gyroDetail": "コントローラーを回します。"}', {
+        ...english,
+        'gyroDetail': 'Turn the controller.',
+      }).problems,
+      isEmpty,
+    );
+  });
+
   test('the code may not pick a text by the language, or hold a Turkish one', () {
     final folder = Directory.systemTemp.createTempSync('anyps5_lib');
     addTearDown(() => folder.deleteSync(recursive: true));
@@ -98,9 +131,12 @@ String b() => T.language.code == 'tr' ? 'x' : 'y';
 String c() => 'Sağ tık';
 String d() => T.text('accentBlue'); // not 'Mavi'
 String e() => 'Français, Español';
+String f() => T.text('titleID').toUpperCase();
+String g() => T.upper(T.text('titleID'));
 ''');
     final problems = checkSources(Directory('${folder.path}/lib'));
-    expect(problems, hasLength(3), reason: problems.join('\n'));
+    expect(problems, hasLength(4), reason: problems.join('\n'));
+    expect(problems.last, allOf(startsWith('lib/ui/a.dart:7:'), contains('T.upper')));
     expect(problems.first, startsWith('lib/ui/a.dart:2:'));
   });
 

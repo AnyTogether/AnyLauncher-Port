@@ -72,6 +72,7 @@ import 'engine_model.dart';
 import 'fonts_model.dart';
 import 'steam_model.dart';
 import 'glass.dart';
+import 'profile_picture.dart';
 import 'strings.dart';
 import 'theme.dart';
 import 'together_model.dart';
@@ -92,7 +93,7 @@ class Preferences {
       _ => LookStyle.cosmic.index,
     }
     ..accent = json['accent'] as String?
-    ..profileName = json['profileName'] as String? ?? 'Player'
+    ..profileName = json['profileName'] as String? ?? ''
     ..gamesFolders = _folders(json['gamesFolders'], json['gamesFolder'])
     ..toolkitFolder = json['toolkitFolder'] as String?
     ..onboarded = json['onboarded'] as bool? ?? false
@@ -159,7 +160,9 @@ class Preferences {
   String language = 'en';
   int theme = 0;
   String? accent;
-  String profileName = 'Player';
+  /// Empty until the first profile is made: it is then the profile's name (the language's word
+  /// for a player when none was typed).
+  String profileName = '';
 
   /// The games folders in order (a library over several drives); the first holds the store, where
   /// games are unlocked. A folder whose drive is unplugged stays in the list.
@@ -697,16 +700,22 @@ class TextRow extends RowKind {
 /// How a person shows in a row: their initials or picture, a dot for what they are doing, a
 /// ring while they speak in party voice.
 class PanelPerson {
-  const PanelPerson({required this.name, this.avatar, this.status, this.speaking = false});
+  const PanelPerson({required this.name, this.avatar, this.picture, this.tint, this.status, this.speaking = false});
   final String name;
   final String? avatar;
+
+  /// A picture on this computer (a profile's own), shown before [avatar].
+  final String? picture;
+
+  /// The colour under the initials: a profile's own; a neutral grey for others.
+  final Color? tint;
   final PersonStatus? status;
   final bool speaking;
 
   /// One or two letters for a person with no picture.
   String get initials {
     final words = name.trim().split(RegExp(r'\s+')).where((word) => word.isNotEmpty).take(2);
-    final letters = words.map((word) => String.fromCharCode(word.runes.first).toUpperCase()).join();
+    final letters = words.map(T.initial).join();
     return letters.isEmpty ? '?' : letters;
   }
 }
@@ -927,6 +936,7 @@ class AppModel extends ChangeNotifier {
       p.join(paths.config, 'Profiles'),
       existing: ExistingSetup(onboarded: this.preferences.onboarded, name: this.preferences.profileName),
       persist: persist,
+      defaultName: LauncherProfiles.defaultName,
     );
     T.language = Language.byCode(this.preferences.language);
     Motion.reduced = this.preferences.reducedMotion;
@@ -2629,12 +2639,37 @@ class AppModel extends ChangeNotifier {
       progress.remove(id);
       if (_disposed) return;
       done(failure);
+      if (failure == null && installer.leftOut.isNotEmpty) show(leftOutText(game, installer.leftOut), icon: game.icon);
       _changed();
       _publishActivity();
       _startNext();
       _stepPrepare();
     }());
     return installer;
+  }
+
+  /// What an unlock that left modules of the dump out says once the game is ready: which files,
+  /// and why (still encrypted in the dump, or the relinker could not convert them).
+  static String leftOutText(Game game, List<LeftOutModule> leftOut) {
+    final encrypted = [
+      for (final module in leftOut)
+        if (module.reason == LeftOutReason.encrypted) module.path,
+    ];
+    final files = encrypted.isNotEmpty ? encrypted : [for (final module in leftOut) module.path];
+    return T.format(encrypted.isNotEmpty ? 'unlockLeftOutEncrypted' : 'unlockLeftOutNotRelinked', [
+      game.name,
+      files.join(', '),
+    ]);
+  }
+
+  /// The whole error of [game]'s failed unlock to the clipboard: the message, then the unlock's
+  /// log with all the relinker printed.
+  void copyFailure(Game game) {
+    final failure = failures[game.id];
+    if (failure == null) return;
+    final log = GameLog.read(GameLog.unlockFile(paths.logs, game.titleId))?.trimRight();
+    services.copyText?.call([failure, if (log != null && log.isNotEmpty && log != failure) log].join('\n\n'));
+    show(T.text('unlockErrorCopied'));
   }
 
   /// The unlock of [game] did not start for want of room: the copy panel says how much is needed
@@ -4648,7 +4683,19 @@ class AppModel extends ChangeNotifier {
     };
     PanelRow held(String id, String title, PanelRow Function() row) =>
         busy == null ? row() : PanelRow(id: id, title: title, kind: InfoRow(busy));
+    final failure = failures[game.id];
     return [
+      if (failure != null)
+        PanelRow(
+          id: 'unlockError',
+          title: T.text('unlockError'),
+          // The end of the error, as Update from Git shows its own; all of it goes to the clipboard.
+          detail: [
+            ...failure.split('\n').reversed.take(2).toList().reversed.map((line) => line.trim()),
+            T.text('unlockErrorCopy'),
+          ].join(' · '),
+          kind: ActionRow(() => copyFailure(game)),
+        ),
       ..._jobRows(game, state),
       PanelRow(
         id: 'display',

@@ -17,7 +17,9 @@ import 'engine_git_model.dart';
 import 'game_action.dart';
 import 'glass.dart';
 import 'level_badge.dart';
+import 'padlock.dart';
 import 'panels.dart' show PersonAvatar;
+import 'profiles_view.dart' show ProfileTile;
 import 'strings.dart';
 import 'theme.dart';
 import 'together_model.dart';
@@ -467,26 +469,13 @@ class TopBar extends StatelessWidget {
         Stack(
           clipBehavior: Clip.none,
           children: [
-            Container(
-              width: 36 * scale,
-              height: 36 * scale,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [accent, accent.withValues(alpha: 0.55)],
-                ),
-              ),
-              child: Text(
-                name.isEmpty ? '?' : name.characters.first.toUpperCase(),
-                style: AppText.display(
-                  16 * scale,
-                  weight: FontWeight.w700,
-                  color: LookScope.inkOnAccent(context, accent, Colors.white),
-                ),
-              ),
+            // The profile playing: its picture, or its initial on its own colour (Settings ›
+            // Profiles), so a change there shows here at once.
+            ProfileTile(
+              key: const ValueKey('home-avatar'),
+              profile: model.currentProfile,
+              picture: model.profiles.pictureOf(model.currentProfile),
+              size: 36 * scale,
             ),
             // Appearing offline: a grey dot on the picture, as friends see it.
             if (offline)
@@ -837,8 +826,39 @@ class GameTile extends StatelessWidget {
       ),
     );
     final dim = ColoredBox(color: Colors.black.withValues(alpha: 0.42));
+    // Locked: a padlock that reads as one at a tile's size; the focused tile says it in words too.
+    final lock = Align(
+      alignment: Alignment.bottomRight,
+      child: Container(
+        margin: EdgeInsets.all(size * 0.045),
+        padding: EdgeInsets.symmetric(horizontal: size * (focused ? 0.05 : 0.04), vertical: size * 0.04),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(size),
+          color: Colors.black.withValues(alpha: 0.62),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.16), width: 1),
+        ),
+        child: AnimatedSize(
+          duration: Motion.focus,
+          curve: Motion.settle,
+          alignment: Alignment.centerRight,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padlock(size: size * 0.13, color: Colors.white),
+              if (focused) ...[
+                SizedBox(width: size * 0.03),
+                Text(
+                  T.text('locked'),
+                  style: AppText.display(size * 0.07, weight: FontWeight.w600).copyWith(height: 1),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
     return switch (state) {
-      Locked() => [dim, badge(Icons.lock_rounded)],
+      Locked() => [dim, lock],
       FamilyLocked() => [dim, badge(Icons.family_restroom_rounded)],
       Unreadable() => [dim, badge(Icons.block_rounded)],
       Failed() => [dim, badge(Icons.warning_rounded)],
@@ -933,7 +953,7 @@ class StateLabel extends StatelessWidget {
     final dim = Colors.white.withValues(alpha: 0.75);
     final (icon, text, tint) = switch (state) {
       Locked(waitingToPrepare: true) => (Icons.schedule_rounded, T.text('waitingToPrepare'), dim),
-      Locked() => (Icons.lock_rounded, T.text('locked'), dim),
+      Locked() => (null, T.text('locked'), dim),
       FamilyLocked(:final verdict) => (
         Icons.family_restroom_rounded,
         T.text(verdict == TitleVerdict.unknown ? 'familyNotRated' : 'familyAgeLocked'),
@@ -978,14 +998,14 @@ class StateLabel extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: (size + 2) * scale, color: tint),
+        if (icon == null) Padlock(size: (size + 2) * scale, color: tint) else Icon(icon, size: (size + 2) * scale, color: tint),
         SizedBox(width: 6 * scale),
         Flexible(
           child: Text(
             text,
             maxLines: compact ? 1 : 2,
             overflow: TextOverflow.ellipsis,
-            style: AppText.display(size * scale, weight: FontWeight.w500, color: tint),
+            style: AppText.display(size * scale, weight: FontWeight.w500, color: tint).copyWith(height: 1.15),
           ),
         ),
       ],
@@ -1144,17 +1164,8 @@ class HeroInfo extends StatelessWidget {
                 ),
               )
             else if (state is Failed)
-              ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: 520 * scale),
-                child: Legible(
-                  softness: 12,
-                  child: Text(
-                    state.message,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.display(14 * scale, color: Palette.danger),
-                  ),
-                ),
+              Flexible(
+                child: _FailureText(model: model, game: game, message: state.message),
               ),
           ],
         ),
@@ -1166,17 +1177,28 @@ class HeroInfo extends StatelessWidget {
             InfoCard(
               title: T.text('status'),
               icon: Icons.donut_large_rounded,
-              child: StateLabel(model: model, state: state, size: 16, compact: true),
+              child: StateLabel(model: model, state: state, size: 15, compact: true),
             ),
             InfoCard(
               title: T.text('size'),
               icon: Icons.storage_rounded,
-              child: Text(byteText(model.sizes[game.id]), style: AppText.display(17 * scale, weight: FontWeight.w600)),
+              child: Text(
+                byteText(model.sizes[game.id]),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.display(16 * scale, weight: FontWeight.w600),
+              ),
             ),
             InfoCard(
               title: T.text('titleID'),
               icon: Icons.tag_rounded,
-              child: Text(game.titleId, style: AppText.display(17 * scale, weight: FontWeight.w600)),
+              // The ID as the game has it: never cased by the language.
+              child: Text(
+                game.titleId,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.display(16 * scale, weight: FontWeight.w600).copyWith(letterSpacing: 0.4),
+              ),
             ),
             InfoCard(
               title: T.text('version'),
@@ -1187,6 +1209,59 @@ class HeroInfo extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// A failed unlock's error beside the buttons: wrapped over a few lines (a relinker's reason and
+/// the file it names), and Copy Error, which puts the whole of it, the relinker's output with
+/// it, on the clipboard (the game's settings have it as a row too, for the controller).
+class _FailureText extends StatelessWidget {
+  const _FailureText({required this.model, required this.game, required this.message});
+
+  final AppModel model;
+  final Game game;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: 560 * scale),
+      child: Legible(
+        softness: 12,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              message,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.display(14 * scale, color: Palette.danger, height: 1.3),
+            ),
+            SizedBox(height: 6 * scale),
+            Pressable(
+              onTap: () => model.copyFailure(game),
+              builder: (context, hovering) => AnimatedOpacity(
+                opacity: hovering ? 1 : 0.72,
+                duration: const Duration(milliseconds: 120),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.content_copy_rounded, size: 14 * scale, color: Colors.white),
+                    SizedBox(width: 6 * scale),
+                    Text(
+                      T.text('copyError'),
+                      style: AppText.display(13 * scale, weight: FontWeight.w600, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1202,8 +1277,8 @@ class _VersionText extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
     final update = game.update;
-    final style = AppText.display(17 * scale, weight: FontWeight.w600);
-    if (update == null) return Text(game.version, style: style);
+    final style = AppText.display(16 * scale, weight: FontWeight.w600);
+    if (update == null) return Text(game.version, maxLines: 1, overflow: TextOverflow.ellipsis, style: style);
     // Two lines in the card's room: tight line heights.
     final version = Text(update.version, style: style.copyWith(height: 1.0));
     final applied = model.records[game.id]?.update == update.version;
@@ -1277,32 +1352,42 @@ class InfoCard extends StatelessWidget {
     final scale = LayoutScale.of(context);
     // On Glass the labels are a little brighter: they keep AA contrast over any frosted picture.
     final label = Colors.white.withValues(alpha: LookScope.isGlass(context) ? 0.72 : 0.55);
-    return SizedBox(
-      width: 236 * scale,
-      height: 96 * scale,
-      child: Glass(
-        radius: 16 * scale,
-        padding: EdgeInsets.all(18 * scale),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    // As wide as the words need, between a short value's and the room a long translation
+    // gets; a longer one goes to an ellipsis. One height for all, so the row stays even.
+    return ConstrainedBox(
+      constraints: BoxConstraints(minWidth: 128 * scale, maxWidth: 236 * scale),
+      child: IntrinsicWidth(
+        child: SizedBox(
+          height: 76 * scale,
+          child: Glass(
+            radius: 14 * scale,
+            padding: EdgeInsets.fromLTRB(14 * scale, 13 * scale, 14 * scale, 10 * scale),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(icon, size: 14 * scale, color: label),
-                SizedBox(width: 6 * scale),
-                Text(
-                  title.toUpperCase(),
-                  style: AppText.display(
-                    12 * scale,
-                    weight: FontWeight.w600,
-                    color: label,
-                  ).copyWith(letterSpacing: 0.6),
+                Row(
+                  children: [
+                    Icon(icon, size: 13 * scale, color: label),
+                    SizedBox(width: 5 * scale),
+                    Flexible(
+                      child: Text(
+                        T.upper(title),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.display(
+                          11 * scale,
+                          weight: FontWeight.w600,
+                          color: label,
+                        ).copyWith(letterSpacing: 0.6, height: 1.1),
+                      ),
+                    ),
+                  ],
                 ),
+                SizedBox(height: 6 * scale),
+                child,
               ],
             ),
-            SizedBox(height: 10 * scale),
-            child,
-          ],
+          ),
         ),
       ),
     );

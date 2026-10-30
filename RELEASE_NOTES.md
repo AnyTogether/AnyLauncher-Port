@@ -53,6 +53,48 @@ release when it is made.
   distribution name is read from os-release whichever quotes it uses. When the link has no
   room for every line, the oldest lines are left out, the log says how many, and the whole
   report is put on the clipboard so you can paste it into the issue.
+- **Relinking a dump that holds an earlier relink's files.** A relink done by hand (or by
+  another tool) with the dump as its `app0` writes its converted modules into the dump's own
+  `sce_module` as `*.guest.prx` files. The launcher took those for modules of the game and
+  stopped with "libSceFace.prx.guest.prx is neither an ELF nor a decrypted SELF container (an
+  encrypted dump cannot be used)". They are no longer inputs of a relink and no longer laid
+  into the installed game, so only this relink's modules go in; unlocking again (or **Update
+  and Play**) puts a game that failed this way right, with nothing to clean by hand.
+- **A module that cannot be used no longer stops the whole game.** A module of the dump that is
+  still encrypted, or one the relinker cannot convert, is left out and the game is unlocked
+  without it. The engine starts a game without a module it imports nothing from, answers the
+  game's own load of it with an error, and uses its own library of that name where it has one
+  (libSceNpCppWebApi, for example). The launcher says which file it left out and why once the
+  game is ready, and the unlock log has the relinker's reason. Only `eboot.bin` still stops an
+  unlock: an encrypted one says so in plain words.
+- **The relinker's whole error.** A failed unlock showed only the relinker's last line (often
+  just `Input: …\source\sce_module\libX.prx`, cut off). It now shows the reason (the `FAIL:`
+  line) and the file, named as the dump has it, wrapped over a few lines, with **Copy Error**
+  beside it and as the first row of the game's settings: it copies the error and all the
+  relinker printed.
+- **A profile picture of your own.** **Settings › Profiles › Choose Profile Picture** opens the
+  file dialog for a PNG, JPEG or WebP; its middle square is kept at 256 × 256 in the launcher's
+  data folder (`Profiles/Pictures`), for that profile only, and shows on Home, in **Who's
+  Playing?** and on the profile rows. **Remove Profile Picture** brings the initial back. Both
+  rows are reached with a controller too; the file dialog itself is the mouse's.
+- **The profile colour shows on Home at once.** The picture at the top right is the profile's
+  own colour now (it used the theme's accent), so changing **Colour** changes it straight away.
+- **Turkish capitals.** Labels written in capitals (the game's **OYUN KİMLİĞİ** card, the
+  menus' kickers, level tiers, initials) use İ and I as Turkish does; Dart's own toUpperCase
+  had turned "Kimliği" into "KIMLIĞI". Game IDs (CUSA…, PPSA…) are shown as the game has them.
+- **Smaller game info cards.** Status, Size, Title ID and Version on Home take the width their
+  text needs (up to the old width, longer translations end in "…") and are lower.
+- **A padlock that reads as one.** Locked games show a solid padlock (after Hugeicons'
+  square-lock-02, MIT) instead of the small lock that was taken for a shopping bag; the focused
+  tile adds **Locked**.
+- **A profile left without a name is "Oyuncu" in Turkish**, "Player" in English: the language's
+  word, numbered when another profile has it ("Oyuncu 2"). It was always "Player".
+- **Settings' sections are as large as its rows.** The list on the left no longer shrinks to fit
+  a short window: it scrolls, with a scrollbar that shows when there are more sections than fit,
+  and a controller's focus keeps the selected one in view.
+- **Descriptions end with a full stop.** Every setting description in English and Turkish ends
+  as a sentence, and the translation check (`tool/check_translations.dart`) now flags a
+  description (`…Detail`, `…Hint`, `…Subtitle`, `…Text`) that does not.
 
 ## 0.1.14
 

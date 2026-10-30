@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show instantiateImageCodec;
 
 import 'package:anyps5_desktop/core/gamepad/pad_navigation.dart';
 import 'package:anyps5_desktop/core/installer.dart';
@@ -7,8 +8,10 @@ import 'package:anyps5_desktop/core/profiles/profiles.dart';
 import 'package:anyps5_desktop/core/together/token_store.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/launcher.dart';
+import 'package:anyps5_desktop/ui/profiles_view.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:anyps5_desktop/ui/theme.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
@@ -290,6 +293,94 @@ void main() {
       expect(mira.detail, startsWith('@mira · NightOwl'));
       expect(rows.firstWhere((row) => row.id == 'friend-f2').title, 'Sol');
       model.dispose();
+    });
+  });
+
+  group('the name, the colour and the picture', () {
+    test("a profile left without a name is the language's player, numbered when taken", () {
+      fixture = makeFixture(onboarded: false, language: Language.byCode('tr'));
+      final model = fixture.model;
+      model.preferences.profileName = '';
+      model.onboardingStep = 4;
+      model.profileFlow.modeChoice = 0;
+      model.handle(Command.select);
+      expect(model.profiles.book.profiles.single.name, 'Oyuncu');
+      expect(model.preferences.profileName, 'Oyuncu');
+      model.openAddProfile();
+      model.profileFlow.name = '   ';
+      model.confirmModeChoice();
+      expect(model.profiles.book.profiles.map((profile) => profile.name), ['Oyuncu', 'Oyuncu 2']);
+      // Emptied in Settings › Profiles: the next free one, never English.
+      model.renameCurrentProfile('');
+      expect(model.currentProfile!.name, 'Oyuncu 2');
+    });
+
+    testWidgets("the colour chosen shows at once on Home's picture", (tester) async {
+      fixture = makeFixture();
+      final model = fixture.model;
+      await pumpLauncher(tester, model);
+      Color shown() {
+        final tile = find.descendant(of: find.byKey(const ValueKey('home-avatar')), matching: find.byType(AnimatedContainer));
+        final decoration = tester.widget<AnimatedContainer>(tile.first).decoration! as BoxDecoration;
+        return (decoration.gradient! as LinearGradient).colors.first;
+      }
+
+      expect(shown(), LauncherProfiles.palette[0]);
+      model.openProfileSettings();
+      final rows = model.panelCategories()[model.panelCategory].rows;
+      final colour = rows.firstWhere((row) => row.id == 'profile-color').kind as ChoiceRow;
+      colour.set(3);
+      await settle(tester);
+      expect(shown(), LauncherProfiles.palette[3]);
+    });
+
+    testWidgets('a picture is chosen with the file dialog, cut to a square, shown and removed', (tester) async {
+      String? picked;
+      fixture = makeFixture(pickImage: () async => picked);
+      final model = fixture.model;
+      // 600×300: red at the sides, blue in the middle square.
+      picked = p.join(fixture.temp.path, 'me.png');
+      File(picked).writeAsBytesSync(png(600, 300, (x, y) => x < 150 || x >= 450 ? 0xFF0000FF : 0x0000FFFF));
+      model.openProfileSettings();
+      List<String> ids() => model.panelCategories()[model.panelCategory].rows.map((row) => row.id).toList();
+      expect(ids(), contains('profile-picture'));
+      expect(ids(), isNot(contains('profile-picture-remove')));
+      await tester.runAsync(model.chooseProfilePicture);
+      final kept = model.profiles.pictureOf(model.currentProfile);
+      expect(kept, isNotNull, reason: model.toast);
+      expect(p.isWithin(p.join(model.paths.config, 'Profiles'), kept!), isTrue);
+      final image = await tester.runAsync(() async {
+        final codec = await instantiateImageCodec(File(kept).readAsBytesSync());
+        return (await codec.getNextFrame()).image;
+      });
+      expect([image!.width, image.height], [256, 256]);
+      final pixels = (await tester.runAsync(() => image.toByteData()))!;
+      int at(int x, int y) => pixels.getUint32((y * 256 + x) * 4);
+      expect(at(2, 2), 0x0000FFFF, reason: 'the sides are cut off');
+      expect(at(253, 128), 0x0000FFFF);
+      // The row for a controller, and the picture on Home and in Settings.
+      expect(ids(), containsAll(['profile-picture', 'profile-picture-remove']));
+      expect(model.panelCategories()[model.panelCategory].rows.first.person?.picture, kept);
+      model.closeOverlay();
+      await pumpLauncher(tester, model);
+      expect(tester.widget<ProfileTile>(find.byKey(const ValueKey('home-avatar'))).picture, kept);
+      expect(find.descendant(of: find.byKey(const ValueKey('home-avatar')), matching: find.byType(Image)), findsOneWidget);
+      model.removeProfilePicture();
+      expect(model.profiles.pictureOf(model.currentProfile), isNull);
+      expect(File(kept).existsSync(), isFalse);
+      model.openProfileSettings();
+      expect(ids(), isNot(contains('profile-picture-remove')));
+      // The toast's timer runs out.
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets('a file that is not a picture changes nothing', (tester) async {
+      fixture = makeFixture(pickImage: () async => p.join(fixture.temp.path, 'notes.png'));
+      final model = fixture.model;
+      File(p.join(fixture.temp.path, 'notes.png')).writeAsStringSync('not a picture');
+      await tester.runAsync(model.chooseProfilePicture);
+      expect(model.profiles.pictureOf(model.currentProfile), isNull);
+      expect(model.toast, T.text('profilePictureFailed'));
     });
   });
 

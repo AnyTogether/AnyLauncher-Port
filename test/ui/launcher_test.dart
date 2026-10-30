@@ -91,8 +91,10 @@ void main() {
     testWidgets('home, sunset, a game that failed and one that cannot be read', (tester) async {
       fixture = makeFixture(theme: 2);
       final model = fixture.model;
+      // The relinker's reason and the file it names, both shown, wrapped.
       model.failures[model.games[indexOf(model, 'PPSA02002')].id] =
-          'relinker failed (3): relink: unsupported relocation';
+          'relinker.exe failed (2): FAIL: Code analysis: branch into skipped range tail, a jump from 0x14d3ff1c4 '
+          'lands inside an instruction the scan stepped over (offset 0x4a10)\nInput: eboot.bin';
       model.select(indexOf(model, 'PPSA02002'));
       await pumpLauncher(tester, model);
       await expectLater(shell, matchesGoldenFile('goldens/home_sunset_failed.png'));
@@ -233,6 +235,67 @@ void main() {
       model.pairing = const PairingRequest(id: 'r', deviceName: "Utku's iPhone", code: '4071');
       await pumpLauncher(tester, model);
       await expectLater(shell, matchesGoldenFile('goldens/pairing.png'));
+    });
+  });
+
+  group('a failed unlock', () {
+    const failure =
+        'relinker.exe failed (2): FAIL: Code analysis: branch into skipped range tail (offset 0x4a10)\n'
+        'Input: sce_module/libSceNpCppWebApi.prx';
+
+    testWidgets('home shows the reason and the file; Copy Error copies all the relinker printed', (tester) async {
+      fixture = makeFixture();
+      final model = fixture.model;
+      final game = model.games[indexOf(model, 'PPSA02002')];
+      model.failures[game.id] = failure;
+      File(p.join(model.paths.logs, '${game.titleId}-unlock.log'))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('PRX conversion | libSceNpCppWebApi.prx | 100% (1/2)\n$failure\n');
+      model.select(indexOf(model, 'PPSA02002'));
+      await pumpLauncher(tester, model);
+      expect(find.textContaining('branch into skipped range tail'), findsOneWidget);
+      expect(find.textContaining('libSceNpCppWebApi.prx'), findsOneWidget);
+      await tester.tap(find.text('Copy Error'));
+      await tester.pump();
+      expect(fixture.copied.single, startsWith(failure));
+      expect(fixture.copied.single, contains('PRX conversion | libSceNpCppWebApi.prx | 100% (1/2)'));
+      expect(model.toast, 'Error copied');
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    test('the game\'s settings have the error first, to copy with the controller', () {
+      fixture = makeFixture();
+      final model = fixture.model;
+      final game = model.games[indexOf(model, 'PPSA02002')];
+      model.failures[game.id] = failure;
+      model.select(indexOf(model, 'PPSA02002'));
+      model.open(Layer.gameSettings);
+      final row = model.panelCategories().first.rows.first;
+      expect(row.id, 'unlockError');
+      expect(row.detail, contains('libSceNpCppWebApi.prx'));
+      expect(row.detail, endsWith('Select to copy the whole error.'));
+      model.handle(Command.select);
+      expect(fixture.copied.single, startsWith(failure));
+    });
+
+    test('a game ready without some of its modules says which and why', () {
+      fixture = makeFixture();
+      final game = fixture.model.games.first;
+      expect(
+        AppModel.leftOutText(game, const [
+          LeftOutModule('sce_module/libSceNpCppWebApi.prx', LeftOutReason.notRelinked, 'bad'),
+        ]),
+        '${game.name} is ready without sce_module/libSceNpCppWebApi.prx: AnyPS5 could not convert it, so the game '
+        "uses AnyPS5's own library of that name where there is one.",
+      );
+      expect(
+        AppModel.leftOutText(game, const [
+          LeftOutModule('sce_module/libSceNpCppWebApi.prx', LeftOutReason.notRelinked),
+          LeftOutModule('sce_module/libSceFace.prx', LeftOutReason.encrypted),
+        ]),
+        '${game.name} is ready without sce_module/libSceFace.prx: the file is encrypted in the dump. If the game '
+        'does not start, dump it again with a dumper that decrypts it.',
+      );
     });
   });
 

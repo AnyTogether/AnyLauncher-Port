@@ -1039,16 +1039,29 @@ class PointerFocus extends InheritedWidget {
 /// another row under the mouse, which would take the focus and scroll again (the list chased
 /// the pointer).
 class KeepVisible extends StatefulWidget {
-  const KeepVisible({super.key, required this.active, required this.child});
+  const KeepVisible({super.key, required this.active, required this.child, this.atStart = false});
 
   final bool active;
   final Widget child;
+
+  /// Brought into view when first built active too (without moving), not only when it becomes so.
+  final bool atStart;
 
   @override
   State<KeepVisible> createState() => _KeepVisibleState();
 }
 
 class _KeepVisibleState extends State<KeepVisible> {
+  @override
+  void initState() {
+    super.initState();
+    if (widget.atStart && widget.active) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Scrollable.ensureVisible(context, alignment: 0.5);
+      });
+    }
+  }
+
   @override
   void didUpdateWidget(KeepVisible oldWidget) {
     super.didUpdateWidget(oldWidget);

@@ -2,8 +2,8 @@
 // AnyLauncher-Port): dart run tool/check_translations.dart [assets/l10n [lib]]
 //
 // Every file is one flat JSON object of texts, as Weblate keeps monolingual JSON: no key en.json
-// lacks, the same placeholders as English in each text, and the language's own name under
-// "languageName". A text not translated yet is fine: the app shows the English one, and the check
+// lacks, the same placeholders as English in each text, descriptions (keys ending in Detail,
+// Hint, Subtitle, …) that end as sentences, and the language's own name under "languageName". A text not translated yet is fine: the app shows the English one, and the check
 // counts it. The code is checked too: no text chosen by comparing the language's code, and no
 // Turkish words in it, since those belong in the files. A line that has to compare the code for
 // something other than a text says so with the comment "// not a text".
@@ -19,6 +19,29 @@ const nameKey = 'languageName';
 /// The object the files had before Weblate: {"@meta": {"name", "consoleLanguage"}}. The launchers
 /// still read it from a file in the Languages folder; in the repository it is an error.
 const legacyMeta = '@meta';
+
+/// The keys of texts that are descriptions, sentences under a row or a title: the names they
+/// end in. Each one ends as a sentence does, with . ! ? … or : (or the script's own marks), so
+/// no description shows without its full stop. A placeholder in brackets may follow the mark:
+/// "Reinstall it. (%@)".
+const descriptionEndings = ['Detail', 'Hint', 'Subtitle', 'Text', 'Note', 'Description', 'Info', 'Explanation'];
+
+/// Description keys that are not sentences: a text field's placeholder, a line of facts.
+const notSentences = {'profileNameHint', 'engineDownloadDetail', 'togetherTitleDetail', 'engineDeleteOldDetail'};
+
+/// How a sentence may end, in the scripts the files may be written in.
+final _sentenceEnd = RegExp(r'[.!?…:。！？：．؟।։።;]\s*(\(%(\d\$)?[@d]\))?$');
+
+/// Whether [key] names a description that has to end as a sentence.
+bool isDescription(String key) =>
+    !notSentences.contains(key) && descriptionEndings.any((ending) => key.endsWith(ending));
+
+/// The descriptions in [texts] that do not end as a sentence, as problems of [file].
+List<String> punctuationProblems(String file, Map<String, String> texts) => [
+  for (final MapEntry(:key, :value) in texts.entries)
+    if (isDescription(key) && value.trim().isNotEmpty && !_sentenceEnd.hasMatch(value.trim()))
+      '$file: "$key" is a description and ends without a full stop (. ! ? … or :)',
+];
 
 /// A file's name: a locale code as Weblate writes it, de, pt-BR, zh-Hant, es-419 (or pt_BR).
 final localeCode = RegExp(r'^[a-z]{2,3}([-_]([A-Z][a-z]{3}|[A-Z]{2}|[0-9]{3}))?$');
@@ -111,6 +134,7 @@ LanguageReport checkLanguage(String code, String source, Map<String, String> eng
   } else if (name.trim().isEmpty) {
     problems.add('$file: "$nameKey" is the language\'s own name and cannot be empty');
   }
+  problems.addAll(punctuationProblems(file, texts));
   var translated = 0;
   for (final MapEntry(:key, :value) in texts.entries) {
     final englishText = english[key];
@@ -143,6 +167,7 @@ int checkFolder(Directory folder, StringSink out, {bool annotate = false}) {
     return 1;
   }
   out.writeln('en: ${english.length} texts');
+  englishProblems.addAll(punctuationProblems('en.json', english));
   var failed = englishProblems.isNotEmpty;
   for (final problem in englishProblems) {
     error('en.json', problem);
@@ -180,6 +205,9 @@ final _languageBranch = RegExp(r"""\b(language\.code|languageCode)\s*[!=]=\s*'|=
 /// Letters only Turkish (of the languages the apps have) writes, in a string literal.
 final _turkishLiteral = RegExp('\'[^\'\n]*[ğĞışŞİ][^\'\n]*\'|"[^"\n]*[ğĞışŞİ][^"\n]*"');
 
+/// A text from the files put in capitals by Dart, which knows no Turkish İ: T.upper does.
+final _casedText = RegExp(r'T\.(text|format)\(.*\)\.to(Upper|Lower)Case\(\)');
+
 /// Lines allowed to name a language in itself: the console languages, each in its own words.
 const _allowed = {'lib/core/game_settings.dart': 'ConsoleLanguage'};
 
@@ -203,6 +231,10 @@ List<String> checkSources(Directory lib) {
         problems.add('$relative:${number + 1}: a text chosen by the language\'s code; put it in assets/l10n');
       } else if (_turkishLiteral.hasMatch(withoutComment)) {
         problems.add('$relative:${number + 1}: a Turkish text in the code; put it in assets/l10n');
+      } else if (_casedText.hasMatch(withoutComment)) {
+        problems.add(
+          '$relative:${number + 1}: a text cased by toUpperCase/toLowerCase, wrong in Turkish; use T.upper or T.lower',
+        );
       }
     }
   }

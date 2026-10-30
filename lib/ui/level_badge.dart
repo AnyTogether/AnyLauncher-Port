@@ -228,7 +228,7 @@ class LevelCard extends StatelessWidget {
                         border: Border.all(color: metal.withValues(alpha: 0.5)),
                       ),
                       child: Text(
-                        LevelColors.tierName(level.tier).toUpperCase(),
+                        T.upper(LevelColors.tierName(level.tier)),
                         style: AppText.display(
                           10.5 * scale,
                           weight: FontWeight.w700,

@@ -25,6 +25,7 @@ import 'ui/app_model.dart';
 import 'ui/crash_model.dart';
 import 'ui/launcher.dart';
 import 'ui/launcher_window_channel.dart';
+import 'ui/profile_picture.dart';
 import 'ui/strings.dart';
 import 'ui/together_model.dart' show launcherVersion;
 import 'ui/theme.dart';
@@ -92,7 +93,7 @@ Future<void> main(List<String> arguments) async {
       copyText: (text) => unawaited(Clipboard.setData(ClipboardData(text: text))),
       pickImage: () async => (await openFile(
         acceptedTypeGroups: const [
-          XTypeGroup(label: 'Pictures', extensions: ['png', 'jpg', 'jpeg']),
+          XTypeGroup(label: 'Pictures', extensions: ProfilePicture.extensions),
         ],
       ))?.path,
       saveFile: (name) async => (await getSaveLocation(

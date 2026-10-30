@@ -149,7 +149,7 @@ void main() {
       await model.updates.startupCheck();
       final rows = model.updates.aboutRows();
       expect(rows.first.title, 'AnyPS5 Desktop $newer is ready · Restart Now');
-      expect(rows.first.detail, 'Restart now, or it goes in at the next launch');
+      expect(rows.first.detail, 'Restart now, or it goes in at the next launch.');
     });
   });
 }

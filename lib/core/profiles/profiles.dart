@@ -34,6 +34,7 @@ class LauncherProfile {
     this.account,
     DateTime? createdAt,
     this.settings,
+    this.picture,
   }) : name = clean(name),
        createdAt = createdAt ?? DateTime.now();
 
@@ -47,6 +48,7 @@ class LauncherProfile {
         : null,
     createdAt: DateTime.tryParse(json['createdAt'] as String? ?? ''),
     settings: json['settings'] is Map<String, dynamic> ? json['settings'] as Map<String, dynamic> : null,
+    picture: json['picture'] is String ? json['picture'] as String : null,
   );
 
   /// The profile made from the launcher's setup before there were profiles.
@@ -65,15 +67,17 @@ class LauncherProfile {
   /// first switches away from the profile, and then the launcher's defaults apply.
   Map<String, dynamic>? settings;
 
-  /// Trimmed and at most [maxName] characters; "Player" when nothing is left.
+  /// The file of the profile's own picture in the store's Pictures folder ([ProfileStore.pictureOf]);
+  /// null for the initial on its colour. A new picture is a new file, so nothing shows the old one.
+  String? picture;
+
+  /// Trimmed and at most [maxName] characters; "Player" when nothing is left (the store gives an
+  /// empty name the language's word before it comes here).
   static String clean(String name) {
     var trimmed = name.trim();
     if (trimmed.length > maxName) trimmed = trimmed.substring(0, maxName).trim();
     return trimmed.isEmpty ? 'Player' : trimmed;
   }
-
-  /// The first letter, for the tile.
-  String get initial => name.isEmpty ? '?' : name.characters.first.toUpperCase();
 
   Map<String, Object?> toJson() => {
     'id': id,
@@ -83,12 +87,8 @@ class LauncherProfile {
     if (account != null) 'account': account!.toJson(),
     'createdAt': createdAt.toUtc().toIso8601String(),
     if (settings != null) 'settings': settings,
+    if (picture != null) 'picture': picture,
   };
-}
-
-extension on String {
-  /// The first user-perceived character, near enough for an initial.
-  Iterable<String> get characters => runes.map(String.fromCharCode);
 }
 
 /// Every profile on this computer and which one plays.
@@ -181,7 +181,12 @@ class ProfileStore {
   /// Reads the book; with none kept, a launcher set up before profiles becomes its first
   /// profile at once (offline until [adoptLegacySession] finds its session), and a new one
   /// waits for the welcome.
-  ProfileStore(this.folder, {required ExistingSetup existing, this.persist = true}) {
+  ProfileStore(
+    this.folder, {
+    required ExistingSetup existing,
+    this.persist = true,
+    String Function(int number)? defaultName,
+  }) : defaultName = defaultName ?? _englishName {
     try {
       final json = jsonDecode(File(file).readAsStringSync());
       if (json is Map<String, dynamic>) {
@@ -197,7 +202,7 @@ class ProfileStore {
     if (existing.onboarded) {
       final profile = LauncherProfile(
         id: LauncherProfile.legacyId,
-        name: existing.name,
+        name: _nameOr(existing.name),
         color: 0,
         mode: ProfileMode.offline,
       );
@@ -214,10 +219,71 @@ class ProfileStore {
   final bool persist;
   ProfileBook book = ProfileBook();
 
+  /// The name a profile left without one gets, in the launcher's language: 1 for the word
+  /// itself ("Player"), 2 and on for the next ones ("Player 2").
+  final String Function(int number) defaultName;
+
+  static String _englishName(int number) => number == 1 ? 'Player' : 'Player $number';
+
+  /// [name] cleaned, or the first default name no other profile than [except] has.
+  String _nameOr(String name, {String? except}) {
+    if (name.trim().isNotEmpty) return LauncherProfile.clean(name);
+    final taken = {
+      for (final profile in book.profiles)
+        if (profile.id != except) profile.name.toLowerCase(),
+    };
+    for (var number = 1; ; number++) {
+      final candidate = LauncherProfile.clean(defaultName(number));
+      if (!taken.contains(candidate.toLowerCase())) return candidate;
+    }
+  }
+
   /// The book was made from the setup before profiles in this run.
   bool migrated = false;
 
   String get file => p.join(folder, 'profiles.json');
+
+  /// Where the profiles' pictures are kept: Profiles/Pictures in the launcher's data folder.
+  String get pictures => p.join(folder, 'Pictures');
+
+  /// The file of [profile]'s picture, when it has one that is there.
+  String? pictureOf(LauncherProfile? profile) {
+    final name = profile?.picture;
+    if (name == null) return null;
+    final path = p.join(pictures, name);
+    return File(path).existsSync() ? path : null;
+  }
+
+  /// [png] (already cut to a square) is [id]'s picture from now on, the one before deleted.
+  void setPicture(String id, List<int> png) {
+    final found = profile(id);
+    if (found == null) return;
+    final name = '$id-${DateTime.now().microsecondsSinceEpoch}.png';
+    Directory(pictures).createSync(recursive: true);
+    File(p.join(pictures, name)).writeAsBytesSync(png, flush: true);
+    _deletePicture(found);
+    found.picture = name;
+    save();
+  }
+
+  /// [id] shows its initial again.
+  void removePicture(String id) {
+    final found = profile(id);
+    if (found == null || found.picture == null) return;
+    _deletePicture(found);
+    found.picture = null;
+    save();
+  }
+
+  void _deletePicture(LauncherProfile profile) {
+    final name = profile.picture;
+    if (name == null) return;
+    try {
+      File(p.join(pictures, p.basename(name))).deleteSync();
+    } on FileSystemException {
+      // Gone already.
+    }
+  }
 
   LaunchScreen get launchScreen {
     final current = book.currentProfile;
@@ -263,7 +329,7 @@ class ProfileStore {
         : first && book.legacyOwner == null
         ? LauncherProfile.legacyId
         : newId();
-    final added = LauncherProfile(id: made, name: name, color: color, mode: mode, account: account);
+    final added = LauncherProfile(id: made, name: _nameOr(name), color: color, mode: mode, account: account);
     book.profiles.add(added);
     if (first) {
       book.current = added.id;
@@ -278,7 +344,7 @@ class ProfileStore {
     return List.generate(16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
   }
 
-  void rename(String id, String name) => _change(id, (profile) => profile.name = LauncherProfile.clean(name));
+  void rename(String id, String name) => _change(id, (profile) => profile.name = _nameOr(name, except: id));
   void setMode(String id, ProfileMode mode) => _change(id, (profile) => profile.mode = mode);
   void setAccount(String id, ProfileAccount? account) => _change(id, (profile) => profile.account = account);
   void setColor(String id, int color) => _change(id, (profile) => profile.color = color % LauncherProfile.paletteSize);
@@ -301,6 +367,7 @@ class ProfileStore {
     if (profile(id) == null) throw ProfileRefusal.unknown;
     if (book.profiles.length < 2) throw ProfileRefusal.onlyProfile;
     if (book.currentProfile?.id == id) throw ProfileRefusal.inUse;
+    _deletePicture(profile(id)!);
     book.profiles.removeWhere((profile) => profile.id == id);
     save();
   }

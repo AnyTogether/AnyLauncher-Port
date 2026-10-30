@@ -225,7 +225,8 @@ void main() {
             (e) =>
                 e is InstallError &&
                 e.message ==
-                    'eboot.bin is neither an ELF nor a decrypted SELF container (an encrypted dump cannot be used)',
+                    'eboot.bin in the dump is encrypted (neither an ELF nor a decrypted SELF container): '
+                        'dump the game again with a dumper that decrypts it',
           ),
         ),
       );
@@ -283,6 +284,198 @@ void main() {
         'level data',
         reason: 'the dump stays',
       );
+    });
+  });
+
+  group('relink inputs', () {
+    /// What a relink by hand leaves in a dump: the relinker writes its modules into the app0 it is
+    /// pointed at, which is the dump when the dump is used as app0. On Windows they are PE files.
+    void pollute(String folder) {
+      File(p.join(folder, 'sce_module', 'libgame.sprx.guest.prx')).writeAsBytesSync([0x4D, 0x5A, 0x90, 0]);
+      File(p.join(folder, 'sce_module', 'libSceFace.PRX.GUEST.PRX')).writeAsBytesSync([0x4D, 0x5A, 0x90, 0]);
+      File(p.join(folder, 'Media', 'Plugins', 'plugin.prx.guest.prx')).writeAsBytesSync([0x4D, 0x5A, 0x90, 0]);
+    }
+
+    test('a relinker output in the dump is never an input', () {
+      final game = makeGame();
+      pollute(game.folder);
+      expect(Installer.modules(game.folder), ['Media/Plugins/plugin.prx', 'sce_module/libgame.sprx']);
+      expect(Installer.isRelinkerOutput('libSceFace.prx.guest.prx'), isTrue);
+      expect(Installer.isRelinkerOutput('C:\\Games\\x\\sce_module\\libc.prx.Guest.prx'), isTrue);
+      expect(Installer.isRelinkerOutput('libSceFace.prx'), isFalse);
+      expect(Installer.isRelinkerOutput('guest.prx.esbak'), isFalse);
+    });
+
+    test('a dump with outputs of an earlier relink in it unlocks; only this relink\'s outputs go in', () async {
+      final game = makeGame();
+      pollute(game.folder);
+      final installed = await Installer(game: game, toolkit: Toolkit(toolkitFolder), root: root).run();
+      final runs = fakeRelinkerInputs(toolkitFolder);
+      expect(runs, [
+        ['Media/Plugins/plugin.prx', 'eboot.bin', 'sce_module/libgame.sprx'],
+      ]);
+      // The output is beside the source, never in it.
+      final arguments = fakeRelinkerArguments(toolkitFolder);
+      expect(p.isWithin(arguments.first, arguments.last), isFalse);
+      // The stale outputs stay in the dump, out of the game.
+      final app0 = p.join(installed, 'app0');
+      expect(File(p.join(app0, 'sce_module', 'libgame.sprx.guest.prx')).existsSync(), isFalse);
+      expect(File(p.join(app0, 'sce_module', 'libSceFace.PRX.GUEST.PRX')).existsSync(), isFalse);
+      expect(File(p.join(app0, 'Media', 'Plugins', 'plugin.prx.guest.prx')).existsSync(), isFalse);
+      expect(File(p.join(app0, 'sce_module', 'libgame.prx')).readAsStringSync(), 'relinked module');
+      expect(File(p.join(game.folder, 'sce_module', 'libgame.sprx.guest.prx')).existsSync(), isTrue);
+    });
+
+    test('a relink after an engine update over a polluted dump and store heals', () async {
+      final game = makeGame();
+      final installed = await Installer(game: game, toolkit: Toolkit(toolkitFolder), root: root).run();
+      // Outputs of a relink by hand land in the dump, a stale one in the kept relink and in the game.
+      pollute(game.folder);
+      final kept = Installer.keptRelink(game, root);
+      File(p.join(kept, 'out', 'app0', 'sce_module', 'stale.prx.guest.prx'))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('stale');
+      File(p.join(installed, 'app0', 'sce_module', 'libSceFace.PRX.GUEST.PRX')).writeAsStringSync('stale');
+      // Update from Git: another engine build, so the kept relink is not reused.
+      makeFakeToolkit(toolkitFolder, version: 'toolkit-2');
+      final lines = <String>[];
+      await Installer(game: game, toolkit: Toolkit(toolkitFolder), root: root, onLog: lines.add).run();
+      expect(lines.where((line) => line.contains('reused')), isEmpty);
+      expect(fakeRelinkerInputs(toolkitFolder), [
+        ['Media/Plugins/plugin.prx', 'eboot.bin', 'sce_module/libgame.sprx'],
+      ]);
+      final app0 = p.join(installed, 'app0');
+      expect(File(p.join(app0, 'sce_module', 'stale.prx.guest.prx')).existsSync(), isFalse);
+      expect(File(p.join(app0, 'sce_module', 'libSceFace.PRX.GUEST.PRX')).existsSync(), isFalse);
+      expect(File(p.join(kept, 'out', 'app0', 'sce_module', 'stale.prx.guest.prx')).existsSync(), isFalse);
+      expect(Installer.record(installed, system: HostSystem.linux)!.toolkit, 'toolkit-2');
+      // And the next unlock with nothing changed reuses the healed relink.
+      await Installer(game: game, toolkit: Toolkit(toolkitFolder), root: root, onLog: lines.add).run();
+      expect(lines.where((line) => line.contains('reused')), hasLength(1));
+    });
+
+    test('an encrypted module is left out by name; the game unlocks without it', () async {
+      final game = makeGame();
+      File(p.join(game.folder, 'sce_module', 'libSceFace.prx')).writeAsBytesSync([9, 9, 9, 9, 9, 9, 9, 9]);
+      final lines = <String>[];
+      final installer = Installer(game: game, toolkit: Toolkit(toolkitFolder), root: root, onLog: lines.add);
+      final installed = await installer.run();
+      expect(installer.leftOut, [const LeftOutModule('sce_module/libSceFace.prx', LeftOutReason.encrypted)]);
+      expect(
+        lines,
+        contains(
+          'sce_module/libSceFace.prx in the dump is encrypted (neither an ELF nor a decrypted SELF container): '
+          'it is left out, and the game runs without it',
+        ),
+      );
+      expect(fakeRelinkerInputs(toolkitFolder).single, isNot(contains('sce_module/libSceFace.prx')));
+      expect(Directory(installed).existsSync(), isTrue);
+    });
+
+    test('a module the relinker cannot convert is left out and the relink runs again', () async {
+      makeFakeToolkit(toolkitFolder, failOn: 'sce_module/libgame.sprx');
+      final game = makeGame();
+      final lines = <String>[];
+      final installer = Installer(game: game, toolkit: Toolkit(toolkitFolder), root: root, onLog: lines.add);
+      final installed = await installer.run();
+      expect(installer.leftOut, [
+        const LeftOutModule(
+          'sce_module/libgame.sprx',
+          LeftOutReason.notRelinked,
+          'Unsupported relocation type 0x25 (offset 0x1234)',
+        ),
+      ]);
+      expect(fakeRelinkerInputs(toolkitFolder), [
+        ['Media/Plugins/plugin.prx', 'eboot.bin', 'sce_module/libgame.sprx'],
+        ['Media/Plugins/plugin.prx', 'eboot.bin'],
+      ]);
+      expect(
+        lines,
+        contains(
+          'sce_module/libgame.sprx: the relinker could not convert it (Unsupported relocation type 0x25 '
+          '(offset 0x1234)); it is left out and the relink runs again without it',
+        ),
+      );
+      expect(File(p.join(installed, 'app.elf')).existsSync(), isTrue);
+      // Reused, the kept relink says again what it left out.
+      final again = Installer(game: game, toolkit: Toolkit(toolkitFolder), root: root);
+      await again.run();
+      expect(again.leftOut, installer.leftOut);
+      expect(fakeRelinkerInputs(toolkitFolder), hasLength(2), reason: 'not run again');
+    });
+
+    test('a failed executable stops the unlock with the relinker\'s whole reason', () async {
+      makeFakeToolkit(toolkitFolder, failOn: 'eboot.bin');
+      final game = makeGame();
+      final failure = await Installer(
+        game: game,
+        toolkit: Toolkit(toolkitFolder),
+        root: root,
+      ).run().then<Object?>((_) => null, onError: (Object error) => error);
+      expect(failure, isA<ToolFailed>());
+      final message = (failure! as ToolFailed).message;
+      // The file as the dump has it: the work folder is gone by now.
+      expect(message, 'relinker failed (2): FAIL: Unsupported relocation type 0x25 (offset 0x1234)\nInput: eboot.bin');
+      expect(fakeRelinkerInputs(toolkitFolder), hasLength(1));
+      expect(Directory(Installer.installedFolder(game, root)).existsSync(), isFalse);
+    });
+
+    test('games folders with spaces and letters beyond ASCII', () async {
+      final spaced = p.join(temp.path, 'Oyunlar', 'PlayStation 5 Oyunları');
+      final folder = makeDump(spaced, 'Kahve Molası', titleId: 'PPSA05678', names: {'en-US': 'Coffee'});
+      File(p.join(folder, 'eboot.bin')).writeAsBytesSync(typicalSelf());
+      File(p.join(folder, 'sce_module', 'libgame.sprx'))
+        ..createSync(recursive: true)
+        ..writeAsBytesSync(typicalSelf(seed: 2));
+      makeFakeToolkit(toolkitFolder, failOn: 'sce_module/libgame.sprx');
+      final game = GameLibrary.inspect(folder)!;
+      final installer = Installer(game: game, toolkit: Toolkit(toolkitFolder), root: spaced);
+      final installed = await installer.run();
+      expect(installer.leftOut.single.path, 'sce_module/libgame.sprx');
+      expect(
+        fakeRelinkerArguments(toolkitFolder).first,
+        contains(p.join('Oyunlar', 'PlayStation 5 Oyunları', GameLibrary.storeName, 'Work')),
+      );
+      expect(File(p.join(installed, 'app.elf')).existsSync(), isTrue);
+    });
+
+    test('the module a failure names: inside the source tree, never the executable', () {
+      ToolFailed failed(String input) =>
+          ToolFailed('relinker.exe', 2, ['PRX conversion', 'FAIL: bad', 'Input: $input']);
+      final source = p.join(temp.path, 'Work', '1-2', 'source');
+      final modules = ['sce_module/libSceNpCppWebApi.prx', 'Media/Plugins/a.prx'];
+      expect(
+        Installer.failedModule(failed(p.join(source, 'sce_module', 'libSceNpCppWebApi.prx')), source, modules),
+        'sce_module/libSceNpCppWebApi.prx',
+      );
+      expect(Installer.failedModule(failed('Media/Plugins/a.prx'), source, modules), 'Media/Plugins/a.prx');
+      expect(Installer.failedModule(failed(p.join(source, 'eboot.bin')), source, modules), isNull);
+      expect(Installer.failedModule(failed(p.join(temp.path, 'elsewhere.prx')), source, modules), isNull);
+      expect(Installer.failedModule(ToolFailed('relinker', 2, ['FAIL: bad']), source, modules), isNull);
+    });
+
+    test('the error text: from the last FAIL line to the end, else the last line', () {
+      final failure = ToolFailed('relinker.exe', 2, [
+        'Instruction scan | eboot.bin | 100%',
+        r'FAIL: Code analysis: branch into skipped range tail (offset 0x4a10)',
+        r'Input: C:\Oyunlar\PlayStation 5\.AnyPS5\Work\1-2\source\sce_module\libSceNpCppWebApi.prx',
+      ]);
+      expect(
+        failure.message,
+        'relinker.exe failed (2): FAIL: Code analysis: branch into skipped range tail (offset 0x4a10)\n'
+        r'Input: C:\Oyunlar\PlayStation 5\.AnyPS5\Work\1-2\source\sce_module\libSceNpCppWebApi.prx',
+      );
+      expect(failure.reason, 'Code analysis: branch into skipped range tail (offset 0x4a10)');
+      expect(failure.input, r'C:\Oyunlar\PlayStation 5\.AnyPS5\Work\1-2\source\sce_module\libSceNpCppWebApi.prx');
+      expect(
+        ToolFailed('relinker', 2, [
+          'FAIL: x',
+          'Input: ${p.join(temp.path, 'source', 'sce_module', 'a.prx')}',
+        ], workingDirectory: p.join(temp.path, 'source')).message,
+        'relinker failed (2): FAIL: x\nInput: sce_module/a.prx',
+      );
+      expect(ToolFailed('relinker', 3, ['a', 'b']).message, 'relinker failed (3): b');
+      expect(ToolFailed('relinker', 3, const []).message, 'relinker failed (3)');
     });
   });
 

@@ -987,17 +987,8 @@ class HeroInfo extends StatelessWidget {
                 ),
               )
             else if (state is Failed)
-              ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: 520 * scale),
-                child: Legible(
-                  softness: 12,
-                  child: Text(
-                    state.message,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.display(14 * scale, color: Palette.danger),
-                  ),
-                ),
+              Flexible(
+                child: _FailureText(model: model, game: game, message: state.message),
               ),
           ],
         ),
@@ -1030,6 +1021,59 @@ class HeroInfo extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// A failed unlock's error beside the buttons: wrapped over a few lines (a relinker's reason and
+/// the file it names), and Copy Error, which puts the whole of it, the relinker's output with
+/// it, on the clipboard (the game's settings have it as a row too, for the controller).
+class _FailureText extends StatelessWidget {
+  const _FailureText({required this.model, required this.game, required this.message});
+
+  final AppModel model;
+  final Game game;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: 560 * scale),
+      child: Legible(
+        softness: 12,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              message,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.display(14 * scale, color: Palette.danger, height: 1.3),
+            ),
+            SizedBox(height: 6 * scale),
+            Pressable(
+              onTap: () => model.copyFailure(game),
+              builder: (context, hovering) => AnimatedOpacity(
+                opacity: hovering ? 1 : 0.72,
+                duration: const Duration(milliseconds: 120),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.content_copy_rounded, size: 14 * scale, color: Colors.white),
+                    SizedBox(width: 6 * scale),
+                    Text(
+                      T.text('copyError'),
+                      style: AppText.display(13 * scale, weight: FontWeight.w600, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1096,7 +1140,11 @@ class _AddonsCard extends StatelessWidget {
           if (addons.length > 2)
             Text(
               T.format('addonsMore', [addons.length - 1]),
-              style: AppText.display(12 * scale, weight: FontWeight.w500, color: Colors.white.withValues(alpha: 0.5)).copyWith(height: 1.0),
+              style: AppText.display(
+                12 * scale,
+                weight: FontWeight.w500,
+                color: Colors.white.withValues(alpha: 0.5),
+              ).copyWith(height: 1.0),
             ),
         ],
       ),

@@ -882,6 +882,8 @@ class AppModel extends ChangeNotifier {
     together = TogetherModel(this);
     _applySound();
     sounds.onCue = _cueAsked;
+    // Full screen the system made or ended (Maximize, Win+Up): the launcher follows it.
+    services.window?.listen(fullscreenChanged: windowChangedFullscreen);
   }
 
   // Feel: the controller's pulses, the end-of-row bump, the hover tick.
@@ -1517,7 +1519,14 @@ class AppModel extends ChangeNotifier {
     if (problem == null) return;
     _launcherProblemDone();
     final system = await crash.systemInfo();
-    services.openUrl?.call(IssueDraft.launcherProblem(problem, system: system, privacy: crash.privacy()).url);
+    final privacy = crash.privacy();
+    final draft = IssueDraft.launcherProblem(problem, system: system, privacy: privacy);
+    // The link had no room for every line: the whole report on the clipboard, to paste there.
+    if (draft.linesLeftOut > 0 && services.copyText != null) {
+      services.copyText!(IssueDraft.launcherProblemText(problem, system: system, privacy: privacy));
+      show(T.text('launcherReportCopied'));
+    }
+    services.openUrl?.call(draft.url);
   }
 
   void _launcherProblemDone() {
@@ -2545,12 +2554,37 @@ class AppModel extends ChangeNotifier {
       progress.remove(id);
       if (_disposed) return;
       done(failure);
+      if (failure == null && installer.leftOut.isNotEmpty) show(leftOutText(game, installer.leftOut), icon: game.icon);
       _changed();
       _publishActivity();
       _startNext();
       _stepPrepare();
     }());
     return installer;
+  }
+
+  /// What an unlock that left modules of the dump out says once the game is ready: which files,
+  /// and why (still encrypted in the dump, or the relinker could not convert them).
+  static String leftOutText(Game game, List<LeftOutModule> leftOut) {
+    final encrypted = [
+      for (final module in leftOut)
+        if (module.reason == LeftOutReason.encrypted) module.path,
+    ];
+    final files = encrypted.isNotEmpty ? encrypted : [for (final module in leftOut) module.path];
+    return T.format(encrypted.isNotEmpty ? 'unlockLeftOutEncrypted' : 'unlockLeftOutNotRelinked', [
+      game.name,
+      files.join(', '),
+    ]);
+  }
+
+  /// The whole error of [game]'s failed unlock to the clipboard: the message, then the unlock's
+  /// log with all the relinker printed.
+  void copyFailure(Game game) {
+    final failure = failures[game.id];
+    if (failure == null) return;
+    final log = GameLog.read(GameLog.unlockFile(paths.logs, game.titleId))?.trimRight();
+    services.copyText?.call([failure, if (log != null && log.isNotEmpty && log != failure) log].join('\n\n'));
+    show(T.text('unlockErrorCopied'));
   }
 
   /// The unlock of [game] did not start for want of room: the copy panel says how much is needed
@@ -3644,21 +3678,51 @@ class AppModel extends ChangeNotifier {
 
   Future<void> toggleFullscreen() => setLauncherFullscreen(!launcherFullscreen);
 
+  /// The choice is kept only when the window made it: Settings never says full screen over a
+  /// window (with no window to ask, in tests, the choice alone).
   Future<void> setLauncherFullscreen(bool on) async {
+    if (services.window != null && !await _setWindowFullscreen(on)) {
+      _changed();
+      return;
+    }
     preferences.launcherFullscreen = on;
     savePreferences();
-    await _setWindowFullscreen(on);
+    _changed();
   }
 
   /// At launch: full screen the first time, then as the user left it.
   Future<void> applyLauncherWindow() => _setWindowFullscreen(launcherFullscreen);
 
-  Future<void> _setWindowFullscreen(bool on) async {
-    if (await services.window?.setFullscreen(on) ?? false) {
+  Future<bool> _setWindowFullscreen(bool on) async {
+    final window = services.window;
+    if (window == null) return false;
+    final took = Stopwatch()..start();
+    final done = await window.setFullscreen(on);
+    // In a report's last seconds: a window that took long to change, or would not.
+    _windowLine(
+      '${on ? 'full screen' : 'windowed'} asked: ${done ? 'done' : 'refused'} in ${took.elapsedMilliseconds} ms',
+    );
+    if (done) {
       windowFullscreen = on;
       _changed();
     }
+    return done;
   }
+
+  /// The system made the window full screen or a window (the title bar's Maximize, a double
+  /// click on it, Win+Up, the window manager): the window buttons and Settings follow, and the
+  /// next start keeps it.
+  void windowChangedFullscreen(bool on) {
+    _windowLine('${on ? 'full screen' : 'windowed'} by the system');
+    windowFullscreen = on;
+    if (preferences.launcherFullscreen != on) {
+      preferences.launcherFullscreen = on;
+      savePreferences();
+    }
+    _changed();
+  }
+
+  void _windowLine(String what) => addRecentLine('${DateTime.now().toIso8601String()} window $what');
 
   /// Whether the window is full screen now, with no title bar of the system's: set as the
   /// launcher makes it so (and by main.dart for Steam's --fullscreen).
@@ -3845,6 +3909,7 @@ class AppModel extends ChangeNotifier {
           PanelCategory(
             id: 'launcherReport',
             title: switch (problem.kind) {
+              LauncherProblemKind.crash when problem.whileClosing => T.text('launcherReportCrashClosing'),
               LauncherProblemKind.crash => T.text('launcherReportCrash'),
               LauncherProblemKind.hang when problem.recovered => T.format('launcherReportHang', [
                 problem.stalledFor?.inSeconds ?? LauncherHealth.stall.inSeconds,
@@ -4458,7 +4523,19 @@ class AppModel extends ChangeNotifier {
     final languageIndex = settings.language == null
         ? 0
         : languages.indexWhere((entry) => entry.$1 == settings.language) + 1;
+    final failure = failures[game.id];
     return [
+      if (failure != null)
+        PanelRow(
+          id: 'unlockError',
+          title: T.text('unlockError'),
+          // The end of the error, as Update from Git shows its own; all of it goes to the clipboard.
+          detail: [
+            ...failure.split('\n').reversed.take(2).toList().reversed.map((line) => line.trim()),
+            T.text('unlockErrorCopy'),
+          ].join(' · '),
+          kind: ActionRow(() => copyFailure(game)),
+        ),
       PanelRow(
         id: 'display',
         title: T.text('display'),

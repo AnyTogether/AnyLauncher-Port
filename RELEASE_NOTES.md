@@ -5,6 +5,56 @@ release when it is made.
 
 ## Next release
 
+- **The launcher no longer freezes while a game is unlocked or updated.** Copying a game's
+  files (a games folder on another drive than the dump, without Developer Mode on Windows),
+  measuring the dump, unwrapping its executable and removing the old install after an update
+  all ran on the launcher's own thread: for seconds or minutes at a time the screen stopped,
+  no other game could be picked, opening a game's settings seemed to crash the launcher until
+  it came back, and Windows called the window not responding. That work now runs on the
+  system's file threads and in a separate isolate, so the library stays usable while a game
+  relinks. The old install is renamed aside at once and removed afterwards (a removal cut short
+  is cleaned up at the next start).
+- **Full screen means full screen, and the close button in full screen no longer crashes.**
+  On Windows, the title bar's Maximize (its button, a double click on the title bar, Win+Up
+  or dragging the window to the top) used to make a maximized window that kept its dark title
+  bar along the top, and Settings still said Window. It now switches to the launcher's own
+  full screen, with no bar, and the window buttons and **Settings → Full Screen** follow. On
+  Linux, full screen turned on or off by the window manager is followed too. Clicking the red
+  close at the top right in full screen used to crash the launcher, and the next start offered
+  no report. Quit now closes the window the same way its title bar's close does. If closing
+  ever fails, the next start offers a report of a crash while closing. Each full-screen
+  change, and how long it took, is now in a report's last seconds.
+- **Crash reports you can write in, and Windows 11 called Windows 11.** On the GitHub form
+  that **Send Report** opens, the launcher used to fill in the same box you were meant to
+  write in (What happened, ending in "What I was doing:"), and what you typed there could be
+  wiped out. Now the launcher fills in its own boxes (**What the launcher noticed**, the system,
+  the version, the error and the last seconds) and leaves **What you were doing** empty for you.
+  The game crash form works the same way, and its **Report file** box is left empty for
+  crash_log.txt. The system line read "Windows 10" on Windows 11, because the registry's
+  product name still says 10. It now says Windows 11 from build 22000 on, with the version and
+  the full build (for example "Windows 11 Home 25H2 (Build 26200.6899)"). On Linux the
+  distribution name is read from os-release whichever quotes it uses. When the link has no
+  room for every line, the oldest lines are left out, the log says how many, and the whole
+  report is put on the clipboard so you can paste it into the issue.
+- **Relinking a dump that holds an earlier relink's files.** A relink done by hand (or by
+  another tool) with the dump as its `app0` writes its converted modules into the dump's own
+  `sce_module` as `*.guest.prx` files. The launcher took those for modules of the game and
+  stopped with "libSceFace.prx.guest.prx is neither an ELF nor a decrypted SELF container (an
+  encrypted dump cannot be used)". They are no longer inputs of a relink and no longer laid
+  into the installed game, so only this relink's modules go in; unlocking again (or **Update
+  and Play**) puts a game that failed this way right, with nothing to clean by hand.
+- **A module that cannot be used no longer stops the whole game.** A module of the dump that is
+  still encrypted, or one the relinker cannot convert, is left out and the game is unlocked
+  without it. The engine starts a game without a module it imports nothing from, answers the
+  game's own load of it with an error, and uses its own library of that name where it has one
+  (libSceNpCppWebApi, for example). The launcher says which file it left out and why once the
+  game is ready, and the unlock log has the relinker's reason. Only `eboot.bin` still stops an
+  unlock: an encrypted one says so in plain words.
+- **The relinker's whole error.** A failed unlock showed only the relinker's last line (often
+  just `Input: …\source\sce_module\libX.prx`, cut off). It now shows the reason (the `FAIL:`
+  line) and the file, named as the dump has it, wrapped over a few lines, with **Copy Error**
+  beside it and as the first row of the game's settings: it copies the error and all the
+  relinker printed.
 - **A profile picture of your own.** **Settings › Profiles › Choose Profile Picture** opens the
   file dialog for a PNG, JPEG or WebP; its middle square is kept at 256 × 256 in the launcher's
   data folder (`Profiles/Pictures`), for that profile only, and shows on Home, in **Who's

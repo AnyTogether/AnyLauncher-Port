@@ -214,7 +214,61 @@ void main() {
     });
   });
 
+  group('the system', () {
+    test('Windows 11 by its build, whatever the registry\'s product name says, with its version', () {
+      // Dart's Platform.operatingSystemVersion reads ProductName, which says Windows 10 on 11.
+      expect(
+        SystemInfo.windowsName('"Windows 10 Home" 10.0 (Build 26200)', displayVersion: '25H2', revision: 6899),
+        'Windows 11 Home 25H2 (Build 26200.6899)',
+      );
+      expect(
+        SystemInfo.windowsName('"Windows 10 Pro" 10.0 (Build 22000)'),
+        'Windows 11 Pro (Build 22000)',
+        reason: '22000 is the first build of 11',
+      );
+      expect(
+        SystemInfo.windowsName('"Windows 10 Pro" 10.0 (Build 19045)', displayVersion: '22H2', revision: 5011),
+        'Windows 10 Pro 22H2 (Build 19045.5011)',
+        reason: 'Windows 10 stays 10',
+      );
+      expect(SystemInfo.windowsName('Windows 10 Home 10.0 (Build 26200)'), 'Windows 11 Home (Build 26200)');
+      expect(SystemInfo.windowsName(''), 'Windows');
+    });
+
+    test('the registry\'s DisplayVersion and UBR, read from reg query', () {
+      const output =
+          'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\r\n'
+          '    CurrentBuild    REG_SZ    26200\r\n'
+          '    DisplayVersion    REG_SZ    26H2\r\n'
+          '    ProductName    REG_SZ    Windows 10 Home\r\n'
+          '    UBR    REG_DWORD    0x1aeb\r\n';
+      final values = SystemInfo.registryValues(output);
+      expect(values['DisplayVersion'], '26H2');
+      expect(values['ProductName'], 'Windows 10 Home');
+      expect(SystemInfo.registryNumber(values['UBR']), 6891);
+      expect(SystemInfo.registryNumber(null), isNull);
+    });
+
+    test('Linux by os-release\'s PRETTY_NAME, in either quotes, else its name and version', () {
+      expect(SystemInfo.osReleaseName('NAME="Ubuntu"\nPRETTY_NAME="Ubuntu 24.04.1 LTS"\n'), 'Ubuntu 24.04.1 LTS');
+      expect(
+        SystemInfo.osReleaseName("PRETTY_NAME='Fedora Linux 41 (Workstation Edition)'"),
+        'Fedora Linux 41 (Workstation Edition)',
+      );
+      expect(SystemInfo.osReleaseName('PRETTY_NAME=Arch\\ Linux\nID=arch'), 'Arch Linux');
+      expect(SystemInfo.osReleaseName('NAME="SteamOS"\nVERSION_ID=3.6.19\n'), 'SteamOS 3.6.19');
+      expect(SystemInfo.osReleaseName('# nothing\n'), isNull);
+    });
+  });
+
   group('the issue', () {
+    test('the launcher\'s crash form leaves the box the user writes in empty', () {
+      final draft = IssueDraft.launcher(report());
+      final query = draft.url.queryParameters;
+      expect(query['reason'], contains('access violation'));
+      expect(query.containsKey('doing'), isFalse, reason: 'prefilled, GitHub put it back over what was typed');
+    });
+
     test('goes to the engine\'s bug form on boykopovar/AnyPS5 for upstream\'s engine', () {
       final draft = IssueDraft.engine(report());
       expect(draft.url.host, 'github.com');
@@ -243,7 +297,7 @@ void main() {
       expect(query['title'], 'Crash: Orbit Runner (PPSA01001)');
       expect(query['game'], 'Orbit Runner (PPSA01001), version 01.000.002');
       expect(query['versions'], contains('Launcher 0.1.4 (Windows)'));
-      expect(query['report'], contains('crash_log.txt'));
+      expect(query.containsKey('report'), isFalse, reason: 'the box the user drags crash_log.txt into stays empty');
     });
 
     test('a plus stays a plus and nothing personal is in the link', () {

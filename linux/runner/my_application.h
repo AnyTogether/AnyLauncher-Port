@@ -18,4 +18,12 @@ G_DECLARE_FINAL_TYPE(MyApplication,
  */
 MyApplication* my_application_new();
 
+/**
+ * my_application_take_run_marker:
+ *
+ * The launcher's marker of this run ("removeAfterClose"), for main to take away once the
+ * application has ended cleanly; NULL when the launcher gave none. Free with g_free().
+ */
+gchar* my_application_take_run_marker(MyApplication* self);
+
 #endif  // FLUTTER_MY_APPLICATION_H_

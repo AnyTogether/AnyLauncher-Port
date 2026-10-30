@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 
 import 'package:path/path.dart' as p;
@@ -69,6 +70,111 @@ class InstallError implements Exception {
 
   @override
   String toString() => message;
+}
+
+/// A tool that ended with an error: its exit code and the end of what it printed. The relinker
+/// ends a failed conversion with `FAIL: <reason>` and, when one file caused it, `Input: <path>`.
+class ToolFailed extends InstallError {
+  /// With [workingDirectory], an `Input:` path inside it is said relative to it, as the dump has
+  /// the file (the work folder it names is gone once the unlock stops).
+  ToolFailed(String tool, this.code, this.lines, {String? workingDirectory})
+    : super(_message(tool, code, lines, workingDirectory));
+
+  final int code;
+
+  /// Everything the tool printed (its last 400 lines).
+  final List<String> lines;
+
+  /// The lines that say what went wrong: from the last `FAIL:` line on, else the last line.
+  static List<String> tailOf(List<String> lines) {
+    final fail = lines.lastIndexWhere((line) => line.startsWith('FAIL:'));
+    if (fail >= 0) return lines.sublist(fail);
+    return lines.isEmpty ? const [] : [lines.last];
+  }
+
+  static String _message(String tool, int code, List<String> lines, String? workingDirectory) {
+    final tail = [
+      for (final line in tailOf(lines))
+        if (workingDirectory != null && line.startsWith('Input:'))
+          'Input: ${_inside(line.substring(6).trim(), workingDirectory)}'
+        else
+          line,
+    ];
+    return '$tool failed ($code)${tail.isEmpty ? '' : ': ${tail.join('\n')}'}';
+  }
+
+  /// [path] relative to [folder] with / separators when it is inside it (or inside it with its
+  /// links resolved), else as it is.
+  static String _inside(String path, String folder) {
+    final bases = {p.normalize(folder)};
+    try {
+      bases.add(Directory(folder).resolveSymbolicLinksSync());
+    } on FileSystemException {
+      // Gone: its name as given.
+    }
+    for (final base in bases) {
+      if (p.isWithin(base, path)) return p.split(p.relative(path, from: base)).join('/');
+    }
+    return path;
+  }
+
+  /// The reason after `FAIL:`, null when the tool printed none.
+  String? get reason {
+    final fail = lines.lastIndexWhere((line) => line.startsWith('FAIL:'));
+    return fail < 0 ? null : lines[fail].substring(5).trim();
+  }
+
+  /// The file the relinker names after its `FAIL:` line, null when it names none.
+  String? get input {
+    final fail = lines.lastIndexWhere((line) => line.startsWith('FAIL:'));
+    if (fail < 0) return null;
+    for (final line in lines.skip(fail + 1)) {
+      if (line.startsWith('Input:')) return line.substring(6).trim();
+    }
+    return null;
+  }
+}
+
+/// Why a module of the dump was left out of the relink.
+enum LeftOutReason {
+  /// Neither an ELF nor a SELF container that can be unwrapped: still encrypted in the dump.
+  encrypted,
+
+  /// The relinker could not convert it.
+  notRelinked,
+}
+
+/// A module of the dump the unlock left out. The engine starts a game without a module it imports
+/// nothing from, answers the game's own load of it with an error, and uses its own library of
+/// that name where it has one (libSceNpCppWebApi); one the executable imports from and the engine
+/// lacks stops the game at its start.
+class LeftOutModule {
+  const LeftOutModule(this.path, this.reason, [this.detail]);
+
+  factory LeftOutModule.fromJson(Map<String, dynamic> json) => LeftOutModule(
+    json['path'] as String,
+    LeftOutReason.values.byName(json['reason'] as String),
+    json['detail'] as String?,
+  );
+
+  /// Relative to the dump, with / separators.
+  final String path;
+  final LeftOutReason reason;
+
+  /// The relinker's reason, or the unwrap's.
+  final String? detail;
+
+  Map<String, Object> toJson() => {'path': path, 'reason': reason.name, 'detail': ?detail};
+
+  @override
+  bool operator ==(Object other) =>
+      other is LeftOutModule && other.path == path && other.reason == reason && other.detail == detail;
+
+  @override
+  int get hashCode => Object.hash(path, reason, detail);
+
+  @override
+  String toString() => '$path (${reason.name}${detail == null ? '' : ': $detail'})';
 }
 
 class InstallCancelled implements Exception {
@@ -140,6 +246,10 @@ class Installer {
 
   /// The free bytes where the games folder is (FreeSpace.of); replaceable in tests.
   final int? Function(String folder) freeSpace;
+
+  /// The dump's modules the last [run] left out (encrypted, or the relinker could not convert
+  /// them); the game was unlocked without them.
+  final List<LeftOutModule> leftOut = [];
 
   bool _cancelled = false;
   Process? _running;
@@ -380,7 +490,29 @@ class Installer {
       for (final entry in Directory(base).listSync(recursive: true, followLinks: true)) {
         if (entry is! File) continue;
         if (p.split(p.relative(entry.path, from: base)).first == GameLibrary.storeName) continue;
+        if (isRelinkerOutput(entry.path)) continue;
         total += entry.lengthSync();
+      }
+    } on FileSystemException {
+      // What could be read counts.
+    }
+    return total;
+  }
+
+  /// [payloadSize], read on the system's file threads (a dump holds tens of thousands of files).
+  static Future<int> measurePayload(String source) async {
+    var total = 0;
+    try {
+      final base = p.normalize(p.absolute(source));
+      await for (final entry in Directory(base).list(recursive: true, followLinks: true)) {
+        if (entry is! File) continue;
+        if (p.split(p.relative(entry.path, from: base)).first == GameLibrary.storeName) continue;
+        if (isRelinkerOutput(entry.path)) continue;
+        try {
+          total += await entry.length();
+        } on FileSystemException {
+          // What could be read counts.
+        }
       }
     } on FileSystemException {
       // What could be read counts.
@@ -425,6 +557,7 @@ class Installer {
 
   /// Installs the game; returns its installed folder.
   Future<String> run() async {
+    leftOut.clear();
     final problem = toolkit.problem;
     if (problem != null) {
       throw InstallError(switch (problem) {
@@ -440,7 +573,7 @@ class Installer {
     // 0. The room it takes, before anything is written.
     await _gate();
     final mode = linkMode ?? FileLinks.probe(p.join(game.folder, 'eboot.bin'), p.join(store, 'Games'));
-    final copied = mode == LinkMode.copy ? payloadSize(game.folder) : 0;
+    final copied = mode == LinkMode.copy ? await measurePayload(game.folder) : 0;
     final needs = space(game, root, toolkit, copied: copied, resolution: resolution);
     final shortage = needs.shortage(free: freeSpace(root), folder: root);
     if (shortage != null) throw shortage;
@@ -455,6 +588,7 @@ class Installer {
         // Nothing the relinker depends on changed since the last unlock: its output is reused.
         _log('${game.titleId}: the executable, modules and patches are unchanged, the relinked ones are reused');
         relinked = reusable;
+        leftOut.addAll(_keptLeftOut(reusable));
         _progress(InstallStep.unwrap, 1);
         _progress(InstallStep.relink, 1);
       } else {
@@ -462,13 +596,15 @@ class Installer {
         _progress(InstallStep.unwrap, 0);
         final source = p.join(work, 'source');
         Directory(source).createSync(recursive: true);
+        // Only what the dump holds goes in: a fresh folder each time, the output beside it.
         final inputs = ['eboot.bin', ...found];
+        final placed = <String>[];
         for (var index = 0; index < inputs.length; index++) {
           await _gate();
           final relative = inputs[index];
           final target = p.join(source, p.joinAll(relative.split('/')));
           Directory(p.dirname(target)).createSync(recursive: true);
-          _unwrap(Installer.source(game, relative), target);
+          if (await _unwrap(relative, Installer.source(game, relative), target) && index > 0) placed.add(relative);
           _progress(InstallStep.unwrap, (index + 1) / inputs.length);
           await _yield();
         }
@@ -489,21 +625,40 @@ class Installer {
             '${appliedResolution == null ? '' : ', resolution $appliedResolution'}',
           );
         }
-        await _runTool(
-          toolkit.relinker,
-          [
-            ...system.relinkerOptions,
-            ...patchOptions,
-            for (final directory in moduleDirectories(found)) ...['--module-dir', directory],
-            'eboot.bin',
-            executable,
-          ],
-          workingDirectory: source,
-          status: (segment) {
-            final fraction = estimate.read(segment);
-            if (fraction != null) _progress(InstallStep.relink, fraction);
-          },
-        );
+        // A module the relinker cannot convert is left out and the relink runs again: the game
+        // starts without it, as without an encrypted one. A failure in the executable stops.
+        while (true) {
+          try {
+            await _runTool(
+              toolkit.relinker,
+              [
+                ...system.relinkerOptions,
+                ...patchOptions,
+                for (final directory in moduleDirectories(found)) ...['--module-dir', directory],
+                'eboot.bin',
+                executable,
+              ],
+              workingDirectory: source,
+              status: (segment) {
+                final fraction = estimate.read(segment);
+                if (fraction != null) _progress(InstallStep.relink, fraction);
+              },
+            );
+            break;
+          } on ToolFailed catch (failure) {
+            final module = failedModule(failure, source, placed);
+            if (module == null) rethrow;
+            placed.remove(module);
+            _delete(p.join(source, p.joinAll(module.split('/'))));
+            _delete(output);
+            Directory(output).createSync(recursive: true);
+            leftOut.add(LeftOutModule(module, LeftOutReason.notRelinked, failure.reason));
+            _log(
+              '$module: the relinker could not convert it (${failure.reason}); '
+              'it is left out and the relink runs again without it',
+            );
+          }
+        }
         if (!File(executable).existsSync()) throw InstallError('relinker wrote no executable');
         relinked = keeps ? _keep(output, key) : output;
         _progress(InstallStep.relink, 1);
@@ -518,7 +673,7 @@ class Installer {
       // 3. The game's files, linked (or copied where no link works), with the relinked modules
       // over them.
       await _gate();
-      _delete(partial);
+      await _deleteAway(partial);
       final app0 = p.join(partial, 'app0');
       Directory(app0).createSync(recursive: true);
       await _linkTree(game.folder, app0, mode, (fraction) => _progress(InstallStep.copy, fraction));
@@ -562,22 +717,33 @@ class Installer {
 
       // 5. It takes the old one's place, with what the game wrote there.
       _progress(InstallStep.finish, 0);
-      placeInstalled(partial, installed);
+      await placeInstalled(partial, installed);
       _progress(InstallStep.finish, 1);
       return installed;
     } finally {
-      _delete(work);
-      _delete(partial);
       _running = null;
+      await _deleteAway(work);
+      await _deleteAway(partial);
     }
   }
 
   /// Puts a finished game in place. What the game wrote beside app0 in the old one (saves in _sd,
-  /// trophies in _trophy, its data and download folders) moves into the new one.
-  static void placeInstalled(String partial, String installed) {
+  /// trophies in _trophy, its data and download folders) moves into the new one. The old one is
+  /// renamed aside at once and removed after, on the system's file threads: a game of tens of
+  /// thousands of files took the screen with it while it went.
+  static Future<void> placeInstalled(String partial, String installed) async {
     if (Directory(installed).existsSync()) {
       carryOver(installed, partial);
-      _delete(installed);
+      final old = '$installed.old-${DateTime.now().microsecondsSinceEpoch}.partial';
+      try {
+        Directory(installed).renameSync(old);
+      } on FileSystemException {
+        await _deleteAway(installed);
+      }
+      Directory(p.dirname(installed)).createSync(recursive: true);
+      Directory(partial).renameSync(installed);
+      await _deleteAway(old);
+      return;
     }
     Directory(p.dirname(installed)).createSync(recursive: true);
     Directory(partial).renameSync(installed);
@@ -594,8 +760,14 @@ class Installer {
     }
   }
 
+  /// The suffix the relinker gives the modules it converts (libX.prx becomes libX.prx.guest.prx).
+  static const guestSuffix = '.guest.prx';
+
+  /// Whether the file [name] is a module the relinker wrote, never one of its inputs.
+  static bool isRelinkerOutput(String name) => p.basename(name).toLowerCase().endsWith(guestSuffix);
+
   /// Every .prx and .sprx of the dump outside sce_sys, at most three levels down, relative to its
-  /// folder with / separators, sorted.
+  /// folder with / separators, sorted; a relinker's output ([isRelinkerOutput]) is left out.
   static List<String> modules(String folder) {
     final found = <String>[];
     void visit(String directory, List<String> parts) {
@@ -614,6 +786,9 @@ class Installer {
           if (relative.length < 3) visit(entry.path, relative);
         } else if (entry is File) {
           final lower = name.toLowerCase();
+          // A relinker's output left in the dump (a relink by hand writes them into app0's
+          // sce_module, the dump's own folder) is no module of the game.
+          if (isRelinkerOutput(name)) continue;
           if (lower.endsWith('.prx') || lower.endsWith('.sprx')) found.add(relative.join('/'));
         }
       }
@@ -641,24 +816,59 @@ class Installer {
     return directories;
   }
 
-  /// An ELF as it is, a re-signed one from its .esbak, a SELF container unwrapped.
-  void _unwrap(String original, String target) {
+  /// An ELF as it is, a re-signed one from its .esbak, a SELF container unwrapped (in an isolate
+  /// of its own: an executable is read whole, and can be hundreds of megabytes). A module
+  /// ([relative] other than eboot.bin) still encrypted in the dump is left out ([leftOut]) and
+  /// false returned: the engine starts a game without one of its modules (the game gets an error
+  /// when it loads it), while it cannot start one without its executable.
+  Future<bool> _unwrap(String relative, String original, String target) async {
     final name = p.basename(original);
+    final executable = relative == 'eboot.bin';
+    String? refused;
     if (Binary.isElf(original)) {
-      File(original).copySync(target);
+      await File(original).copy(target);
+      return true;
     } else if (Binary.isElf('$original.esbak')) {
-      File('$original.esbak').copySync(target);
+      await File('$original.esbak').copy(target);
       _log('$name: from .esbak');
+      return true;
     } else if (SelfUnwrap.isContainer(original)) {
       try {
-        final size = SelfUnwrap.unwrapFile(original, target);
+        final size = await Isolate.run(() => SelfUnwrap.unwrapFile(original, target));
         _log('$name: unwrapped, $size bytes');
+        return true;
       } on SelfRefused catch (error) {
-        throw InstallError('$name: ${error.reason}');
+        if (executable) throw InstallError('$name: ${error.reason}');
+        refused = error.reason;
       }
-    } else {
-      throw InstallError('$name is neither an ELF nor a decrypted SELF container (an encrypted dump cannot be used)');
     }
+    if (executable) {
+      throw InstallError(
+        'eboot.bin in the dump is encrypted (neither an ELF nor a decrypted SELF container): '
+        'dump the game again with a dumper that decrypts it',
+      );
+    }
+    leftOut.add(LeftOutModule(relative, LeftOutReason.encrypted, refused));
+    _log(
+      '$relative in the dump is encrypted (${refused ?? 'neither an ELF nor a decrypted SELF container'}): '
+      'it is left out, and the game is unlocked without it',
+    );
+    return false;
+  }
+
+  /// The module of the source tree [source] the relinker named in [failure], relative with /
+  /// separators; null when it named none, or the executable.
+  static String? failedModule(ToolFailed failure, String source, List<String> modules) {
+    final input = failure.input;
+    if (input == null) return null;
+    final path = p.isAbsolute(input) ? input : p.join(source, input);
+    // The relinker names it from its working directory as the system gives it, links resolved
+    // (/var is /private/var on macOS).
+    final relative = ToolFailed._inside(path, source);
+    for (final module in modules) {
+      if (p.equals(module, relative)) return module;
+    }
+    return null;
   }
 
   Future<void> _linkTree(String source, String target, LinkMode mode, void Function(double) progress) async {
@@ -673,7 +883,30 @@ class Installer {
         );
       }
     }
-    await copyTree(source, target, mode, isCancelled: () => _cancelled, progress: progress, gate: _gate);
+    // A relinker's output left in the dump is from another relink: only this one's goes in.
+    await copyTree(
+      source,
+      target,
+      mode,
+      isCancelled: () => _cancelled,
+      progress: progress,
+      gate: _gate,
+      skip: isRelinkerOutput,
+    );
+  }
+
+  /// Beside the kept output: the modules its relink left out, said again when it is reused.
+  static const leftOutName = 'left-out.json';
+
+  static List<LeftOutModule> _keptLeftOut(String out) {
+    try {
+      final json = jsonDecode(File(p.join(p.dirname(out), leftOutName)).readAsStringSync());
+      return [for (final entry in json as List<dynamic>) LeftOutModule.fromJson(entry as Map<String, dynamic>)];
+    } on FileSystemException {
+      return const [];
+    } on Object {
+      return const [];
+    }
   }
 
   /// Moves the relinker's output into the store for the next unlock (a rename on the same drive)
@@ -684,6 +917,9 @@ class Installer {
     try {
       Directory(kept).createSync(recursive: true);
       Directory(output).renameSync(p.join(kept, 'out'));
+      if (leftOut.isNotEmpty) {
+        File(p.join(kept, leftOutName)).writeAsStringSync(jsonEncode([for (final module in leftOut) module.toJson()]));
+      }
       File(p.join(kept, 'key.txt')).writeAsStringSync(key);
       return p.join(kept, 'out');
     } on FileSystemException {
@@ -701,7 +937,9 @@ class Installer {
   }
 
   /// The files of [source] in [target], folder by folder, each placed as [mode] says; the store
-  /// is left out. Reports the share of bytes done.
+  /// and the files [skip] names are left out. Reports the share of bytes done. The listing and
+  /// the copies run on the system's file threads, so the screen goes on meanwhile (links are made
+  /// in small batches).
   static Future<void> copyTree(
     String source,
     String target,
@@ -709,19 +947,20 @@ class Installer {
     bool Function()? isCancelled,
     void Function(double)? progress,
     Future<void> Function()? gate,
+    bool Function(String path)? skip,
   }) async {
     final base = p.normalize(p.absolute(source));
     final files = <(String, String, int)>[];
     var total = 0;
-    final entries = Directory(base).listSync(recursive: true, followLinks: true);
-    for (final entry in entries) {
+    await for (final entry in Directory(base).list(recursive: true, followLinks: true)) {
       final relative = p.relative(entry.path, from: base);
       final first = p.split(relative).first;
       if (first == GameLibrary.storeName) continue;
+      if (entry is File && (skip?.call(entry.path) ?? false)) continue;
       if (entry is Directory) {
-        Directory(p.join(target, relative)).createSync(recursive: true);
+        await Directory(p.join(target, relative)).create(recursive: true);
       } else if (entry is File) {
-        final size = entry.lengthSync();
+        final size = await entry.length();
         files.add((entry.path, relative, size));
         total += size;
       }
@@ -732,10 +971,16 @@ class Installer {
       final (path, relative, size) = files[index];
       final destination = p.join(target, relative);
       Directory(p.dirname(destination)).createSync(recursive: true);
-      FileLinks.place(path, destination, mode);
+      if (mode == LinkMode.copy) {
+        // A copy can be gigabytes: never on the interface's isolate.
+        FileLinks.remove(destination);
+        await File(path).copy(destination);
+      } else {
+        FileLinks.place(path, destination, mode);
+      }
       done += size;
       progress?.call(total == 0 ? 1 : done / total);
-      if (index % 64 == 63) {
+      if (mode == LinkMode.copy || index % 64 == 63) {
         await _yield();
         await gate?.call();
       }
@@ -803,9 +1048,7 @@ class Installer {
     _running = null;
     _checkCancelled();
     if (code != 0) {
-      throw InstallError(
-        '${p.basename(tool)} failed ($code)${collector.lines.isEmpty ? '' : ': ${collector.lines.last}'}',
-      );
+      throw ToolFailed(p.basename(tool), code, List.of(collector.lines), workingDirectory: workingDirectory);
     }
   }
 
@@ -819,6 +1062,23 @@ class Installer {
   static void _delete(String path) {
     try {
       FileLinks.remove(path);
+    } on FileSystemException {
+      // Gone or busy; a later install cleans up.
+    }
+  }
+
+  /// [_delete] for a folder that may be big (a whole game), on the system's file threads. Never
+  /// through a link: Directory.delete removes links, not what they point to.
+  static Future<void> _deleteAway(String path) async {
+    try {
+      switch (FileSystemEntity.typeSync(path, followLinks: false)) {
+        case FileSystemEntityType.directory:
+          await Directory(path).delete(recursive: true);
+        case FileSystemEntityType.notFound:
+          break;
+        default:
+          FileLinks.remove(path);
+      }
     } on FileSystemException {
       // Gone or busy; a later install cleans up.
     }

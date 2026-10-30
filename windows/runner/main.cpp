@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <string>
 
 #include "flutter_window.h"
 #include "utils.h"
@@ -42,23 +43,34 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
-  FlutterWindow window(project);
-  Win32Window::Point origin(10, 10);
-  Win32Window::Size size(1600, 900);
-  if (!window.Create(L"AnyPS5", origin, size)) {
-    return EXIT_FAILURE;
-  }
-  window.SetQuitOnClose(true);
-  if (fullscreen) {
-    window.SetFullscreen(true);
-  }
+  std::wstring run_marker;
+  {
+    FlutterWindow window(project);
+    Win32Window::Point origin(10, 10);
+    Win32Window::Size size(1600, 900);
+    if (!window.Create(L"AnyPS5", origin, size)) {
+      return EXIT_FAILURE;
+    }
+    window.SetQuitOnClose(true);
+    if (fullscreen) {
+      window.SetFullscreen(true);
+    }
 
-  ::MSG msg;
-  while (::GetMessage(&msg, nullptr, 0, 0)) {
-    ::TranslateMessage(&msg);
-    ::DispatchMessage(&msg);
+    ::MSG msg;
+    while (::GetMessage(&msg, nullptr, 0, 0)) {
+      ::TranslateMessage(&msg);
+      ::DispatchMessage(&msg);
+    }
+    run_marker = window.run_marker();
+    // The window (and Flutter with it) goes here, while COM is still there for the plugins
+    // that shut down with it.
   }
 
   ::CoUninitialize();
+  // A clean close: the launcher's marker of this run goes, so the next start finds no crash.
+  // A crash anywhere before this line leaves it, and the next start offers a report.
+  if (!run_marker.empty()) {
+    ::DeleteFileW(run_marker.c_str());
+  }
   return EXIT_SUCCESS;
 }

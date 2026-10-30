@@ -15,6 +15,14 @@ struct _MyApplication {
   // "anyps5/window": the launcher asks for full screen and back (F11, its setting), and to
   // minimize (its window buttons in full screen).
   FlMethodChannel* window_channel;
+  // The launcher's window (owned by the application).
+  GtkWindow* window;
+  // Full screen as the launcher last asked for it or heard of it: a change the window manager
+  // makes on its own (its full-screen key) is told to the launcher.
+  gboolean fullscreen;
+  // The launcher's marker of this run ("removeAfterClose"), taken away at shutdown, once the
+  // window has closed and Flutter has shut down.
+  gchar* run_marker;
 };
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
@@ -28,7 +36,8 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
 // asks the window manager, which works on X11 and Wayland alike.
 static void window_method_cb(FlMethodChannel* channel,
                              FlMethodCall* method_call, gpointer user_data) {
-  GtkWindow* window = GTK_WINDOW(user_data);
+  MyApplication* self = MY_APPLICATION(user_data);
+  GtkWindow* window = self->window;
   g_autoptr(FlMethodResponse) response = nullptr;
   if (strcmp(fl_method_call_get_name(method_call), "setFullscreen") == 0) {
     FlValue* args = fl_method_call_get_args(method_call);
@@ -36,6 +45,7 @@ static void window_method_cb(FlMethodChannel* channel,
       response = FL_METHOD_RESPONSE(fl_method_error_response_new(
           "bad_arguments", "setFullscreen takes a bool", nullptr));
     } else {
+      self->fullscreen = fl_value_get_bool(args);
       if (fl_value_get_bool(args)) {
         gtk_window_fullscreen(window);
       } else {
@@ -49,6 +59,25 @@ static void window_method_cb(FlMethodChannel* channel,
     gtk_window_iconify(window);
     g_autoptr(FlValue) result = fl_value_new_bool(TRUE);
     response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
+  } else if (strcmp(fl_method_call_get_name(method_call), "close") == 0) {
+    // The launcher's own close (Quit, the window buttons' close): the close the title bar's
+    // button makes (GTK sends it from idle, after this call returns). Flutter asks the
+    // launcher, shuts down and the application's loop ends, instead of exit() from Dart with
+    // the engine still running.
+    gtk_window_close(window);
+    g_autoptr(FlValue) result = fl_value_new_bool(TRUE);
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
+  } else if (strcmp(fl_method_call_get_name(method_call), "removeAfterClose") == 0) {
+    FlValue* args = fl_method_call_get_args(method_call);
+    if (args == nullptr || fl_value_get_type(args) != FL_VALUE_TYPE_STRING) {
+      response = FL_METHOD_RESPONSE(fl_method_error_response_new(
+          "bad_arguments", "removeAfterClose takes a path", nullptr));
+    } else {
+      g_free(self->run_marker);
+      self->run_marker = g_strdup(fl_value_get_string(args));
+      g_autoptr(FlValue) result = fl_value_new_bool(TRUE);
+      response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
+    }
   } else {
     response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
   }
@@ -56,6 +85,26 @@ static void window_method_cb(FlMethodChannel* channel,
   if (!fl_method_call_respond(method_call, response, &error)) {
     g_warning("anyps5/window: %s", error->message);
   }
+}
+
+// Full screen the window manager made or ended on its own (its full-screen key, a tiling
+// rule): the launcher hears of it, so its window buttons and its setting follow.
+static gboolean window_state_cb(GtkWidget* widget, GdkEventWindowState* event,
+                                gpointer user_data) {
+  MyApplication* self = MY_APPLICATION(user_data);
+  if ((event->changed_mask & GDK_WINDOW_STATE_FULLSCREEN) == 0) {
+    return FALSE;
+  }
+  const gboolean on =
+      (event->new_window_state & GDK_WINDOW_STATE_FULLSCREEN) != 0;
+  if (on == self->fullscreen || self->window_channel == nullptr) {
+    return FALSE;
+  }
+  self->fullscreen = on;
+  g_autoptr(FlValue) value = fl_value_new_bool(on);
+  fl_method_channel_invoke_method(self->window_channel, "fullscreenChanged",
+                                  value, nullptr, nullptr, nullptr);
+  return FALSE;
 }
 
 // Implements GApplication::activate.
@@ -100,6 +149,7 @@ static void my_application_activate(GApplication* application) {
   for (char** argument = self->dart_entrypoint_arguments;
        argument != nullptr && *argument != nullptr; argument++) {
     if (g_strcmp0(*argument, "--fullscreen") == 0) {
+      self->fullscreen = TRUE;
       gtk_window_fullscreen(window);
       break;
     }
@@ -146,9 +196,11 @@ static void my_application_activate(GApplication* application) {
   self->window_channel = fl_method_channel_new(
       fl_plugin_registrar_get_messenger(window_registrar), "anyps5/window",
       FL_METHOD_CODEC(codec));
+  self->window = window;
   fl_method_channel_set_method_call_handler(self->window_channel,
-                                            window_method_cb,
-                                            g_object_ref(window), g_object_unref);
+                                            window_method_cb, self, nullptr);
+  g_signal_connect(window, "window-state-event", G_CALLBACK(window_state_cb),
+                   self);
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }
@@ -192,10 +244,17 @@ static void my_application_shutdown(GApplication* application) {
   G_APPLICATION_CLASS(my_application_parent_class)->shutdown(application);
 }
 
+gchar* my_application_take_run_marker(MyApplication* self) {
+  gchar* marker = self->run_marker;
+  self->run_marker = nullptr;
+  return marker;
+}
+
 // Implements GObject::dispose.
 static void my_application_dispose(GObject* object) {
   MyApplication* self = MY_APPLICATION(object);
   g_clear_pointer(&self->dart_entrypoint_arguments, g_strfreev);
+  g_clear_pointer(&self->run_marker, g_free);
   g_clear_object(&self->window_channel);
   G_OBJECT_CLASS(my_application_parent_class)->dispose(object);
 }

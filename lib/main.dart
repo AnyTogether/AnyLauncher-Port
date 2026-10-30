@@ -66,9 +66,17 @@ Future<void> main(List<String> arguments) async {
     platform: Platform.isWindows ? 'Windows' : 'Linux',
   );
   StallWatch? watch;
+  const window = ChannelLauncherWindow();
+  // Quit: the marker says closing, then the window closes as its title bar's close does.
+  final shutdown = LauncherShutdown(
+    health: health,
+    beforeClose: () => watch?.closing(),
+    closeWindow: window.close,
+    exit: exit,
+  );
   void closing() {
     watch?.closing();
-    health.closed();
+    health.closing();
   }
 
   final model = AppModel(
@@ -105,11 +113,8 @@ Future<void> main(List<String> arguments) async {
       systemProbe: () => HostProbe(HostSystem.current),
       desktop: desktop,
       backdrop: backdrop,
-      window: const ChannelLauncherWindow(),
-      quit: (code) {
-        closing();
-        exit(code);
-      },
+      window: window,
+      quit: (code) => unawaited(shutdown.quit(code)),
     ),
   );
   // An update left for this launch (Later) goes in first: its installer opens the launcher again.
@@ -117,6 +122,9 @@ Future<void> main(List<String> arguments) async {
   model
     ..launcherProblem = health.start()
     ..onLauncherProblemDone = health.forget;
+  // The runner takes this run's marker away once the window has closed and Flutter has shut
+  // down: a crash while closing still leaves it for the next start to report.
+  health.runnerRemovesMarker = await window.removeAfterClose(health.markerPath);
   _exit = AppLifecycleListener(
     onExitRequested: () async {
       closing();

@@ -9,18 +9,23 @@ body:
         The launcher fills this form in when you press **Send Report** after it closed unexpectedly or stopped responding the time before.
         It has already taken your home folder, user and computer names, e-mail addresses and AnyTogether tokens out of everything below. Nothing was sent: this page is what you send.
   - type: textarea
-    id: what
+    id: doing
     attributes:
-      label: What happened
-      description: What the launcher noticed, and what you were doing then (moving fast through the games, opening a panel, starting a game…).
+      label: What you were doing
+      description: In your own words - what you were doing just before (moving fast through the games, opening a panel, switching to full screen, playing a game - which one?). The launcher leaves this box for you.
     validations:
       required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What the launcher noticed
+      description: Filled in by the launcher.
   - type: input
     id: system
     attributes:
       label: System
       description: Operating system, processor and memory.
-      placeholder: Windows 11 Pro 10.0 (Build 22631) · AMD Ryzen 7 5800X · 32 GB
+      placeholder: Windows 11 Pro 24H2 (Build 26100.4351) · AMD Ryzen 7 5800X · 32 GB
     validations:
       required: true
   - type: input
@@ -40,5 +45,5 @@ body:
     id: log
     attributes:
       label: Last seconds
-      description: A line a second before it happened - frames drawn, how long they took (build and raster, average/90th percentile/worst in ms) and what was on screen.
+      description: A line a second before it happened - frames drawn, how long they took (build and raster, average/90th percentile/worst in ms) and what was on screen. When the link had no room for every line, the launcher put the whole report on the clipboard - paste it in a comment.
       render: text

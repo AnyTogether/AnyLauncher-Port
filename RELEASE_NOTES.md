@@ -14,6 +14,28 @@ release when it is made.
   system's file threads and in a separate isolate, so the library stays usable while a game
   relinks. The old install is renamed aside at once and removed afterwards (a removal cut short
   is cleaned up at the next start).
+- **Full screen means full screen, and the close button in full screen no longer crashes.**
+  On Windows, the title bar's Maximize (its button, a double click on the title bar, Win+Up
+  or dragging the window to the top) used to make a maximized window that kept its dark title
+  bar along the top, and Settings still said Window. It now switches to the launcher's own
+  full screen, with no bar, and the window buttons and **Settings → Full Screen** follow. On
+  Linux, full screen turned on or off by the window manager is followed too. Clicking the red
+  close at the top right in full screen used to crash the launcher, and the next start offered
+  no report. Quit now closes the window the same way its title bar's close does. If closing
+  ever fails, the next start offers a report of a crash while closing. Each full-screen
+  change, and how long it took, is now in a report's last seconds.
+- **Crash reports you can write in, and Windows 11 called Windows 11.** On the GitHub form
+  that **Send Report** opens, the launcher used to fill in the same box you were meant to
+  write in (What happened, ending in "What I was doing:"), and what you typed there could be
+  wiped out. Now the launcher fills in its own boxes (**What the launcher noticed**, the system,
+  the version, the error and the last seconds) and leaves **What you were doing** empty for you.
+  The game crash form works the same way, and its **Report file** box is left empty for
+  crash_log.txt. The system line read "Windows 10" on Windows 11, because the registry's
+  product name still says 10. It now says Windows 11 from build 22000 on, with the version and
+  the full build (for example "Windows 11 Home 25H2 (Build 26200.6899)"). On Linux the
+  distribution name is read from os-release whichever quotes it uses. When the link has no
+  room for every line, the oldest lines are left out, the log says how many, and the whole
+  report is put on the clipboard so you can paste it into the issue.
 - **Relinking a dump that holds an earlier relink's files.** A relink done by hand (or by
   another tool) with the dump as its `app0` writes its converted modules into the dump's own
   `sce_module` as `*.guest.prx` files. The launcher took those for modules of the game and

@@ -14,6 +14,18 @@ release when it is made.
   system's file threads and in a separate isolate, so the library stays usable while a game
   relinks. The old install is renamed aside at once and removed afterwards (a removal cut short
   is cleaned up at the next start).
+- **Crash reports you can write in, and Windows 11 called Windows 11.** On the GitHub form
+  that **Send Report** opens, the launcher used to fill in the same box you were meant to
+  write in (What happened, ending in "What I was doing:"), and what you typed there could be
+  wiped out. Now the launcher fills in its own boxes (**What the launcher noticed**, the system,
+  the version, the error and the last seconds) and leaves **What you were doing** empty for you.
+  The game crash form works the same way, and its **Report file** box is left empty for
+  crash_log.txt. The system line read "Windows 10" on Windows 11, because the registry's
+  product name still says 10. It now says Windows 11 from build 22000 on, with the version and
+  the full build (for example "Windows 11 Home 25H2 (Build 26200.6899)"). On Linux the
+  distribution name is read from os-release whichever quotes it uses. When the link has no
+  room for every line, the oldest lines are left out, the log says how many, and the whole
+  report is put on the clipboard so you can paste it into the issue.
 
 ## 0.1.14
 

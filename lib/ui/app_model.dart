@@ -1507,7 +1507,14 @@ class AppModel extends ChangeNotifier {
     if (problem == null) return;
     _launcherProblemDone();
     final system = await crash.systemInfo();
-    services.openUrl?.call(IssueDraft.launcherProblem(problem, system: system, privacy: crash.privacy()).url);
+    final privacy = crash.privacy();
+    final draft = IssueDraft.launcherProblem(problem, system: system, privacy: privacy);
+    // The link had no room for every line: the whole report on the clipboard, to paste there.
+    if (draft.linesLeftOut > 0 && services.copyText != null) {
+      services.copyText!(IssueDraft.launcherProblemText(problem, system: system, privacy: privacy));
+      show(T.text('launcherReportCopied'));
+    }
+    services.openUrl?.call(draft.url);
   }
 
   void _launcherProblemDone() {

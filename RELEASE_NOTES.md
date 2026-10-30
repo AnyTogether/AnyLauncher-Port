@@ -5,6 +5,10 @@ release when it is made.
 
 ## Next release
 
+Nothing yet.
+
+## 0.1.15
+
 - **A game's button always says what is happening to it.** Each game now has one state the
   whole screen follows: locked, unlocking, ready, needing an update, updating, waiting for the
   engine, starting, playing, stopping, or failed. After Play with a new engine build, the

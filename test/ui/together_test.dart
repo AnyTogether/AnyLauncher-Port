@@ -492,7 +492,7 @@ void main() {
       expect(model.toast, "You're in voice");
       expect(rowIds().take(4), ['voice-mic', 'voice-ptt', 'voice-key', 'voice-leave']);
       final mic = model.panelCategories().single.rows.first;
-      expect(mic.detail, 'V turns the microphone on and off, in a game too');
+      expect(mic.detail, 'V turns the microphone on and off, in a game too.');
 
       together.captureTalkKey();
       expect(together.capturingTalkKey, isTrue);
@@ -505,7 +505,7 @@ void main() {
       together.setPushToTalk(true);
       expect(model.preferences.pushToTalk, isTrue);
       expect(rowIds().take(3), ['voice-ptt', 'voice-key', 'voice-leave']);
-      expect(model.panelCategories().single.rows.first.detail, 'Hold G to talk, in a game too');
+      expect(model.panelCategories().single.rows.first.detail, 'Hold G to talk, in a game too.');
       // Without a desktop key reader, the launcher's own keys hold it.
       expect(together.talkKeyInWindow(0x0A, down: true), isTrue);
       expect(together.hub.voice.sending, isTrue);

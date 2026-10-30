@@ -55,6 +55,29 @@ release when it is made.
   line) and the file, named as the dump has it, wrapped over a few lines, with **Copy Error**
   beside it and as the first row of the game's settings: it copies the error and all the
   relinker printed.
+- **A profile picture of your own.** **Settings › Profiles › Choose Profile Picture** opens the
+  file dialog for a PNG, JPEG or WebP; its middle square is kept at 256 × 256 in the launcher's
+  data folder (`Profiles/Pictures`), for that profile only, and shows on Home, in **Who's
+  Playing?** and on the profile rows. **Remove Profile Picture** brings the initial back. Both
+  rows are reached with a controller too; the file dialog itself is the mouse's.
+- **The profile colour shows on Home at once.** The picture at the top right is the profile's
+  own colour now (it used the theme's accent), so changing **Colour** changes it straight away.
+- **Turkish capitals.** Labels written in capitals (the game's **OYUN KİMLİĞİ** card, the
+  menus' kickers, level tiers, initials) use İ and I as Turkish does; Dart's own toUpperCase
+  had turned "Kimliği" into "KIMLIĞI". Game IDs (CUSA…, PPSA…) are shown as the game has them.
+- **Smaller game info cards.** Status, Size, Title ID and Version on Home take the width their
+  text needs (up to the old width, longer translations end in "…") and are lower.
+- **A padlock that reads as one.** Locked games show a solid padlock (after Hugeicons'
+  square-lock-02, MIT) instead of the small lock that was taken for a shopping bag; the focused
+  tile adds **Locked**.
+- **A profile left without a name is "Oyuncu" in Turkish**, "Player" in English: the language's
+  word, numbered when another profile has it ("Oyuncu 2"). It was always "Player".
+- **Settings' sections are as large as its rows.** The list on the left no longer shrinks to fit
+  a short window: it scrolls, with a scrollbar that shows when there are more sections than fit,
+  and a controller's focus keeps the selected one in view.
+- **Descriptions end with a full stop.** Every setting description in English and Turkish ends
+  as a sentence, and the translation check (`tool/check_translations.dart`) now flags a
+  description (`…Detail`, `…Hint`, `…Subtitle`, `…Text`) that does not.
 
 ## 0.1.14
 

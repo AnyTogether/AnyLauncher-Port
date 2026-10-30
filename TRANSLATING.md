@@ -78,6 +78,10 @@ code.
 - **Keep the JSON.** Every text is in double quotes and every line but the last ends with a
   comma. A double quote inside a text is written `\"`. Many editors (and GitHub, see below)
   point out a missing quote or comma.
+- **End descriptions as sentences.** A text whose key ends in `Detail`, `Hint`, `Subtitle`,
+  `Text`, `Note`, `Description`, `Info` or `Explanation` is a sentence under a title or a row, and
+  ends with `.`, `!`, `?`, `…` or `:` (or your script's own mark, such as `。` or `؟`). Titles,
+  buttons and labels do not.
 - Words such as AnyPS5, AnyTogether, DualSense, Steam, GitHub and file names stay as they are.
 
 ### The same keys in every app
@@ -113,7 +117,8 @@ above and run the app (`flutter run` for the Windows/Linux launcher and the phon
 ## The check
 
 Each pull request runs a check of the files: valid JSON, one flat object of texts, a name that
-is a language code, no key English lacks, English's placeholders in each text. It also shows how
+is a language code, no key English lacks, English's placeholders in each text, descriptions that
+end as sentences. It also shows how
 much of each language is translated, for example
 `de: 92.4 % translated (1174 of 1270, 96 shown in English)`.
 

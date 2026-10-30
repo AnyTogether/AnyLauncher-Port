@@ -4,22 +4,42 @@ import '../core/profiles/profiles.dart';
 import 'app_model.dart';
 import 'components.dart';
 import 'glass.dart';
+import 'profile_picture.dart';
 import 'strings.dart';
 import 'theme.dart';
 
-/// A profile's round tile: its initial on its colour, lit from the top left, and the
-/// controller's light-bar strip in that colour under it.
+/// A profile's round tile: its picture, or its initial on its colour lit from the top left;
+/// the controller's light-bar strip in that colour under it on the picker. Home's top bar shows
+/// the profile playing in a small one.
 class ProfileTile extends StatelessWidget {
-  const ProfileTile({super.key, required this.profile, required this.size, this.focused = false});
+  const ProfileTile({super.key, required this.profile, required this.size, this.picture, this.focused = false});
 
   final LauncherProfile? profile;
   final double size;
+
+  /// The profile's own picture on this computer ([ProfileStore.pictureOf]).
+  final String? picture;
   final bool focused;
 
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
     final color = LauncherProfiles.colorOf(profile);
+    final initial = DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          center: const Alignment(-0.7, -0.7),
+          radius: 0.9,
+          colors: [Colors.white.withValues(alpha: 0.26), Colors.white.withValues(alpha: 0)],
+        ),
+      ),
+      child: Center(
+        child: Text(T.initial(profile?.name ?? ''), style: AppText.display(size * 0.42, weight: FontWeight.w600)),
+      ),
+    );
+    // Small on Home: a hairline and a soft glow, not the picker's.
+    final small = size < 60 * scale;
     return AnimatedContainer(
       duration: Motion.focus,
       curve: Motion.settle,
@@ -33,29 +53,29 @@ class ProfileTile extends StatelessWidget {
           colors: [color, Color.lerp(color, Colors.black, 0.45)!],
         ),
         border: Border.all(
-          color: Colors.white.withValues(alpha: focused ? 0.95 : 0.16),
-          width: (focused ? 4 : 1.5) * scale,
+          color: Colors.white.withValues(alpha: focused ? 0.95 : (small ? 0.22 : 0.16)),
+          width: (focused ? 4 : (small ? 1 : 1.5)) * scale,
         ),
         boxShadow: [
           BoxShadow(
-            color: color.withValues(alpha: focused ? 0.6 : 0.22),
-            blurRadius: (focused ? 34 : 14) * scale,
+            color: color.withValues(alpha: focused ? 0.6 : (small ? 0.35 : 0.22)),
+            blurRadius: (focused ? 34 : (small ? 8 : 14)) * scale,
           ),
         ],
       ),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            center: const Alignment(-0.7, -0.7),
-            radius: 0.9,
-            colors: [Colors.white.withValues(alpha: 0.26), Colors.white.withValues(alpha: 0)],
-          ),
-        ),
-        child: Center(
-          child: Text(profile?.initial ?? '?', style: AppText.display(size * 0.42, weight: FontWeight.w600)),
-        ),
-      ),
+      child: picture == null
+          ? initial
+          : ClipOval(
+              child: Image(
+                // One decoded picture for every place it shows (it is only 256 pixels a side).
+                image: ArtworkImage.provider(picture!, ProfilePicture.size),
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                errorBuilder: (_, _, _) => initial,
+              ),
+            ),
     );
   }
 }
@@ -78,7 +98,7 @@ class ProfilePickerView extends StatelessWidget {
         child: Column(
           children: [
             Text(
-              T.text('profileKicker').toUpperCase(),
+              T.upper(T.text('profileKicker')),
               style: AppText.display(
                 13 * scale,
                 weight: FontWeight.w700,
@@ -104,7 +124,12 @@ class ProfilePickerView extends StatelessWidget {
                       flow.pickerIndex = index;
                       model.pickerCommand(Command.select);
                     },
-                    avatar: ProfileTile(profile: tiles[index], size: 168 * scale, focused: flow.pickerIndex == index),
+                    avatar: ProfileTile(
+                      profile: tiles[index],
+                      picture: model.profiles.pictureOf(tiles[index]),
+                      size: 168 * scale,
+                      focused: flow.pickerIndex == index,
+                    ),
                     strip: LauncherProfiles.colorOf(tiles[index]),
                     name: tiles[index].name,
                     line: _modeLine(
@@ -380,7 +405,7 @@ class _ModeCard extends StatelessWidget {
                         padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 5 * scale),
                         decoration: BoxDecoration(color: chip, borderRadius: BorderRadius.circular(20 * scale)),
                         child: Text(
-                          tag.toUpperCase(),
+                          T.upper(tag),
                           style: AppText.display(
                             11 * scale,
                             weight: FontWeight.w700,
@@ -459,7 +484,7 @@ class _AddProfileViewState extends State<AddProfileView> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              T.text('profileAdd').toUpperCase(),
+              T.upper(T.text('profileAdd')),
               style: AppText.display(
                 13 * scale,
                 weight: FontWeight.w700,

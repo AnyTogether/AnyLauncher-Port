@@ -93,7 +93,7 @@ class _Header extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                T.text(state.sharing ? 'reportKickerShare' : 'reportKicker').toUpperCase(),
+                T.upper(T.text(state.sharing ? 'reportKickerShare' : 'reportKicker')),
                 style: AppText.display(
                   12 * scale,
                   weight: FontWeight.w600,

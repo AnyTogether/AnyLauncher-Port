@@ -198,7 +198,8 @@ class CrashModel {
         app.services.computerName ?? Platform.localHostname,
         ?user?.handle,
         ?user?.displayName,
-        if (profile.isNotEmpty && profile != 'Player') profile,
+        // The default name is a word the report needs, not someone's name.
+        if (profile.isNotEmpty && profile != 'Player' && profile != T.text('profileDefaultName')) profile,
       ],
       secrets: app.together.account.secrets,
     );

@@ -11,6 +11,7 @@ import 'app_model.dart';
 import 'components.dart';
 import 'glass.dart';
 import 'level_badge.dart';
+import 'profile_picture.dart';
 import 'home.dart';
 import 'strings.dart';
 import 'theme.dart';
@@ -252,7 +253,7 @@ class PanelView extends StatelessWidget {
                             // Over the game: whether it was paused for the menu, or still runs.
                             if (model.overlay == Layer.profileMenu)
                               Text(
-                                T.text('profileMenuTitle').toUpperCase(),
+                                T.upper(T.text('profileMenuTitle')),
                                 style: AppText.display(
                                   12 * scale,
                                   weight: FontWeight.w700,
@@ -261,7 +262,7 @@ class PanelView extends StatelessWidget {
                               ),
                             if (model.overlay == Layer.launcherReport)
                               Text(
-                                T.text('launcherReportWhen').toUpperCase(),
+                                T.upper(T.text('launcherReportWhen')),
                                 style: AppText.display(
                                   12 * scale,
                                   weight: FontWeight.w700,
@@ -270,7 +271,7 @@ class PanelView extends StatelessWidget {
                               ),
                             if (model.overlay == Layer.quickMenu)
                               Text(
-                                T.text(model.quickMenuPaused ? 'quickPaused' : 'quickRunning').toUpperCase(),
+                                T.upper(T.text(model.quickMenuPaused ? 'quickPaused' : 'quickRunning')),
                                 style: AppText.display(
                                   12 * scale,
                                   weight: FontWeight.w700,
@@ -323,32 +324,10 @@ class PanelView extends StatelessWidget {
                     children: [
                       if (categories.length > 1) ...[
                         SizedBox(
-                          width: 250 * scale,
-                          // Many categories in a short window: the list shrinks a little to fit
-                          // rather than losing its last ones.
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.topLeft,
-                            child: SizedBox(
-                              width: 250 * scale,
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  for (var index = 0; index < categories.length; index++)
-                                    _CategoryTab(
-                                      key: ValueKey('section-${categories[index].id}'),
-                                      title: categories[index].title,
-                                      selected: index == model.panelCategory,
-                                      // A controller's focus on the sections' column.
-                                      focused: model.panelSections && index == model.panelCategory,
-                                      onTap: () => model.selectCategory(index),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ),
+                          width: 262 * scale,
+                          child: _CategoryList(model: model, categories: categories),
                         ),
-                        SizedBox(width: 28 * scale),
+                        SizedBox(width: 22 * scale),
                       ],
                       Expanded(
                         child: PanelRows(model: model, rows: category.rows),
@@ -358,6 +337,74 @@ class PanelView extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The sections' column: as large as the rows, scrolling with a scrollbar that shows whenever
+/// there are more than fit (Settings in a short window), the selected one kept in view.
+class _CategoryList extends StatefulWidget {
+  const _CategoryList({required this.model, required this.categories});
+
+  final AppModel model;
+  final List<PanelCategory> categories;
+
+  @override
+  State<_CategoryList> createState() => _CategoryListState();
+}
+
+class _CategoryListState extends State<_CategoryList> {
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final model = widget.model;
+    final categories = widget.categories;
+    return RawScrollbar(
+      controller: _scroll,
+      thumbVisibility: true,
+      interactive: true,
+      thickness: 5 * scale,
+      radius: Radius.circular(3 * scale),
+      thumbColor: Colors.white.withValues(alpha: 0.32),
+      trackVisibility: true,
+      trackColor: Colors.white.withValues(alpha: 0.06),
+      trackRadius: Radius.circular(3 * scale),
+      trackBorderColor: Colors.transparent,
+      crossAxisMargin: 0,
+      child: ScrollConfiguration(
+        // This one bar only, not the platform's thin one over it.
+        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+        child: SingleChildScrollView(
+          controller: _scroll,
+          // Room for the bar beside the tabs and their focus ring.
+          padding: EdgeInsets.fromLTRB(3 * scale, 3 * scale, 14 * scale, 3 * scale),
+          child: Column(
+            children: [
+              for (var index = 0; index < categories.length; index++)
+                KeepVisible(
+                  active: index == model.panelCategory,
+                  atStart: true,
+                  child: _CategoryTab(
+                    key: ValueKey('section-${categories[index].id}'),
+                    title: categories[index].title,
+                    selected: index == model.panelCategory,
+                    // A controller's focus on the sections' column.
+                    focused: model.panelSections && index == model.panelCategory,
+                    onTap: () => model.selectCategory(index),
+                  ),
+                ),
+            ],
           ),
         ),
       ),
@@ -404,11 +451,13 @@ class _CategoryTab extends StatelessWidget {
           rim: selected ? 0.8 : (hovering ? 0.3 : 0),
           sheen: selected || hovering,
           width: double.infinity,
-          padding: EdgeInsets.symmetric(horizontal: 18 * scale, vertical: 14 * scale),
+          padding: EdgeInsets.symmetric(horizontal: 18 * scale, vertical: 13 * scale),
           child: Text(
             title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: AppText.display(
-              17 * scale,
+              18 * scale,
               weight: selected ? FontWeight.w600 : FontWeight.w400,
               color: Colors.white.withValues(alpha: selected ? 1 : (hovering ? 0.9 : 0.72)),
             ),
@@ -423,15 +472,17 @@ class _CategoryTab extends StatelessWidget {
         duration: Motion.focus,
         curve: Motion.settle,
         width: double.infinity,
-        padding: EdgeInsets.symmetric(horizontal: 18 * scale, vertical: 14 * scale),
+        padding: EdgeInsets.symmetric(horizontal: 18 * scale, vertical: 13 * scale),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: selected ? 0.14 : (hovering ? 0.07 : 0)),
           borderRadius: BorderRadius.circular(12 * scale),
         ),
         child: Text(
           title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           style: AppText.display(
-            17 * scale,
+            18 * scale,
             weight: selected ? FontWeight.w600 : FontWeight.w400,
             color: Colors.white.withValues(alpha: selected ? 1 : (hovering ? 0.85 : 0.6)),
           ),
@@ -1479,12 +1530,15 @@ class PersonAvatar extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [const Color(0xFF5B6B8C), const Color(0xFF2B3346).withValues(alpha: 0.9)],
+          colors: person.tint == null
+              ? [const Color(0xFF5B6B8C), const Color(0xFF2B3346).withValues(alpha: 0.9)]
+              : [person.tint!, Color.lerp(person.tint, Colors.black, 0.45)!],
         ),
       ),
       child: Text(person.initials, style: AppText.display(size * 0.38, weight: FontWeight.w700)),
     );
     final avatar = person.avatar;
+    final picture = person.picture;
     return SizedBox.square(
       dimension: size,
       child: Stack(
@@ -1503,7 +1557,15 @@ class PersonAvatar extends StatelessWidget {
               ],
             ),
             child: ClipOval(
-              child: avatar == null
+              child: picture != null
+                  ? Image(
+                      image: ArtworkImage.provider(picture, ProfilePicture.size),
+                      width: size,
+                      height: size,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => initials,
+                    )
+                  : avatar == null
                   ? initials
                   : Image.network(
                       avatar,
@@ -1736,7 +1798,7 @@ class _ClipTile extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: 8 * scale, vertical: 3 * scale),
             decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(6 * scale)),
             child: Text(
-              T.text('clip').toUpperCase(),
+              T.upper(T.text('clip')),
               style: AppText.display(11 * scale, weight: FontWeight.w700).copyWith(letterSpacing: 1.2 * scale),
             ),
           ),

@@ -210,7 +210,7 @@ class _Readout extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          title.toUpperCase(),
+          T.upper(title),
           style: AppText.display(11 * scale, weight: FontWeight.w600, color: Colors.white.withValues(alpha: 0.5)).copyWith(letterSpacing: 1.2),
         ),
         SizedBox(height: 4 * scale),

@@ -412,4 +412,6 @@ GPL-2.0, as the AnyPS5-ARM launcher it is ported from (see `LICENSE`). LibAtrac9
 `native/atrac9` is MIT (`native/atrac9/LICENSE`), as is `flutter_soloud`. The Noto fonts in
 `assets/system-fonts` and the Noto Sans CJK fonts the launcher downloads are under the SIL Open
 Font License 1.1 (`assets/system-fonts/OFL.txt`; the CJK licence is saved beside them). SDL2 is
-under the zlib license (`third_party/SDL2/LICENSE.txt`, shipped as `SDL2-LICENSE.txt`).
+under the zlib license (`third_party/SDL2/LICENSE.txt`, shipped as `SDL2-LICENSE.txt`). The
+padlock on locked games (`lib/ui/padlock.dart`) is drawn after Hugeicons' `square-lock-02` from
+the Hugeicons Free set, MIT licensed.

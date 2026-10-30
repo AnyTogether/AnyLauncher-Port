@@ -176,13 +176,13 @@ void main() {
     expect(rows.map((row) => row.id), isNot(contains('together-server-use')));
     await together.useServer('https://my-own-server.example');
     expect(together.account.base, server.base);
-    expect(model.toast, "A parent's settings keep this server");
+    expect(model.toast, "A parent's settings keep this server.");
     // A family limit the server answers is said in words.
     expect(
       together.message(
         const TogetherProblem(403, 'restricted_by_family', 'No', extra: {'feature': 'voice_chat', 'side': 'self'}),
       ),
-      'A parent has turned voice chat off',
+      'A parent has turned voice chat off.',
     );
     expect(
       together.message(

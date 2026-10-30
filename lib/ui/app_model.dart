@@ -72,6 +72,7 @@ import 'engine_model.dart';
 import 'fonts_model.dart';
 import 'steam_model.dart';
 import 'glass.dart';
+import 'profile_picture.dart';
 import 'strings.dart';
 import 'theme.dart';
 import 'together_model.dart';
@@ -92,7 +93,7 @@ class Preferences {
       _ => LookStyle.cosmic.index,
     }
     ..accent = json['accent'] as String?
-    ..profileName = json['profileName'] as String? ?? 'Player'
+    ..profileName = json['profileName'] as String? ?? ''
     ..gamesFolders = _folders(json['gamesFolders'], json['gamesFolder'])
     ..toolkitFolder = json['toolkitFolder'] as String?
     ..onboarded = json['onboarded'] as bool? ?? false
@@ -159,7 +160,9 @@ class Preferences {
   String language = 'en';
   int theme = 0;
   String? accent;
-  String profileName = 'Player';
+  /// Empty until the first profile is made: it is then the profile's name (the language's word
+  /// for a player when none was typed).
+  String profileName = '';
 
   /// The games folders in order (a library over several drives); the first holds the store, where
   /// games are unlocked. A folder whose drive is unplugged stays in the list.
@@ -636,16 +639,22 @@ class TextRow extends RowKind {
 /// How a person shows in a row: their initials or picture, a dot for what they are doing, a
 /// ring while they speak in party voice.
 class PanelPerson {
-  const PanelPerson({required this.name, this.avatar, this.status, this.speaking = false});
+  const PanelPerson({required this.name, this.avatar, this.picture, this.tint, this.status, this.speaking = false});
   final String name;
   final String? avatar;
+
+  /// A picture on this computer (a profile's own), shown before [avatar].
+  final String? picture;
+
+  /// The colour under the initials: a profile's own; a neutral grey for others.
+  final Color? tint;
   final PersonStatus? status;
   final bool speaking;
 
   /// One or two letters for a person with no picture.
   String get initials {
     final words = name.trim().split(RegExp(r'\s+')).where((word) => word.isNotEmpty).take(2);
-    final letters = words.map((word) => String.fromCharCode(word.runes.first).toUpperCase()).join();
+    final letters = words.map(T.initial).join();
     return letters.isEmpty ? '?' : letters;
   }
 }
@@ -866,6 +875,7 @@ class AppModel extends ChangeNotifier {
       p.join(paths.config, 'Profiles'),
       existing: ExistingSetup(onboarded: this.preferences.onboarded, name: this.preferences.profileName),
       persist: persist,
+      defaultName: LauncherProfiles.defaultName,
     );
     T.language = Language.byCode(this.preferences.language);
     Motion.reduced = this.preferences.reducedMotion;

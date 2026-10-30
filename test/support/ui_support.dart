@@ -163,6 +163,7 @@ Fixture makeFixture({
   ReplayBuffer? Function(int seconds)? replay,
   Future<int> Function(String folder)? folderSize,
   Future<String?> Function(String title)? pickFolder,
+  Future<String?> Function()? pickImage,
   CommandRunner? commands,
 }) {
   final opened = <Uri>[];
@@ -205,6 +206,7 @@ Fixture makeFixture({
     services: LauncherServices(
       computerName: 'Desk',
       pickFolder: pickFolder ?? (_) async => root,
+      pickImage: pickImage,
       advertise: false,
       preferredPorts: false,
       cable: false,

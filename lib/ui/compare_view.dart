@@ -219,7 +219,7 @@ class _Score extends StatelessWidget {
               SizedBox(width: 7 * scale),
               Expanded(
                 child: Text(
-                  label.toUpperCase(),
+                  T.upper(label),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppText.display(
@@ -560,7 +560,7 @@ class _TrophyList extends StatelessWidget {
                 width: column(scale),
                 child: Padding(
                   padding: EdgeInsets.only(bottom: 16 * scale),
-                  child: Text(T.text('profileYou').toUpperCase(), style: header, textAlign: TextAlign.center),
+                  child: Text(T.upper(T.text('profileYou')), style: header, textAlign: TextAlign.center),
                 ),
               ),
               SizedBox(
@@ -568,7 +568,7 @@ class _TrophyList extends StatelessWidget {
                 child: Padding(
                   padding: EdgeInsets.only(bottom: 16 * scale, right: 16 * scale),
                   child: Text(
-                    them.split(' ').first.toUpperCase(),
+                    T.upper(them.split(' ').first),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: header,

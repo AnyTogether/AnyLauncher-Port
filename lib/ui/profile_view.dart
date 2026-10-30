@@ -190,7 +190,7 @@ class _Sections extends StatelessWidget {
     Widget subheading(String text) => Padding(
       padding: EdgeInsets.only(bottom: 10 * scale),
       child: Text(
-        text.toUpperCase(),
+        T.upper(text),
         style: AppText.display(
           12 * scale,
           weight: FontWeight.w700,
@@ -421,7 +421,7 @@ class _Total extends StatelessWidget {
           Text(value, style: AppText.display(30 * scale, weight: FontWeight.w300)),
           SizedBox(height: 2 * scale),
           Text(
-            label.toUpperCase(),
+            T.upper(label),
             style: AppText.display(11 * scale, weight: FontWeight.w700, color: Colors.white.withValues(alpha: 0.55)),
           ),
         ],

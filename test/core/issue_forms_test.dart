@@ -136,4 +136,21 @@ void main() {
     expect(whole, contains('line 0 '));
     expect(whole, contains('line 29 '));
   });
+
+  test('a crash while closing is said as one', () {
+    final draft = IssueDraft.launcherProblem(
+      LauncherProblem(
+        kind: LauncherProblemKind.crash,
+        at: DateTime.utc(2026, 10, 30, 1, 5),
+        version: '0.1.14',
+        platform: 'Windows',
+        whileClosing: true,
+      ),
+      system: const SystemInfo(os: 'Windows 11 Home 25H2 (Build 26200.6899)'),
+      privacy: const ReportPrivacy(home: r'C:\Users\ada', names: ['ada']),
+    );
+    expect(draft.title, 'Launcher crash while closing');
+    expect(draft.url.queryParameters['what'], contains('crashed while closing'));
+    expect(draft.url.queryParameters['what'], contains('2026-10-30 01:05:00 UTC'));
+  });
 }

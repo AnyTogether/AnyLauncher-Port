@@ -5,6 +5,16 @@ release when it is made.
 
 ## Next release
 
+- **Full screen means full screen, and the close button in full screen no longer crashes.**
+  On Windows, the title bar's Maximize (its button, a double click on the title bar, Win+Up
+  or dragging the window to the top) used to make a maximized window that kept its dark title
+  bar along the top, and Settings still said Window. It now switches to the launcher's own
+  full screen, with no bar, and the window buttons and **Settings → Full Screen** follow. On
+  Linux, full screen turned on or off by the window manager is followed too. Clicking the red
+  close at the top right in full screen used to crash the launcher, and the next start offered
+  no report. Quit now closes the window the same way its title bar's close does. If closing
+  ever fails, the next start offers a report of a crash while closing. Each full-screen
+  change, and how long it took, is now in a report's last seconds.
 - **Crash reports you can write in, and Windows 11 called Windows 11.** On the GitHub form
   that **Send Report** opens, the launcher used to fill in the same box you were meant to
   write in (What happened, ending in "What I was doing:"), and what you typed there could be

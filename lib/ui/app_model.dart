@@ -872,6 +872,8 @@ class AppModel extends ChangeNotifier {
     together = TogetherModel(this);
     _applySound();
     sounds.onCue = _cueAsked;
+    // Full screen the system made or ended (Maximize, Win+Up): the launcher follows it.
+    services.window?.listen(fullscreenChanged: windowChangedFullscreen);
   }
 
   // Feel: the controller's pulses, the end-of-row bump, the hover tick.
@@ -3641,21 +3643,51 @@ class AppModel extends ChangeNotifier {
 
   Future<void> toggleFullscreen() => setLauncherFullscreen(!launcherFullscreen);
 
+  /// The choice is kept only when the window made it: Settings never says full screen over a
+  /// window (with no window to ask, in tests, the choice alone).
   Future<void> setLauncherFullscreen(bool on) async {
+    if (services.window != null && !await _setWindowFullscreen(on)) {
+      _changed();
+      return;
+    }
     preferences.launcherFullscreen = on;
     savePreferences();
-    await _setWindowFullscreen(on);
+    _changed();
   }
 
   /// At launch: full screen the first time, then as the user left it.
   Future<void> applyLauncherWindow() => _setWindowFullscreen(launcherFullscreen);
 
-  Future<void> _setWindowFullscreen(bool on) async {
-    if (await services.window?.setFullscreen(on) ?? false) {
+  Future<bool> _setWindowFullscreen(bool on) async {
+    final window = services.window;
+    if (window == null) return false;
+    final took = Stopwatch()..start();
+    final done = await window.setFullscreen(on);
+    // In a report's last seconds: a window that took long to change, or would not.
+    _windowLine(
+      '${on ? 'full screen' : 'windowed'} asked: ${done ? 'done' : 'refused'} in ${took.elapsedMilliseconds} ms',
+    );
+    if (done) {
       windowFullscreen = on;
       _changed();
     }
+    return done;
   }
+
+  /// The system made the window full screen or a window (the title bar's Maximize, a double
+  /// click on it, Win+Up, the window manager): the window buttons and Settings follow, and the
+  /// next start keeps it.
+  void windowChangedFullscreen(bool on) {
+    _windowLine('${on ? 'full screen' : 'windowed'} by the system');
+    windowFullscreen = on;
+    if (preferences.launcherFullscreen != on) {
+      preferences.launcherFullscreen = on;
+      savePreferences();
+    }
+    _changed();
+  }
+
+  void _windowLine(String what) => addRecentLine('${DateTime.now().toIso8601String()} window $what');
 
   /// Whether the window is full screen now, with no title bar of the system's: set as the
   /// launcher makes it so (and by main.dart for Steam's --fullscreen).
@@ -3842,6 +3874,7 @@ class AppModel extends ChangeNotifier {
           PanelCategory(
             id: 'launcherReport',
             title: switch (problem.kind) {
+              LauncherProblemKind.crash when problem.whileClosing => T.text('launcherReportCrashClosing'),
               LauncherProblemKind.crash => T.text('launcherReportCrash'),
               LauncherProblemKind.hang when problem.recovered => T.format('launcherReportHang', [
                 problem.stalledFor?.inSeconds ?? LauncherHealth.stall.inSeconds,

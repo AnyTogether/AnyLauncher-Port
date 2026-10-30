@@ -798,6 +798,7 @@
   "quitLauncherGame": "%@ closes too",
   "launcherReportWhen": "Last time",
   "launcherReportCrash": "AnyPS5 closed unexpectedly",
+  "launcherReportCrashClosing": "AnyPS5 crashed while it was closing",
   "launcherReportHang": "AnyPS5 froze for %d seconds",
   "launcherReportHangEnded": "AnyPS5 froze and was closed",
   "launcherReportSend": "Send Report",

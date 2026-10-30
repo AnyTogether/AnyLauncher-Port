@@ -859,6 +859,11 @@ class IssueDraft {
     final at = problem.at.toUtc().toIso8601String().substring(0, 19).replaceFirst('T', ' ');
     final seconds = problem.stalledFor?.inSeconds;
     final (title, what) = switch (problem.kind) {
+      LauncherProblemKind.crash when problem.whileClosing => (
+        'Launcher crash while closing',
+        'The launcher crashed while closing: it began to close (Quit or the window\'s close) at $at UTC and did not '
+            'finish shutting down.',
+      ),
       LauncherProblemKind.crash => (
         'Launcher crash',
         'The launcher closed without being closed (a crash, or ended from the task manager). Last seen alive $at UTC.',

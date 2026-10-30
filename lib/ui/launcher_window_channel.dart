@@ -15,6 +15,20 @@ class ChannelLauncherWindow implements LauncherWindow {
   @override
   Future<bool> minimize() => _call('minimize');
 
+  @override
+  Future<bool> close() => _call('close');
+
+  @override
+  Future<bool> removeAfterClose(String path) => _call('removeAfterClose', path);
+
+  @override
+  void listen({required void Function(bool fullscreen) fullscreenChanged}) {
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'fullscreenChanged' && call.arguments is bool) fullscreenChanged(call.arguments as bool);
+      return null;
+    });
+  }
+
   Future<bool> _call(String method, [Object? argument]) async {
     try {
       return await _channel.invokeMethod<bool>(method, argument) ?? false;

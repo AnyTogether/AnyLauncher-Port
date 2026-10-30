@@ -27,12 +27,31 @@ import 'desktop_features_test.dart' show FakeDesktop, FakePads;
 class FakeWindow implements LauncherWindow {
   final List<bool> asked = [];
   int minimized = 0;
+  int closed = 0;
+  bool works = true;
+  String? marker;
+  void Function(bool fullscreen)? system;
 
   @override
   Future<bool> setFullscreen(bool on) async {
     asked.add(on);
+    return works;
+  }
+
+  @override
+  Future<bool> close() async {
+    closed++;
     return true;
   }
+
+  @override
+  Future<bool> removeAfterClose(String path) async {
+    marker = path;
+    return true;
+  }
+
+  @override
+  void listen({required void Function(bool fullscreen) fullscreenChanged}) => system = fullscreenChanged;
 
   @override
   Future<bool> minimize() async {
@@ -69,6 +88,42 @@ void main() {
       expect(Preferences.fromJson(model.preferences.toJson()).launcherFullscreen, isFalse);
       await model.applyLauncherWindow();
       expect(window.asked.last, isFalse, reason: 'the next start keeps the window');
+    });
+
+    test(
+      'the system made it full screen or a window (Maximize, Win+Up): the launcher and its setting follow',
+      () async {
+        final window = FakeWindow();
+        final fixture = makeFixture(window: window);
+        final model = fixture.model;
+        addTearDown(fixture.dispose);
+        await model.setLauncherFullscreen(false);
+        expect(model.windowFullscreen, isFalse);
+        expect(window.system, isNotNull, reason: 'the model listens to the window');
+        window.system!(true);
+        expect(model.windowFullscreen, isTrue, reason: 'the window buttons wait at the top edge');
+        expect(model.launcherFullscreen, isTrue, reason: 'Settings › Full Screen reads on');
+        expect(Preferences.fromJson(model.preferences.toJson()).launcherFullscreen, isTrue, reason: 'and stays so');
+        expect(window.asked, [false], reason: 'nothing asked back of the window: it is full screen already');
+        model.open(Layer.settings);
+        final row = model.panelCategories().first.rows.firstWhere((row) => row.id == 'fullscreen');
+        expect((row.kind as ToggleRow).value, isTrue);
+        window.system!(false);
+        expect(model.windowFullscreen, isFalse);
+        expect(model.launcherFullscreen, isFalse);
+      },
+    );
+
+    test('full screen the window could not make: the setting stays as the window is', () async {
+      final window = FakeWindow();
+      final fixture = makeFixture(window: window);
+      final model = fixture.model;
+      addTearDown(fixture.dispose);
+      await model.setLauncherFullscreen(false);
+      window.works = false;
+      await model.setLauncherFullscreen(true);
+      expect(model.windowFullscreen, isFalse);
+      expect(model.launcherFullscreen, isFalse, reason: 'Settings must not say full screen over a window');
     });
 
     testWidgets('F11 switches it; Settings › Appearance has it', (tester) async {

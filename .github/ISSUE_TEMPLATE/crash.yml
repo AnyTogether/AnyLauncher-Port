@@ -19,18 +19,23 @@ body:
     validations:
       required: true
   - type: textarea
+    id: doing
+    attributes:
+      label: What you were doing
+      description: In your own words - where you were in the game and what you did just before it stopped. The launcher leaves this box for you.
+    validations:
+      required: true
+  - type: textarea
     id: reason
     attributes:
       label: What happened
-      description: Why the game stopped, as the launcher read it from the log and the exit code, and what you were doing.
-    validations:
-      required: true
+      description: Why the game stopped, as the launcher read it from the log and the exit code. Filled in by the launcher.
   - type: input
     id: system
     attributes:
       label: System
       description: Operating system, processor, memory and the GPU the engine chose.
-      placeholder: Windows 11 Pro 10.0 (Build 22631) · AMD Ryzen 7 5800X · 32 GB · NVIDIA GeForce RTX 3070
+      placeholder: Windows 11 Pro 24H2 (Build 26100.4351) · AMD Ryzen 7 5800X · 32 GB · NVIDIA GeForce RTX 3070
     validations:
       required: true
   - type: input

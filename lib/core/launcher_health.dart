@@ -27,6 +27,7 @@ class LauncherProblem {
     required this.platform,
     this.stalledFor,
     this.recovered = false,
+    this.whileClosing = false,
     this.error,
     this.lines = const [],
   });
@@ -41,6 +42,7 @@ class LauncherProblem {
       _ => null,
     },
     recovered: json['recovered'] == true,
+    whileClosing: json['whileClosing'] == true,
     error: json['error'] as String?,
     lines: [for (final line in json['lines'] as List<dynamic>? ?? const []) '$line'],
   );
@@ -58,6 +60,10 @@ class LauncherProblem {
   /// The stall ended by itself (the launcher went on).
   final bool recovered;
 
+  /// The crash came after the launcher began to close (Quit, the window's close): shutting
+  /// down failed.
+  final bool whileClosing;
+
   /// The first error the run's Dart code did not catch, with its stack.
   final String? error;
 
@@ -72,6 +78,7 @@ class LauncherProblem {
     'platform': platform,
     if (stalledFor != null) 'stalledMs': stalledFor!.inMilliseconds,
     if (recovered) 'recovered': true,
+    if (whileClosing) 'whileClosing': true,
     if (error != null) 'error': error,
     'lines': lines,
   };
@@ -80,8 +87,10 @@ class LauncherProblem {
 /// The launcher's own crashes and long stalls, kept so the next start can offer a report:
 ///
 /// - `running-<pid>.json` while a run lasts: when it started and, every few seconds, what it was
-///   doing. Taken away when the launcher closes (its window, Quit, an update); one left by a
-///   process that is gone is a run that crashed or was ended.
+///   doing. When the launcher begins to close (its window, Quit, an update) it says so, and the
+///   runner takes it away once the window has closed and Flutter has shut down
+///   ([runnerRemovesMarker]; without a runner, closing takes it away). One left by a process that
+///   is gone is a run that crashed or was ended, or that crashed while closing.
 /// - `problem.json`: a stall the watchdog saw (written from its own isolate, so even an interface
 ///   that never answers again leaves it), or a crash found at start.
 ///
@@ -104,6 +113,13 @@ class LauncherHealth {
   static const keptLines = 30;
 
   String get _marker => p.join(folder, 'running-$pid.json');
+
+  /// This run's marker, for the runner to take away after a clean close.
+  String get markerPath => _marker;
+
+  /// The runner takes the marker away once the window has closed and Flutter has shut down
+  /// (it said so through LauncherWindow.removeAfterClose).
+  bool runnerRemovesMarker = false;
   String get problemFile => p.join(folder, 'problem.json');
 
   /// Starts this run's marker and returns what an earlier run left to report, if anything: the
@@ -125,9 +141,11 @@ class LauncherHealth {
         entity.deleteSync();
         // A stall the watchdog wrote is the same run, told better.
         if (found != null || marker == null) continue;
+        final closing = marker['closing'] as String?;
         found = LauncherProblem(
           kind: LauncherProblemKind.crash,
-          at: DateTime.tryParse(marker['alive'] as String? ?? marker['started'] as String? ?? '') ?? started,
+          at: DateTime.tryParse(closing ?? marker['alive'] as String? ?? marker['started'] as String? ?? '') ?? started,
+          whileClosing: closing != null,
           version: marker['version'] as String? ?? version,
           platform: marker['platform'] as String? ?? platform,
           error: marker['error'] as String?,
@@ -142,7 +160,17 @@ class LauncherHealth {
     return found;
   }
 
-  /// The launcher is closing as it should: no crash to find next time.
+  /// The launcher begins to close as it should. With the runner taking the marker away after a
+  /// clean close, the marker says when closing began (written and flushed now, before anything
+  /// in shutting down can fail); without one, the marker goes now.
+  void closing({DateTime? now}) {
+    if (!runnerRemovesMarker) return closed();
+    final marker =
+        _readJson(File(_marker)) ?? _markerJson(now ?? DateTime.now(), now ?? DateTime.now(), const [], null);
+    _write(_marker, {...marker, 'closing': (now ?? DateTime.now()).toUtc().toIso8601String()});
+  }
+
+  /// The launcher has closed (or is about to exit() at once): no crash to find next time.
   void closed() {
     try {
       File(_marker).deleteSync();
@@ -223,6 +251,45 @@ class LauncherHealth {
     } on Object {
       return false;
     }
+  }
+}
+
+/// Quitting the launcher (its Quit, the window buttons' close, an update's installer, a Steam
+/// game ending): the marker says closing, then the window closes as its title bar's close does
+/// and the runner ends the process once Flutter has shut down. exit() straight from Dart, with
+/// the engine still drawing, crashed on Windows (the full-screen close), and took the marker
+/// away before it did. With no window to close, exit() as before.
+class LauncherShutdown {
+  LauncherShutdown({required this.health, required this.closeWindow, required this.exit, this.beforeClose});
+
+  final LauncherHealth health;
+
+  /// Asks the window to close; whether it was asked.
+  final Future<bool> Function() closeWindow;
+  final void Function(int code) exit;
+
+  /// Before the marker is written: the watchdog stops writing it.
+  final void Function()? beforeClose;
+
+  /// A close that has not ended the process by then is not coming: exit().
+  static const fallbackAfter = Duration(seconds: 5);
+
+  bool _quitting = false;
+
+  Future<void> quit(int code) async {
+    if (_quitting) return;
+    _quitting = true;
+    beforeClose?.call();
+    health.closing();
+    if (await closeWindow()) {
+      Timer(fallbackAfter, () {
+        health.closed();
+        exit(code);
+      });
+      return;
+    }
+    health.closed();
+    exit(code);
   }
 }
 

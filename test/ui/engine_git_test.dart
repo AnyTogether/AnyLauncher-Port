@@ -124,7 +124,8 @@ void main() {
     model.select(model.games.indexOf(orbit()));
     model.primaryAction(orbit());
     expect(model.starting, isNull, reason: 'no game starts on a build half done');
-    expect(model.toast, T.format('engineGitRunning', [T.text('engineGitStepBuilding')]));
+    expect(model.stateOf(orbit()), isA<WaitingForEngine>());
+    expect(model.toast, T.text('gameWaitsForEngine'));
     choose('engineGitUpdate');
     await until(() => !model.engine.git.running);
     expect(model.toast, T.text('engineGitStopped'));

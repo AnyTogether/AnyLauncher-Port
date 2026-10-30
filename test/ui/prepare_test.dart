@@ -202,7 +202,7 @@ void main() {
       await until(() => !model.prepare.paused);
     }, skip: Platform.isWindows ? 'the fake relinker is a shell script' : false);
 
-    test('Play on a game being prepared makes it the user\'s own; a second press cancels', () async {
+    test('Play on a game being prepared makes it the user\'s own; Cancel Unlock gives it up', () async {
       fixture = makeFixture(prepareNewGames: true);
       model = fixture.model;
       makeFakeToolkit(fixture.toolkit, mode: 'slow');
@@ -212,7 +212,15 @@ void main() {
       expect(model.toast, "Comet starts as soon as it's ready");
       expect(model.prepare.promoted, isTrue);
       expect(model.stateOf(comet), isA<Installing>().having((state) => state.preparing, 'preparing', isFalse));
+      // It starts when ready: a second press says so rather than giving it up.
       model.primaryAction(comet);
+      expect(model.toast, T.format('gameUnlockingHint', ['Comet']));
+      expect(model.stateOf(comet), isA<Installing>());
+      model.select(model.games.indexOf(comet));
+      model.open(Layer.gameSettings);
+      final cancel = model.panelCategories().single.rows.first;
+      expect(cancel.title, T.text('cancelUnlock'));
+      (cancel.kind as ActionRow).run();
       await until(() => model.stateOf(comet) is Locked);
     }, skip: Platform.isWindows ? 'the fake relinker is a shell script' : false);
 

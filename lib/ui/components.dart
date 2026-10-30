@@ -208,6 +208,10 @@ class ConsoleButton extends StatefulWidget {
     this.prominent = false,
     this.destructive = false,
     this.minWidth = 0,
+    this.stop = false,
+    this.progress,
+    this.indeterminate = false,
+    this.progressColor,
   });
 
   final String title;
@@ -217,6 +221,19 @@ class ConsoleButton extends StatefulWidget {
   final bool destructive;
   final double minWidth;
   final VoidCallback onPressed;
+
+  /// Ends what runs (Stop on a game playing): a red button, in either look.
+  final bool stop;
+
+  /// The share done, as a line along the button's foot; null for none.
+  final double? progress;
+
+  /// The line moves without a share (under way for a while nobody can say).
+  final bool indeterminate;
+  final Color? progressColor;
+
+  /// Stop's red, deep enough for white words on it.
+  static const stopRed = Color.fromRGBO(214, 54, 61, 1);
 
   @override
   State<ConsoleButton> createState() => _ConsoleButtonState();
@@ -235,73 +252,139 @@ class _ConsoleButtonState extends State<ConsoleButton> {
     final fill = focused
         ? Colors.white
         : Colors.white.withValues(alpha: widget.prominent ? 0.2 : (_hovering ? 0.16 : 0.1));
+    final stop = widget.stop;
+    final ink = stop ? Colors.white : foreground;
     final constraints = BoxConstraints(minWidth: widget.minWidth * scale, minHeight: 54 * scale);
     final padding = EdgeInsets.symmetric(horizontal: (widget.title.isEmpty ? 18 : 30) * scale);
-    final content = Row(
+    final row = Row(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        if (widget.icon != null) Icon(widget.icon, size: 20 * scale, color: foreground),
+        if (widget.icon != null) Icon(widget.icon, size: 20 * scale, color: ink),
         if (widget.icon != null && widget.title.isNotEmpty) SizedBox(width: 10 * scale),
         if (widget.title.isNotEmpty)
           Text(
             widget.title,
-            style: AppText.display(19 * scale, weight: FontWeight.w600, color: foreground),
+            // A share counting up keeps the words where they are.
+            style: widget.progress == null
+                ? AppText.display(19 * scale, weight: FontWeight.w600, color: ink)
+                : AppText.display(
+                    19 * scale,
+                    weight: FontWeight.w600,
+                    color: ink,
+                  ).copyWith(fontFeatures: const [ui.FontFeature.tabularFigures()]),
           ),
       ],
     );
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (event) {
-        setState(() => _hovering = true);
-        HoverTicks.arrive(context, this, event);
-      },
-      onExit: (_) {
-        setState(() => _hovering = false);
-        HoverTicks.leave(context, this);
-      },
-      child: GestureDetector(
-        onTapDown: (_) => setState(() => _pressed = true),
-        onTapCancel: () => setState(() => _pressed = false),
-        onTapUp: (_) => setState(() => _pressed = false),
-        onTap: widget.onPressed,
-        child: AnimatedScale(
-          scale: _pressed ? 0.97 : (focused ? (glass ? GlassRecipe.focusScale : 1.05) : 1),
-          duration: _pressed ? const Duration(milliseconds: 90) : Motion.focus,
-          curve: Motion.settle,
-          child: glass
-              // Glass: a pane of frosted ice that becomes a bright ice chip when focused.
-              ? IceSurface(
-                  radius: 14 * scale,
-                  focused: focused,
-                  hover: _hovering || widget.prominent,
-                  sweep: true,
-                  constraints: constraints,
-                  padding: padding,
-                  child: content,
-                )
-              : AnimatedContainer(
-                  duration: Motion.focus,
-                  curve: Motion.settle,
-                  constraints: constraints,
-                  padding: padding,
-                  decoration: BoxDecoration(
-                    color: fill,
-                    borderRadius: BorderRadius.circular(14 * scale),
-                    border: Border.all(color: Colors.white.withValues(alpha: focused ? 0 : 0.12)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.white.withValues(alpha: focused ? 0.28 : 0),
-                        blurRadius: 18 * scale,
-                      ),
-                    ],
-                  ),
-                  child: content,
+    final share = widget.progress;
+    final lineColor = widget.progressColor ?? (focused && !stop ? ink : Colors.white);
+    final content = row;
+    // The progress rides the button's foot, inside its rounded edge.
+    Widget withProgress(Widget button) => share == null && !widget.indeterminate
+        ? button
+        : Stack(
+            children: [
+              button,
+              Positioned(
+                left: 18 * scale,
+                right: 18 * scale,
+                bottom: 7 * scale,
+                child: widget.indeterminate
+                    ? IndeterminateLine(color: lineColor, height: 3 * scale)
+                    : ProgressLine(fraction: share!, color: lineColor, height: 3 * scale),
+              ),
+            ],
+          );
+    if (stop) {
+      return _pressable(
+        focused,
+        glass,
+        withProgress(
+          AnimatedContainer(
+            duration: Motion.focus,
+            curve: Motion.settle,
+            constraints: constraints,
+            padding: padding,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: ConsoleButton.stopRed.withValues(alpha: focused ? 1 : (_hovering ? 0.92 : 0.82)),
+              borderRadius: BorderRadius.circular(14 * scale),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: focused ? 0.9 : 0.18),
+                width: focused ? 2 : 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: ConsoleButton.stopRed.withValues(alpha: focused ? 0.55 : 0.25),
+                  blurRadius: (focused ? 22 : 12) * scale,
                 ),
+              ],
+            ),
+            child: content,
+          ),
         ),
+      );
+    }
+    return _pressable(
+      focused,
+      glass,
+      withProgress(
+        glass
+            // Glass: a pane of frosted ice that becomes a bright ice chip when focused.
+            ? IceSurface(
+                radius: 14 * scale,
+                focused: focused,
+                hover: _hovering || widget.prominent,
+                sweep: true,
+                constraints: constraints,
+                padding: padding,
+                child: content,
+              )
+            : AnimatedContainer(
+                duration: Motion.focus,
+                curve: Motion.settle,
+                constraints: constraints,
+                padding: padding,
+                decoration: BoxDecoration(
+                  color: fill,
+                  borderRadius: BorderRadius.circular(14 * scale),
+                  border: Border.all(color: Colors.white.withValues(alpha: focused ? 0 : 0.12)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.white.withValues(alpha: focused ? 0.28 : 0),
+                      blurRadius: 18 * scale,
+                    ),
+                  ],
+                ),
+                child: content,
+              ),
       ),
     );
   }
+
+  Widget _pressable(bool focused, bool glass, Widget child) => MouseRegion(
+    cursor: SystemMouseCursors.click,
+    onEnter: (event) {
+      setState(() => _hovering = true);
+      HoverTicks.arrive(context, this, event);
+    },
+    onExit: (_) {
+      setState(() => _hovering = false);
+      HoverTicks.leave(context, this);
+    },
+    child: GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTap: widget.onPressed,
+      child: AnimatedScale(
+        scale: _pressed ? 0.97 : (focused ? (glass ? GlassRecipe.focusScale : 1.05) : 1),
+        duration: _pressed ? const Duration(milliseconds: 90) : Motion.focus,
+        curve: Motion.settle,
+        child: child,
+      ),
+    ),
+  );
 }
 
 /// A thin capsule progress bar.
@@ -357,10 +440,10 @@ class IndeterminateLine extends StatefulWidget {
 }
 
 class _IndeterminateLineState extends State<IndeterminateLine> with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1300),
-  )..repeat();
+  // With reduced motion the line rests in the middle instead of sweeping.
+  late final AnimationController _controller = Motion.reduced
+      ? AnimationController(vsync: this, value: 0.5)
+      : (AnimationController(vsync: this, duration: const Duration(milliseconds: 1300))..repeat());
 
   @override
   void dispose() {

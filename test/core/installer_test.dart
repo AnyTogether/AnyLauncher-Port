@@ -365,7 +365,7 @@ void main() {
         lines,
         contains(
           'sce_module/libSceFace.prx in the dump is encrypted (neither an ELF nor a decrypted SELF container): '
-          'it is left out, and the game runs without it',
+          'it is left out, and the game is unlocked without it',
         ),
       );
       expect(fakeRelinkerInputs(toolkitFolder).single, isNot(contains('sce_module/libSceFace.prx')));

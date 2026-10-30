@@ -14,8 +14,8 @@ release when it is made.
   and Play**) puts a game that failed this way right, with nothing to clean by hand.
 - **A module that cannot be used no longer stops the whole game.** A module of the dump that is
   still encrypted, or one the relinker cannot convert, is left out and the game is unlocked
-  without it; the engine starts a game without one of its modules and answers the game's
-  request for it with an error, or with its own version of that library where it has one
+  without it. The engine starts a game without a module it imports nothing from, answers the
+  game's own load of it with an error, and uses its own library of that name where it has one
   (libSceNpCppWebApi, for example). The launcher says which file it left out and why once the
   game is ready, and the unlock log has the relinker's reason. Only `eboot.bin` still stops an
   unlock: an encrypted one says so in plain words.

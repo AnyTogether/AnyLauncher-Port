@@ -249,15 +249,16 @@ void main() {
         AppModel.leftOutText(game, const [
           LeftOutModule('sce_module/libSceNpCppWebApi.prx', LeftOutReason.notRelinked, 'bad'),
         ]),
-        '${game.name} is ready. AnyPS5 could not convert sce_module/libSceNpCppWebApi.prx from the dump, '
-        'so the game runs without it.',
+        '${game.name} is ready without sce_module/libSceNpCppWebApi.prx: AnyPS5 could not convert it, so the game '
+        "uses AnyPS5's own library of that name where there is one.",
       );
       expect(
         AppModel.leftOutText(game, const [
           LeftOutModule('sce_module/libSceNpCppWebApi.prx', LeftOutReason.notRelinked),
           LeftOutModule('sce_module/libSceFace.prx', LeftOutReason.encrypted),
         ]),
-        '${game.name} is ready. sce_module/libSceFace.prx in the dump is encrypted, so the game runs without it.',
+        '${game.name} is ready without sce_module/libSceFace.prx: the file is encrypted in the dump. If the game '
+        'does not start, dump it again with a dumper that decrypts it.',
       );
     });
   });

@@ -143,8 +143,10 @@ enum LeftOutReason {
   notRelinked,
 }
 
-/// A module of the dump the unlock left out: the game runs without it, and the engine answers
-/// the game's request for it with an error (or with its own implementation of that library).
+/// A module of the dump the unlock left out. The engine starts a game without a module it imports
+/// nothing from, answers the game's own load of it with an error, and uses its own library of
+/// that name where it has one (libSceNpCppWebApi); one the executable imports from and the engine
+/// lacks stops the game at its start.
 class LeftOutModule {
   const LeftOutModule(this.path, this.reason, [this.detail]);
 
@@ -815,7 +817,7 @@ class Installer {
     leftOut.add(LeftOutModule(relative, LeftOutReason.encrypted, refused));
     _log(
       '$relative in the dump is encrypted (${refused ?? 'neither an ELF nor a decrypted SELF container'}): '
-      'it is left out, and the game runs without it',
+      'it is left out, and the game is unlocked without it',
     );
     return false;
   }

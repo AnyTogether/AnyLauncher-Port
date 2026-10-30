@@ -111,7 +111,7 @@ class ReportPrivacy {
 class SystemInfo {
   const SystemInfo({required this.os, this.cpu, this.memoryGB, this.gpu});
 
-  /// "Windows 11 Pro 10.0 (Build 22631)", "Ubuntu 24.04.1 LTS, kernel 6.8.0-45-generic".
+  /// "Windows 11 Pro 24H2 (Build 26100.4351)", "Ubuntu 24.04.1 LTS, kernel 6.8.0-45-generic".
   final String os;
   final String? cpu;
   final int? memoryGB;
@@ -119,7 +119,7 @@ class SystemInfo {
 
   SystemInfo withGpu(String? gpu) => SystemInfo(os: os, cpu: cpu, memoryGB: memoryGB, gpu: gpu ?? this.gpu);
 
-  /// "Windows 11 Pro 10.0 (Build 22631) · AMD Ryzen 7 5800X · 32 GB · NVIDIA GeForce RTX 3070".
+  /// "Windows 11 Pro 24H2 (Build 26100.4351) · AMD Ryzen 7 5800X · 32 GB · NVIDIA GeForce RTX 3070".
   String get line => [os, ?cpu, if (memoryGB != null) '$memoryGB GB', ?gpu].join(' · ');
 
   /// This computer, read from /etc/os-release and /proc on Linux, the registry and
@@ -127,22 +127,25 @@ class SystemInfo {
   static Future<SystemInfo> current(HostSystem system, {Map<String, String>? environment}) async {
     final env = environment ?? Platform.environment;
     if (system == HostSystem.windows) {
-      final os = Platform.operatingSystemVersion.replaceAll('"', '').trim();
-      String? cpu;
-      try {
-        final result = await Process.run('reg', [
-          'query',
-          r'HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0',
-          '/v',
-          'ProcessorNameString',
-        ]).timeout(const Duration(seconds: 3));
-        cpu = RegExp(r'REG_SZ\s+(.+)').firstMatch('${result.stdout}')?.group(1)?.trim();
-      } on Object {
-        cpu = null;
+      Future<Map<String, String>> query(String key) async {
+        try {
+          final result = await Process.run('reg', ['query', key]).timeout(const Duration(seconds: 3));
+          return registryValues('${result.stdout}');
+        } on Object {
+          return const {};
+        }
       }
+
+      final version = await query(r'HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion');
+      final processor = await query(r'HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0');
       return SystemInfo(
-        os: os.isEmpty ? 'Windows' : os,
-        cpu: cpu ?? env['PROCESSOR_IDENTIFIER'],
+        os: windowsName(
+          Platform.operatingSystemVersion,
+          // ReleaseId (2009 and earlier) before Windows 10 20H2 had DisplayVersion.
+          displayVersion: version['DisplayVersion'] ?? version['ReleaseId'],
+          revision: registryNumber(version['UBR']),
+        ),
+        cpu: processor['ProcessorNameString']?.trim() ?? env['PROCESSOR_IDENTIFIER'],
         memoryGB: _windowsMemory(),
       );
     }
@@ -154,8 +157,8 @@ class SystemInfo {
       }
     }
 
-    final release = read('/etc/os-release') ?? '';
-    final pretty = RegExp(r'^PRETTY_NAME="?([^"\n]+)"?', multiLine: true).firstMatch(release)?.group(1);
+    // /etc/os-release, or the vendor's copy it usually links to.
+    final pretty = osReleaseName(read('/etc/os-release') ?? read('/usr/lib/os-release') ?? '');
     final kernel = read('/proc/sys/kernel/osrelease')?.trim();
     final cpu = RegExp(r'^model name\s*:\s*(.+)$', multiLine: true).firstMatch(read('/proc/cpuinfo') ?? '')?.group(1);
     final kb = RegExp(r'^MemTotal:\s+(\d+) kB', multiLine: true).firstMatch(read('/proc/meminfo') ?? '')?.group(1);
@@ -164,6 +167,63 @@ class SystemInfo {
       cpu: cpu?.trim(),
       memoryGB: kb == null ? null : (int.parse(kb) / 1048576).round(),
     );
+  }
+
+  /// "Windows 11 Home 25H2 (Build 26200.6899)" from Dart's operating system version
+  /// ('"Windows 10 Home" 10.0 (Build 26200)', read from the registry's ProductName, which still
+  /// says Windows 10 on Windows 11): 11 from build 22000 on, with [displayVersion] (25H2) and
+  /// the update revision (UBR) when known.
+  static String windowsName(String dartVersion, {String? displayVersion, int? revision}) {
+    final text = dartVersion.replaceAll('"', '').trim();
+    final build = int.tryParse(RegExp(r'Build (\d+)').firstMatch(text)?.group(1) ?? '');
+    var product = text.replaceFirst(RegExp(r'\s*\d+\.\d+(\.\d+)?\s*\(Build \d+\)\s*$'), '').trim();
+    if (product.isEmpty) product = 'Windows';
+    if (build != null && build >= 22000) product = product.replaceFirst('Windows 10', 'Windows 11');
+    final shown = displayVersion?.trim();
+    return [
+      product,
+      if (shown != null && shown.isNotEmpty) shown,
+      if (build != null) '(Build $build${revision == null ? '' : '.$revision'})',
+    ].join(' ');
+  }
+
+  /// The values `reg query <key>` printed, by name ("    UBR    REG_DWORD    0x1aeb").
+  static Map<String, String> registryValues(String output) => {
+    for (final match in RegExp(r'^\s+(\S+)\s+REG_\w+\s+(.*?)\s*$', multiLine: true).allMatches(output))
+      match[1]!: match[2]!,
+  };
+
+  /// A REG_DWORD as reg prints it (0x1aeb), or a plain number.
+  static int? registryNumber(String? value) {
+    if (value == null) return null;
+    final text = value.trim().toLowerCase();
+    return text.startsWith('0x') ? int.tryParse(text.substring(2), radix: 16) : int.tryParse(text);
+  }
+
+  /// The distribution's name from an os-release file: PRETTY_NAME, else NAME and VERSION_ID (or
+  /// VERSION); values in double or single quotes or none, with shell escapes.
+  static String? osReleaseName(String release) {
+    final values = <String, String>{};
+    for (final line in const LineSplitter().convert(release)) {
+      final match = RegExp(r'^\s*([A-Z_][A-Z0-9_]*)=(.*)$').firstMatch(line);
+      if (match == null) continue;
+      var value = match[2]!.trim();
+      if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) {
+        value = value.substring(1, value.length - 1);
+      } else {
+        if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+          value = value.substring(1, value.length - 1);
+        }
+        value = value.replaceAllMapped(RegExp(r'\\(.)'), (escaped) => escaped[1]!);
+      }
+      values[match[1]!] = value.trim();
+    }
+    final pretty = values['PRETTY_NAME'];
+    if (pretty != null && pretty.isNotEmpty) return pretty;
+    final name = values['NAME'];
+    if (name == null || name.isEmpty) return null;
+    final version = values['VERSION_ID'] ?? values['VERSION'];
+    return version == null || version.isEmpty ? name : '$name $version';
   }
 
   static int? _windowsMemory() {
@@ -621,7 +681,7 @@ class IssueField {
 /// A GitHub "new issue" page filled in from a report: its title and form fields, as a link that
 /// stays under the length browsers and GitHub take.
 class IssueDraft {
-  const IssueDraft._(this.repository, this.title, this.fields, this.url);
+  const IssueDraft._(this.repository, this.title, this.fields, this.url, {this.linesLeftOut = 0});
 
   /// Upstream's engine, which the launcher downloads by default: a game's crash is most often its.
   static const engineRepository = 'boykopovar/AnyPS5';
@@ -641,6 +701,10 @@ class IssueDraft {
   final String title;
   final List<IssueField> fields;
   final Uri url;
+
+  /// How many of the oldest lines the link has no room for (the whole report goes to the
+  /// clipboard then, for the user to paste).
+  final int linesLeftOut;
 
   /// What the link sends, as the user is shown it before it opens.
   String get preview => [title, for (final field in fields) '\n${field.label}\n${field.value}'].join('\n');
@@ -717,20 +781,81 @@ class IssueDraft {
       title: 'Crash: ${report.gameName} (${report.titleId})',
       fixed: fixed,
       log: ('log', 'Last log lines'),
-      after: [IssueField('report', 'Report file', _attach(report))],
+      // The Report File box stays empty for the file the user drags in, and What You Were
+      // Doing for their words: a box filled from the link can be put back by GitHub over what
+      // was typed or dropped in it.
+      after: const [],
       report: report,
       logLines: logLines,
     );
   }
 
-  /// This launcher's own crash or stall (.github/ISSUE_TEMPLATE/launcher_crash.yml): what
-  /// happened, the system, the version, the first uncaught error and the launcher's last seconds,
-  /// every field through [privacy]. The oldest lines go first until the link is short enough.
+  /// This launcher's own crash or stall (.github/ISSUE_TEMPLATE/launcher_crash.yml): what the
+  /// launcher noticed, the system, the version, the first uncaught error and the launcher's last
+  /// seconds, every field through [privacy]. What the user was doing is the form's own empty
+  /// box ("doing"): a box filled from the link can be put back by GitHub over what is typed. The
+  /// oldest lines go first until the link is short enough, and the log then says so.
   static IssueDraft launcherProblem(
     LauncherProblem problem, {
     required SystemInfo system,
     required ReportPrivacy privacy,
   }) {
+    final (:title, :what, :error, :lines) = _problemParts(problem, privacy);
+    var shownError = error;
+    final kept = [...lines];
+    while (true) {
+      final leftOut = lines.length - kept.length;
+      final log = [
+        if (leftOut > 0)
+          '($leftOut older lines left out to fit the link: the whole report is on the clipboard, paste it below.)',
+        ...kept,
+      ];
+      final fields = [
+        IssueField('what', 'What the launcher noticed', what),
+        IssueField('system', 'System', privacy.clean(system.line)),
+        IssueField('versions', 'Version', 'Launcher ${problem.version} (${problem.platform})'),
+        IssueField('error', 'Uncaught error', shownError),
+        IssueField('log', 'Last seconds', log.isEmpty ? '(none kept)' : log.join('\n')),
+      ];
+      final link = _link(launcherRepository, 'launcher_crash.yml', title, fields);
+      if (link.length <= maximumLength) {
+        return IssueDraft._(launcherRepository, title, fields, Uri.parse(link), linesLeftOut: leftOut);
+      }
+      if (kept.isNotEmpty) {
+        kept.removeAt(0);
+      } else {
+        shownError = '${shownError.substring(0, shownError.length * 3 ~/ 4)}…';
+      }
+    }
+  }
+
+  /// The whole report of [problem], nothing left out, as the clipboard gets it when the link
+  /// could not take every line.
+  static String launcherProblemText(
+    LauncherProblem problem, {
+    required SystemInfo system,
+    required ReportPrivacy privacy,
+  }) {
+    final (:title, :what, :error, :lines) = _problemParts(problem, privacy);
+    return [
+      title,
+      '',
+      what,
+      privacy.clean(system.line),
+      'Launcher ${problem.version} (${problem.platform})',
+      '',
+      'Uncaught error:',
+      error,
+      '',
+      'Last seconds:',
+      if (lines.isEmpty) '(none kept)' else ...lines,
+    ].join('\n');
+  }
+
+  static ({String title, String what, String error, List<String> lines}) _problemParts(
+    LauncherProblem problem,
+    ReportPrivacy privacy,
+  ) {
     final at = problem.at.toUtc().toIso8601String().substring(0, 19).replaceFirst('T', ' ');
     final seconds = problem.stalledFor?.inSeconds;
     final (title, what) = switch (problem.kind) {
@@ -748,26 +873,15 @@ class IssueDraft {
       ),
     };
     String cut(String line) => line.length > lineLimit ? '${line.substring(0, lineLimit)}…' : line;
-    var error = problem.error == null
+    final error = problem.error == null
         ? 'None caught.'
         : const LineSplitter().convert(privacy.clean(problem.error!)).take(40).map(cut).join('\n');
-    final lines = [for (final line in problem.lines) cut(privacy.clean(line))];
-    while (true) {
-      final fields = [
-        IssueField('what', 'What happened', '$what\nWhat I was doing: '),
-        IssueField('system', 'System', privacy.clean(system.line)),
-        IssueField('versions', 'Version', 'Launcher ${problem.version} (${problem.platform})'),
-        IssueField('error', 'Uncaught error', error),
-        IssueField('log', 'Last seconds', lines.isEmpty ? '(none kept)' : lines.join('\n')),
-      ];
-      final link = _link(launcherRepository, 'launcher_crash.yml', title, fields);
-      if (link.length <= maximumLength) return IssueDraft._(launcherRepository, title, fields, Uri.parse(link));
-      if (lines.isNotEmpty) {
-        lines.removeAt(0);
-      } else {
-        error = '${error.substring(0, error.length * 3 ~/ 4)}…';
-      }
-    }
+    return (
+      title: title,
+      what: what,
+      error: error,
+      lines: [for (final line in problem.lines) cut(privacy.clean(line))],
+    );
   }
 
   /// The newest log lines that fit: the oldest go first until the link is short enough.

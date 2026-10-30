@@ -84,4 +84,27 @@ void main() {
     expect(done, 1);
     expect(fixture.opened, isEmpty);
   });
+
+  testWidgets('a report too long for the link: the whole of it goes to the clipboard, and the launcher says so', (
+    tester,
+  ) async {
+    final fixture = makeFixture();
+    addTearDown(fixture.dispose);
+    final model = fixture.model;
+    model.launcherProblem = LauncherProblem(
+      kind: LauncherProblemKind.crash,
+      at: DateTime.utc(2026, 10, 30, 1, 21),
+      version: '0.1.14',
+      platform: 'Windows',
+      lines: [for (var second = 0; second < 30; second++) 'line $second ${'x' * 280}'],
+    );
+    model.offerLauncherReport();
+    await pumpLauncher(tester, model);
+    await press(tester, LogicalKeyboardKey.enter);
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump();
+    expect(fixture.opened.single.queryParameters['log'], contains('older lines left out'));
+    expect(fixture.copied.single, contains('line 0 '), reason: 'every line, the oldest too');
+    expect(find.textContaining('the whole of it is on the clipboard'), findsOneWidget);
+  });
 }

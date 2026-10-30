@@ -805,6 +805,7 @@
   "launcherReportSendDetail": "Sürüm, sistem ve başlatıcının son saniyeleriyle doldurulmuş bir GitHub sorunu açar; klasörleriniz ve adlarınız çıkarılır. Siz orada göndermedikçe hiçbir şey gönderilmez",
   "launcherReportLater": "Şimdi Değil",
   "launcherReportLaterDetail": "Bunun için bir daha sorulmaz",
+  "launcherReportCopied": "Rapor bağlantıya sığmadı, tamamı panoya kopyalandı. Sorunun içine yapıştırın.",
   "quitQuestion": "AnyPS5'ten çıkılsın mı?",
   "quitStay": "Ana ekranda kal",
   "captures": "Yakalamalar",

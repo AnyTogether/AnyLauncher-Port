@@ -805,6 +805,7 @@
   "launcherReportSendDetail": "Opens a GitHub issue filled in with the version, the system and the launcher's last seconds, your folders and names taken out. Nothing is sent until you submit it there",
   "launcherReportLater": "Not Now",
   "launcherReportLaterDetail": "Not asked again about this one",
+  "launcherReportCopied": "The report was too long for the link, so the whole of it is on the clipboard. Paste it into the issue.",
   "quitQuestion": "Quit AnyPS5?",
   "quitStay": "Stay on the home screen",
   "captures": "Captures",

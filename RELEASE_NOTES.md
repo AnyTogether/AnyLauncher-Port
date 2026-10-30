@@ -5,7 +5,12 @@ release when it is made.
 
 ## Next release
 
-Nothing yet.
+- **Upscaling: Bilinear or FSR 1.** A new choice in a game's settings, beside Resolution. With
+  AMD FidelityFX Super Resolution 1, a game image smaller than the window is brought up to it
+  sharp instead of blurred, so a lower Resolution gives more frames on a weaker PC without the
+  soft look. **FSR Sharpness** (shown with FSR 1) goes from 0, the sharpest, to 2 in AMD's stops;
+  0.2 by default. It needs an AnyPS5-ARM engine with FSR 1; upstream's engine always scales
+  bilinearly.
 
 ## 0.1.16
 

@@ -466,6 +466,10 @@ extension ReportSettings on GameSettings {
       if (fullscreen) 'Fullscreen' else 'Windowed $windowSize%',
       'V-sync ${vsync || frameGeneration == true ? 'on' : 'off'}',
       'Frame generation ${frameGeneration == true ? 'on' : 'off'}',
+      if (upscaler == Upscaler.fsr1)
+        'Upscaling FSR 1 (sharpness ${sharpness.toStringAsFixed(1)})'
+      else
+        'Upscaling bilinear',
       switch (corners[overlay]) {
         final String corner => 'Overlay $corner (${style.name})',
         null => 'Overlay off',

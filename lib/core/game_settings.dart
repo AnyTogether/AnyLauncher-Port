@@ -24,6 +24,10 @@ enum OverlayCorner {
 /// How the performance overlay looks: one line of figures, or the panel with its graph.
 enum OverlayStyle { minimal, detailed }
 
+/// How the game's image is brought up to a larger window (ANYPS5_UPSCALER): bilinear, or AMD
+/// FidelityFX Super Resolution 1, which only helps where the game renders below the window.
+enum Upscaler { bilinear, fsr1 }
+
 /// Settings › Default Display: how a game starts that made no display choice of its own (Game
 /// Settings › Display, Window Size and Vertical Sync left at Default). The built-in values are
 /// the ones every game started with before there were defaults.
@@ -94,6 +98,8 @@ class GameSettings {
     this.overlay = OverlayCorner.off,
     this.overlayStyle,
     this.frameGeneration,
+    this.upscaler,
+    this.fsrSharpness,
     this.language,
     this.controls,
     this.tuning,
@@ -141,6 +147,8 @@ class GameSettings {
       overlay: named(OverlayCorner.values, json['overlay']) ?? OverlayCorner.off,
       overlayStyle: named(OverlayStyle.values, json['overlayStyle']),
       frameGeneration: json['frameGeneration'] as bool?,
+      upscaler: named(Upscaler.values, json['upscaler']),
+      fsrSharpness: json['fsrSharpness'] is num ? (json['fsrSharpness'] as num).toDouble() : null,
       language: (json['language'] as num?)?.toInt(),
       controls: controls is Map<String, dynamic>
           ? {
@@ -195,6 +203,19 @@ class GameSettings {
   /// A generated frame between each two of the game's (ANYPS5_FRAME_GEN), with vertical sync.
   final bool? frameGeneration;
 
+  /// null is bilinear.
+  final Upscaler? upscaler;
+
+  /// FSR 1's sharpening in AMD's stops (ANYPS5_FSR_SHARPNESS): 0 is the sharpest, each stop
+  /// halves it; null is AMD's 0.2.
+  final double? fsrSharpness;
+
+  static const defaultFsrSharpness = 0.2;
+  static const maximumFsrSharpness = 2.0;
+
+  /// The sharpness a start passes, within 0 to 2 stops and to a tenth of a stop.
+  double get sharpness => ((fsrSharpness ?? defaultFsrSharpness).clamp(0.0, maximumFsrSharpness) * 10).round() / 10;
+
   /// The console language number (ANYPS5_LANGUAGE), null to follow the launcher's language.
   final int? language;
 
@@ -225,6 +246,8 @@ class GameSettings {
     if (resolution != null) 'resolution': resolution,
     if (overlayStyle != null) 'overlayStyle': overlayStyle!.name,
     if (frameGeneration != null) 'frameGeneration': frameGeneration,
+    if (upscaler != null) 'upscaler': upscaler!.name,
+    if (fsrSharpness != null) 'fsrSharpness': fsrSharpness,
     if (language != null) 'language': language,
     if (controls != null) 'controls': controls,
     if (tuning != null) 'tuning': tuning!.toJson(),
@@ -245,6 +268,8 @@ class GameSettings {
     OverlayCorner? overlay,
     Object? overlayStyle = _keep,
     Object? frameGeneration = _keep,
+    Object? upscaler = _keep,
+    Object? fsrSharpness = _keep,
     Object? language = _keep,
     Object? controls = _keep,
     Object? tuning = _keep,
@@ -260,6 +285,8 @@ class GameSettings {
     overlay: overlay ?? this.overlay,
     overlayStyle: identical(overlayStyle, _keep) ? this.overlayStyle : overlayStyle as OverlayStyle?,
     frameGeneration: identical(frameGeneration, _keep) ? this.frameGeneration : frameGeneration as bool?,
+    upscaler: identical(upscaler, _keep) ? this.upscaler : upscaler as Upscaler?,
+    fsrSharpness: identical(fsrSharpness, _keep) ? this.fsrSharpness : fsrSharpness as double?,
     language: identical(language, _keep) ? this.language : language as int?,
     controls: identical(controls, _keep) ? this.controls : controls as Map<String, List<String>>?,
     tuning: identical(tuning, _keep) ? this.tuning : tuning as InputTuning?,
@@ -309,6 +336,10 @@ class GameSettings {
       environment['ANYPS5_SHADER_CACHE_DIR'] = shaderCacheFolder;
     }
     if (frameGeneration == true) environment['ANYPS5_FRAME_GEN'] = '1';
+    if (upscaler == Upscaler.fsr1) {
+      environment['ANYPS5_UPSCALER'] = Upscaler.fsr1.name;
+      environment['ANYPS5_FSR_SHARPNESS'] = sharpness.toStringAsFixed(1);
+    }
     if (gyro?.environment case final String aim) environment['ANYPS5_GYRO_AIM'] = aim;
     if (trace || this.trace == true) environment.addAll(TraceMode.environment);
     return environment;

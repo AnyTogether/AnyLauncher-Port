@@ -219,6 +219,42 @@ StickModifier = KEY:F24
       );
     });
 
+    test('FSR 1 passes the upscaler and its sharpness; bilinear passes nothing', () {
+      expect(const GameSettings().environment(launcherLanguage: 1).containsKey('ANYPS5_UPSCALER'), isFalse);
+      expect(const GameSettings().environment(launcherLanguage: 1).containsKey('ANYPS5_FSR_SHARPNESS'), isFalse);
+      expect(
+        const GameSettings(upscaler: Upscaler.bilinear).environment(launcherLanguage: 1).containsKey('ANYPS5_UPSCALER'),
+        isFalse,
+      );
+      final fsr = const GameSettings(upscaler: Upscaler.fsr1).environment(launcherLanguage: 1);
+      expect(fsr['ANYPS5_UPSCALER'], 'fsr1');
+      expect(fsr['ANYPS5_FSR_SHARPNESS'], '0.2', reason: "AMD's default sharpness");
+      String sharpness(double value) => GameSettings(
+        upscaler: Upscaler.fsr1,
+        fsrSharpness: value,
+      ).environment(launcherLanguage: 1)['ANYPS5_FSR_SHARPNESS']!;
+      expect(sharpness(1.26), '1.3', reason: 'a tenth of a stop, with a point in every language');
+      expect(sharpness(7), '2.0', reason: 'the engine refuses more than 2 stops');
+      expect(sharpness(-1), '0.0');
+    });
+
+    test('upscaling is saved with the macOS launcher keys', () {
+      const settings = GameSettings(upscaler: Upscaler.fsr1, fsrSharpness: 0.5);
+      final json = jsonDecode(jsonEncode(settings.toJson())) as Map<String, dynamic>;
+      expect(json['upscaler'], 'fsr1');
+      expect(json['fsrSharpness'], 0.5);
+      expect(GameSettings.fromJson(json), settings);
+      final plain = const GameSettings().toJson();
+      expect(plain.containsKey('upscaler'), isFalse, reason: 'bilinear is not written');
+      expect(plain.containsKey('fsrSharpness'), isFalse);
+      final unknown = GameSettings.fromJson(
+        jsonDecode('{"overlay":"off","upscaler":"fsr9","fsrSharpness":"x"}') as Map<String, dynamic>,
+      );
+      expect(unknown.upscaler, isNull, reason: 'an upscaler this launcher does not know is bilinear');
+      expect(unknown.fsrSharpness, isNull);
+      expect(GameSettings.fromJson(jsonDecode('{"fsrSharpness":1}') as Map<String, dynamic>).fsrSharpness, 1.0);
+    });
+
     test('JSON round trip, with the macOS launcher keys, and old files missing fields', () {
       const settings = GameSettings(
         resolution: '1920x1080',

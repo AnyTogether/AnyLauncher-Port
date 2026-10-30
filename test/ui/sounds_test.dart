@@ -142,7 +142,7 @@ void main() {
     final rows = {for (final row in behaviour.rows) row.id: row};
     expect(rows['sounds']!.title, 'Arayüz Sesleri');
     expect(rows['music']!.title, 'Oyun Müziği');
-    expect(rows['music']!.detail, 'Seçili oyunun kendi müziği, varsa');
+    expect(rows['music']!.detail, 'Seçili oyunun kendi müziği, varsa.');
     expect((rows['music']!.kind as StepperRow).format(0), 'Kapalı');
   });
 

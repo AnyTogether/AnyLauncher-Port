@@ -27,7 +27,7 @@ const legacyMeta = '@meta';
 const descriptionEndings = ['Detail', 'Hint', 'Subtitle', 'Text', 'Note', 'Description', 'Info', 'Explanation'];
 
 /// Description keys that are not sentences: a text field's placeholder, a line of facts.
-const notSentences = {'profileNameHint', 'engineDownloadDetail', 'togetherTitleDetail'};
+const notSentences = {'profileNameHint', 'engineDownloadDetail', 'togetherTitleDetail', 'engineDeleteOldDetail'};
 
 /// How a sentence may end, in the scripts the files may be written in.
 final _sentenceEnd = RegExp(r'[.!?…:。！？：．؟।։።;]\s*(\(%(\d\$)?[@d]\))?$');

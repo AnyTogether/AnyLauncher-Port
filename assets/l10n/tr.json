@@ -87,7 +87,7 @@
   "engineGitBeforePlayStart": "Motorda yeni commit'ler var: oyun başlamadan önce Git'ten güncelleniyor",
   "engineGitPlayAnyway": "Motor güncellenemedi: %@ · mevcut derlemeyle oynanıyor",
   "engineDeleteOld": "Diğer sürümleri sil",
-  "engineDeleteOldDetail": "Kullanılmayan indirilmiş sürüm: %d.",
+  "engineDeleteOldDetail": "Kullanılmayan indirilmiş sürüm: %d",
   "engineDeleted": "Diğer motor sürümleri silindi",
   "engineUpdateAndPlayDetail": "AnyPS5 motoru %@ (%@) indirilir, sonra oyunun kilidi yeniden açılır; kayıtlar ve kupalar korunur.",
   "engineGlibc": "Oyunlar glibc %@ veya daha yenisini istiyor; bu sistemde %@ var",

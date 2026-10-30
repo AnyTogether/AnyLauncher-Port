@@ -370,6 +370,8 @@ void main() {
       expect(File(kept).existsSync(), isFalse);
       model.openProfileSettings();
       expect(ids(), isNot(contains('profile-picture-remove')));
+      // The toast's timer runs out.
+      await tester.pump(const Duration(seconds: 5));
     });
 
     testWidgets('a file that is not a picture changes nothing', (tester) async {

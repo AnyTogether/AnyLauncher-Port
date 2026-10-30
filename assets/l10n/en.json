@@ -87,7 +87,7 @@
   "engineGitBeforePlayStart": "New engine commits: updating from Git before the game starts",
   "engineGitPlayAnyway": "Couldn't update the engine: %@ · playing with the current build",
   "engineDeleteOld": "Delete other versions",
-  "engineDeleteOldDetail": "Downloaded versions not in use: %d.",
+  "engineDeleteOldDetail": "Downloaded versions not in use: %d",
   "engineDeleted": "Other engine versions deleted",
   "engineUpdateAndPlayDetail": "Downloads AnyPS5 engine %@ (%@), then unlocks the game again; saves and trophies stay.",
   "engineGlibc": "Games need glibc %@ or newer; this system has %@",

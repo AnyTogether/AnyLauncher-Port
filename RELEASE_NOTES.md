@@ -5,6 +5,15 @@ release when it is made.
 
 ## Next release
 
+- **The launcher no longer freezes while a game is unlocked or updated.** Copying a game's
+  files (a games folder on another drive than the dump, without Developer Mode on Windows),
+  measuring the dump, unwrapping its executable and removing the old install after an update
+  all ran on the launcher's own thread: for seconds or minutes at a time the screen stopped,
+  no other game could be picked, opening a game's settings seemed to crash the launcher until
+  it came back, and Windows called the window not responding. That work now runs on the
+  system's file threads and in a separate isolate, so the library stays usable while a game
+  relinks. The old install is renamed aside at once and removed afterwards (a removal cut short
+  is cleaned up at the next start).
 - **Crash reports you can write in, and Windows 11 called Windows 11.** On the GitHub form
   that **Send Report** opens, the launcher used to fill in the same box you were meant to
   write in (What happened, ending in "What I was doing:"), and what you typed there could be

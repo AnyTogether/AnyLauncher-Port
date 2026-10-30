@@ -5,6 +5,10 @@ release when it is made.
 
 ## Next release
 
+Nothing yet.
+
+## 0.1.16
+
 - **A shorter note when a game is ready without some files.** After an unlock that left a few
   modules out, the notice is one sentence instead of a list of every file: the files are in the
   unlock's log, and encrypted ones still say to dump the game again.

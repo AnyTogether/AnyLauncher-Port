@@ -8,7 +8,9 @@ import 'host.dart';
 
 /// A game the launcher started, with its output going to its log file.
 class RunningGame {
-  RunningGame._(this.process, this.exitCode, this.started);
+  /// [exitCode] completes once the game ended and its output is in its log (a stand-in process
+  /// in tests).
+  RunningGame(this.process, this.exitCode, this.started);
 
   final Process process;
 
@@ -91,6 +93,6 @@ abstract final class GameProcess {
         ..close();
       done.complete(code);
     }());
-    return RunningGame._(process, done.future, started);
+    return RunningGame(process, done.future, started);
   }
 }

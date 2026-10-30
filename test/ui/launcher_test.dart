@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:anyps5_desktop/core/controls.dart';
+import 'package:anyps5_desktop/core/engine_checkout.dart';
 import 'package:anyps5_desktop/core/file_links.dart';
 import 'package:anyps5_desktop/core/font_download.dart';
 import 'package:anyps5_desktop/core/host.dart';
@@ -16,6 +17,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
+import '../support/fake_process.dart';
 import '../support/fake_toolkit.dart';
 import '../support/ui_support.dart';
 
@@ -40,6 +42,40 @@ void main() {
       model.progress[model.games[indexOf(model, 'PPSA03003')].id] = (InstallStep.copy, 0.45);
       await pumpLauncher(tester, model);
       await expectLater(shell, matchesGoldenFile('goldens/home_cosmic.png'));
+    });
+
+    testWidgets('home, a game updating with the engine being built: its button and Home say so', (tester) async {
+      fixture = makeFixture();
+      final model = fixture.model;
+      final orbit = model.games[indexOf(model, 'PPSA01001')];
+      model.select(indexOf(model, 'PPSA01001'));
+      model.engine.git
+        ..step = GitStep.building
+        ..forGame = orbit.id
+        ..lines.add('[41/90] Building CXX object relinker.cpp.o');
+      model.handle(Command.down);
+      Motion.reduced = true;
+      await pumpLauncher(tester, model);
+      await expectLater(shell, matchesGoldenFile('goldens/home_engine_build.png'));
+      model.engine.git
+        ..step = null
+        ..forGame = null;
+      model.progress[orbit.id] = (InstallStep.copy, 0.4);
+      model.refresh();
+      await settle(tester);
+      await expectLater(shell, matchesGoldenFile('goldens/home_updating.png'));
+      model.progress.clear();
+    });
+
+    testWidgets('home, sunset, back from a game playing: a red Stop', (tester) async {
+      fixture = makeFixture(theme: 2);
+      final model = fixture.model;
+      model.select(indexOf(model, 'PPSA01001'));
+      model.running = (model.games[indexOf(model, 'PPSA01001')], runningFor(FakeGameProcess()));
+      model.handle(Command.down);
+      await pumpLauncher(tester, model);
+      await expectLater(shell, matchesGoldenFile('goldens/home_stop.png'));
+      model.running = null;
     });
 
     testWidgets('home, aurora, in Turkish, a locked game with the play button focused', (tester) async {

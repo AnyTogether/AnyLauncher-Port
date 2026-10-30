@@ -13,6 +13,8 @@ import 'background.dart';
 import 'components.dart';
 import 'controller_test_view.dart' show PadStatusPill;
 import 'drag_pan.dart';
+import 'engine_git_model.dart';
+import 'game_action.dart';
 import 'glass.dart';
 import 'level_badge.dart';
 import 'panels.dart' show PersonAvatar;
@@ -260,6 +262,58 @@ class UpdateNoticeBar extends StatelessWidget {
   }
 }
 
+/// Home's line for the engine's own work (Update from Git): the step, and a click to its
+/// settings. The games waiting on it say so on their own buttons.
+class EngineJobPill extends StatelessWidget {
+  const EngineJobPill({super.key, required this.model, required this.job});
+
+  final AppModel model;
+  final EngineJob job;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final accent = model.accentChoice.color;
+    final text = switch (job.step) {
+      null => T.text('engineGitChecking'),
+      final step => T.format('homeEngineBuild', [EngineGitModel.stepName(step)]),
+    };
+    return Pressable(
+      onTap: model.openEngineSettings,
+      builder: (context, hovering) => AnimatedContainer(
+        duration: Motion.focus,
+        height: 34 * scale,
+        padding: EdgeInsets.symmetric(horizontal: 14 * scale),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: hovering ? 0.42 : 0.32),
+          borderRadius: BorderRadius.circular(17 * scale),
+          border: Border.all(color: accent.withValues(alpha: 0.45)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.construction_rounded, size: 16 * scale, color: accent),
+            SizedBox(width: 10 * scale),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: 360 * scale),
+              child: Text(
+                text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.display(
+                  14 * scale,
+                  weight: FontWeight.w500,
+                  color: Colors.white.withValues(alpha: 0.92),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class TopBar extends StatelessWidget {
   const TopBar({super.key, required this.model, this.now});
 
@@ -361,6 +415,19 @@ class TopBar extends StatelessWidget {
             child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
           ),
         ],
+        // The engine being checked or built shows wherever the player is, not only in Settings.
+        AnimatedSwitcher(
+          layoutBuilder: uniqueSwitcherLayout(),
+          duration: Motion.focus,
+          child: switch (model.engine.git.job) {
+            final EngineJob job => Padding(
+              key: const ValueKey('engine-job'),
+              padding: EdgeInsets.only(left: 20 * scale),
+              child: EngineJobPill(model: model, job: job),
+            ),
+            null => const SizedBox.shrink(),
+          },
+        ),
         const Spacer(),
         AnimatedSwitcher(
           layoutBuilder: uniqueSwitcherLayout(),
@@ -760,8 +827,8 @@ class GameTile extends StatelessWidget {
   }
 
   List<Widget> _overlay(GameState state, Color accent) {
-    Widget badge(IconData icon) => Align(
-      alignment: Alignment.bottomRight,
+    Widget badge(IconData icon, {Alignment alignment = Alignment.bottomRight}) => Align(
+      alignment: alignment,
       child: Container(
         margin: EdgeInsets.all(size * 0.045),
         padding: EdgeInsets.all(size * 0.04),
@@ -775,8 +842,10 @@ class GameTile extends StatelessWidget {
       FamilyLocked() => [dim, badge(Icons.family_restroom_rounded)],
       Unreadable() => [dim, badge(Icons.block_rounded)],
       Failed() => [dim, badge(Icons.warning_rounded)],
-      Installing(:final overall) => [
+      Installing(:final overall, :final updating) => [
         ColoredBox(color: Colors.black.withValues(alpha: 0.3)),
+        // An installed game being updated says so in its corner, as a locked one does.
+        if (updating) badge(Icons.sync_rounded, alignment: Alignment.topRight),
         Align(
           alignment: Alignment.bottomCenter,
           child: Padding(
@@ -785,10 +854,37 @@ class GameTile extends StatelessWidget {
           ),
         ),
       ],
-      Queued() => [
+      Queued(:final waitingForEngine) => [
         dim,
         Center(
-          child: Icon(Icons.schedule_rounded, size: size * 0.18, color: Colors.white.withValues(alpha: 0.85)),
+          child: Icon(
+            waitingForEngine ? Icons.hourglass_top_rounded : Icons.schedule_rounded,
+            size: size * 0.18,
+            color: Colors.white.withValues(alpha: 0.85),
+          ),
+        ),
+      ],
+      // The engine is being built: the game that asked for it shows the work going on, the
+      // others wait with an hourglass in their corner.
+      WaitingForEngine(forThisGame: true) => [
+        ColoredBox(color: Colors.black.withValues(alpha: 0.3)),
+        badge(Icons.construction_rounded, alignment: Alignment.topRight),
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: Padding(
+            padding: EdgeInsets.all(size * 0.07),
+            child: IndeterminateLine(color: accent, height: (size * 0.03).clamp(3, 8)),
+          ),
+        ),
+      ],
+      WaitingForEngine() => [badge(Icons.hourglass_top_rounded)],
+      Stopping() => [
+        dim,
+        Center(
+          child: SizedBox.square(
+            dimension: size * 0.16,
+            child: CircularProgressIndicator(strokeWidth: 2.5, color: ConsoleButton.stopRed.withValues(alpha: 0.95)),
+          ),
         ),
       ],
       Starting() => [
@@ -821,11 +917,14 @@ class GameTile extends StatelessWidget {
 }
 
 class StateLabel extends StatelessWidget {
-  const StateLabel({super.key, required this.model, required this.state, this.size = 14});
+  const StateLabel({super.key, required this.model, required this.state, this.size = 14, this.compact = false});
 
   final AppModel model;
   final GameState state;
   final double size;
+
+  /// One short line (the Status card): the step is under the main button already.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -841,10 +940,35 @@ class StateLabel extends StatelessWidget {
         Palette.warning,
       ),
       Unreadable() => (Icons.block_rounded, T.text('unreadableDump'), Palette.danger),
+      Queued(waitingForEngine: true) => (
+        Icons.hourglass_top_rounded,
+        T.text(compact ? 'stateWaitingEngineShort' : 'waitingForEngine'),
+        dim,
+      ),
       Queued() => (Icons.schedule_rounded, T.text('queued'), dim),
       Installing(preparing: true, paused: true) => (Icons.pause_circle_rounded, T.text('preparingPaused'), dim),
       Installing(preparing: true) => (Icons.downloading_rounded, T.text('preparing'), accent),
+      Installing(:final step, updating: true) => (
+        Icons.sync_rounded,
+        compact ? T.text('stateUpdatingShort') : T.format('stateUpdating', [InstallSpan.title(step)]),
+        accent,
+      ),
       Installing(:final step) => (Icons.downloading_rounded, InstallSpan.title(step), accent),
+      WaitingForEngine(:final job, forThisGame: true) => (
+        Icons.construction_rounded,
+        switch (job.step) {
+          _ when compact => T.text('stateEngineShort'),
+          null => T.text('engineGitChecking'),
+          final step => T.format('stateUpdatingEngine', [EngineGitModel.stepName(step)]),
+        },
+        accent,
+      ),
+      WaitingForEngine() => (
+        Icons.hourglass_top_rounded,
+        T.text(compact ? 'stateWaitingEngineShort' : 'waitingForEngine'),
+        dim,
+      ),
+      Stopping() => (Icons.stop_circle_outlined, T.text('stateStopping'), Palette.danger),
       Failed() => (Icons.warning_rounded, T.text('failed'), Palette.danger),
       Installed(outdated: true) => (Icons.sync_rounded, T.text('updateAvailable'), Palette.warning),
       Installed() => (Icons.check_circle_rounded, T.text('ready'), dim),
@@ -859,7 +983,7 @@ class StateLabel extends StatelessWidget {
         Flexible(
           child: Text(
             text,
-            maxLines: 2,
+            maxLines: compact ? 1 : 2,
             overflow: TextOverflow.ellipsis,
             style: AppText.display(size * scale, weight: FontWeight.w500, color: tint),
           ),
@@ -881,16 +1005,9 @@ class HeroInfo extends StatelessWidget {
     final scale = LayoutScale.of(context);
     final state = model.stateOf(game);
     final accent = model.accentChoice.color;
-    final (title, icon) = switch (state) {
-      Installed() => (T.text('play'), Icons.play_arrow_rounded),
-      Locked() || Unreadable() => (T.text('unlock'), Icons.lock_open_rounded),
-      Failed() => (T.text('retry'), Icons.refresh_rounded),
-      Installing(preparing: true) => (T.text('playWhenReady'), Icons.play_arrow_rounded),
-      Installing() || Queued() => (T.text('cancel'), Icons.close_rounded),
-      Starting() => (T.text('starting'), Icons.hourglass_top_rounded),
-      Running() => (T.text('running'), Icons.play_circle_outline_rounded),
-      FamilyLocked() => (T.text('familyAskParent'), Icons.family_restroom_rounded),
-    };
+    // The button's words, icon, colour and progress follow the game's state alone.
+    final action = GameAction.of(state);
+    final primaryFocused = model.focus == const HomeFocus.actions(0) && model.overlay == null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -911,11 +1028,17 @@ class HeroInfo extends StatelessWidget {
         Row(
           children: [
             ConsoleButton(
-              title: title,
-              icon: icon,
-              focused: model.focus == const HomeFocus.actions(0) && model.overlay == null,
+              key: const ValueKey('primary-action'),
+              title: action.title,
+              icon: action.icon,
+              focused: primaryFocused,
               prominent: true,
-              minWidth: 210,
+              stop: action.tone == ActionTone.danger,
+              progress: action.progress,
+              indeterminate: action.indeterminate,
+              progressColor: action.tone == ActionTone.busy && !primaryFocused ? accent : null,
+              // Busy words count up: room enough that the button does not grow as they do.
+              minWidth: action.tone == ActionTone.busy ? 270 : 210,
               onPressed: () {
                 model.focus = const HomeFocus.actions(0);
                 model.primaryAction(game);
@@ -986,6 +1109,40 @@ class HeroInfo extends StatelessWidget {
                   ),
                 ),
               )
+            else if (state case WaitingForEngine(:final job))
+              Legible(
+                softness: 12,
+                child: SizedBox(
+                  width: 340 * scale,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        model.engine.git.progressText(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.display(
+                          15 * scale,
+                          weight: FontWeight.w500,
+                          color: Colors.white.withValues(alpha: 0.85),
+                        ),
+                      ),
+                      SizedBox(height: 8 * scale),
+                      IndeterminateLine(color: accent),
+                      // The build's last line, so it is seen to move.
+                      if (job.lines.isNotEmpty) ...[
+                        SizedBox(height: 6 * scale),
+                        Text(
+                          job.lines.last.trim(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.display(12 * scale, color: Colors.white.withValues(alpha: 0.55)),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              )
             else if (state is Failed)
               ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: 520 * scale),
@@ -1009,7 +1166,7 @@ class HeroInfo extends StatelessWidget {
             InfoCard(
               title: T.text('status'),
               icon: Icons.donut_large_rounded,
-              child: StateLabel(model: model, state: state, size: 16),
+              child: StateLabel(model: model, state: state, size: 16, compact: true),
             ),
             InfoCard(
               title: T.text('size'),
@@ -1096,7 +1253,11 @@ class _AddonsCard extends StatelessWidget {
           if (addons.length > 2)
             Text(
               T.format('addonsMore', [addons.length - 1]),
-              style: AppText.display(12 * scale, weight: FontWeight.w500, color: Colors.white.withValues(alpha: 0.5)).copyWith(height: 1.0),
+              style: AppText.display(
+                12 * scale,
+                weight: FontWeight.w500,
+                color: Colors.white.withValues(alpha: 0.5),
+              ).copyWith(height: 1.0),
             ),
         ],
       ),

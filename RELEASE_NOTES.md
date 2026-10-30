@@ -5,7 +5,23 @@ release when it is made.
 
 ## Next release
 
-Nothing yet.
+- **A game's button always says what is happening to it.** Each game now has one state the
+  whole screen follows: locked, unlocking, ready, needing an update, updating, waiting for the
+  engine, starting, playing, stopping, or failed. After Play with a new engine build, the
+  button reads **Updating Engine…** while the engine is pulled and built, then
+  **Updating… 42%** with the progress along the button while the game relinks, then
+  **Starting…**; pressing it again says what is going on instead of cancelling (its settings
+  have **Cancel Update**). Its tile and the line under its name show the same, and Home shows
+  **Engine build · …** next to Games while the engine builds, wherever you are.
+- **Stop.** Back in the launcher while a game plays (Alt+Tab or the PS button), its button is a
+  red **Stop**: the game is asked to close as closing its window would, so it can save, and is
+  ended if it is still there a few seconds later. **Close Game** in the quick menu does the
+  same.
+- **The library stays usable while a game updates or the engine builds.** Other games can be
+  picked, opened and unlocked; an unlock asked for during an engine build waits for it
+  (**Waiting for the engine build**) instead of being refused, and Update from Git says so when
+  a game is being unlocked. A game's settings open in every state: what cannot change mid-update
+  or while it plays (Reinstall, Uninstall, Restore Saves, Resolution) says why in place.
 
 ## 0.1.14
 

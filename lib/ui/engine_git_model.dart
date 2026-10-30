@@ -65,11 +65,26 @@ class EngineGitModel {
 
   bool get running => step != null;
 
+  /// The game whose Play asked for the check and the build (Update from Git Before Playing).
+  String? forGame;
+
+  /// What the engine is doing now, for the games waiting on it and Home's indicator; null when
+  /// idle.
+  EngineJob? get job {
+    if (!running && !checking) return null;
+    return EngineJob(step: step, lines: List.unmodifiable(lines), forGame: forGame);
+  }
+
   /// Pulls and builds the checkout; true when it went through. [quiet] says nothing at the end
   /// (before a game starts, the caller does).
   Future<bool> update({bool quiet = false}) async {
     final checkout = this.checkout;
     if (checkout == null || running) return false;
+    // A game being unlocked uses the relinker and the libraries the build would rewrite.
+    if (app.unlocking) {
+      if (!quiet) app.show(T.text('engineGitWaitUnlock'));
+      return false;
+    }
     final git = EngineGit(checkout, runner: _runner, environment: app.services.environment);
     final cancel = CommandCancel();
     _cancel = cancel;
@@ -133,7 +148,8 @@ class EngineGitModel {
       _refresh = null;
       step = null;
       _cancel = null;
-      app.refresh();
+      // The unlocks asked for meanwhile wait for the build: they go on now.
+      app.engineJobEnded();
     }
   }
 
@@ -206,7 +222,10 @@ class EngineGitModel {
     }
     final checkout = this.checkout;
     if (checkout == null) return play();
+    // Another game is being unlocked with the build as it is: no build now, the game plays.
+    if (app.unlocking) return play();
     checking = true;
+    forGame = game.id;
     app.refresh();
     bool? needed;
     try {
@@ -217,11 +236,23 @@ class EngineGitModel {
       ).needsUpdate(built: app.preferences.engineGitBuilt[checkout.root]);
     } finally {
       checking = false;
+      // Nothing to build (or the remote did not answer): the game no longer waits on the engine.
+      if (needed != true) forGame = null;
       app.refresh();
     }
     if (needed != true) return play();
+    // An unlock began while the remote was asked: the build would rewrite what it uses.
+    if (app.unlocking) {
+      forGame = null;
+      return play();
+    }
     app.show(T.text('engineGitBeforePlayStart'));
-    final done = await update(quiet: true);
+    final bool done;
+    try {
+      done = await update(quiet: true);
+    } finally {
+      forGame = null;
+    }
     if (!done) {
       final stopped = failure;
       // Stopped by the player: nothing starts.

@@ -366,7 +366,18 @@ class Preferences {
   }
 }
 
-/// What the launcher shows about a game.
+/// What the launcher shows about a game: one state at a time, worked out by [AppModel.stateOf]
+/// from what the launcher is doing with it. Everything about the game on the screen (its main
+/// button's words, colour and icon, its tile's badge, the line under its name, its settings)
+/// follows from it, and the main button's press does what the state says ([AppModel.primaryAction]):
+///
+///   Locked → (Queued) → Installing (unlocking) → Installed (ready)
+///   Installed → Installed(outdated) (needs an update) → Installing(updating) → Installed
+///   Installed → Starting (launching) → Running(pid) → Stopping(pid) → Installed
+///   Installed → WaitingForEngine (the engine is being built in place) → Installed
+///   any unlock → Failed(message) → (Retry) Queued
+///
+/// The engine's own build (Update from Git) is a job of its own ([EngineJob]) the games wait on.
 sealed class GameState {
   const GameState();
 }
@@ -383,11 +394,24 @@ class Unreadable extends GameState {
 }
 
 class Queued extends GameState {
-  const Queued();
+  const Queued({this.updating = false, this.waitingForEngine = false});
+
+  /// An installed game in line to be unlocked again (an update), not a first unlock.
+  final bool updating;
+
+  /// In line behind the engine's build (Update from Git): it starts once the build is done.
+  final bool waitingForEngine;
 }
 
 class Installing extends GameState {
-  const Installing(this.step, this.fraction, {this.preparing = false, this.paused = false});
+  const Installing(
+    this.step,
+    this.fraction, {
+    this.preparing = false,
+    this.paused = false,
+    this.updating = false,
+    this.playsAfter = false,
+  });
   final InstallStep step;
   final double fraction;
 
@@ -396,6 +420,12 @@ class Installing extends GameState {
 
   /// Stopped where it is while a game plays.
   final bool paused;
+
+  /// Unlocked again over an install it had (Update and Play, Relink All, Reinstall).
+  final bool updating;
+
+  /// The game starts once it is done (Play, Update and Play).
+  final bool playsAfter;
 
   /// The share of the whole install done, for one bar.
   double get overall => InstallSpan.overall(step, fraction);
@@ -413,12 +443,43 @@ class Installed extends GameState {
   final bool outdated;
 }
 
+/// An installed game that cannot start now: the engine it plays with is being checked or built
+/// in place (Update from Git). [forThisGame]: its own Play asked for the build, and it starts
+/// after it.
+class WaitingForEngine extends GameState {
+  const WaitingForEngine(this.job, {this.forThisGame = false});
+  final EngineJob job;
+  final bool forThisGame;
+}
+
+/// Being started: the launcher prepares its fonts and settings and starts its process.
 class Starting extends GameState {
   const Starting();
 }
 
+/// Its process, started by this launcher, runs.
 class Running extends GameState {
-  const Running();
+  const Running(this.pid);
+  final int pid;
+}
+
+/// Asked to close (Stop): it has a moment to close as its window would, then it is ended.
+class Stopping extends GameState {
+  const Stopping(this.pid);
+  final int pid;
+}
+
+/// The engine's own work, which every game waits on: the checkout's remote looked at before a
+/// game starts ([step] null), or a pull and build ([step] the one running, [lines] the last ones
+/// it printed). [forGame]: the game whose Play asked for it.
+class EngineJob {
+  const EngineJob({this.step, this.lines = const [], this.forGame});
+  final GitStep? step;
+  final List<String> lines;
+  final String? forGame;
+
+  /// Only looking at the remote: nothing on disk changes, games can still start.
+  bool get checking => step == null;
 }
 
 /// A parent's family settings keep the game from the child: too old a rating, or none known.
@@ -2210,9 +2271,12 @@ class AppModel extends ChangeNotifier {
   bool _measuring = false;
 
   GameState stateOf(Game game) {
-    if (running?.$1 == game) return const Running();
-    if (starting == game) return const Starting();
+    if (running case (final Game playing, final RunningGame run) when playing.id == game.id) {
+      return stopping ? Stopping(run.pid) : Running(run.pid);
+    }
+    if (starting?.id == game.id) return const Starting();
     if (together.family.ageLock(game) case final FamilyLocked lock) return lock;
+    final installed = records.containsKey(game.id);
     final current = progress[game.id];
     if (current != null) {
       return Installing(
@@ -2220,12 +2284,20 @@ class AppModel extends ChangeNotifier {
         current.$2,
         preparing: isPreparing(game),
         paused: isPreparing(game) && prepare.paused,
+        updating: installed,
+        playsAfter: _playAfterInstall == game.id,
       );
     }
-    if (queue.contains(game.id)) return const Queued();
+    final job = engine.git.job;
+    if (queue.contains(game.id)) return Queued(updating: installed, waitingForEngine: job != null && !job.checking);
     final failure = failures[game.id];
     if (failure != null) return Failed(failure);
     final record = records[game.id];
+    // The engine is checked for this game's Play, or built in place: no game starts on a build
+    // half done.
+    if (job != null && record != null && (job.forGame == game.id || !job.checking)) {
+      return WaitingForEngine(job, forThisGame: job.forGame == game.id);
+    }
     // An update dumped (or removed) since the unlock needs its executable relinked: unlocking
     // again applies it.
     if (record != null && record.update == game.update?.version) {
@@ -2235,6 +2307,9 @@ class AppModel extends ChangeNotifier {
     if (game.executable == ExecutableKind.unreadable) return const Unreadable();
     return Locked(waitingToPrepare: prepare.pending.contains(game.id));
   }
+
+  /// An unlock runs now (asked for, or a new game prepared in the background).
+  bool get unlocking => _installer != null || _preparer != null;
 
   GameSettings settingsFor(Game game) => settingsStore.load(game.slug);
 
@@ -2336,20 +2411,29 @@ class AppModel extends ChangeNotifier {
   void primaryAction(Game game) {
     switch (stateOf(game)) {
       case Installed(:final outdated):
-        // The engine is being built in place: its relinker and libraries are not whole yet.
-        if (engine.git.running) return show(engine.git.progressText());
         void go() => outdated ? open(Layer.updateChoice) : unawaited(play(game));
         // Settings › AnyPS5 Engine › Update from Git Before Playing: the checkout's remote first.
         engine.git.updatesBeforePlay ? unawaited(engine.git.beforePlay(game, go)) : go();
+      case WaitingForEngine(:final forThisGame):
+        // The engine is being built in place: its relinker and libraries are not whole yet.
+        show(forThisGame ? T.format('gameStartsAfterEngine', [game.name]) : T.text('gameWaitsForEngine'));
       case Locked() || Failed():
         unlock(game);
       case Installing(preparing: true):
         _promotePreparation(game);
+      // An update (or one the game starts after) is not given up by a second press on its button:
+      // Game Settings › Cancel Update does it.
+      case Installing(updating: true) || Queued(updating: true):
+        show(T.format('gameUpdatingHint', [game.name]));
+      case Installing(playsAfter: true):
+        show(T.format('gameUnlockingHint', [game.name]));
       case Installing() || Queued():
         cancelUnlock(game);
       case Unreadable():
         show(T.text('unreadableDump'));
-      case Starting() || Running():
+      case Running():
+        unawaited(stopRunningGame());
+      case Starting() || Stopping():
         break;
       case FamilyLocked():
         unawaited(together.family.askToPlay(game));
@@ -2377,7 +2461,6 @@ class AppModel extends ChangeNotifier {
     if (folder == null) return;
     final kit = toolkit;
     if (kit == null) return show(T.text('noToolkit'));
-    if (engine.git.running) return show(engine.git.progressText());
     // Asked for while it is being prepared: it becomes the user's own.
     if (prepare.active == game.id) return _promotePreparation(game);
     prepare.cancel(game.id);
@@ -2452,6 +2535,8 @@ class AppModel extends ChangeNotifier {
   }
 
   void _startNext() {
+    // While the engine is built in place the unlocks wait for it (engineJobEnded goes on).
+    if (engine.git.running) return;
     final kit = toolkit;
     if (_installer != null || queue.isEmpty || root == null || kit == null) return;
     final id = queue.removeAt(0);
@@ -2565,9 +2650,17 @@ class AppModel extends ChangeNotifier {
   PrepareConditions get _prepareConditions => PrepareConditions(
     enabled: preferences.prepareNewGames && preferences.onboarded,
     playing: running != null || starting != null,
-    unlocking: _installer != null || queue.isNotEmpty,
+    // The engine built in place holds the background unlocks back as the user's own do.
+    unlocking: _installer != null || queue.isNotEmpty || engine.git.running,
     power: power(),
   );
+
+  /// The engine's build (Update from Git) ended: the unlocks waiting for it go on.
+  void engineJobEnded() {
+    _startNext();
+    _stepPrepare();
+    _changed();
+  }
 
   /// After any change: when a game started or ended, an unlock began or finished, or the setting
   /// changed, the queue takes its steps (soon, not in the middle of the change).
@@ -2896,7 +2989,7 @@ class AppModel extends ChangeNotifier {
         ...online,
       };
       fonts.watch(game, logFile);
-      final run = await GameProcess.start(
+      final run = await startGame(
         installed: Installer.installedFolder(game, folder),
         environment: environment,
         logFile: logFile,
@@ -2908,6 +3001,7 @@ class AppModel extends ChangeNotifier {
       starting = null;
       running = (game, run);
       _stopped = false;
+      stopping = false;
       unawaited(_startReplay());
       crash.started(game, traced: traced);
       final began = DateTime.now();
@@ -2926,6 +3020,9 @@ class AppModel extends ChangeNotifier {
       _trophyWatch?.cancel();
       _loadTrophies(game);
       if (running?.$1 == game) running = null;
+      stopping = false;
+      _stopTimer?.cancel();
+      _stopTimer = null;
       unawaited(_stopReplay());
       // The quick menu and the question go with the game.
       if (overlay == Layer.quickMenu || overlay == Layer.closeGame) overlay = null;
@@ -3041,9 +3138,50 @@ class AppModel extends ChangeNotifier {
   /// Whether the user (or the phone) closed the game playing.
   bool _stopped = false;
 
+  /// Starts an installed game's process (GameProcess.start); replaceable in tests.
+  Future<RunningGame> Function({
+    required String installed,
+    required Map<String, String> environment,
+    required String logFile,
+    HostSystem? system,
+    bool traced,
+    List<String> notes,
+  })
+  startGame = GameProcess.start;
+
+  /// Stop asked the game playing to close: it is given [stopGrace], then ended.
+  bool stopping = false;
+  Timer? _stopTimer;
+
+  /// How long a game asked to close has before it is ended.
+  Duration stopGrace = const Duration(seconds: 8);
+
   void stopGame() {
     if (running != null) _stopped = true;
     running?.$2.stop();
+  }
+
+  /// Stop (the game's main button while it runs, Close Game in the quick menu): the game is
+  /// asked to close as closing its window would, so it can save, and ended if it is still there
+  /// after [stopGrace]. Its tile reads Stopping meanwhile and Ready once it is gone.
+  Future<void> stopRunningGame() async {
+    final playing = running;
+    if (playing == null || stopping) return;
+    final run = playing.$2;
+    _stopped = true;
+    stopping = true;
+    sounds.play(Cue.back);
+    _changed();
+    _stopTimer?.cancel();
+    _stopTimer = Timer(stopGrace, () {
+      _stopTimer = null;
+      if (running?.$2 == run) run.kill();
+    });
+    try {
+      await run.close();
+    } on Object {
+      // The kill after the grace still ends it.
+    }
   }
 
   /// Asks the game playing to close as its window would (a family limit): the launcher closed
@@ -3112,6 +3250,17 @@ class AppModel extends ChangeNotifier {
       galleryIndex = 0;
       galleryViewing = false;
     }
+    _skipToFocusable();
+    _changed();
+  }
+
+  /// Settings › AnyPS5 Engine, from Home's engine line.
+  void openEngineSettings() {
+    open(Layer.settings);
+    final index = panelCategories().indexWhere((category) => category.id == 'engine');
+    if (index < 0) return;
+    panelCategory = index;
+    panelRow = 0;
     _skipToFocusable();
     _changed();
   }
@@ -3501,7 +3650,7 @@ class AppModel extends ChangeNotifier {
   void closeRunningGame() {
     overlay = null;
     sounds.play(Cue.select);
-    stopGame();
+    unawaited(stopRunningGame());
     _changed();
   }
 
@@ -4448,7 +4597,19 @@ class AppModel extends ChangeNotifier {
     final languageIndex = settings.language == null
         ? 0
         : languages.indexWhere((entry) => entry.$1 == settings.language) + 1;
+    final state = stateOf(game);
+    // What cannot change while the game is being unlocked, plays or waits for the engine says why
+    // in place of its choice; the rest of the page works in every state.
+    final busy = switch (state) {
+      Installing() || Queued() => T.text('gameBusyUpdating'),
+      WaitingForEngine() => T.text('gameBusyEngine'),
+      Starting() || Running() || Stopping() => T.text('closeGameFirst'),
+      _ => null,
+    };
+    PanelRow held(String id, String title, PanelRow Function() row) =>
+        busy == null ? row() : PanelRow(id: id, title: title, kind: InfoRow(busy));
     return [
+      ..._jobRows(game, state),
       PanelRow(
         id: 'display',
         title: T.text('display'),
@@ -4485,14 +4646,19 @@ class AppModel extends ChangeNotifier {
           ),
         ),
       if (supportsResolution)
-        PanelRow(
-          id: 'resolution',
-          title: T.text('resolution'),
-          detail: T.text('resolutionReinstall'),
-          kind: ChoiceRow(
-            [T.text('resolutionDefault'), ...ResolutionPatch.choices],
-            settings.resolution == null ? 0 : ResolutionPatch.choices.indexOf(settings.resolution!) + 1,
-            (index) => change(settings.copyWith(resolution: index == 0 ? null : ResolutionPatch.choices[index - 1])),
+        // The relinker applies it: an unlock running now goes on with the one it started with.
+        held(
+          'resolution',
+          T.text('resolution'),
+          () => PanelRow(
+            id: 'resolution',
+            title: T.text('resolution'),
+            detail: T.text('resolutionReinstall'),
+            kind: ChoiceRow(
+              [T.text('resolutionDefault'), ...ResolutionPatch.choices],
+              settings.resolution == null ? 0 : ResolutionPatch.choices.indexOf(settings.resolution!) + 1,
+              (index) => change(settings.copyWith(resolution: index == 0 ? null : ResolutionPatch.choices[index - 1])),
+            ),
           ),
         ),
       PanelRow(
@@ -4571,13 +4737,17 @@ class AppModel extends ChangeNotifier {
         ),
       ),
       if (installed) ...[
-        PanelRow(
-          id: 'reinstall',
-          title: T.text('reinstall'),
-          kind: ActionRow(() {
-            closeOverlay();
-            unlock(game);
-          }),
+        held(
+          'reinstall',
+          T.text('reinstall'),
+          () => PanelRow(
+            id: 'reinstall',
+            title: T.text('reinstall'),
+            kind: ActionRow(() {
+              closeOverlay();
+              unlock(game);
+            }),
+          ),
         ),
         PanelRow(id: 'log', title: T.text('openLog'), kind: ActionRow(() => open(Layer.log))),
         ..._reportRows(game, settings, change),
@@ -4594,16 +4764,24 @@ class AppModel extends ChangeNotifier {
           kind: ActionRow(() => backUpSaves(game)),
         ),
         if (_factsOf(game).backups.isNotEmpty)
-          PanelRow(
-            id: 'restore',
-            title: T.text('restoreLatest'),
-            detail: T.text('restoreSavesDetail'),
-            kind: ActionRow(() => restoreLatestSaves(game)),
+          held(
+            'restore',
+            T.text('restoreLatest'),
+            () => PanelRow(
+              id: 'restore',
+              title: T.text('restoreLatest'),
+              detail: T.text('restoreSavesDetail'),
+              kind: ActionRow(() => restoreLatestSaves(game)),
+            ),
           ),
-        PanelRow(
-          id: 'uninstall',
-          title: T.text('uninstall'),
-          kind: ActionRow(() => open(Layer.confirmUninstall), destructive: true),
+        held(
+          'uninstall',
+          T.text('uninstall'),
+          () => PanelRow(
+            id: 'uninstall',
+            title: T.text('uninstall'),
+            kind: ActionRow(() => open(Layer.confirmUninstall), destructive: true),
+          ),
         ),
       ] else ...[
         PanelRow(id: 'log', title: T.text('openLog'), kind: ActionRow(() => open(Layer.log))),
@@ -4611,6 +4789,52 @@ class AppModel extends ChangeNotifier {
       ],
     ];
   }
+
+  /// First on a game's settings while something happens to it: what, and the way to stop it
+  /// (an update or unlock, the engine's build it waits for, the game playing).
+  List<PanelRow> _jobRows(Game game, GameState state) => switch (state) {
+    Installing(preparing: true) => const [],
+    Installing(:final step, :final overall, :final updating) => [
+      PanelRow(
+        id: 'cancelJob',
+        title: T.text(updating ? 'cancelUpdate' : 'cancelUnlock'),
+        detail: '${InstallSpan.title(step)} · ${T.percent((overall * 100).round())}',
+        kind: ActionRow(() => cancelUnlock(game), destructive: true),
+      ),
+    ],
+    Queued(:final updating, :final waitingForEngine) => [
+      PanelRow(
+        id: 'cancelJob',
+        title: T.text(updating ? 'cancelUpdate' : 'cancelUnlock'),
+        detail: T.text(waitingForEngine ? 'waitingForEngine' : 'queued'),
+        kind: ActionRow(() => cancelUnlock(game), destructive: true),
+      ),
+    ],
+    // Looking at the remote takes a moment and changes nothing: there is nothing to stop yet.
+    WaitingForEngine(job: EngineJob(checking: true)) => [
+      PanelRow(id: 'engineJob', title: T.text('engineGitChecking'), kind: const InfoRow('')),
+    ],
+    WaitingForEngine() => [
+      PanelRow(
+        id: 'cancelJob',
+        title: T.text('engineStopBuild'),
+        detail: engine.git.progressText(),
+        kind: ActionRow(engine.git.cancel, destructive: true),
+      ),
+    ],
+    Running() => [
+      PanelRow(
+        id: 'stopGame',
+        title: T.text('stopGame'),
+        detail: T.text('stopGameDetail'),
+        kind: ActionRow(() {
+          closeOverlay();
+          unawaited(stopRunningGame());
+        }, destructive: true),
+      ),
+    ],
+    _ => const [],
+  };
 
   /// The last start's crash report, detailed logging, and (installed) one start with it.
   List<PanelRow> _reportRows(Game game, GameSettings settings, void Function(GameSettings) change) => [
@@ -4629,7 +4853,7 @@ class AppModel extends ChangeNotifier {
       detail: T.text('traceDetail'),
       kind: ToggleRow(settings.trace == true, (value) => change(settings.copyWith(trace: value ? true : null))),
     ),
-    if (records.containsKey(game.id))
+    if (stateOf(game) is Installed)
       PanelRow(
         id: 'playTraced',
         title: T.text('reportPlayTraced'),
@@ -5260,6 +5484,8 @@ class AppModel extends ChangeNotifier {
         final game = games.where((game) => game.id == id).firstOrNull;
         if (game == null) return;
         select(games.indexOf(game));
+        // Launch on the game playing is no Stop: the phone has Close for that.
+        if (stateOf(game) is Running || stateOf(game) is Stopping) return;
         if (running != null && running!.$1 != game) stopGame();
         primaryAction(game);
       case RemoteClose():
@@ -5322,9 +5548,10 @@ class AppModel extends ChangeNotifier {
             state: switch (stateOf(game)) {
               Installed(:final outdated) => outdated ? RemoteGameState.update : RemoteGameState.installed,
               Locked() || Failed() || FamilyLocked() => RemoteGameState.locked,
-              Queued() || Installing() => RemoteGameState.installing,
+              // The phone has no word for the engine's build: busy with the game, as an unlock is.
+              Queued() || Installing() || WaitingForEngine() => RemoteGameState.installing,
               Starting() => RemoteGameState.starting,
-              Running() => RemoteGameState.running,
+              Running() || Stopping() => RemoteGameState.running,
               Unreadable() => RemoteGameState.unavailable,
             },
             trophies: switch (trophies[game.id]) {
@@ -5409,6 +5636,7 @@ class AppModel extends ChangeNotifier {
     }
     _trophyWatch?.cancel();
     _toastTimer?.cancel();
+    _stopTimer?.cancel();
     _pulses.stop();
     _pads?.stop();
     _focusWatch?.cancel();

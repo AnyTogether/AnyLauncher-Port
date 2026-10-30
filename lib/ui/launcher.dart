@@ -583,7 +583,7 @@ class _Toast extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              LevelColors.tierName(level!.tier).toUpperCase(),
+                              T.upper(LevelColors.tierName(level!.tier)),
                               style: AppText.display(
                                 11 * scale,
                                 weight: FontWeight.w700,

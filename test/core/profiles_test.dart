@@ -52,6 +52,52 @@ void main() {
       expect(store.add(name: 'a' * 60, mode: ProfileMode.offline).name.length, LauncherProfile.maxName);
     });
 
+    test('a picture is kept per profile in the Pictures folder, replaced and removed with it', () {
+      final store = ProfileStore(folder, existing: fresh);
+      final utku = store.add(name: 'Utku', mode: ProfileMode.offline);
+      final selin = store.add(name: 'Selin', mode: ProfileMode.offline);
+      expect(store.pictureOf(utku), isNull);
+      store.setPicture(selin.id, [1, 2, 3]);
+      final first = store.pictureOf(selin)!;
+      expect(p.dirname(first), p.join(folder, 'Pictures'));
+      expect(File(first).readAsBytesSync(), [1, 2, 3]);
+      store.setPicture(selin.id, [4, 5]);
+      final second = store.pictureOf(selin)!;
+      expect(second, isNot(first), reason: 'a new file, so no cached image shows the old one');
+      expect(File(first).existsSync(), isFalse);
+      // Kept for the next start.
+      final again = ProfileStore(folder, existing: fresh);
+      expect(again.pictureOf(again.profile(selin.id)), second);
+      again.removePicture(selin.id);
+      expect(File(second).existsSync(), isFalse);
+      expect(again.profile(selin.id)!.picture, isNull);
+      again.setPicture(selin.id, [6]);
+      final third = again.pictureOf(again.profile(selin.id))!;
+      again.remove(selin.id);
+      expect(File(third).existsSync(), isFalse, reason: 'a deleted profile takes its picture along');
+    });
+
+    test("an empty name is the language's word for a player, numbered when it is taken", () {
+      final store = ProfileStore(
+        folder,
+        existing: fresh,
+        defaultName: (number) => number == 1 ? 'Oyuncu' : 'Oyuncu $number',
+      );
+      final first = store.add(name: '', mode: ProfileMode.offline);
+      expect(first.name, 'Oyuncu');
+      expect(store.add(name: '  ', mode: ProfileMode.offline).name, 'Oyuncu 2');
+      final third = store.add(name: 'Selin', mode: ProfileMode.offline);
+      store.rename(third.id, ' ');
+      expect(third.name, 'Oyuncu 3');
+      // Its own name is not in the way: emptied again, it keeps the one it has.
+      store.rename(first.id, '');
+      expect(first.name, 'Oyuncu');
+      // Not told apart by capitals either.
+      store.rename(first.id, 'oyuncu 4');
+      expect(store.add(name: '', mode: ProfileMode.offline).name, 'Oyuncu');
+      expect(store.add(name: '', mode: ProfileMode.offline).name, 'Oyuncu 5');
+    });
+
     test('one profile goes straight in; several, or Ask every time, show the picker', () {
       final store = ProfileStore(folder, existing: fresh);
       final first = store.add(name: 'Utku', mode: ProfileMode.offline);

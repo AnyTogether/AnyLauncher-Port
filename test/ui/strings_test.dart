@@ -61,6 +61,20 @@ void main() {
     expect(T.format('updateDownloading', [42]), 'İndiriliyor… %42');
   });
 
+  test('capitals follow the language: İ and I in Turkish; a game ID is never cased by it', () {
+    T.language = Language.english;
+    expect(T.upper('Title ID'), 'TITLE ID');
+    expect(T.initial('ivy'), 'I');
+    T.language = Language.byCode('tr');
+    expect(T.upper(T.text('titleID')), 'OYUN K\u0130ML\u0130Ğ\u0130');
+    expect(T.upper('ılık'), 'ILIK');
+    expect(T.lower('IŞIK İZİ'), 'ışık izi');
+    expect(T.initial('ilker'), '\u0130');
+    expect(T.initial(''), '?');
+    // The home screen's card shows the ID as the game has it, whatever the language.
+    expect('ppsa01001'.toUpperCase(), 'PPSA01001');
+  });
+
   test('the font and hidden trophy texts in both languages', () {
     T.language = Language.byCode('tr');
     expect(T.format('fontsCjkDownloading', [42]), 'İniyor… %42');

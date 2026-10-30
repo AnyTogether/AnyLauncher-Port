@@ -178,7 +178,7 @@ class _LanguageStep extends StatelessWidget {
         _StepTitle(title: T.text('welcome'), subtitle: T.text('welcomeSubtitle')),
         SizedBox(height: 46 * scale),
         Text(
-          T.text('chooseLanguage').toUpperCase(),
+          T.upper(T.text('chooseLanguage')),
           style: AppText.display(
             14 * scale,
             weight: FontWeight.w600,
@@ -481,7 +481,7 @@ class _ToolkitStep extends StatelessWidget {
                               borderRadius: BorderRadius.circular(20 * scale),
                             ),
                             child: Text(
-                              T.text('engineRecommended').toUpperCase(),
+                              T.upper(T.text('engineRecommended')),
                               style: AppText.display(
                                 11 * scale,
                                 weight: FontWeight.w700,

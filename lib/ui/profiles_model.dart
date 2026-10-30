@@ -80,6 +80,10 @@ extension LauncherProfiles on AppModel {
     Color(0xFF409EF2),
   ];
 
+  /// The name a profile left without one gets: "Oyuncu", then "Oyuncu 2", in Turkish.
+  static String defaultName(int number) =>
+      number == 1 ? T.text('profileDefaultName') : T.format('profilePlayerNumber', [number]);
+
   static Color colorOf(LauncherProfile? profile) => palette[(profile?.color ?? 0) % palette.length];
 
   static List<String> get colourNames => [
@@ -358,7 +362,7 @@ extension LauncherProfiles on AppModel {
   /// Offline: made at once with the name typed, and it plays.
   Future<void> createOfflineProfile() async {
     if (profiles.book.profiles.isEmpty) {
-      profiles.add(name: preferences.profileName, mode: ProfileMode.offline);
+      preferences.profileName = profiles.add(name: preferences.profileName, mode: ProfileMode.offline).name;
       finishOnboarding();
       return;
     }
@@ -500,6 +504,7 @@ extension LauncherProfiles on AppModel {
     final online = profile.mode == ProfileMode.online;
     final user = together.user;
     final others = profiles.book.profiles.where((other) => other.id != profile.id).toList();
+    final picture = profiles.pictureOf(profile);
     return [
       PanelRow(
         id: 'profile-current',
@@ -507,7 +512,7 @@ extension LauncherProfiles on AppModel {
         detail: online
             ? (user == null ? T.text('profileOnlineSignedOut') : T.format('profileOnlineAs', [user.handle]))
             : T.text('profileOfflineDetail'),
-        person: PanelPerson(name: profile.name, avatar: user?.avatar),
+        person: personOf(profile, avatar: user?.avatar),
         kind: const InfoRow(''),
       ),
       PanelRow(
@@ -515,6 +520,19 @@ extension LauncherProfiles on AppModel {
         title: T.text('profileName'),
         kind: TextRow(profile.name, renameCurrentProfile, hint: T.text('profileNameHint')),
       ),
+      // The picker is the mouse's (the system's file dialog); the rows are a controller's too.
+      PanelRow(
+        id: 'profile-picture',
+        title: T.text(picture == null ? 'profilePicture' : 'profilePictureChange'),
+        detail: T.text('profilePictureDetail'),
+        kind: ActionRow(() => unawaited(chooseProfilePicture())),
+      ),
+      if (picture != null)
+        PanelRow(
+          id: 'profile-picture-remove',
+          title: T.text('profilePictureRemove'),
+          kind: ActionRow(removeProfilePicture, destructive: true),
+        ),
       PanelRow(
         id: 'profile-color',
         title: T.text('profileColour'),
@@ -548,7 +566,7 @@ extension LauncherProfiles on AppModel {
           detail: other.mode == ProfileMode.online
               ? (other.account == null ? T.text('profileOnline') : '@${other.account!.handle}')
               : T.text('profileOffline'),
-          person: PanelPerson(name: other.name),
+          person: personOf(other),
           kind: ActionRow(() => unawaited(switchProfile(other.id))),
         ),
         ...together.askingFirst(
@@ -567,6 +585,49 @@ extension LauncherProfiles on AppModel {
         kind: ActionRow(openAddProfile),
       ),
     ];
+  }
+
+  /// How [profile] shows on a row: its picture, or its initial on its colour ([avatar], the
+  /// account's picture, when it has none of its own).
+  PanelPerson personOf(LauncherProfile profile, {String? avatar}) {
+    final picture = profiles.pictureOf(profile);
+    return PanelPerson(
+      name: profile.name,
+      avatar: picture == null ? avatar : null,
+      picture: picture,
+      tint: colorOf(profile),
+    );
+  }
+
+  /// A picture chosen on this computer as the profile's own: its middle square, 256 pixels a
+  /// side, kept in the launcher's data folder.
+  Future<void> chooseProfilePicture() async {
+    final profile = currentProfile;
+    final pick = services.pickImage;
+    if (profile == null || pick == null) return;
+    final path = await pick();
+    if (path == null) return;
+    try {
+      final file = File(path);
+      if (file.lengthSync() > ProfilePicture.maxBytes) throw const FormatException('too large');
+      final square = await ProfilePicture.square(file.readAsBytesSync());
+      profiles.setPicture(profile.id, square);
+      sounds.play(Cue.select);
+      show(T.text('profilePictureSaved'));
+    } on Object {
+      sounds.play(Cue.bump);
+      show(T.text('profilePictureFailed'));
+    }
+    _changed();
+  }
+
+  void removeProfilePicture() {
+    final profile = currentProfile;
+    if (profile == null) return;
+    profiles.removePicture(profile.id);
+    show(T.text('profilePictureRemoved'));
+    _skipToFocusable();
+    _changed();
   }
 
   void renameCurrentProfile(String name) {

@@ -125,6 +125,26 @@ abstract final class T {
   /// The text for [key] in the current language, English when the language has none.
   static String text(String key) => _texts[language.code]?[key] ?? _texts['en']?[key] ?? key;
 
+  /// The languages whose i and ı are two letters: their capitals are İ and I.
+  static const _dottedI = {'tr', 'az'};
+
+  static bool get _dotted => _dottedI.contains(language.code.split(RegExp('[-_]')).first); // not a text
+
+  /// [text] in capitals as the language writes them: "Oyun Kimliği" is "OYUN KİMLİĞİ" in
+  /// Turkish, where Dart's toUpperCase (the same in every language) gives "OYUN KIMLIĞI". For a
+  /// text a person reads, never for a game's ID, a key or a code.
+  static String upper(String text) => (_dotted ? text.replaceAll('i', '\u0130') : text).toUpperCase();
+
+  /// [text] in small letters as the language writes them: I is ı and İ is i in Turkish.
+  static String lower(String text) =>
+      (_dotted ? text.replaceAll('I', '\u0131').replaceAll('\u0130', 'i') : text).toLowerCase();
+
+  /// The first letter of [name] in capitals, for an initial ("?" for no name).
+  static String initial(String name) {
+    final trimmed = name.trim();
+    return trimmed.isEmpty ? '?' : upper(String.fromCharCode(trimmed.runes.first));
+  }
+
   /// 1,234,567 or 1.234.567: [value]'s digits grouped by the language's thousands separator.
   static String number(int value) {
     final digits = value.abs().toString();

@@ -5,6 +5,15 @@ release when it is made.
 
 ## Next release
 
+- **The launcher no longer freezes while a game is unlocked or updated.** Copying a game's
+  files (a games folder on another drive than the dump, without Developer Mode on Windows),
+  measuring the dump, unwrapping its executable and removing the old install after an update
+  all ran on the launcher's own thread: for seconds or minutes at a time the screen stopped,
+  no other game could be picked, opening a game's settings seemed to crash the launcher until
+  it came back, and Windows called the window not responding. That work now runs on the
+  system's file threads and in a separate isolate, so the library stays usable while a game
+  relinks. The old install is renamed aside at once and removed afterwards (a removal cut short
+  is cleaned up at the next start).
 - **Relinking a dump that holds an earlier relink's files.** A relink done by hand (or by
   another tool) with the dump as its `app0` writes its converted modules into the dump's own
   `sce_module` as `*.guest.prx` files. The launcher took those for modules of the game and

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 
 import 'package:path/path.dart' as p;
@@ -498,6 +499,27 @@ class Installer {
     return total;
   }
 
+  /// [payloadSize], read on the system's file threads (a dump holds tens of thousands of files).
+  static Future<int> measurePayload(String source) async {
+    var total = 0;
+    try {
+      final base = p.normalize(p.absolute(source));
+      await for (final entry in Directory(base).list(recursive: true, followLinks: true)) {
+        if (entry is! File) continue;
+        if (p.split(p.relative(entry.path, from: base)).first == GameLibrary.storeName) continue;
+        if (isRelinkerOutput(entry.path)) continue;
+        try {
+          total += await entry.length();
+        } on FileSystemException {
+          // What could be read counts.
+        }
+      }
+    } on FileSystemException {
+      // What could be read counts.
+    }
+    return total;
+  }
+
   /// The first file of an installed game's app0 that links to a dump file no longer there,
   /// relative to app0; null when every link holds (or the game was hard linked or copied).
   static Future<String?> brokenLink(String installed) async {
@@ -551,7 +573,7 @@ class Installer {
     // 0. The room it takes, before anything is written.
     await _gate();
     final mode = linkMode ?? FileLinks.probe(p.join(game.folder, 'eboot.bin'), p.join(store, 'Games'));
-    final copied = mode == LinkMode.copy ? payloadSize(game.folder) : 0;
+    final copied = mode == LinkMode.copy ? await measurePayload(game.folder) : 0;
     final needs = space(game, root, toolkit, copied: copied, resolution: resolution);
     final shortage = needs.shortage(free: freeSpace(root), folder: root);
     if (shortage != null) throw shortage;
@@ -582,7 +604,7 @@ class Installer {
           final relative = inputs[index];
           final target = p.join(source, p.joinAll(relative.split('/')));
           Directory(p.dirname(target)).createSync(recursive: true);
-          if (_unwrap(relative, Installer.source(game, relative), target) && index > 0) placed.add(relative);
+          if (await _unwrap(relative, Installer.source(game, relative), target) && index > 0) placed.add(relative);
           _progress(InstallStep.unwrap, (index + 1) / inputs.length);
           await _yield();
         }
@@ -651,7 +673,7 @@ class Installer {
       // 3. The game's files, linked (or copied where no link works), with the relinked modules
       // over them.
       await _gate();
-      _delete(partial);
+      await _deleteAway(partial);
       final app0 = p.join(partial, 'app0');
       Directory(app0).createSync(recursive: true);
       await _linkTree(game.folder, app0, mode, (fraction) => _progress(InstallStep.copy, fraction));
@@ -695,22 +717,33 @@ class Installer {
 
       // 5. It takes the old one's place, with what the game wrote there.
       _progress(InstallStep.finish, 0);
-      placeInstalled(partial, installed);
+      await placeInstalled(partial, installed);
       _progress(InstallStep.finish, 1);
       return installed;
     } finally {
-      _delete(work);
-      _delete(partial);
       _running = null;
+      await _deleteAway(work);
+      await _deleteAway(partial);
     }
   }
 
   /// Puts a finished game in place. What the game wrote beside app0 in the old one (saves in _sd,
-  /// trophies in _trophy, its data and download folders) moves into the new one.
-  static void placeInstalled(String partial, String installed) {
+  /// trophies in _trophy, its data and download folders) moves into the new one. The old one is
+  /// renamed aside at once and removed after, on the system's file threads: a game of tens of
+  /// thousands of files took the screen with it while it went.
+  static Future<void> placeInstalled(String partial, String installed) async {
     if (Directory(installed).existsSync()) {
       carryOver(installed, partial);
-      _delete(installed);
+      final old = '$installed.old-${DateTime.now().microsecondsSinceEpoch}.partial';
+      try {
+        Directory(installed).renameSync(old);
+      } on FileSystemException {
+        await _deleteAway(installed);
+      }
+      Directory(p.dirname(installed)).createSync(recursive: true);
+      Directory(partial).renameSync(installed);
+      await _deleteAway(old);
+      return;
     }
     Directory(p.dirname(installed)).createSync(recursive: true);
     Directory(partial).renameSync(installed);
@@ -783,24 +816,25 @@ class Installer {
     return directories;
   }
 
-  /// An ELF as it is, a re-signed one from its .esbak, a SELF container unwrapped. A module
+  /// An ELF as it is, a re-signed one from its .esbak, a SELF container unwrapped (in an isolate
+  /// of its own: an executable is read whole, and can be hundreds of megabytes). A module
   /// ([relative] other than eboot.bin) still encrypted in the dump is left out ([leftOut]) and
   /// false returned: the engine starts a game without one of its modules (the game gets an error
   /// when it loads it), while it cannot start one without its executable.
-  bool _unwrap(String relative, String original, String target) {
+  Future<bool> _unwrap(String relative, String original, String target) async {
     final name = p.basename(original);
     final executable = relative == 'eboot.bin';
     String? refused;
     if (Binary.isElf(original)) {
-      File(original).copySync(target);
+      await File(original).copy(target);
       return true;
     } else if (Binary.isElf('$original.esbak')) {
-      File('$original.esbak').copySync(target);
+      await File('$original.esbak').copy(target);
       _log('$name: from .esbak');
       return true;
     } else if (SelfUnwrap.isContainer(original)) {
       try {
-        final size = SelfUnwrap.unwrapFile(original, target);
+        final size = await Isolate.run(() => SelfUnwrap.unwrapFile(original, target));
         _log('$name: unwrapped, $size bytes');
         return true;
       } on SelfRefused catch (error) {
@@ -903,7 +937,9 @@ class Installer {
   }
 
   /// The files of [source] in [target], folder by folder, each placed as [mode] says; the store
-  /// and the files [skip] names are left out. Reports the share of bytes done.
+  /// and the files [skip] names are left out. Reports the share of bytes done. The listing and
+  /// the copies run on the system's file threads, so the screen goes on meanwhile (links are made
+  /// in small batches).
   static Future<void> copyTree(
     String source,
     String target,
@@ -916,16 +952,15 @@ class Installer {
     final base = p.normalize(p.absolute(source));
     final files = <(String, String, int)>[];
     var total = 0;
-    final entries = Directory(base).listSync(recursive: true, followLinks: true);
-    for (final entry in entries) {
+    await for (final entry in Directory(base).list(recursive: true, followLinks: true)) {
       final relative = p.relative(entry.path, from: base);
       final first = p.split(relative).first;
       if (first == GameLibrary.storeName) continue;
       if (entry is File && (skip?.call(entry.path) ?? false)) continue;
       if (entry is Directory) {
-        Directory(p.join(target, relative)).createSync(recursive: true);
+        await Directory(p.join(target, relative)).create(recursive: true);
       } else if (entry is File) {
-        final size = entry.lengthSync();
+        final size = await entry.length();
         files.add((entry.path, relative, size));
         total += size;
       }
@@ -936,10 +971,16 @@ class Installer {
       final (path, relative, size) = files[index];
       final destination = p.join(target, relative);
       Directory(p.dirname(destination)).createSync(recursive: true);
-      FileLinks.place(path, destination, mode);
+      if (mode == LinkMode.copy) {
+        // A copy can be gigabytes: never on the interface's isolate.
+        FileLinks.remove(destination);
+        await File(path).copy(destination);
+      } else {
+        FileLinks.place(path, destination, mode);
+      }
       done += size;
       progress?.call(total == 0 ? 1 : done / total);
-      if (index % 64 == 63) {
+      if (mode == LinkMode.copy || index % 64 == 63) {
         await _yield();
         await gate?.call();
       }
@@ -1021,6 +1062,23 @@ class Installer {
   static void _delete(String path) {
     try {
       FileLinks.remove(path);
+    } on FileSystemException {
+      // Gone or busy; a later install cleans up.
+    }
+  }
+
+  /// [_delete] for a folder that may be big (a whole game), on the system's file threads. Never
+  /// through a link: Directory.delete removes links, not what they point to.
+  static Future<void> _deleteAway(String path) async {
+    try {
+      switch (FileSystemEntity.typeSync(path, followLinks: false)) {
+        case FileSystemEntityType.directory:
+          await Directory(path).delete(recursive: true);
+        case FileSystemEntityType.notFound:
+          break;
+        default:
+          FileLinks.remove(path);
+      }
     } on FileSystemException {
       // Gone or busy; a later install cleans up.
     }

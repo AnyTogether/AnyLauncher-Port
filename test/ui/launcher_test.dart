@@ -4,6 +4,7 @@ import 'package:anyps5_desktop/core/controls.dart';
 import 'package:anyps5_desktop/core/engine_checkout.dart';
 import 'package:anyps5_desktop/core/file_links.dart';
 import 'package:anyps5_desktop/core/font_download.dart';
+import 'package:anyps5_desktop/core/game_settings.dart';
 import 'package:anyps5_desktop/core/host.dart';
 import 'package:anyps5_desktop/core/installer.dart';
 import 'package:anyps5_desktop/core/remote/remote_server.dart';
@@ -440,7 +441,16 @@ void main() {
       expect(model.currentSettings(game).fullscreen, isTrue);
       final environment = model.currentSettings(game).environment(launcherLanguage: 1);
       expect(environment['ANYPS5_FULLSCREEN'], '1');
-      // Window size is hidden in fullscreen; the next row is vertical sync.
+      // Window size is hidden in fullscreen; Upscaling comes next, then vertical sync.
+      await press(tester, LogicalKeyboardKey.arrowDown);
+      // Bilinear, FSR 1.
+      await press(tester, LogicalKeyboardKey.arrowRight);
+      expect(model.currentSettings(game).upscaler, Upscaler.fsr1);
+      expect(model.currentSettings(game).environment(launcherLanguage: 1)['ANYPS5_UPSCALER'], 'fsr1');
+      // FSR Sharpness shows with FSR 1: 0.2, one tenth up.
+      await press(tester, LogicalKeyboardKey.arrowDown);
+      await press(tester, LogicalKeyboardKey.arrowRight);
+      expect(model.currentSettings(game).environment(launcherLanguage: 1)['ANYPS5_FSR_SHARPNESS'], '0.3');
       await press(tester, LogicalKeyboardKey.arrowDown);
       // Default, On, Off.
       await press(tester, LogicalKeyboardKey.enter);

@@ -4743,6 +4743,32 @@ class AppModel extends ChangeNotifier {
             ),
           ),
         ),
+      // Beside Resolution: FSR 1 brings a game resolution below the window's up to the window
+      // sharply, its sharpening in tenths of AMD's stops.
+      PanelRow(
+        id: 'upscaling',
+        title: T.text('upscaling'),
+        detail: engine.readsDisplaySettings ? T.text('upscalingDetail') : T.text('upscalingUpstream'),
+        kind: ChoiceRow(
+          [T.text('upscalingBilinear'), T.text('upscalingFsr1')],
+          (settings.upscaler ?? Upscaler.bilinear).index,
+          (index) => change(settings.copyWith(upscaler: index == 0 ? null : Upscaler.values[index])),
+        ),
+      ),
+      if (settings.upscaler == Upscaler.fsr1)
+        PanelRow(
+          id: 'fsrSharpness',
+          title: T.text('fsrSharpness'),
+          detail: T.text('fsrSharpnessDetail'),
+          kind: StepperRow(
+            value: (settings.sharpness * 10).round(),
+            min: 0,
+            max: (GameSettings.maximumFsrSharpness * 10).round(),
+            step: 1,
+            format: (value) => T.decimal(value / 10, 1),
+            set: (value) => change(settings.copyWith(fsrSharpness: value / 10)),
+          ),
+        ),
       PanelRow(
         id: 'vsync',
         title: T.text('vsync'),

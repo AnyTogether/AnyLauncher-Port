@@ -6,6 +6,15 @@
 #include <variant>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "utils.h"
+
+namespace {
+
+// Posted when the window was maximized some way other than the system menu's command (Aero
+// Snap's drag to the top): turned into full screen once that is done.
+constexpr UINT kMaximizedMessage = WM_APP + 1;
+
+}  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -56,6 +65,28 @@ bool FlutterWindow::OnCreate() {
           result->Success(flutter::EncodableValue(hwnd != nullptr));
           return;
         }
+        // The launcher's own close (Quit, the window buttons' close in full screen): the same
+        // close the title bar's button makes, posted so it runs after this call returns.
+        // Flutter asks the launcher, shuts down, the window goes and the message loop ends;
+        // exit() from Dart, the engine still drawing, crashed in full screen.
+        if (call.method_name() == "close") {
+          HWND hwnd = GetHandle();
+          const bool posted =
+              hwnd != nullptr && ::PostMessage(hwnd, WM_CLOSE, 0, 0) != 0;
+          result->Success(flutter::EncodableValue(posted));
+          return;
+        }
+        // The launcher's marker of this run: main takes it away after a clean close.
+        if (call.method_name() == "removeAfterClose") {
+          const auto* path = std::get_if<std::string>(call.arguments());
+          if (path == nullptr) {
+            result->Error("bad_arguments", "removeAfterClose takes a path");
+            return;
+          }
+          run_marker_ = Utf16FromUtf8(*path);
+          result->Success(flutter::EncodableValue(!run_marker_.empty()));
+          return;
+        }
         result->NotImplemented();
       });
 
@@ -80,6 +111,12 @@ bool FlutterWindow::SetFullscreen(bool on) {
     return true;
   }
   if (on) {
+    // A maximized window first goes back to its normal size: kept maximized (WS_MAXIMIZE) under
+    // the popup style, Windows can put it back on the work area under the taskbar, and the
+    // window it returns to would be maximized again, and so full screen again.
+    if (::IsZoomed(hwnd)) {
+      ::ShowWindow(hwnd, SW_RESTORE);
+    }
     MONITORINFO monitor{sizeof(MONITORINFO)};
     if (!::GetMonitorInfo(::MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
                           &monitor)) {
@@ -101,6 +138,8 @@ bool FlutterWindow::SetFullscreen(bool on) {
                            : ((::GetWindowLongPtr(hwnd, GWL_STYLE) & ~WS_POPUP) |
                               WS_OVERLAPPEDWINDOW));
     if (windowed_placement_.length == sizeof(WINDOWPLACEMENT)) {
+      // Back to a plain window: never minimized or maximized again on the way out.
+      windowed_placement_.showCmd = SW_SHOWNORMAL;
       ::SetWindowPlacement(hwnd, &windowed_placement_);
     }
     ::SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
@@ -109,6 +148,19 @@ bool FlutterWindow::SetFullscreen(bool on) {
   }
   fullscreen_ = on;
   return true;
+}
+
+void FlutterWindow::ReportFullscreen(bool on) {
+  if (window_channel_) {
+    window_channel_->InvokeMethod(
+        "fullscreenChanged", std::make_unique<flutter::EncodableValue>(on));
+  }
+}
+
+void FlutterWindow::MaximizeToFullscreen() {
+  if (!fullscreen_ && SetFullscreen(true)) {
+    ReportFullscreen(true);
+  }
 }
 
 void FlutterWindow::OnDestroy() {
@@ -124,6 +176,29 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  switch (message) {
+    // The title bar's Maximize (its button, a double click on it, the system menu, Win+Up):
+    // the launcher's full screen, with no title bar left, instead of a maximized window that
+    // keeps its (dark) title bar along the top and that the launcher did not know of.
+    case WM_SYSCOMMAND:
+      if ((wparam & 0xFFF0) == SC_MAXIMIZE) {
+        MaximizeToFullscreen();
+        return 0;
+      }
+      break;
+    // Maximized another way (Aero Snap's drag to the top): the same, once it is done.
+    case WM_SIZE:
+      if (wparam == SIZE_MAXIMIZED && !fullscreen_) {
+        ::PostMessage(hwnd, kMaximizedMessage, 0, 0);
+      }
+      break;
+    case kMaximizedMessage:
+      if (::IsZoomed(hwnd)) {
+        MaximizeToFullscreen();
+      }
+      return 0;
+  }
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =

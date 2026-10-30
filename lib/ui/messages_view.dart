@@ -28,17 +28,19 @@ class MessagesView extends StatelessWidget {
       opacity: 0.62,
       child: Padding(
         padding: EdgeInsets.fromLTRB(80 * scale, 60 * scale, 80 * scale, 50 * scale),
-        child: Row(
+        // The title has the whole top line to itself, so the way back sits level with it, and the
+        // list and the conversation start together under it.
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: 440 * scale,
-              child: Column(
+            Text(T.text('messagesTitle'), style: AppText.display(40 * scale, weight: FontWeight.w300)),
+            SizedBox(height: 24 * scale),
+            Expanded(
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(T.text('messagesTitle'), style: AppText.display(40 * scale, weight: FontWeight.w300)),
-                  SizedBox(height: 24 * scale),
-                  Expanded(
+                  SizedBox(
+                    width: 440 * scale,
                     child: targets.isEmpty
                         ? Text(
                             together.signedIn ? T.text('messagesNone') : T.text('friendsSignIn'),
@@ -61,16 +63,16 @@ class MessagesView extends StatelessWidget {
                             ),
                           ),
                   ),
+                  SizedBox(width: 36 * scale),
+                  Expanded(
+                    child: Glass(
+                      radius: 26 * scale,
+                      opacity: 0.45,
+                      padding: EdgeInsets.all(28 * scale),
+                      child: selected == null ? const SizedBox.expand() : _Thread(model: model, target: selected),
+                    ),
+                  ),
                 ],
-              ),
-            ),
-            SizedBox(width: 36 * scale),
-            Expanded(
-              child: Glass(
-                radius: 26 * scale,
-                opacity: 0.45,
-                padding: EdgeInsets.all(28 * scale),
-                child: selected == null ? const SizedBox.expand() : _Thread(model: model, target: selected),
               ),
             ),
           ],

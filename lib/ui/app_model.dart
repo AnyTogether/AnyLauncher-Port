@@ -160,6 +160,7 @@ class Preferences {
   String language = 'en';
   int theme = 0;
   String? accent;
+
   /// Empty until the first profile is made: it is then the profile's name (the language's word
   /// for a player when none was typed).
   String profileName = '';
@@ -2648,18 +2649,12 @@ class AppModel extends ChangeNotifier {
     return installer;
   }
 
-  /// What an unlock that left modules of the dump out says once the game is ready: which files,
-  /// and why (still encrypted in the dump, or the relinker could not convert them).
+  /// What an unlock that left modules of the dump out says once the game is ready: one short
+  /// sentence, encrypted files first since dumping again fixes those. The files themselves are in
+  /// the unlock's log; a list of them here was too long to read before the notice went.
   static String leftOutText(Game game, List<LeftOutModule> leftOut) {
-    final encrypted = [
-      for (final module in leftOut)
-        if (module.reason == LeftOutReason.encrypted) module.path,
-    ];
-    final files = encrypted.isNotEmpty ? encrypted : [for (final module in leftOut) module.path];
-    return T.format(encrypted.isNotEmpty ? 'unlockLeftOutEncrypted' : 'unlockLeftOutNotRelinked', [
-      game.name,
-      files.join(', '),
-    ]);
+    final encrypted = leftOut.any((module) => module.reason == LeftOutReason.encrypted);
+    return T.format(encrypted ? 'unlockLeftOutEncrypted' : 'unlockLeftOutNotRelinked', [game.name]);
   }
 
   /// The whole error of [game]'s failed unlock to the clipboard: the message, then the unlock's

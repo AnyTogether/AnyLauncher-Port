@@ -4,6 +4,8 @@ import 'package:anyps5_desktop/core/game_library.dart';
 import 'package:anyps5_desktop/core/game_settings.dart';
 import 'package:anyps5_desktop/core/screenshots.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
+import 'package:anyps5_desktop/ui/components.dart';
+import 'package:anyps5_desktop/ui/launcher.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:anyps5_desktop/ui/theme.dart';
 import 'package:flutter/gestures.dart';
@@ -194,6 +196,17 @@ void main() {
     expect(find.byKey(const ValueKey('back-pill')), findsOneWidget);
     await press(tester, LogicalKeyboardKey.escape);
     expect(model.overlay, isNull);
+  });
+
+  testWidgets('on Messages the back pill sits on the title\'s line, at the content\'s edge', (tester) async {
+    model.open(Layer.messages);
+    await pumpLauncher(tester, model);
+    final title = find.text(T.text('messagesTitle'));
+    final pill = tester.getRect(find.byKey(const ValueKey('back-pill')));
+    final scale = LayoutScale.of(tester.element(title));
+    final width = tester.getSize(find.byType(LauncherShell)).width;
+    expect((pill.center.dy - tester.getRect(title).center.dy).abs(), lessThan(1), reason: 'level with the title');
+    expect(pill.right, moreOrLessEquals(width - 80 * scale, epsilon: 1), reason: 'at the content\'s right edge');
   });
 
   testWidgets('the hint pills are buttons: Esc, Enter, O and Q/E run what their keys do', (tester) async {

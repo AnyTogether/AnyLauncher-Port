@@ -278,23 +278,22 @@ void main() {
       expect(fixture.copied.single, startsWith(failure));
     });
 
-    test('a game ready without some of its modules says which and why', () {
+    test('a game ready without some of its modules says so in one short sentence, without the files', () {
       fixture = makeFixture();
       final game = fixture.model.games.first;
       expect(
         AppModel.leftOutText(game, const [
           LeftOutModule('sce_module/libSceNpCppWebApi.prx', LeftOutReason.notRelinked, 'bad'),
+          LeftOutModule('sce_module/libSceNpWebApi.prx', LeftOutReason.notRelinked, 'bad'),
         ]),
-        '${game.name} is ready without sce_module/libSceNpCppWebApi.prx: AnyPS5 could not convert it, so the game '
-        "uses AnyPS5's own library of that name where there is one.",
+        '${game.name} is ready. A few of its files could not be converted and were left out.',
       );
       expect(
         AppModel.leftOutText(game, const [
           LeftOutModule('sce_module/libSceNpCppWebApi.prx', LeftOutReason.notRelinked),
           LeftOutModule('sce_module/libSceFace.prx', LeftOutReason.encrypted),
         ]),
-        '${game.name} is ready without sce_module/libSceFace.prx: the file is encrypted in the dump. If the game '
-        'does not start, dump it again with a dumper that decrypts it.',
+        '${game.name} is ready, but some of its files are encrypted in the dump. If it does not start, dump it again.',
       );
     });
   });

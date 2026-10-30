@@ -2544,12 +2544,37 @@ class AppModel extends ChangeNotifier {
       progress.remove(id);
       if (_disposed) return;
       done(failure);
+      if (failure == null && installer.leftOut.isNotEmpty) show(leftOutText(game, installer.leftOut), icon: game.icon);
       _changed();
       _publishActivity();
       _startNext();
       _stepPrepare();
     }());
     return installer;
+  }
+
+  /// What an unlock that left modules of the dump out says once the game is ready: which files,
+  /// and why (still encrypted in the dump, or the relinker could not convert them).
+  static String leftOutText(Game game, List<LeftOutModule> leftOut) {
+    final encrypted = [
+      for (final module in leftOut)
+        if (module.reason == LeftOutReason.encrypted) module.path,
+    ];
+    final files = encrypted.isNotEmpty ? encrypted : [for (final module in leftOut) module.path];
+    return T.format(encrypted.isNotEmpty ? 'unlockLeftOutEncrypted' : 'unlockLeftOutNotRelinked', [
+      game.name,
+      files.join(', '),
+    ]);
+  }
+
+  /// The whole error of [game]'s failed unlock to the clipboard: the message, then the unlock's
+  /// log with all the relinker printed.
+  void copyFailure(Game game) {
+    final failure = failures[game.id];
+    if (failure == null) return;
+    final log = GameLog.read(GameLog.unlockFile(paths.logs, game.titleId))?.trimRight();
+    services.copyText?.call([failure, if (log != null && log.isNotEmpty && log != failure) log].join('\n\n'));
+    show(T.text('unlockErrorCopied'));
   }
 
   /// The unlock of [game] did not start for want of room: the copy panel says how much is needed
@@ -4488,7 +4513,19 @@ class AppModel extends ChangeNotifier {
     final languageIndex = settings.language == null
         ? 0
         : languages.indexWhere((entry) => entry.$1 == settings.language) + 1;
+    final failure = failures[game.id];
     return [
+      if (failure != null)
+        PanelRow(
+          id: 'unlockError',
+          title: T.text('unlockError'),
+          // The end of the error, as Update from Git shows its own; all of it goes to the clipboard.
+          detail: [
+            ...failure.split('\n').reversed.take(2).toList().reversed.map((line) => line.trim()),
+            T.text('unlockErrorCopy'),
+          ].join(' · '),
+          kind: ActionRow(() => copyFailure(game)),
+        ),
       PanelRow(
         id: 'display',
         title: T.text('display'),

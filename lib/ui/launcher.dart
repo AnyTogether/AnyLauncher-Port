@@ -427,6 +427,7 @@ class _LauncherShellState extends State<LauncherShell> {
                                               Layer.addProfile => AddProfileView(model: model),
                                               Layer.messages => WithBackPill(
                                                 onBack: () => model.handle(Command.back),
+                                                titleLine: (side: 80, top: 60),
                                                 child: MessagesView(model: model),
                                               ),
                                               Layer.profile => WithBackPill(

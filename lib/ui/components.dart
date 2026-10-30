@@ -932,23 +932,47 @@ class BackPill extends StatelessWidget {
 
 /// A full-screen layer with its way out for the mouse in the top right corner.
 class WithBackPill extends StatelessWidget {
-  const WithBackPill({super.key, required this.onBack, required this.child});
+  const WithBackPill({super.key, required this.onBack, required this.child, this.titleLine});
 
   final VoidCallback onBack;
   final Widget child;
 
+  /// For a layer with a big title: the content's side and top padding. The pill then sits on the
+  /// title's line at the content's right edge, level with the title, instead of in the corner.
+  final ({double side, double top})? titleLine;
+
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
+    final line = titleLine;
+    // The pill is centred on the line of the layers' 40 pt display title, measured in its font.
+    final lineHeight = line == null
+        ? 0.0
+        : (TextPainter(
+            text: TextSpan(
+              text: 'Ag',
+              style: DefaultTextStyle.of(context).style.merge(AppText.display(40 * scale, weight: FontWeight.w300)),
+            ),
+            textDirection: TextDirection.ltr,
+            textScaler: MediaQuery.textScalerOf(context),
+          )..layout()).height;
     return Stack(
       fit: StackFit.expand,
       children: [
         child,
-        Positioned(
-          top: 18 * scale,
-          right: 24 * scale,
-          child: BackPill(onTap: onBack),
-        ),
+        if (line == null)
+          Positioned(
+            top: 18 * scale,
+            right: 24 * scale,
+            child: BackPill(onTap: onBack),
+          )
+        else
+          Positioned(
+            top: line.top * scale,
+            right: line.side * scale,
+            height: lineHeight,
+            child: Center(child: BackPill(onTap: onBack)),
+          ),
       ],
     );
   }

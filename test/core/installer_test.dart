@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -283,6 +284,76 @@ void main() {
         'level data',
         reason: 'the dump stays',
       );
+    });
+  });
+
+  // The launcher's interface runs on the same isolate as an unlock: a copy or a removal done
+  // there in one piece froze the screen (no other game could be picked, Windows called the window
+  // not responding). The heavy file work goes to the system's file threads, and the event loop
+  // keeps turning while it runs.
+  group('off the interface thread', () {
+    /// How many times a 1 ms timer fired while [work] ran: none when it held the isolate.
+    Future<int> ticksDuring(Future<void> Function() work) async {
+      var ticks = 0;
+      final timer = Timer.periodic(const Duration(milliseconds: 1), (_) => ticks++);
+      await work();
+      final during = ticks;
+      timer.cancel();
+      return during;
+    }
+
+    test('copying a game file lets the screen go on', () async {
+      final source = Directory(p.join(temp.path, 'dump'))..createSync();
+      final big = File(p.join(source.path, 'big.bin')).openSync(mode: FileMode.write);
+      final chunk = List<int>.filled(1 << 20, 7);
+      for (var index = 0; index < 64; index++) {
+        big.writeFromSync(chunk);
+      }
+      big.closeSync();
+      final target = p.join(temp.path, 'copied');
+      final fractions = <double>[];
+      final ticks = await ticksDuring(
+        () => Installer.copyTree(source.path, target, LinkMode.copy, progress: fractions.add),
+      );
+      expect(ticks, greaterThan(0));
+      expect(File(p.join(target, 'big.bin')).lengthSync(), 64 << 20);
+      expect(fractions.last, 1);
+    });
+
+    test('putting the new install in place of the old one lets the screen go on', () async {
+      final installed = p.join(temp.path, 'Installed');
+      for (var index = 0; index < 1500; index++) {
+        File(p.join(installed, 'app0', 'data${index % 30}', 'file$index.bin'))
+          ..createSync(recursive: true)
+          ..writeAsStringSync('old');
+      }
+      File(p.join(installed, '_sd', 'save.dat'))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('saved');
+      final partial = '$installed.partial';
+      File(p.join(partial, 'app0', 'eboot.bin'))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('new');
+      final ticks = await ticksDuring(() => Installer.placeInstalled(partial, installed));
+      expect(ticks, greaterThan(0));
+      expect(File(p.join(installed, 'app0', 'eboot.bin')).readAsStringSync(), 'new');
+      expect(File(p.join(installed, '_sd', 'save.dat')).readAsStringSync(), 'saved', reason: 'the saves move over');
+      expect(Directory(p.join(installed, 'app0', 'data0')).existsSync(), isFalse);
+      expect(Directory(partial).existsSync(), isFalse);
+    });
+
+    test('measuring a dump to copy lets the screen go on', () async {
+      final source = Directory(p.join(temp.path, 'dump'))..createSync();
+      for (var index = 0; index < 1500; index++) {
+        File(p.join(source.path, 'data${index % 30}', 'file$index.bin'))
+          ..createSync(recursive: true)
+          ..writeAsStringSync('1234');
+      }
+      var size = 0;
+      final ticks = await ticksDuring(() async => size = await Installer.measurePayload(source.path));
+      expect(ticks, greaterThan(0));
+      expect(size, 1500 * 4);
+      expect(size, Installer.payloadSize(source.path));
     });
   });
 

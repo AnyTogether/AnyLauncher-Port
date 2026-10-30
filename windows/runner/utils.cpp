@@ -70,7 +70,8 @@ std::string Utf8FromUtf16(const wchar_t* utf16_string) {
 }
 
 std::wstring Utf16FromUtf8(const std::string& utf8_string) {
-  if (utf8_string.empty() || utf8_string.size() > INT_MAX) {
+  if (utf8_string.empty() ||
+      utf8_string.size() > static_cast<size_t>(INT_MAX)) {
     return std::wstring();
   }
   const int input_length = static_cast<int>(utf8_string.size());

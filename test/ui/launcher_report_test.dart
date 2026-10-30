@@ -106,5 +106,7 @@ void main() {
     expect(fixture.opened.single.queryParameters['log'], contains('older lines left out'));
     expect(fixture.copied.single, contains('line 0 '), reason: 'every line, the oldest too');
     expect(find.textContaining('the whole of it is on the clipboard'), findsOneWidget);
+    // The toast's own time.
+    await tester.pump(const Duration(seconds: 5));
   });
 }

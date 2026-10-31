@@ -231,6 +231,29 @@ void main() {
     await phone.close();
   });
 
+  test('a game is heard once it says hello on a bridge; before that a pad has nowhere to go', () async {
+    final (phone, welcome) = await paired('phone-1', 'Phone');
+    expect(remote.gameHeard, isFalse);
+    // A game whose engine does not read ANYPS5_REMOTE_PAD (upstream's) never says hello: the
+    // pad is dropped, not sent to the bridge port the game would have used.
+    final game = await FakeGame.open(remote.bridgePorts.first);
+    final got = <Datagram>[];
+    final subscription = game.received.listen(got.add);
+    final udp = await phone.openUdp();
+    udp.send(phone.input(welcome.session), InternetAddress.loopbackIPv4, welcome.udpPort);
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(got, isEmpty);
+    expect(remote.gameHeard, isFalse);
+    game.hello(player: 1);
+    await settle();
+    expect(remote.gameHeard, isTrue);
+    udp.send(phone.input(welcome.session, sequence: 2), InternetAddress.loopbackIPv4, welcome.udpPort);
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(got.map((datagram) => datagram.data), [phone.input(welcome.session, sequence: 2)]);
+    await subscription.cancel();
+    await phone.close();
+  });
+
   test('pad packets with another session or from an unpaired phone are dropped', () async {
     final (phone, welcome) = await paired('phone-1', 'Phone');
     final game = await FakeGame.open(remote.bridgePorts.first);

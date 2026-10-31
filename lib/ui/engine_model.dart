@@ -217,6 +217,16 @@ class EngineModel {
   /// Whether a toolkit's version.txt names an AnyPS5-ARM engine (`arm-<commit>`).
   static bool isArm(String? version) => version != null && version.startsWith('arm-');
 
+  /// Whether an engine (a toolkit's version.txt) reads the phones the launcher relays
+  /// (ANYPS5_REMOTE_PAD): true for AnyPS5-ARM's, false for upstream's release builds, which have
+  /// no phone input at all, null for a folder of the user's own, which the launcher cannot tell.
+  static bool? readsPhone(String? version) {
+    if (version == null) return null;
+    if (isArm(version)) return true;
+    if (ToolkitStore.upstreamVersion(version) != null) return false;
+    return null;
+  }
+
   /// Whether the engine in use reads ANYPS5_FULLSCREEN and ANYPS5_WINDOW_SIZE itself (AnyPS5-ARM's
   /// does; upstream's opens a window at 60% of the screen and goes full screen on F11).
   bool get readsDisplaySettings => isArm(app.toolkitVersion);

@@ -639,6 +639,17 @@ class RemoteServer {
     }
   }
 
+  /// Whether a game said hello on any bridge lately: its engine reads the phones. Upstream's
+  /// engine has no phone input and never says it, so the phones' pads go nowhere then.
+  bool get gameHeard {
+    final now = DateTime.now();
+    for (var slot = 0; slot < _bridges.length; slot++) {
+      final said = _gameHelloAt[slot];
+      if (said != null && now.difference(said) < _helloLapse) return true;
+    }
+    return false;
+  }
+
   /// Whether a game's bridge said it takes presses ([pressButtons] can reach it).
   bool get gameTakesPresses => _pressSlot != null;
 

@@ -3006,6 +3006,7 @@ class AppModel extends ChangeNotifier {
     }
     sounds.play(Cue.select);
     starting = game;
+    _phoneToldFor = null;
     // A game linked to its dump cannot start once the dump moved: said instead of a crash.
     if (await Installer.brokenLink(Installer.installedFolder(game, folder)) != null) {
       starting = null;
@@ -3052,12 +3053,16 @@ class AppModel extends ChangeNotifier {
         system: system,
         traced: traced,
         // The controllers at the start, in the log a crash report reads.
-        notes: [for (final line in controllers.reportLines) '[anyps5-launcher] controllers: $line'],
+        notes: [
+          for (final line in controllers.reportLines) '[anyps5-launcher] controllers: $line',
+          if (phonesConnected) '[anyps5-launcher] phones: ${_phoneReachNote(game)}',
+        ],
       );
       starting = null;
       running = (game, run);
       _stopped = false;
       stopping = false;
+      _checkPhoneReach(game);
       unawaited(_startReplay());
       crash.started(game, traced: traced);
       final began = DateTime.now();
@@ -3070,6 +3075,7 @@ class AppModel extends ChangeNotifier {
       together.gameChanged();
       _changed();
       final code = await run.exitCode;
+      _phoneAnswerTimer?.cancel();
       unawaited(together.onlineGameEnded());
       fonts.ended();
       together.recordPlay(game, began, DateTime.now(), exit: _stopped ? 'killed' : (code == 0 ? 'normal' : 'crashed'));
@@ -3789,6 +3795,57 @@ class AppModel extends ChangeNotifier {
     await buffer?.stop();
   }
 
+  // The phone in games.
+
+  /// Whether a phone or a browser pad is connected.
+  bool get phonesConnected => (remote?.connectedDevices.isNotEmpty ?? false) || browserPlay.pads.isNotEmpty;
+
+  /// Whether [game]'s engine reads the phones, from the engine it was unlocked with (the unlock
+  /// puts that engine's libraries in the game's folder): null when the launcher cannot tell.
+  bool? phoneReaches(Game game) => EngineModel.readsPhone(records[game.id]?.toolkit);
+
+  /// How long a game may stay quiet on the phones' bridges before the launcher says the phone
+  /// does not reach it. The engine says hello every second once the game's window is open.
+  Duration phoneAnswerWait = const Duration(seconds: 30);
+
+  String? _phoneToldFor;
+  Timer? _phoneAnswerTimer;
+
+  /// The game log's line on the phones at a start.
+  String _phoneReachNote(Game game) {
+    final engine = switch (phoneReaches(game)) {
+      true => 'AnyPS5-ARM engine, reads them',
+      false => "upstream's engine, which does not read them",
+      null => 'engine of unknown kind',
+    };
+    return '${remote?.connectedDevices.length ?? 0} phone(s), ${browserPlay.pads.length} browser pad(s), $engine';
+  }
+
+  /// With a phone connected, a game whose engine cannot read it is said at once (upstream's has
+  /// no phone input, so its pad went nowhere without a word). Any other game is said only when
+  /// it stayed quiet on the phones' bridges for [phoneAnswerWait]. Said once a game.
+  void _checkPhoneReach(Game game) {
+    if (_phoneToldFor == game.id || !phonesConnected) return;
+    if (phoneReaches(game) == false) return _phoneCannotReach(game, T.text('phoneUpstreamGame'));
+    _phoneAnswerTimer?.cancel();
+    _phoneAnswerTimer = Timer(phoneAnswerWait, () {
+      if (running?.$1 != game || _phoneToldFor == game.id || !phonesConnected) return;
+      if (remote?.gameHeard ?? true) return;
+      _phoneCannotReach(game, T.text('phoneNoAnswer'));
+    });
+  }
+
+  /// The toast, and over the game a desktop notice: the game's window hides the toast.
+  void _phoneCannotReach(Game game, String text) {
+    _phoneToldFor = game.id;
+    _phoneAnswerTimer?.cancel();
+    show(text);
+    if (launcherInFront) return;
+    unawaited(() async {
+      if (!await desktop.notify('AnyPS5', text)) desktopNotify('AnyPS5', text);
+    }());
+  }
+
   /// A capture said: the toast, and over the game a desktop notice.
   Future<void> _captureSaid(String text) async {
     show(text);
@@ -4389,6 +4446,14 @@ class AppModel extends ChangeNotifier {
               unawaited(value ? startPhoneServer() : stopPhoneServer());
             }),
           ),
+          // Upstream's engine has no phone input: said here before a game shows it.
+          if (preferences.phoneServer && EngineModel.readsPhone(toolkitVersion) == false)
+            PanelRow(
+              id: 'phoneUpstream',
+              title: T.text('phoneUpstream'),
+              detail: T.text('phoneUpstreamDetail'),
+              kind: const InfoRow(''),
+            ),
           if (preferences.phoneServer) ...browserPlay.settingsRows(),
           if (remote?.port case final int port)
             PanelRow(
@@ -5558,6 +5623,8 @@ class AppModel extends ChangeNotifier {
           _toldLibrary = null;
           _changed();
           _publishLook();
+          // A phone that comes while a game runs hears at once whether that game reads it.
+          if (running case (final Game playing, _)) _checkPhoneReach(playing);
         },
         disconnected: _changed,
         latency: (milliseconds) {
@@ -5788,6 +5855,7 @@ class AppModel extends ChangeNotifier {
     _trophyWatch?.cancel();
     _toastTimer?.cancel();
     _stopTimer?.cancel();
+    _phoneAnswerTimer?.cancel();
     _pulses.stop();
     _pads?.stop();
     _focusWatch?.cancel();

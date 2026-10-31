@@ -315,6 +315,33 @@ void main() {
       await server.nextFrame('heartbeat', test: (frame) => (frame['presence'] as Map)['state'] == 'online');
     });
 
+    test('a name or handle changed on the website shows when the launcher comes back or a screen opens', () async {
+      await until(() => model.together.connected);
+      await until(() => model.together.hub.self.loaded);
+      expect(model.together.myCard.name, 'Utku');
+      server.me
+        ..['displayName'] = 'Utku H'
+        ..['handle'] = 'utku_h';
+      // Read a moment ago: opening the friends panel again soon does not ask once more.
+      final reads = server.callsTo('me', method: 'GET').length;
+      model.open(Layer.friends);
+      expect(server.callsTo('me', method: 'GET').length, reads);
+      // Some time later the launcher comes back in front.
+      model.together.hub.self.readAt = DateTime.now().subtract(const Duration(minutes: 1));
+      model.setActive(false);
+      model.setActive(true);
+      await until(() => model.together.user?.displayName == 'Utku H');
+      expect(model.together.user?.handle, 'utku_h');
+      expect(model.together.myCard.name, 'Utku H');
+      final me = model.panelCategories().single.rows.firstWhere((row) => row.id == 'friends-me');
+      expect(me.person?.name, 'Utku H');
+      // And with the friends panel opened later on.
+      server.me['displayName'] = 'Utku Halis';
+      model.together.hub.self.readAt = DateTime.now().subtract(const Duration(minutes: 1));
+      model.open(Layer.friends);
+      await until(() => model.together.user?.displayName == 'Utku Halis');
+    });
+
     test('signed out on another device: signed out here too', () async {
       await until(() => model.together.connected);
       await server.dropSockets(4003);

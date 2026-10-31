@@ -52,11 +52,22 @@ void main() {
     await T.load();
   });
 
-  test('the files the launcher ships are its languages: English, then Türkçe', () async {
+  test('the files the launcher ships are its languages: English, then the others by their own names', () async {
     await T.load();
-    expect([for (final language in T.languages) language.code], ['en', 'tr']);
-    expect([for (final language in T.languages) language.displayName], ['English', 'Türkçe']);
-    expect([for (final language in T.languages) language.consoleLanguage], [1, 19]);
+    expect(
+      [for (final language in T.languages) language.code],
+      ['en', 'id', 'de', 'es', 'fr', 'pt', 'tr', 'ru', 'ur', 'ar', 'bho', 'hi', 'bn', 'ja'],
+    );
+    expect(T.languages.first.displayName, 'English');
+    final names = {for (final language in T.languages) language.code: language.displayName};
+    expect(names['de'], 'Deutsch');
+    expect(names['es'], 'Español');
+    expect(names['fr'], 'Français');
+    expect(names['pt'], 'Português');
+    expect(names['ja'], '日本語');
+    // No letter of a name was lost to a question mark when a file was saved.
+    expect(names.values.where((name) => name.contains('?')), isEmpty);
+    expect(Language.byCode('tr').consoleLanguage, 19);
     expect(Language.byCode('tr').displayName, 'Türkçe');
     expect(Language.byCode('xx'), Language.english);
     expect(Language.byCode(null), Language.english);
@@ -120,7 +131,11 @@ void main() {
     File('${folder.path}/tr.json').writeAsStringSync('{"languageName": "Türkçe", "back": "Dön"}');
     File('${folder.path}/en.json').writeAsStringSync('{"languageName": ');
     File('${folder.path}/notes.txt').writeAsStringSync('not a language');
-    await T.load(tryOut: folder);
+    final builtIn = _Bundle({
+      'assets/l10n/en.json': english,
+      'assets/l10n/tr.json': '{"languageName": "Türkçe", "back": "Geri"}',
+    });
+    await T.load(bundle: builtIn, tryOut: folder);
     expect([for (final language in T.languages) language.code], ['en', 'de', 'tr']);
     T.language = Language.byCode('tr');
     expect(T.text('back'), 'Dön');
@@ -129,8 +144,10 @@ void main() {
     T.language = Language.english;
     expect(T.text('back'), 'Back');
 
-    await T.load(tryOut: Directory('${folder.path}/missing'));
+    await T.load(bundle: builtIn, tryOut: Directory('${folder.path}/missing'));
     expect([for (final language in T.languages) language.code], ['en', 'tr']);
+    T.language = Language.byCode('tr');
+    expect(T.text('back'), 'Geri');
   });
 
   test('the console language comes from the file\'s code, not from the file', () async {
@@ -214,5 +231,25 @@ void main() {
     choice.set(1);
     expect(T.language.code, 'de');
     expect(model.preferences.language, 'de');
+  });
+
+  testWidgets('another language shows everywhere at once, the hint bar too', (tester) async {
+    await tester.runAsync(T.load);
+    final fixture = makeFixture();
+    addTearDown(fixture.dispose);
+    final model = fixture.model;
+    await pumpLauncher(tester, model);
+    expect(find.text('Move'), findsWidgets);
+    expect(find.text('Select'), findsWidgets);
+    model.open(Layer.settings);
+    final row = model.panelCategories().expand((category) => category.rows).firstWhere((row) => row.id == 'language');
+    (row.kind as ChoiceRow).set(T.languages.indexOf(Language.byCode('tr')));
+    model.closeOverlay();
+    await settle(tester);
+    // The home screen's hint bar is a const widget: it never rebuilt with its parent before.
+    expect(find.text('Move'), findsNothing);
+    expect(find.text('Select'), findsNothing);
+    expect(T.text('hintMove'), isNot('Move'));
+    expect(find.text(T.text('hintMove')), findsWidgets);
   });
 }

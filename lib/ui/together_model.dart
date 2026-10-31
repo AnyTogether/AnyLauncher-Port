@@ -8,7 +8,7 @@ import '../core/host.dart';
 import '../core/online/online_peer.dart';
 import '../core/online/online_peer_mesh.dart';
 import '../core/online/online_play.dart';
-import '../core/profiles/profiles.dart' show ProfileMode;
+import '../core/profiles/profiles.dart' show ProfileAccount, ProfileMode;
 import '../core/remote/remote_protocol.dart';
 import '../core/together/account.dart';
 import '../core/together/family.dart';
@@ -286,6 +286,13 @@ class TogetherModel {
       _signedIn = id;
       signedInChanged();
     }
+    // A handle changed on the website: the profile picker shows the new one.
+    final profile = app.profiles.book.currentProfile;
+    final handle = account.user?.handle;
+    final linked = profile?.account;
+    if (profile != null && linked != null && handle != null && linked.userId == id && linked.handle != handle) {
+      app.profiles.setAccount(profile.id, ProfileAccount(userId: linked.userId, handle: handle));
+    }
     app.refresh();
   }
 
@@ -413,6 +420,18 @@ class TogetherModel {
   }
 
   bool get connected => hub.socket.status == SocketStatus.ready;
+
+  /// How old the own profile may get while the launcher is in front, and when it comes back in
+  /// front or a screen showing it opens: a name or handle changed on the website shows here.
+  static const ownProfileAge = Duration(minutes: 5);
+  static const ownProfileAgeShown = Duration(seconds: 20);
+
+  /// Reads the own profile again when it is older than [age] (the launcher's clock asks a few
+  /// times a second, with [ownProfileAge]).
+  void refreshOwnProfile({Duration age = ownProfileAgeShown}) {
+    if (!signedIn || !connected) return;
+    unawaited(hub.self.refreshIfOlder(age));
+  }
 
   /// Friends see this user as offline (their choice); the socket and heartbeats go on as ever.
   bool get appearingOffline => hub.self.appearOffline;

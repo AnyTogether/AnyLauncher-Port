@@ -11,8 +11,18 @@ same rules.
 | Mac launcher | [`tools/macos/launcher/l10n`](https://github.com/AnyTogether/AnyPS5-ARM/tree/main/tools/macos/launcher/l10n) in AnyPS5-ARM |
 | Phone app (AnyPS5 Remote) | [`mobile/assets/l10n`](https://github.com/AnyTogether/AnyPS5-ARM/tree/main/mobile/assets/l10n) in AnyPS5-ARM |
 
-`en.json` is English, the source every other language is translated from; `tr.json` is
-Turkish. A hosted Weblate project is coming, where several people can translate one language
+`en.json` is English, the source every other language is translated from.
+
+The Windows/Linux launcher has these languages so far:
+
+| Language | File | Translated by |
+|---|---|---|
+| Turkish | `tr.json` | the AnyPS5 team |
+| German, Spanish, French, Portuguese, Indonesian, Russian, Japanese | `de`, `es`, `fr`, `pt`, `id`, `ru`, `ja` | VK |
+| Hindi, Bengali, Bhojpuri, Arabic, Urdu | `hi`, `bn`, `bho`, `ar`, `ur` | VK |
+
+Arabic and Urdu read right to left, but the launcher's screens are not mirrored for them yet.
+Improvements to any of these files are welcome, the same way as a new language. A hosted Weblate project is coming, where several people can translate one language
 at once in the browser; until then, translate the files as below. The files stay the same
 either way, so nothing you do now is lost.
 
@@ -78,9 +88,13 @@ code.
 - **Keep the JSON.** Every text is in double quotes and every line but the last ends with a
   comma. A double quote inside a text is written `\"`. Many editors (and GitHub, see below)
   point out a missing quote or comma.
+- **Save as UTF-8.** An editor or script that saves in another encoding turns every letter it
+  cannot write (é, ü, ñ, ç) into a question mark: `Espa?ol` instead of `Español`. Windows
+  PowerShell 5's `Set-Content` and `Out-File` do this unless given `-Encoding utf8`. Check your
+  file's `languageName` after saving.
 - **End descriptions as sentences.** A text whose key ends in `Detail`, `Hint`, `Subtitle`,
   `Text`, `Note`, `Description`, `Info` or `Explanation` is a sentence under a title or a row, and
-  ends with `.`, `!`, `?`, `…` or `:` (or your script's own mark, such as `。` or `؟`). Titles,
+  ends with `.`, `!`, `?`, `…` or `:` (or your script's own mark, such as `。`, `।`, `؟` or `۔`). Titles,
   buttons and labels do not.
 - Words such as AnyPS5, AnyTogether, DualSense, Steam, GitHub and file names stay as they are.
 

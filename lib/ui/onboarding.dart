@@ -123,13 +123,21 @@ class _StepTitle extends StatelessWidget {
 
 /// A card that turns white when chosen.
 class _ChoiceCard extends StatelessWidget {
-  const _ChoiceCard({required this.focused, required this.onTap, required this.child, this.width, this.height});
+  const _ChoiceCard({
+    required this.focused,
+    required this.onTap,
+    required this.child,
+    this.width,
+    this.height,
+    this.padding = 26,
+  });
 
   final bool focused;
   final VoidCallback onTap;
   final Widget child;
   final double? width;
   final double? height;
+  final double padding;
 
   @override
   Widget build(BuildContext context) {
@@ -145,7 +153,7 @@ class _ChoiceCard extends StatelessWidget {
           curve: Motion.settle,
           width: width,
           height: height,
-          padding: EdgeInsets.all(26 * scale),
+          padding: EdgeInsets.all(padding * scale),
           decoration: BoxDecoration(
             color: focused ? Colors.white : Colors.white.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(20 * scale),
@@ -186,15 +194,17 @@ class _LanguageStep extends StatelessWidget {
           ).copyWith(letterSpacing: 0.8),
         ),
         SizedBox(height: 16 * scale),
-        // A row of cards, a second one when the language files are more than fit.
+        // Rows of cards, AppModel.languageColumns to a row: the step's arrows move along them.
         Wrap(
-          runSpacing: 20 * scale,
+          spacing: 20 * scale,
+          runSpacing: 18 * scale,
           children: [
-            for (final (index, language) in T.languages.indexed) ...[
+            for (final (index, language) in T.languages.indexed)
               _ChoiceCard(
                 focused: model.onboardingChoice == index,
-                width: 280 * scale,
-                height: 150 * scale,
+                width: 200 * scale,
+                height: 96 * scale,
+                padding: 18,
                 onTap: () {
                   model.onboardingChoice = index;
                   model.onboardingConfirm();
@@ -208,24 +218,20 @@ class _LanguageStep extends StatelessWidget {
                       children: [
                         Text(
                           language.code.toUpperCase(),
-                          style: AppText.display(
-                            15 * scale,
-                            weight: FontWeight.w700,
-                            color: color.withValues(alpha: 0.6),
-                          ),
+                          style: AppText.display(13 * scale, weight: FontWeight.w700, color: color.withValues(alpha: 0.6)),
                         ),
-                        SizedBox(height: 10 * scale),
+                        SizedBox(height: 6 * scale),
                         Text(
                           language.displayName,
-                          style: AppText.display(28 * scale, weight: FontWeight.w500, color: color),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.display(22 * scale, weight: FontWeight.w500, color: color),
                         ),
                       ],
                     );
                   },
                 ),
               ),
-              SizedBox(width: 20 * scale),
-            ],
           ],
         ),
       ],

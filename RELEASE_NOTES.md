@@ -11,6 +11,21 @@ release when it is made.
   soft look. **FSR Sharpness** (shown with FSR 1) goes from 0, the sharpest, to 2 in AMD's stops;
   0.2 by default. It needs an AnyPS5-ARM engine with FSR 1; upstream's engine always scales
   bilinearly.
+- **Twelve more languages, by VK:** German, Spanish, French, Portuguese, Indonesian, Russian,
+  Japanese, Hindi, Bengali, Bhojpuri, Arabic and Urdu, in **Settings › Language**. Arabic and
+  Urdu read right to left, but the screens are not mirrored for them yet.
+- **A new language shows everywhere at once.** The hint bar at the bottom and a few other
+  texts kept the old language until the next start.
+- **A name or handle changed on the website shows in the launcher.** It reads your profile
+  again when the launcher comes back in front, every few minutes while it is in front, and
+  when Friends, your profile or Settings opens.
+- **A game dropped into the games folder as a .zip.** The launcher offers to unpack it into a
+  folder next to it, with its progress, and then reads it as any other game. A zip with a file
+  that would land outside that folder is refused, and the free space is checked first. A zip
+  of a newer version of a game in the library unpacks as that game's update.
+- **Add Update…** in a game's settings: choose the folder of the game's update dump, and it
+  goes next to the game as `<game folder>-UPDATE`. The game's own folder stays as it is, and
+  the next unlock applies the update.
 - **The launcher says when a game can't read the phone.** The phone controller reaches a game
   only through the AnyPS5-ARM engine. Upstream's engine has no phone input, so a game on it
   ignored the phone while the phone still moved the launcher, and nothing said why. Now a game

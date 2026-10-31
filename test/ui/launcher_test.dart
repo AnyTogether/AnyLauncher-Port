@@ -423,9 +423,11 @@ void main() {
       await press(tester, LogicalKeyboardKey.keyE);
       await press(tester, LogicalKeyboardKey.keyE);
       expect(model.panelCategories()[model.panelCategory].id, 'general');
+      // The next language after English, by its own name.
       await press(tester, LogicalKeyboardKey.arrowRight);
-      expect(T.language, Language.byCode('tr'));
-      expect(find.text('Dil'), findsWidgets);
+      expect(T.language, T.languages[1]);
+      expect(T.text('language'), isNot('Language'));
+      expect(find.text(T.text('language')), findsWidgets);
     });
 
     testWidgets('game settings change and are kept per game', (tester) async {
@@ -520,7 +522,9 @@ void main() {
       model.games = [];
       await pumpLauncher(tester, model);
       expect(find.text('Welcome to AnyPS5'), findsOneWidget);
-      await press(tester, LogicalKeyboardKey.arrowRight);
+      // Down is the next row of languages; Türkçe is the first of the second row.
+      await press(tester, LogicalKeyboardKey.arrowDown);
+      expect(T.languages.indexOf(Language.byCode('tr')), AppModel.languageColumns);
       expect(T.language, Language.byCode('tr'));
       expect(find.text("AnyPS5'e hoş geldin"), findsOneWidget);
       await press(tester, LogicalKeyboardKey.enter);

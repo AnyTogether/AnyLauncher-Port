@@ -27,8 +27,10 @@ connected, or always with Keep browser play on. Plain HTTP, so no tilt (browsers
 sensors to HTTPS pages only). The page is the macOS launcher's own file
 (`assets/browser_pad/index.html`, copied by `tool/sync_browser_pad.sh`).
 
-**Languages:** English and Turkish, one JSON file each in `assets/l10n`. A new language is one
-more file there, no code: see [TRANSLATING.md](TRANSLATING.md).
+**Languages:** English, Turkish, German, Spanish, French, Portuguese, Indonesian, Russian,
+Japanese, Hindi, Bengali, Bhojpuri, Arabic and Urdu, one JSON file each in `assets/l10n`. Arabic
+and Urdu read right to left, but the screens are not mirrored yet. A new language is one more
+file there, no code: see [TRANSLATING.md](TRANSLATING.md).
 
 ## Layout
 
@@ -404,6 +406,10 @@ use those once changed in the game.
 - **The online design comes from [AnyPlay](https://github.com/anyplaynet).** Our bridge between the engine and the launcher follows AnyPlay's bridge spec ([anyplaynet/network](https://github.com/anyplaynet/network/blob/main/spec/bridge-protocol.md), MIT/Apache-2.0): the frame header, the message numbering, the virtual LAN range and the A/B/C screening of games come from it. Stream P2P sockets over the bridge follow the approach of AnyPlay's engine bridge ([anyplaynet/AnyPS5](https://github.com/anyplaynet/AnyPS5), GPL-2.0).
 - **Ideas AnyPlay shipped first** ([anyplaynet/launcher](https://github.com/anyplaynet/launcher), [anyplaynet/cloud](https://github.com/anyplaynet/cloud)): "Try anyway" on a Play Together version mismatch, retiring old launchers with "Update required", asking before leave party / remove friend and similar actions, the noise suppression switch, the public profile switch and the compatibility filters.
 - **A phone browser as a controller via a QR code** comes from [LudusCtrl](https://github.com/parl0v/ludusctrl)'s browser client by Josip Parlov (@parl0v), shipped in AnyPlay.
+
+**Translations**
+
+- **VK** translated the launcher into German, Spanish, French, Portuguese, Indonesian, Russian, Japanese, Hindi, Bengali, Bhojpuri, Arabic and Urdu.
 
 Our code is written independently; where we followed someone's design or idea, it is named here.
 

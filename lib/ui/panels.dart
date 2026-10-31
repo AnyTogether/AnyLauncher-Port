@@ -172,6 +172,7 @@ class PanelView extends StatelessWidget {
       Layer.updateRequired,
       Layer.friendOptions,
       Layer.copyWarning,
+      Layer.gameFiles,
       Layer.quickMenu,
       Layer.closeGame,
       Layer.homeMenu,

@@ -134,6 +134,37 @@ void main() {
       expect(self.privateName, isNull);
     });
 
+    test('a name, handle or picture changed on the website replaces the kept one', () async {
+      expect(account.user?.handle, 'utku');
+      server.answers['GET me'] = (
+        200,
+        {
+          'account': {'id': 'u-me'},
+          'profile': {'handle': 'utku_h', 'displayName': 'Utku H', 'avatar': 'https://x/a.jpg'},
+        },
+      );
+      var told = 0;
+      account.addListener(() => told++);
+      await self.refreshIfOlder(const Duration(minutes: 5));
+      expect(account.user?.id, 'u-me');
+      expect(account.user?.handle, 'utku_h');
+      expect(account.user?.displayName, 'Utku H');
+      expect(account.user?.avatar, 'https://x/a.jpg');
+      expect(told, 1);
+      expect((await account.store.load())?.user.handle, 'utku_h', reason: 'kept for the next start');
+      // Read a moment ago: not again until it is older than asked.
+      final reads = server.calls.where((call) => call.path == 'me').length;
+      await self.refreshIfOlder(const Duration(minutes: 5));
+      expect(server.calls.where((call) => call.path == 'me').length, reads);
+      await self.refreshIfOlder(Duration.zero);
+      expect(server.calls.where((call) => call.path == 'me').length, reads + 1);
+      expect(told, 1, reason: 'nothing changed the second time');
+      // A server that fails is no error here.
+      server.answers['GET me'] = (500, {'error': 'internal'});
+      await self.refreshIfOlder(Duration.zero);
+      expect(account.user?.handle, 'utku_h');
+    });
+
     test('the private picture goes up as the picture itself and is removed', () async {
       server.answers['PUT me/avatar/private'] = (
         200,

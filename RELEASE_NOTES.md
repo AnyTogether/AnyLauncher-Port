@@ -11,6 +11,14 @@ release when it is made.
   soft look. **FSR Sharpness** (shown with FSR 1) goes from 0, the sharpest, to 2 in AMD's stops;
   0.2 by default. It needs an AnyPS5-ARM engine with FSR 1; upstream's engine always scales
   bilinearly.
+- **The launcher says when a game can't read the phone.** The phone controller reaches a game
+  only through the AnyPS5-ARM engine. Upstream's engine has no phone input, so a game on it
+  ignored the phone while the phone still moved the launcher, and nothing said why. Now a game
+  started on upstream's engine with a phone connected says so at once, in the launcher and as a
+  desktop notice over the game. A phone that connects during such a game hears it too. Settings ›
+  Phones says it while upstream's engine is in use. A game on an engine the launcher can't tell
+  (a folder of your own) is said only when it hasn't answered the phone for 30 seconds. The game
+  log notes the phones and the engine at each start.
 
 ## 0.1.16
 

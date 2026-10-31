@@ -968,11 +968,8 @@ class StateLabel extends StatelessWidget {
       Queued() => (Icons.schedule_rounded, T.text('queued'), dim),
       Installing(preparing: true, paused: true) => (Icons.pause_circle_rounded, T.text('preparingPaused'), dim),
       Installing(preparing: true) => (Icons.downloading_rounded, T.text('preparing'), accent),
-      Installing(:final step, updating: true) => (
-        Icons.sync_rounded,
-        compact ? T.text('stateUpdatingShort') : T.format('stateUpdating', [InstallSpan.title(step)]),
-        accent,
-      ),
+      // One string: the step is beside the game's buttons already.
+      Installing(updating: true) => (Icons.sync_rounded, T.text('stateUpdatingShort'), accent),
       Installing(:final step) => (Icons.downloading_rounded, InstallSpan.title(step), accent),
       WaitingForEngine(:final job, forThisGame: true) => (
         Icons.construction_rounded,
@@ -1054,8 +1051,9 @@ class HeroInfo extends StatelessWidget {
               focused: primaryFocused,
               prominent: true,
               stop: action.tone == ActionTone.danger,
-              progress: action.progress,
-              indeterminate: action.indeterminate,
+              // Installing has its own line beside the buttons: one progress bar, not two.
+              progress: state is Installing ? null : action.progress,
+              indeterminate: state is! Installing && action.indeterminate,
               progressColor: action.tone == ActionTone.busy && !primaryFocused ? accent : null,
               // Busy words count up: room enough that the button does not grow as they do.
               minWidth: action.tone == ActionTone.busy ? 270 : 210,

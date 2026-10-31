@@ -8,7 +8,8 @@ import 'socket.dart';
 /// The signed-in user's own side of AnyTogether that the lists do not carry: their trophy level,
 /// whether they appear offline and whether they send read receipts. Read from /me when the socket
 /// is ready; `level.up`, `presence.mode` and `messages.settings` keep it current, the last two
-/// from the user's other devices.
+/// from the user's other devices. /me's name, handle and picture replace the kept user's when
+/// they changed on the website ([refreshIfOlder] reads it again now and then).
 class SelfProfile with Notifier {
   SelfProfile({required this.account, required this.socket}) {
     _events = socket.events.listen(_event);
@@ -39,10 +40,38 @@ class SelfProfile with Notifier {
   int _changing = 0;
   int _changingReceipts = 0;
 
-  Future<void> refresh() async {
+  /// When /me was last read, null before the first time.
+  DateTime? readAt;
+  Future<void>? _reading;
+
+  /// Reads /me again unless it was read in the last [age] or a read is on its way: a name,
+  /// handle or picture changed on the website shows here (the server sends no event for it).
+  /// Never throws.
+  Future<void> refreshIfOlder(Duration age, {DateTime? now}) {
+    if (account.user == null) return Future.value();
+    final reading = _reading;
+    if (reading != null) return reading;
+    final read = readAt;
+    if (read != null && (now ?? DateTime.now()).difference(read) < age) return Future.value();
+    return refresh().catchError((Object _) {});
+  }
+
+  Future<void> refresh() {
+    final reading = _reading ??= _read();
+    return reading.whenComplete(() {
+      if (identical(_reading, reading)) _reading = null;
+    });
+  }
+
+  Future<void> _read() async {
+    final who = account.user?.id;
     final json = await account.call('GET', 'me');
+    // Signed out or someone else signed in meanwhile: the answer is not theirs.
+    if (account.user?.id != who) return;
+    readAt = DateTime.now();
     final profile = json['profile'];
     if (profile is Map<String, dynamic>) {
+      _adoptIdentity(profile);
       // An older server leaves the level out: what was known stays.
       if (profile.containsKey('trophyLevel')) level = TrophyLevel.fromJson(profile['trophyLevel']);
       // Not while a change of ours is on its way: that answer decides.
@@ -94,6 +123,17 @@ class SelfProfile with Notifier {
 
   static String? _text(Object? value) => value is String && value.trim().isNotEmpty ? value : null;
 
+  /// The name, handle and picture /me has: the kept user follows them when one changed.
+  void _adoptIdentity(Map<String, dynamic> profile) {
+    final user = account.user;
+    final handle = profile['handle'];
+    final displayName = profile['displayName'];
+    if (user == null || handle is! String || handle.isEmpty || displayName is! String) return;
+    final avatar = profile.containsKey('avatar') ? _text(profile['avatar']) : user.avatar;
+    if (handle == user.handle && displayName == user.displayName && avatar == user.avatar) return;
+    account.updateUser(TogetherUser(id: user.id, handle: handle, displayName: displayName, avatar: avatar));
+  }
+
   /// The friends-only name (PATCH /me/profile); blank clears it.
   Future<void> setPrivateName(String name) async {
     final trimmed = name.trim();
@@ -124,6 +164,7 @@ class SelfProfile with Notifier {
     appearOffline = false;
     readReceipts = true;
     loaded = false;
+    readAt = null;
     notifyListeners();
   }
 

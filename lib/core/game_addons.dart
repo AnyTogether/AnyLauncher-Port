@@ -169,6 +169,9 @@ abstract final class GameAddons {
   static String shortVersion(String version) =>
       version.endsWith('.000') && '.'.allMatches(version).length == 2 ? version.substring(0, version.length - 4) : version;
 
+  /// The dump's sce_sys/param.json in [folder], null when it has none that reads.
+  static Map<String, dynamic>? parameters(String folder) => _parameters(folder);
+
   static Map<String, dynamic>? _parameters(String folder) {
     try {
       var bytes = File(p.join(folder, 'sce_sys', 'param.json')).readAsBytesSync();

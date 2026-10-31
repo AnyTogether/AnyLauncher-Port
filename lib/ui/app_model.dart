@@ -70,6 +70,7 @@ import 'controllers_model.dart';
 import 'crash_model.dart';
 import 'engine_model.dart';
 import 'fonts_model.dart';
+import 'game_files_model.dart';
 import 'steam_model.dart';
 import 'glass.dart';
 import 'profile_picture.dart';
@@ -598,6 +599,10 @@ enum Layer {
 
   /// Escape on the home screen: Quit AnyPS5? (Cancel first).
   confirmQuit,
+
+  /// A zip in a games folder to unpack, or an update to put beside a game, and the job's
+  /// progress (game_files_model.dart).
+  gameFiles,
 
   /// "Who's playing?": the profiles' tiles and Add Profile (profiles_model.dart).
   profilePicker,
@@ -1141,6 +1146,8 @@ class AppModel extends ChangeNotifier {
     // Something copied in while the launcher was away shows at once.
     // (One watcher's scan reads every games folder.)
     if (value) _libraries.values.firstOrNull?.rescanSoon();
+    // A name or handle changed on the website meanwhile.
+    if (value) together.refreshOwnProfile();
     notifyListeners();
   }
 
@@ -1544,6 +1551,9 @@ class AppModel extends ChangeNotifier {
 
   /// The crash report of a game's last start, and detailed logging.
   late final CrashModel crash = CrashModel(this);
+
+  /// Zips dropped into the games folders and updates added from a folder.
+  late final GameFilesModel files = GameFilesModel(this);
 
   // The launcher's own crashes and stalls (core/launcher_health.dart).
 
@@ -2002,11 +2012,15 @@ class AppModel extends ChangeNotifier {
   /// second: Flutter's own focus report does not change on Windows when a game takes over).
   void checkFront() {
     final front = launcherInFront;
+    // The own profile, read again every few minutes while the launcher is in front.
+    if (front) together.refreshOwnProfile(age: TogetherModel.ownProfileAge);
     if (front == _shownInFront) return;
     _shownInFront = front;
     if (!front) {
       _gate?.close();
       haptics.launcherInFront = false;
+    } else {
+      together.refreshOwnProfile();
     }
     notifyListeners();
   }
@@ -2135,6 +2149,7 @@ class AppModel extends ChangeNotifier {
     folderCounts = survey.folders;
     _gameRoots = survey.roots;
     _takeScan(survey.games, quiet: _newlyConnected());
+    files.scanned(folders);
   }
 
   /// The games folders seen connected since the list last changed.
@@ -2172,6 +2187,8 @@ class AppModel extends ChangeNotifier {
       _newlyConnected();
       notifyListeners();
     }
+    // A zip dropped in (or one copied in further) is looked into.
+    files.scanned(folders);
     return [
       for (final path in survey.incomplete)
         if (p.equals(path, folder) || p.isWithin(folder, path)) path,
@@ -3278,6 +3295,10 @@ class AppModel extends ChangeNotifier {
       revealedTrophies = {};
     }
     if (next == Layer.trophies || next == Layer.gallery) _loadShots();
+    // The screens that show the own name and handle read them again first.
+    if (next == Layer.friends || next == Layer.profile || next == Layer.settings || next == Layer.profilePicker) {
+      together.refreshOwnProfile();
+    }
     // Friends' private picture links run out (6 to 12 hours): the list is read again.
     if ((next == Layer.friends || next == Layer.party || next == Layer.profile) &&
         together.signedIn &&
@@ -3514,6 +3535,9 @@ class AppModel extends ChangeNotifier {
       case Layer.signIn:
         _signInCommand(command);
         return;
+      case Layer.gameFiles when command == Command.back || command == Command.options:
+        files.back();
+        return;
       case Layer.friendOptions when command == Command.back || command == Command.options:
         // A question asked in place (together_ask.dart) is answered Cancel first.
         if (!together.cancelAsk()) open(Layer.friends, cue: Cue.back);
@@ -3522,6 +3546,7 @@ class AppModel extends ChangeNotifier {
           Layer.gameSettings ||
           Layer.confirmUninstall ||
           Layer.copyWarning ||
+          Layer.gameFiles ||
           Layer.updateChoice ||
           Layer.updateRequired ||
           Layer.friends ||
@@ -3940,6 +3965,8 @@ class AppModel extends ChangeNotifier {
             rows: _copyWarningRows(warning),
           ),
         ];
+      case Layer.gameFiles:
+        return [PanelCategory(id: 'files', title: files.title, rows: files.rows())];
       case Layer.friends:
         return [PanelCategory(id: 'friends', title: T.text('friendsTitle'), rows: together.friendRows())];
       case Layer.party:
@@ -4844,6 +4871,12 @@ class AppModel extends ChangeNotifier {
           (value) => change(settings.copyWith(shaderCache: value ? null : false)),
         ),
       ),
+      PanelRow(
+        id: 'addUpdate',
+        title: T.text('addUpdate'),
+        detail: T.text('addUpdateDetail'),
+        kind: ActionRow(() => unawaited(files.addUpdate(game))),
+      ),
       if (installed) ...[
         held(
           'reinstall',
@@ -5398,6 +5431,13 @@ class AppModel extends ChangeNotifier {
           onboardingChoice = onboardingChoice + 1;
           _previewChoice();
         }
+      // The languages are rows of cards: up and down move a row.
+      case Command.up || Command.down when onboardingStep == 0:
+        final next = onboardingChoice + (command == Command.down ? languageColumns : -languageColumns);
+        if (next >= 0 && next < _onboardingCount) {
+          onboardingChoice = next;
+          _previewChoice();
+        }
       case Command.select:
         onboardingConfirm();
       case Command.back:
@@ -5407,6 +5447,9 @@ class AppModel extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  /// How many language cards the first step has in a row.
+  static const languageColumns = 6;
 
   /// The language and theme steps show their choice at once.
   void _previewChoice() {
@@ -5757,6 +5800,7 @@ class AppModel extends ChangeNotifier {
     _prepareTimer?.cancel();
     engine.cancel();
     fonts.dispose();
+    files.dispose();
     together.dispose();
     updates.dispose();
     music.dispose();

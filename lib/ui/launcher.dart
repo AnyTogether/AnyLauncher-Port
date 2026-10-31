@@ -127,14 +127,38 @@ class _LauncherShellState extends State<LauncherShell> {
     }
   }
 
+  /// The language the screen was last drawn in.
+  String _drawnLanguage = T.language.code;
+
   /// Out of a text field: the keys come back to the launcher. Glass's window follows the look.
+  /// Another language redraws every widget.
   void _modelChanged() {
+    if (T.language.code != _drawnLanguage) {
+      _drawnLanguage = T.language.code;
+      _redrawAll();
+    }
     widget.model.applyBackdrop();
     if (widget.model.editingRow == null && !_focus.hasPrimaryFocus && mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && widget.model.editingRow == null && !_focus.hasPrimaryFocus) _focus.requestFocus();
       });
     }
+  }
+
+  /// Builds every widget below again. A const widget (the hint bar, a title) is skipped when its
+  /// parent rebuilds, so its texts would stay in the old language until the next start.
+  void _redrawAll() {
+    if (!mounted) return;
+    if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _redrawAll());
+      return;
+    }
+    void mark(Element element) {
+      element.markNeedsBuild();
+      element.visitChildren(mark);
+    }
+
+    (context as Element).visitChildren(mark);
   }
 
   @override

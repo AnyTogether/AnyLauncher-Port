@@ -8,12 +8,21 @@ extension TogetherProfiles on TogetherModel {
   /// How many can play in a session the launcher opens; the game itself may take fewer.
   static const sessionCapacity = 4;
 
-  Future<void> openMyProfile() {
+  Future<void> openMyProfile() async {
     final me = user;
-    if (me == null) return Future.value();
-    return openProfile(
+    if (me == null) return;
+    await openProfile(
       me.handle,
       card: Person(id: me.id, handle: me.handle, displayName: me.displayName, avatar: me.avatar),
+    );
+    // The handle changed on the website: the page is read again under the new one.
+    if (!profileFailed || app.overlay != Layer.profile) return;
+    await hub.self.refreshIfOlder(Duration.zero);
+    final now = user;
+    if (now == null || now.id != me.id || now.handle == me.handle || app.overlay != Layer.profile) return;
+    await openProfile(
+      now.handle,
+      card: Person(id: now.id, handle: now.handle, displayName: now.displayName, avatar: now.avatar),
     );
   }
 

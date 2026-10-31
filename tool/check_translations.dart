@@ -30,7 +30,7 @@ const descriptionEndings = ['Detail', 'Hint', 'Subtitle', 'Text', 'Note', 'Descr
 const notSentences = {'profileNameHint', 'engineDownloadDetail', 'togetherTitleDetail', 'engineDeleteOldDetail'};
 
 /// How a sentence may end, in the scripts the files may be written in.
-final _sentenceEnd = RegExp(r'[.!?…:。！？：．؟।։።;]\s*(\(%(\d\$)?[@d]\))?$');
+final _sentenceEnd = RegExp(r'[.!?…:。！？：．؟۔।։።;]\s*(\(%(\d\$)?[@d]\))?$');
 
 /// Whether [key] names a description that has to end as a sentence.
 bool isDescription(String key) =>

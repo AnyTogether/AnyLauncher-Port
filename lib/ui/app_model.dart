@@ -62,8 +62,11 @@ import '../core/together/talk_key.dart';
 import '../core/together/token_store.dart';
 import '../core/online/online_peer_mesh.dart';
 import '../core/together/voice_mesh.dart';
+import '../core/themes/theme_design.dart';
+import '../core/themes/theme_library.dart';
 import '../core/trophies.dart';
 import '../core/unlock_space.dart';
+import '../core/update_channel.dart';
 import 'browser_play.dart';
 import 'components.dart';
 import 'controllers_model.dart';
@@ -81,6 +84,7 @@ import 'update_model.dart';
 import 'trophy_card.dart';
 
 part 'profiles_model.dart';
+part 'themes_model.dart';
 
 /// The launcher's own choices, kept as JSON in the config folder.
 class Preferences {
@@ -94,6 +98,13 @@ class Preferences {
       _ => LookStyle.cosmic.index,
     }
     ..accent = json['accent'] as String?
+    ..customTheme = json['customTheme'] as String?
+    ..backdrop = switch (json['backdrop']) {
+      final String kind when Preferences.backdrops.contains(kind) => kind,
+      _ => 'theme',
+    }
+    ..backdropFile = json['backdropFile'] as String?
+    ..menuMusicFile = json['menuMusicFile'] as String?
     ..profileName = json['profileName'] as String? ?? ''
     ..gamesFolders = _folders(json['gamesFolders'], json['gamesFolder'])
     ..toolkitFolder = json['toolkitFolder'] as String?
@@ -120,6 +131,7 @@ class Preferences {
     ..soundVolume = (json['soundVolume'] as num?)?.toInt()
     ..musicVolume = (json['musicVolume'] as num?)?.toInt()
     ..engineSource = json['engineSource'] as String? ?? 'upstream'
+    ..updateChannel = json['updateChannel'] as String?
     ..engineGitBeforePlay = json['engineGitBeforePlay'] == true
     ..engineGitBuilt = {
       for (final entry in (json['engineGitBuilt'] as Map<String, dynamic>? ?? const {}).entries)
@@ -161,6 +173,20 @@ class Preferences {
   String language = 'en';
   int theme = 0;
   String? accent;
+
+  /// The id of the theme in use made in the Theme Studio or installed from a file (its folder
+  /// in the config folder's Themes); null for the built-in look [theme] and its [accent].
+  String? customTheme;
+
+  /// Settings › Appearance › Background: the theme's animation ('theme'), the user's own picture
+  /// ('image') or video ('video') in [backdropFile]. The macOS launcher's keys and values.
+  String backdrop = 'theme';
+  String? backdropFile;
+  static const backdrops = ['theme', 'image', 'video'];
+
+  /// Settings › Appearance › Menu Music: a song of the user's own that plays when the selected
+  /// game has none (a custom theme's own music comes first); null for none.
+  String? menuMusicFile;
 
   /// Empty until the first profile is made: it is then the profile's name (the language's word
   /// for a player when none was typed).
@@ -222,6 +248,9 @@ class Preferences {
   /// Which engine the settings offer: 'upstream' (boykopovar/AnyPS5) or 'arm' (AnyPS5-ARM's,
   /// with the phone controller, full screen and window size).
   String engineSource = 'upstream';
+
+  /// Settings › About › Update Channel: null for Stable, 'nightly' for Nightly (UpdateChannel).
+  String? updateChannel;
 
   /// Settings › AnyPS5 Engine › Update from Git Before Playing, for an engine folder that is a
   /// git checkout: pulled and built before a game starts when the remote has new commits.
@@ -291,6 +320,10 @@ class Preferences {
     'language': language,
     'theme': theme,
     'accent': accent,
+    'customTheme': customTheme,
+    'backdrop': backdrop,
+    'backdropFile': backdropFile,
+    'menuMusicFile': menuMusicFile,
     'profileName': profileName,
     'gamesFolders': gamesFolders,
     // The first one under the old name too, for an older launcher started again.
@@ -317,6 +350,7 @@ class Preferences {
     'musicVolume': musicVolume,
     'lastPlayed': lastPlayed,
     'engineSource': engineSource,
+    if (updateChannel != null) 'updateChannel': updateChannel,
     'engineGitBeforePlay': engineGitBeforePlay,
     'engineGitBuilt': engineGitBuilt,
     'fontsFolder': fontsFolder,
@@ -618,6 +652,13 @@ enum Layer {
 
   /// At start, after the launcher itself crashed or stopped responding: Send Report, Not Now.
   launcherReport,
+
+  /// Settings › Appearance › Themes: the built-in looks, the custom themes, the Studio and
+  /// Install from a File (themes_model.dart).
+  themes,
+
+  /// The Theme Studio: the theme in use changed live, the launcher behind it showing each change.
+  themeStudio,
 }
 
 /// A settings row the panels draw and the keyboard moves through.
@@ -787,6 +828,8 @@ class LauncherServices {
     this.fontClient,
     this.builtInFonts,
     this.saveFile,
+    this.saveFileAs,
+    this.pickFile,
     this.pickImage,
     this.systemInfo,
     this.startDetached,
@@ -824,6 +867,13 @@ class LauncherServices {
 
   /// Asks the user where to save a file, [suggestedName] first; null when they cancelled.
   final Future<String?> Function(String suggestedName)? saveFile;
+
+  /// Asks the user where to save a file of a kind ([label], its [extensions]); null when they
+  /// cancelled.
+  final Future<String?> Function(String suggestedName, String label, List<String> extensions)? saveFileAs;
+
+  /// Asks the user for a file of a kind ([label], its [extensions]); null when they cancelled.
+  final Future<String?> Function(String label, List<String> extensions)? pickFile;
 
   /// This computer for a crash report; read from the system when not given.
   final Future<SystemInfo> Function()? systemInfo;
@@ -1112,6 +1162,10 @@ class AppModel extends ChangeNotifier {
   /// The selected game's theme song.
   late final ThemeMusic music = ThemeMusic(_audio, decode: services.decodeSong);
 
+  /// The themes made in the Theme Studio or installed from files (themes_model.dart).
+  late final ThemeLibrary themes = ThemeLibrary(p.join(paths.config, 'Themes'));
+  late List<ThemeDesign> designs = themes.all;
+
   /// Whether the launcher's window is in front: the theme song plays only then.
   bool active = true;
 
@@ -1156,7 +1210,8 @@ class AppModel extends ChangeNotifier {
   /// while a game is in front.
   void _updateMusic() {
     final quiet = !preferences.onboarded || !active || running != null || starting != null || musicVolume == 0;
-    music.play(quiet ? null : selectedGame);
+    // The theme's (or the user's own) menu music when the selected game has no song.
+    music.play(quiet ? null : selectedGame, fallback: quiet ? null : menuMusic);
     // With the game in front, the launcher says nothing.
     sounds.muted = running != null && !active;
   }
@@ -1949,7 +2004,22 @@ class AppModel extends ChangeNotifier {
   String? remoteError;
   RemoteMessage? _toldLibrary;
 
-  LookStyle get look => LookStyle.fromIndex(preferences.theme);
+  /// Settings › About › Update Channel.
+  UpdateChannel get updateChannel => UpdateChannel.of(preferences.updateChannel);
+
+  /// A new update channel: the engine picker and the launcher's own update ask for it at once.
+  /// Stable offers a release only when it is newer than what is in use, so going back to Stable
+  /// never installs an older engine or launcher.
+  void setUpdateChannel(UpdateChannel channel) {
+    if (channel == updateChannel) return;
+    preferences.updateChannel = channel.saved;
+    savePreferences();
+    engine.channelChanged();
+    updates.channelChanged();
+  }
+
+  /// The animated background in use: the custom theme's when one is used.
+  LookStyle get look => LookStyle.fromIndex(activeDesign?.style ?? preferences.theme);
 
   /// Glass gave up its transparency: the GPU took too long to draw it (RasterWatch), this run or
   /// an earlier one (kept as Preferences.glassTooSlow).
@@ -2039,8 +2109,17 @@ class AppModel extends ChangeNotifier {
     checkFront();
   }
 
-  Accent get accentChoice =>
+  /// The built-in accent chosen in Settings › Appearance (or the look's own).
+  Accent get builtInAccent =>
       Accent.values.firstWhere((accent) => accent.name == preferences.accent, orElse: () => look.defaultAccent);
+
+  /// The accent in use: a custom theme's own colour, else the built-in one.
+  AccentChoice get accentChoice {
+    final design = activeDesign;
+    if (design == null) return AccentChoice(builtInAccent.color, index: builtInAccent.index);
+    final rgb = design.accentRgb;
+    return AccentChoice(Color.fromRGBO((rgb.r * 255).round(), (rgb.g * 255).round(), (rgb.b * 255).round(), 1));
+  }
 
   Game? get selectedGame => games.isEmpty ? null : games[selected.clamp(0, games.length - 1)];
 
@@ -3564,7 +3643,9 @@ class AppModel extends ChangeNotifier {
           Layer.homeMenu ||
           Layer.confirmQuit ||
           Layer.launcherReport ||
-          Layer.profileMenu:
+          Layer.profileMenu ||
+          Layer.themes ||
+          Layer.themeStudio:
         _panelCommand(command);
         return;
       case null:
@@ -4032,6 +4113,10 @@ class AppModel extends ChangeNotifier {
         return [PanelCategory(id: 'family', title: T.text('familyTitle'), rows: together.family.rows())];
       case Layer.crashReport:
         return [PanelCategory(id: 'report', title: T.text('reportKicker'), rows: crash.rows())];
+      case Layer.themes:
+        return [PanelCategory(id: 'themes', title: T.text('themes'), rows: themeRows())];
+      case Layer.themeStudio:
+        return [PanelCategory(id: 'studio', title: T.text('themeStudio'), rows: studioRows())];
       case Layer.friendOptions:
         return [
           PanelCategory(
@@ -4307,21 +4392,8 @@ class AppModel extends ChangeNotifier {
         id: 'appearance',
         title: T.text('appearance'),
         rows: [
-          PanelRow(
-            id: 'theme',
-            title: T.text('theme'),
-            kind: ChoiceRow([for (final style in LookStyle.values) style.title], look.index, (index) {
-              preferences
-                ..theme = index
-                ..accent = null;
-              // Glass picked again: its transparency gets another try on this graphics card.
-              if (index == LookStyle.glass.index) {
-                preferences.glassTooSlow = false;
-                glassFallback = false;
-              }
-              savePreferences();
-            }),
-          ),
+          // The theme, built-in or custom (themes_model.dart).
+          ...appearanceThemeRows(),
           // Only Glass has transparency to reduce.
           if (look == LookStyle.glass)
             PanelRow(
@@ -4351,14 +4423,18 @@ class AppModel extends ChangeNotifier {
                 },
               ),
             ),
-          PanelRow(
-            id: 'accent',
-            title: T.text('accent'),
-            kind: ChoiceRow([for (final accent in Accent.values) accent.title], accentChoice.index, (index) {
-              preferences.accent = Accent.values[index].name;
-              savePreferences();
-            }),
-          ),
+          // A custom theme brings its own accent.
+          if (activeDesign == null)
+            PanelRow(
+              id: 'accent',
+              title: T.text('accent'),
+              kind: ChoiceRow([for (final accent in Accent.values) accent.title], builtInAccent.index, (index) {
+                preferences.accent = Accent.values[index].name;
+                savePreferences();
+              }),
+            ),
+          // Themes and the Theme Studio.
+          ...appearanceThemeLinks(),
           // Over the see-through window the picture is laid only when asked for.
           if (glassWindow.seeThrough)
             PanelRow(
@@ -4379,6 +4455,8 @@ class AppModel extends ChangeNotifier {
                 savePreferences();
               }),
             ),
+          // Background (the theme's animation, a picture or a video) and Menu Music.
+          ...appearanceMediaRows(),
           PanelRow(
             id: 'fullscreen',
             title: T.text('launcherFullscreen'),
@@ -5309,7 +5387,12 @@ class AppModel extends ChangeNotifier {
         }
       case Command.back || Command.options:
         // A question asked in place (together_ask.dart) is answered Cancel first.
-        if (!together.cancelAsk()) closeOverlay();
+        if (together.cancelAsk()) break;
+        if (overlay == Layer.themes || overlay == Layer.themeStudio) {
+          backFromThemes();
+        } else {
+          closeOverlay();
+        }
       default:
         break;
     }
@@ -5820,8 +5903,8 @@ class AppModel extends ChangeNotifier {
   void _publishLook() {
     remote?.publish(
       RemoteLook(
-        deep: LookStyle.hex(look.deep),
-        middle: LookStyle.hex(look.middle),
+        deep: LookStyle.hex(palette.deep),
+        middle: LookStyle.hex(palette.middle),
         accent: LookStyle.hex(accentChoice.color),
       ),
     );

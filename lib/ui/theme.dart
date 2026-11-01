@@ -35,9 +35,27 @@ enum LookStyle {
   static LookStyle fromIndex(Object? index) =>
       index is int && index >= 0 && index < values.length ? values[index] : LookStyle.cosmic;
 
+  /// Deep, middle and bright together.
+  ThemePalette get palette => (deep: deep, middle: middle, bright: bright);
+
   /// The theme's colors as #RRGGBB, for the phone to wear.
   static String hex(Color color) =>
       '#${[color.r, color.g, color.b].map((c) => (c * 255).round().toRadixString(16).padLeft(2, '0')).join().toUpperCase()}';
+}
+
+/// The background's deep, middle and bright tones (a built-in look's, or a custom theme's).
+typedef ThemePalette = ({Color deep, Color middle, Color bright});
+
+/// The accent in use: one of [Accent]'s, or a custom theme's own colour.
+class AccentChoice {
+  const AccentChoice(this.color, {this.index});
+  final Color color;
+
+  /// The built-in accent's place in [Accent.values]; null for a theme's own colour.
+  final int? index;
+
+  /// The ink for words and glyphs drawn on this accent.
+  Color get ink => Contrast.inkOn(color);
 }
 
 enum Accent {

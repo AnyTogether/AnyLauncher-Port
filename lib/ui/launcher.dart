@@ -11,6 +11,7 @@ import '../core/gamepad/feel.dart';
 import '../core/gamepad/shortcuts.dart';
 import '../core/together/levels.dart';
 import 'app_model.dart';
+import 'theme_studio_view.dart';
 import 'browser_play.dart';
 import 'compare_view.dart';
 import 'components.dart';
@@ -397,7 +398,7 @@ class _LauncherShellState extends State<LauncherShell> {
                                 seeThrough: model.glassWindow.seeThrough,
                                 child: _WindowBase(
                                   window: model.glassWindow,
-                                  deep: model.look.deep,
+                                  deep: model.palette.deep,
                                   child: Stack(
                                     fit: StackFit.expand,
                                     children: [
@@ -449,6 +450,7 @@ class _LauncherShellState extends State<LauncherShell> {
                                               Layer.gallery => GalleryView(model: model),
                                               Layer.profilePicker => ProfilePickerView(model: model),
                                               Layer.addProfile => AddProfileView(model: model),
+                                              Layer.themeStudio => ThemeStudioView(model: model),
                                               Layer.messages => WithBackPill(
                                                 onBack: () => model.handle(Command.back),
                                                 titleLine: (side: 80, top: 60),

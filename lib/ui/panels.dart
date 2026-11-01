@@ -202,6 +202,8 @@ class PanelView extends StatelessWidget {
       Layer.party => T.text('partyTitle'),
       Layer.controls => T.text('controls'),
       Layer.gameSettings => T.text('gameSettings'),
+      // Appearance › Themes.
+      Layer.themes => T.text('appearance'),
       _ => category.title,
     };
     return _Scrim(

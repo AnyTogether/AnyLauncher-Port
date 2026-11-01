@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 
 import 'ui/soloud_audio.dart';
 import 'core/desktop/desktop.dart';
+import 'core/desktop/file_types.dart';
 import 'core/desktop/linux_desktop.dart';
 import 'core/desktop/window_backdrop.dart';
 import 'core/desktop/windows_desktop.dart';
@@ -17,6 +18,7 @@ import 'core/controllers/pad_reader.dart';
 import 'core/controllers/troubleshooter.dart';
 import 'core/app_update.dart';
 import 'core/host.dart';
+import 'core/launcher_handoff.dart';
 import 'core/launcher_health.dart';
 import 'core/release_signing.dart';
 import 'core/steam/steam_launch.dart';
@@ -37,8 +39,13 @@ late final AppLifecycleListener _exit;
 
 Future<void> main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
+  final paths = AppPaths.forSystem(HostSystem.current);
+  // A theme file opened while a launcher already runs goes to that one; this one quits before it
+  // shows a window.
+  final opened = LauncherHandoff.files(arguments).where(LauncherThemes.isThemeFile).toList();
+  if (opened.isNotEmpty && await LauncherHandoff.send(paths.config, opened)) exit(0);
   // The built-in languages, and any file a translator put in the Languages folder to try it.
-  await T.load(tryOut: Directory(p.join(AppPaths.forSystem(HostSystem.current).config, 'Languages')));
+  await T.load(tryOut: Directory(p.join(paths.config, 'Languages')));
   final options = LaunchOptions.parse(arguments);
   final padLog = Platform.environment['ANYPS5_PAD_LOG'];
   final DesktopWindows desktop = Platform.isWindows
@@ -59,7 +66,6 @@ Future<void> main(List<String> arguments) async {
     final LinuxDesktop linux => LinuxBackdrop(linux),
     _ => Platform.isWindows ? WindowsBackdrop() : const NoBackdrop(),
   };
-  final paths = AppPaths.forSystem(HostSystem.current);
   // The launcher's own crashes and long stalls, offered as a report at the next start.
   final health = LauncherHealth(
     p.join(paths.logs, 'Launcher'),
@@ -102,6 +108,13 @@ Future<void> main(List<String> arguments) async {
           XTypeGroup(label: 'Text', extensions: ['txt']),
         ],
       ))?.path,
+      saveFileAs: (name, label, extensions) async => (await getSaveLocation(
+        suggestedName: name,
+        acceptedTypeGroups: [XTypeGroup(label: label, extensions: extensions)],
+      ))?.path,
+      pickFile: (label, extensions) async => (await openFile(
+        acceptedTypeGroups: [XTypeGroup(label: label, extensions: extensions)],
+      ))?.path,
       engineReleases: GitHubReleases(),
       launcherReleases: LauncherUpdates.source(),
       audio: SoloudAudio.new,
@@ -126,8 +139,15 @@ Future<void> main(List<String> arguments) async {
   // The runner takes this run's marker away once the window has closed and Flutter has shut
   // down: a crash while closing still leaves it for the next start to report.
   health.runnerRemovesMarker = await window.removeAfterClose(health.markerPath);
+  // Theme files opened while this launcher runs (handed over by the next one started for them).
+  final handoff = await LauncherHandoff.listen(paths.config, (path) {
+    if (!LauncherThemes.isThemeFile(path)) return;
+    unawaited(model.installTheme(path));
+    unawaited(model.desktop.raiseLauncher());
+  });
   _exit = AppLifecycleListener(
     onExitRequested: () async {
+      await handoff?.close();
       closing();
       return AppExitResponse.exit;
     },
@@ -173,6 +193,21 @@ Future<void> main(List<String> arguments) async {
   unawaited(model.engine.startupCheck());
   unawaited(model.updates.startupCheck());
   runApp(AnyPS5App(model: model));
+  // .anyps5theme files open with this launcher (the zip, the AppImage and the archive install
+  // nothing that would say so); not for a development build.
+  if (!kDebugMode) {
+    unawaited(
+      ThemeFileType(
+        system: HostSystem.current,
+        executable: ThemeFileType.launcherProgram(Platform.environment),
+        environment: Platform.environment,
+      ).register(),
+    );
+  }
+  // Theme files this launcher was opened with: installed and used.
+  for (final file in opened) {
+    unawaited(model.installTheme(file));
+  }
   // A game's Steam shortcut: straight into the game.
   if (options.play case final String titleId when model.preferences.onboarded) {
     unawaited(model.playAtLaunch(titleId, quitAfter: model.steamLaunch.fromSteam));

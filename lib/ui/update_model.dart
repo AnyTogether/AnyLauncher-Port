@@ -8,6 +8,7 @@ import '../core/audio/tones.dart';
 import '../core/gamepad/feel.dart' show HapticCue;
 import '../core/host.dart';
 import '../core/toolkit_download.dart';
+import '../core/update_channel.dart';
 import '../core/update_notice.dart';
 import '../core/together/account.dart';
 import 'app_model.dart';
@@ -102,7 +103,11 @@ class LauncherUpdateModel {
     checkError = null;
     app.refresh();
     try {
-      latest = await source.latest();
+      // Stable: the release GitHub calls latest. Nightly: the newest of the recent ones,
+      // pre-releases too, in the order releases come out.
+      latest = app.updateChannel == UpdateChannel.nightly
+          ? ChannelReleases.newest(await source.all(), UpdateChannel.nightly)
+          : await source.latest();
       lastCheck = DateTime.now();
       if (!quiet) {
         app.show(
@@ -116,6 +121,14 @@ class LauncherUpdateModel {
       checking = false;
       app.refresh();
     }
+  }
+
+  /// The update channel changed: what the other channel found no longer counts (a download
+  /// ready for it is no longer offered, since [latest] names another release), and the new
+  /// channel is asked at once.
+  void channelChanged() {
+    latest = null;
+    unawaited(check());
   }
 
   /// At start: a quiet look, then the same every six hours while the launcher stays open.
@@ -339,6 +352,18 @@ class LauncherUpdateModel {
           _ => T.format('desktopNewest', [release?.version ?? '', current]),
         },
         kind: ActionRow(() => unawaited(check())),
+      ),
+      PanelRow(
+        id: 'updateChannel',
+        title: T.text('updateChannel'),
+        detail: T.text(
+          app.updateChannel == UpdateChannel.nightly ? 'updateChannelNightlyDetail' : 'updateChannelStableDetail',
+        ),
+        kind: ChoiceRow(
+          [T.text('channelStable'), T.text('channelNightly')],
+          app.updateChannel.index,
+          (index) => app.setUpdateChannel(UpdateChannel.values[index]),
+        ),
       ),
     ].nonNulls.toList();
   }

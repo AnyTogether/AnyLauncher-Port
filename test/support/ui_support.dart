@@ -164,6 +164,8 @@ Fixture makeFixture({
   Future<int> Function(String folder)? folderSize,
   Future<String?> Function(String title)? pickFolder,
   Future<String?> Function()? pickImage,
+  Future<String?> Function(String label, List<String> extensions)? pickFile,
+  Future<String?> Function(String suggestedName, String label, List<String> extensions)? saveFileAs,
   CommandRunner? commands,
 }) {
   final opened = <Uri>[];
@@ -207,6 +209,8 @@ Fixture makeFixture({
       computerName: 'Desk',
       pickFolder: pickFolder ?? (_) async => root,
       pickImage: pickImage,
+      pickFile: pickFile,
+      saveFileAs: saveFileAs,
       advertise: false,
       preferredPorts: false,
       cable: false,

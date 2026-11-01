@@ -106,6 +106,12 @@ release when it is made.
   input settings from its .pak files and writes the game's action under each pad button, such as
   Jump under Cross. It reads them once, the first time the page opens. Games with encrypted paks,
   Oodle compression or only Enhanced Input assets show nothing extra.
+- **Your game on Discord.** With Discord open, your profile shows the game you play and for how
+  long, as the Mac launcher does. A game Discord knows shows under its own name and icon. In a
+  party it says **In a party** with the party's size, and a **Join on AnyTogether** button opens
+  the party's join page. You still say yes to whoever asks. Both are on by default and switch off
+  in **Settings › Behaviour**: **Show the game you play on Discord** and **Show a Join button on
+  Discord**.
 
 ## 0.1.17
 

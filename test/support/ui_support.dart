@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:anyps5_desktop/core/discord_presence.dart';
 import 'package:anyps5_desktop/core/engine_checkout.dart';
 import 'package:anyps5_desktop/core/audio/atrac9.dart';
 import 'package:anyps5_desktop/core/audio/audio_out.dart';
@@ -171,6 +172,7 @@ Fixture makeFixture({
   Future<String?> Function(String title)? pickFolder,
   Future<String?> Function()? pickImage,
   CommandRunner? commands,
+  DiscordPresence Function()? discord,
 }) {
   final opened = <Uri>[];
   final copied = <String>[];
@@ -254,6 +256,8 @@ Fixture makeFixture({
       // An Unreal game's own controls at once, read from its paks.
       gameControls: gameControls ?? (folder) => SynchronousFuture(UnrealControls.read(folder)),
       commands: commands,
+      discord: discord,
+      discordGames: (_) async => null,
       systemInfo: () async =>
           const SystemInfo(os: 'Ubuntu 24.04.1 LTS, kernel 6.8.0-45-generic', cpu: 'AMD Ryzen 7 5800X', memoryGB: 32),
     ),

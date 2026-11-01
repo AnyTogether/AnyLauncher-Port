@@ -384,9 +384,17 @@ extension TogetherParty on TogetherModel {
     app.show(T.format('gameInvited', [person.displayName]));
   });
 
-  Future<void> newJoinCode() => _partyCall(() => hub.parties.newCode());
+  Future<void> newJoinCode() {
+    // A code the user makes again: Discord's Join button may use one again too.
+    if (hub.parties.party case final party?) app.discord.codeMadeByUser(party.id);
+    return _partyCall(() => hub.parties.newCode());
+  }
 
-  Future<void> stopJoinCode() => _partyCall(() => hub.parties.stopCode());
+  Future<void> stopJoinCode() {
+    // Stopped here: no code is made for Discord's Join button in its place.
+    if (hub.parties.party case final party?) app.discord.codeStoppedByUser(party.id);
+    return _partyCall(() => hub.parties.stopCode());
+  }
 
   Future<void> answerRequest(Person person, {required bool accept}) => _partyCall(() async {
     await hub.parties.answerRequest(person.id, accept: accept);

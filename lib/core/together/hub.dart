@@ -8,6 +8,7 @@ import 'notifier.dart';
 import 'parties.dart';
 import 'profiles.dart';
 import 'self.dart';
+import 'social.dart';
 import 'socket.dart';
 import 'voice.dart';
 import 'voice_mesh.dart';
@@ -29,6 +30,7 @@ class TogetherHub with Notifier {
     messages = Messages(account: account, socket: this.socket)..addListener(notifyListeners);
     parties = Parties(account: account, socket: this.socket)..addListener(notifyListeners);
     games = GameSessions(account: account, socket: this.socket, bridgeFile: bridgeFile)..addListener(notifyListeners);
+    social = Social(account: account, socket: this.socket)..addListener(notifyListeners);
     voice = Voice(account: account, socket: this.socket, parties: parties, engine: voiceEngine)
       ..addListener(notifyListeners);
     account.addListener(_accountChanged);
@@ -45,6 +47,9 @@ class TogetherHub with Notifier {
   late final Parties parties;
   late final Voice voice;
   late final GameSessions games;
+
+  /// The activity feed, the leaderboards and the notifications.
+  late final Social social;
   final Profiles profiles;
   String? _user;
 
@@ -65,6 +70,7 @@ class TogetherHub with Notifier {
     messages.clear();
     parties.clear();
     games.clear();
+    social.clear();
     if (user != null) socket.start();
     notifyListeners();
   }
@@ -77,6 +83,7 @@ class TogetherHub with Notifier {
     voice.dispose();
     parties.dispose();
     games.dispose();
+    social.dispose();
     socket.dispose();
   }
 }

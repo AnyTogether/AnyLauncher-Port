@@ -45,7 +45,12 @@ void main() {
       {'trophyId': 9, 'grade': 'silver', 'hidden': true, 'texts': null, 'rarity': null, 'rarityLabel': null},
     ],
     'trophyCount': 3,
-    'reactions': reactions ?? {'counts': {'fire': 2, 'heart': 0}, 'mine': null},
+    'reactions':
+        reactions ??
+        {
+          'counts': {'fire': 2, 'heart': 0},
+          'mine': null,
+        },
   };
 
   Map<String, dynamic> notice(String id, String kind, {bool read = false, Map<String, dynamic>? data}) => {
@@ -99,8 +104,7 @@ void main() {
     });
 
     test('the feed: newest first by ID, one item per ID, older pages after', () {
-      final feed = FeedList()
-        ..load([Activity.fromJson(activity('03'))!, Activity.fromJson(activity('01'))!], 'next-1');
+      final feed = FeedList()..load([Activity.fromJson(activity('03'))!, Activity.fromJson(activity('01'))!], 'next-1');
       feed.upsert(Activity.fromJson(activity('02'))!);
       expect(feed.items.map((item) => item.id), ['03', '02', '01']);
       feed.upsert(Activity.fromJson(activity('02', kind: 'platinum'))!);
@@ -156,7 +160,10 @@ void main() {
       expect(NoticeKind.friendRequest.toastsOnItsOwn, isFalse);
       final list = NoticeList()
         ..load(
-          [Notice.fromJson(notice('02', 'message', data: {'count': 3, 'text': 'hi'}))!, Notice.fromJson(notice('01', 'warning'))!],
+          [
+            Notice.fromJson(notice('02', 'message', data: {'count': 3, 'text': 'hi'}))!,
+            Notice.fromJson(notice('01', 'warning'))!,
+          ],
           unread: 2,
           more: true,
         );
@@ -322,7 +329,10 @@ void main() {
       server.answers['me/notifications'] = (
         200,
         {
-          'notifications': [notice('02', 'message', data: {'text': 'see you at nine'}), notice('01', 'friend_request')],
+          'notifications': [
+            notice('02', 'message', data: {'text': 'see you at nine'}),
+            notice('01', 'friend_request'),
+          ],
           'unread': 2,
           'more': false,
         },
@@ -341,7 +351,10 @@ void main() {
       server.answers['me/notifications/unread'] = (200, {'unread': 1});
       socket.start();
       await until(() => socket.status == SocketStatus.ready);
-      server.push('notification', {'notification': notice('03', 'warning', data: {'reason': 'Spam'}), 'unread': 2});
+      server.push('notification', {
+        'notification': notice('03', 'warning', data: {'reason': 'Spam'}),
+        'unread': 2,
+      });
       await until(() => social.notices.unread == 2);
       expect(social.notices.items.first.id, '03');
       expect(toasts.single.data['reason'], 'Spam');

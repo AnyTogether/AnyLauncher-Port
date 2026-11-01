@@ -303,7 +303,11 @@ class _Lines extends StatelessWidget {
                   BoardGap() => Padding(
                     padding: EdgeInsets.symmetric(vertical: 4 * scale),
                     child: Center(
-                      child: Icon(Icons.more_horiz_rounded, size: 22 * scale, color: Colors.white.withValues(alpha: 0.4)),
+                      child: Icon(
+                        Icons.more_horiz_rounded,
+                        size: 22 * scale,
+                        color: Colors.white.withValues(alpha: 0.4),
+                      ),
                     ),
                   ),
                   BoardUnlisted(:final rank, :final value) => _UnlistedRow(
@@ -411,10 +415,7 @@ class _EntryRow extends StatelessWidget {
                       ],
                     ],
                   ),
-                  Text(
-                    '@${entry.user.handle}',
-                    style: AppText.display(13 * scale, color: ink.withValues(alpha: 0.55)),
-                  ),
+                  Text('@${entry.user.handle}', style: AppText.display(13 * scale, color: ink.withValues(alpha: 0.55))),
                 ],
               ),
             ),
@@ -546,7 +547,11 @@ class _RankCard extends StatelessWidget {
                 SizedBox(width: 10 * scale),
                 Text(
                   T.format('socialBoardOf', [board.total]),
-                  style: AppText.display(16 * scale, weight: FontWeight.w500, color: Colors.white.withValues(alpha: 0.6)),
+                  style: AppText.display(
+                    16 * scale,
+                    weight: FontWeight.w500,
+                    color: Colors.white.withValues(alpha: 0.6),
+                  ),
                 ),
               ],
             ],

@@ -50,8 +50,7 @@ class CompatGame {
       name: json['name'] as String?,
       platforms: {
         if (platforms is Map)
-          for (final entry in platforms.entries)
-            entry.key as String: ?CompatSummary.fromJson(entry.value),
+          for (final entry in platforms.entries) entry.key as String: ?CompatSummary.fromJson(entry.value),
       },
     );
   }

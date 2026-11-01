@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:anyps5_desktop/core/together/account.dart';
 import 'package:anyps5_desktop/core/together/compat.dart';
 import 'package:anyps5_desktop/core/together/levels.dart';
-import 'package:anyps5_desktop/core/together/people.dart';
 import 'package:anyps5_desktop/core/together/social.dart';
 import 'package:anyps5_desktop/ui/app_model.dart' hide GameState;
 import 'package:anyps5_desktop/ui/home.dart';
@@ -162,7 +161,11 @@ void main() {
         entry(4, 'u-eren', 'Eren', 2870, 88),
       ],
       'me': {'rank': 18, 'value': 1830, 'listed': true},
-      'around': [entry(17, 'u-fatma', 'Fatma', 1880), entry(18, 'u-me', 'Utku Halis', 1830, 12), entry(19, 'u-gul', 'Gül', 1795)],
+      'around': [
+        entry(17, 'u-fatma', 'Fatma', 1880),
+        entry(18, 'u-me', 'Utku Halis', 1830, 12),
+        entry(19, 'u-gul', 'Gül', 1795),
+      ],
       'total': 240,
     });
   }
@@ -226,7 +229,11 @@ void main() {
       await pumpLauncher(tester, model);
       expect(find.text('#18'), findsOneWidget);
       expect(find.text(T.format('socialBoardOf', [240])), findsOneWidget);
-      expect(find.descendant(of: find.byType(LeaderboardView), matching: find.byIcon(Icons.more_horiz_rounded)), findsOneWidget, reason: 'the places between the top and the user');
+      expect(
+        find.descendant(of: find.byType(LeaderboardView), matching: find.byIcon(Icons.more_horiz_rounded)),
+        findsOneWidget,
+        reason: 'the places between the top and the user',
+      );
       await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/social_leaderboard_tr.png'));
     });
 
@@ -304,7 +311,10 @@ void main() {
       model.together.hub.social.notices.unread = 2;
       model.refresh();
       await tester.pump();
-      expect(find.descendant(of: find.byType(TopBar), matching: find.byIcon(Icons.notifications_active_rounded)), findsOneWidget);
+      expect(
+        find.descendant(of: find.byType(TopBar), matching: find.byIcon(Icons.notifications_active_rounded)),
+        findsOneWidget,
+      );
       expect(find.descendant(of: find.byType(TopBar), matching: find.text('2')), findsOneWidget);
     });
   });
@@ -378,7 +388,12 @@ void main() {
       server.answers['POST compat/reports'] = (
         201,
         {
-          'summary': {'status': 'playable', 'version': launcherVersion, 'testedAt': '2026-10-24T20:00:00Z', 'reports': 1},
+          'summary': {
+            'status': 'playable',
+            'version': launcherVersion,
+            'testedAt': '2026-10-24T20:00:00Z',
+            'reports': 1,
+          },
         },
       );
       together.askHowItRan(neon, const Duration(seconds: 20));

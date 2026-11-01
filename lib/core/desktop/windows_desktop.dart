@@ -189,7 +189,7 @@ final class _Win32 {
 /// input joined to the window in front's for the moment), the game's picture copied from the
 /// screen (or asked of the window with PrintWindow when it is covered), and the trophy card as
 /// a layered, click-through, never-activated topmost window drawn with UpdateLayeredWindow.
-class WindowsDesktop implements DesktopWindows {
+class WindowsDesktop implements DesktopWindows, GameAreas {
   WindowsDesktop({this.log});
 
   /// A line for the controller's debug log (ANYPS5_PAD_LOG): how a window was brought in front.
@@ -446,6 +446,23 @@ class WindowsDesktop implements DesktopWindows {
     if (_w.postMessage(window, 0x0100 /* WM_KEYDOWN */, virtualKey, lParam) == 0) return false;
     await Future<void>.delayed(hold);
     return _w.postMessage(window, 0x0101 /* WM_KEYUP */, virtualKey, lParam | 1 << 30 | 1 << 31) != 0;
+  }
+
+  /// The client area on the screen. The launcher is aware of each monitor's scale, so these are
+  /// physical pixels, as ffmpeg's gdigrab takes them.
+  @override
+  ScreenArea? gameArea(int pid) {
+    final window = windowOf(pid);
+    if (window == 0 || _w.isIconic(window) != 0) return null;
+    return using((arena) {
+      final rect = arena<Int32>(4);
+      final corner = arena<Int32>(2);
+      if (_w.getClientRect(window, rect) == 0 || _w.clientToScreen(window, corner) == 0) return null;
+      final width = rect[2];
+      final height = rect[3];
+      if (width <= 0 || height <= 0) return null;
+      return ScreenArea(corner[0], corner[1], width, height);
+    });
   }
 
   @override

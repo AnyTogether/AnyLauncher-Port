@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:anyps5_desktop/core/engine_checkout.dart';
 import 'package:anyps5_desktop/core/audio/atrac9.dart';
 import 'package:anyps5_desktop/core/audio/audio_out.dart';
+import 'package:anyps5_desktop/core/controls.dart';
 import 'package:anyps5_desktop/core/crash_report.dart';
 import 'package:anyps5_desktop/core/desktop/desktop.dart';
 import 'package:anyps5_desktop/core/desktop/launcher_window.dart';
@@ -23,6 +24,7 @@ import 'package:anyps5_desktop/core/toolkit_download.dart';
 import 'package:anyps5_desktop/core/together/talk_key.dart';
 import 'package:anyps5_desktop/core/together/token_store.dart';
 import 'package:anyps5_desktop/core/together/voice_mesh.dart';
+import 'package:anyps5_desktop/core/unreal/unreal_controls.dart';
 import 'package:anyps5_desktop/main.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/background.dart';
@@ -152,6 +154,8 @@ Fixture makeFixture({
   FontArchive? cjkFonts,
   String? builtInFonts,
   Future<String?> Function(String suggestedName)? saveFile,
+  Future<String?> Function(String suggestedName, String label, List<String> extensions)? saveFileAs,
+  Future<String?> Function(String label, List<String> extensions)? pickFile,
   HostSystem system = HostSystem.linux,
   GitHubReleases? launcherReleases,
   Future<void> Function(String executable, List<String> arguments)? startDetached,
@@ -162,6 +166,7 @@ Fixture makeFixture({
   LauncherWindow? window,
   ReplayBuffer? Function(int seconds)? replay,
   Future<int> Function(String folder)? folderSize,
+  Future<Map<PadAction, List<String>>?> Function(String folder)? gameControls,
   Future<String?> Function(String title)? pickFolder,
   Future<String?> Function()? pickImage,
   CommandRunner? commands,
@@ -234,6 +239,8 @@ Fixture makeFixture({
       cjkFonts: cjkFonts,
       builtInFonts: builtInFonts,
       saveFile: saveFile,
+      saveFileAs: saveFileAs,
+      pickFile: pickFile,
       launcherReleases: launcherReleases,
       startDetached: startDetached,
       quit: quit,
@@ -241,6 +248,8 @@ Fixture makeFixture({
       replay: replay,
       // The size at once, as a finished measurement: the screens and goldens show it.
       folderSize: folderSize ?? (folder) => SynchronousFuture(GameLibrary.size(folder)),
+      // An Unreal game's own controls at once, read from its paks.
+      gameControls: gameControls ?? (folder) => SynchronousFuture(UnrealControls.read(folder)),
       commands: commands,
       systemInfo: () async =>
           const SystemInfo(os: 'Ubuntu 24.04.1 LTS, kernel 6.8.0-45-generic', cpu: 'AMD Ryzen 7 5800X', memoryGB: 32),

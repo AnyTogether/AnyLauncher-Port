@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:anyps5_desktop/core/controls.dart';
@@ -20,6 +21,7 @@ import 'package:path/path.dart' as p;
 
 import '../support/fake_process.dart';
 import '../support/fake_toolkit.dart';
+import '../support/pak_writer.dart';
 import '../support/ui_support.dart';
 
 void main() {
@@ -138,6 +140,42 @@ void main() {
       model.handle(Command.select);
       await pumpLauncher(tester, model);
       await expectLater(shell, matchesGoldenFile('goldens/controls.png'));
+    });
+
+    testWidgets("controls, an Unreal game's own actions under each button", (tester) async {
+      fixture = makeFixture(theme: 1);
+      final model = fixture.model;
+      final game = model.selectedGame!;
+      final paks = Directory(p.join(game.folder, 'Orbit', 'Content', 'Paks'))..createSync(recursive: true);
+      PakWriter(
+        files: [
+          (
+            path: 'Orbit/Config/DefaultInput.ini',
+            data: utf8.encode(
+              '[/Script/Engine.InputSettings]\n'
+              '+ActionMappings=(ActionName="Jump",Key=Gamepad_FaceButton_Bottom)\n'
+              '+ActionMappings=(ActionName="Interact_Primary",Key=Gamepad_FaceButton_Left)\n'
+              '+ActionMappings=(ActionName="IA_Crouch",Key=Gamepad_FaceButton_Right)\n'
+              '+ActionMappings=(ActionName="Dodge",Key=Gamepad_FaceButton_Right)\n'
+              '+ActionMappings=(ActionName="OpenMap",Key=Gamepad_FaceButton_Top)\n'
+              '+ActionMappings=(ActionName="ToggleHUD",Key=Gamepad_LeftShoulder)\n',
+            ),
+            zlib: true,
+          ),
+        ],
+      ).write(p.join(paks.path, 'pakchunk0-ps5.pak'));
+      model.open(Layer.controls);
+      expect(model.gameControls[game.id]?[PadAction.cross], ['Jump']);
+      await pumpLauncher(tester, model);
+      expect(find.text(T.text('controlsFromGame')), findsOneWidget);
+      expect(find.text('Crouch, Dodge'), findsOneWidget);
+      expect(find.text('Toggle HUD'), findsOneWidget);
+      await expectLater(shell, matchesGoldenFile('goldens/controls_unreal.png'));
+      // Read once: the panel opened again asks the files nothing more.
+      PakWriter(files: const []).write(p.join(paks.path, 'pakchunk0-ps5.pak'));
+      model.open(Layer.gameSettings);
+      model.open(Layer.controls);
+      expect(model.gameControls[game.id]?[PadAction.cross], ['Jump']);
     });
 
     testWidgets('onboarding: language, theme and toolkit steps', (tester) async {
@@ -458,6 +496,15 @@ void main() {
       await press(tester, LogicalKeyboardKey.enter);
       await press(tester, LogicalKeyboardKey.enter);
       expect(model.currentSettings(game).vsync, isFalse);
+    });
+
+    testWidgets('controls of a game whose files name no actions show no line about them', (tester) async {
+      fixture = makeFixture();
+      final model = fixture.model;
+      model.open(Layer.controls);
+      await pumpLauncher(tester, model);
+      expect(find.text(T.text('controlsFromGame')), findsNothing);
+      expect(model.gameControls[model.selectedGame!.id], isEmpty);
     });
 
     testWidgets('a pad action takes the next key pressed', (tester) async {

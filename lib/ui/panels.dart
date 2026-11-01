@@ -15,6 +15,7 @@ import 'profile_picture.dart';
 import 'home.dart';
 import 'strings.dart';
 import 'theme.dart';
+import 'together_model.dart';
 
 /// Every game as a grid, opened from the library button.
 class LibraryGrid extends StatelessWidget {
@@ -202,6 +203,10 @@ class PanelView extends StatelessWidget {
       Layer.settings => T.text('settings'),
       Layer.friends => T.text('friendsTitle'),
       Layer.party => T.text('partyTitle'),
+      Layer.notifications => T.text('socialNotifTitle'),
+      Layer.compat => model.together.compatTitle,
+      Layer.findPlayers || Layer.lfgPost => T.text('discoverFindPlayers'),
+      Layer.gameHub => T.format('discoverHubOf', [model.together.findState.hubName]),
       Layer.controls => T.text('controls'),
       Layer.gameSettings => T.text('gameSettings'),
       Layer.cloudStorage => T.text('cloudStorageTitle'),
@@ -295,7 +300,14 @@ class PanelView extends StatelessWidget {
                       )
                     else
                       Text(heading, style: AppText.display(34 * scale, weight: FontWeight.w300)),
-                    if (!const {Layer.settings, Layer.friends, Layer.party}.contains(model.overlay) && !compact) ...[
+                    if (!const {
+                          Layer.settings,
+                          Layer.friends,
+                          Layer.party,
+                          Layer.findPlayers,
+                          Layer.gameHub,
+                        }.contains(model.overlay) &&
+                        !compact) ...[
                       SizedBox(width: 14 * scale),
                       Expanded(
                         child: Padding(

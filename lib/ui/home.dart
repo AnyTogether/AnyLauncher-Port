@@ -459,6 +459,16 @@ class TopBar extends StatelessWidget {
           badge: together.partyBadge,
         ),
         SizedBox(width: 22 * scale),
+        // AnyTogether's notifications, while signed in: the bell with the unread count.
+        if (together.signedIn) ...[
+          iconButton(
+            together.hub.social.notices.unread > 0 ? Icons.notifications_active_rounded : Icons.notifications_rounded,
+            5,
+            together.openNotifications,
+            badge: together.hub.social.notices.unread,
+          ),
+          SizedBox(width: 22 * scale),
+        ],
         // A controller running out of battery says so here (and in Settings › Controllers).
         if (PadTroubleshooter.statusLine(model.controllers.pads) case final line?) ...[
           PadStatusPill(text: line),
@@ -995,7 +1005,10 @@ class StateLabel extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (icon == null) Padlock(size: (size + 2) * scale, color: tint) else Icon(icon, size: (size + 2) * scale, color: tint),
+        if (icon == null)
+          Padlock(size: (size + 2) * scale, color: tint)
+        else
+          Icon(icon, size: (size + 2) * scale, color: tint),
         SizedBox(width: 6 * scale),
         Flexible(
           child: Text(

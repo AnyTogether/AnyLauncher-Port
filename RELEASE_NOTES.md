@@ -14,6 +14,30 @@ release when it is made.
   asks which to keep, and the other stays as a backup. **Cloud Storage** shows each game's cloud
   saves, with Restore and Delete. While saves sync, the game does not start twice and the profile
   does not change. A server that keeps no files yet hides the cloud choices.
+- **Activity, leaderboards and notifications from AnyTogether**, as on the Mac. **Friends ›
+  Activity** shows what your friends have been playing: trophies, platinums, first plays, long
+  sessions, new friends and milestones. Each item takes one of four reactions. Left and right
+  pick one, Enter gives it and △ opens the person's profile. **Friends › Leaderboard** ranks
+  trophy points among friends or everyone, with your own place. A game's settings open its own
+  board by points, play time or completion. A **bell** in the top bar, while you are signed in,
+  holds AnyTogether's notifications with the unread count. Choosing one marks it read and opens
+  where it points.
+- **How did it run?** After a game of a minute or more, the launcher asks once per game and
+  launcher version how far it got. One choice sends the report to AnyTogether's compatibility
+  list with the launcher and engine versions, the computer and the system. A game's settings
+  show what the community found on Windows or Linux and send a report any time. **Don't ask
+  after games** turns the question off.
+- **Find Players**, as on the Mac. **Friends › Find Players** shows people looking for a group,
+  filtered by game, purpose, language and what starts soon. Select a post to say I'm in, and
+  select it again to take that back. **Find players for** a game, in its settings or on the
+  board, posts what you want to play with the slots, languages, start, how long it stays up and
+  a note. **My Posts** lists who wants in, to let them into your party or say not now. **Public
+  Parties** lists parties their leader opened to everyone, to ask to join or walk in. **People**
+  suggests players to add. A game's **hub** shows who plays it now, its posts and parties, its
+  leaderboard and how it runs. A party's leader can list it in public from the party panel.
+  **Settings › AnyTogether** chooses whether people who don't know you find you, and the
+  languages you play in. Share plays under Live now are left out, since this launcher has no
+  share play to watch yet.
 - **Share play: friends watch your game, and up to three play along.** While a game runs, the
   quick menu has **Share** for it (signed in to AnyTogether). Friends watch live in a browser on
   anytogether.net. **Let Them Play** hands a friend player 2, 3 or 4, and

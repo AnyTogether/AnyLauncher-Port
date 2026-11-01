@@ -165,6 +165,11 @@ class Preferences {
       _ => ReplayBuffer.defaultLength,
     }
     ..shortcuts = ShortcutMap.fromJson(json['shortcuts'])
+    ..compatNever = json['compatNever'] == true
+    ..compatAsked = {
+      for (final entry in (json['compatAsked'] as Map<String, dynamic>? ?? const {}).entries)
+        if (entry.value is String) entry.key: entry.value as String,
+    }
     ..lastPlayed = {
       for (final entry in (json['lastPlayed'] as Map<String, dynamic>? ?? const {}).entries)
         entry.key: entry.value as String,
@@ -310,6 +315,11 @@ class Preferences {
   /// Settings › Shortcuts.
   ShortcutMap shortcuts = ShortcutMap();
 
+  /// "How did it run?" after a game (AnyTogether's compatibility list): never asked, and the
+  /// launcher version each game (by title ID) was last asked about.
+  bool compatNever = false;
+  Map<String, String> compatAsked = {};
+
   Map<String, Object?> toJson() => {
     'language': language,
     'theme': theme,
@@ -365,6 +375,8 @@ class Preferences {
     'replayBuffer': replayBuffer,
     'replaySeconds': replaySeconds,
     if (!shortcuts.isDefault) 'shortcuts': shortcuts.toJson(),
+    if (compatNever) 'compatNever': true,
+    if (compatAsked.isNotEmpty) 'compatAsked': compatAsked,
   };
 
   /// The saved list of games folders, or a file from before with one (`gamesFolder`) as a list of
@@ -598,6 +610,19 @@ enum Layer {
   /// Comparing trophies with someone: the games either has trophies in, then one game's trophies
   /// side by side.
   compare,
+
+  /// AnyTogether's social screens (together_social.dart): friends' activity, a leaderboard, the
+  /// notifications behind the bell, and "How did it run?" after a game.
+  feed,
+  leaderboard,
+  notifications,
+  compat,
+
+  /// Find Players (together_find.dart): the looking-for-group board, the user's posts, public
+  /// parties and people to meet; the post form; one game's hub.
+  findPlayers,
+  lfgPost,
+  gameHub,
 
   /// Family limits: today's play time, asking a parent for more.
   family,
@@ -3195,6 +3220,8 @@ class AppModel extends ChangeNotifier {
       crash.ended(game, code, stopped: _stopped);
       // The saves it made go to the other computers (or the cloud).
       unawaited(saveSync.sync(game));
+      // "How did it run?", once the launcher is back over the home screen.
+      together.askHowItRan(game, DateTime.now().difference(began));
       _changed();
       // Started from a Steam shortcut of the game: the launcher goes with it, so Steam sees
       // the game end. A crash keeps it open on its report.
@@ -3645,6 +3672,12 @@ class AppModel extends ChangeNotifier {
       case Layer.compare:
         together.compareCommand(command);
         return;
+      case Layer.feed:
+        together.feedCommand(command);
+        return;
+      case Layer.leaderboard:
+        together.leaderboardCommand(command);
+        return;
       case Layer.quickMenu || Layer.closeGame when command == Command.back || command == Command.options:
         resumeGame();
         return;
@@ -3665,6 +3698,14 @@ class AppModel extends ChangeNotifier {
         return;
       case Layer.cloudStorage when command == Command.back || command == Command.options:
         saveSync.backFromStorage();
+        return;
+      case Layer.lfgPost || Layer.gameHub when command == Command.back || command == Command.options:
+        together.backFromFind();
+        return;
+      case Layer.findPlayers when command == Command.back || command == Command.options:
+        _panelCommand(command);
+        // Closed: the board's topics are no longer listened to.
+        if (overlay != Layer.findPlayers) together.findClosed();
         return;
       case Layer.friendOptions when command == Command.back || command == Command.options:
         // A question asked in place (together_ask.dart) is answered Cancel first.
@@ -3688,7 +3729,12 @@ class AppModel extends ChangeNotifier {
           Layer.launcherReport ||
           Layer.cloudQuestion ||
           Layer.cloudStorage ||
-          Layer.profileMenu:
+          Layer.profileMenu ||
+          Layer.notifications ||
+          Layer.compat ||
+          Layer.findPlayers ||
+          Layer.lfgPost ||
+          Layer.gameHub:
         _panelCommand(command);
         return;
       case null:
@@ -3737,7 +3783,14 @@ class AppModel extends ChangeNotifier {
         _moveFocus(HomeFocus.tiles);
       case ('top', Command.select):
         final layer = topLayers[focus.index.clamp(0, topButtons - 1)];
-        layer == Layer.messages ? unawaited(together.openMessages()) : open(layer);
+        switch (layer) {
+          case Layer.messages:
+            unawaited(together.openMessages());
+          case Layer.notifications:
+            together.openNotifications();
+          default:
+            open(layer);
+        }
       case ('actions', Command.left):
         _moveFocus(HomeFocus.actions((focus.index - 1).clamp(0, actionCount - 1)));
       case ('actions', Command.right):
@@ -4106,8 +4159,17 @@ class AppModel extends ChangeNotifier {
   static const libraryColumns = 6;
 
   /// The top bar's buttons, left to right.
-  static const topLayers = [Layer.library, Layer.settings, Layer.friends, Layer.messages, Layer.party];
-  static int get topButtons => topLayers.length;
+  static const topLayers = [
+    Layer.library,
+    Layer.settings,
+    Layer.friends,
+    Layer.messages,
+    Layer.party,
+    Layer.notifications,
+  ];
+
+  /// The bell (the last) shows only while signed in to AnyTogether.
+  int get topButtons => together.signedIn ? topLayers.length : topLayers.length - 1;
 
   void _moveLibrary(int delta) {
     final next = (libraryIndex + delta).clamp(0, games.isEmpty ? 0 : games.length - 1);
@@ -4170,6 +4232,18 @@ class AppModel extends ChangeNotifier {
         return [PanelCategory(id: 'friends', title: T.text('friendsTitle'), rows: together.friendRows())];
       case Layer.party:
         return [PanelCategory(id: 'party', title: T.text('partyTitle'), rows: together.partyRows())];
+      case Layer.notifications:
+        return [
+          PanelCategory(id: 'notifications', title: together.notificationsSubtitle, rows: together.notificationRows()),
+        ];
+      case Layer.compat:
+        return [PanelCategory(id: 'compat', title: T.text('socialCompatSubtitle'), rows: together.compatRows())];
+      case Layer.findPlayers:
+        return together.findPlayersCategories();
+      case Layer.gameHub:
+        return together.hubCategories();
+      case Layer.lfgPost:
+        return [PanelCategory(id: 'post', title: together.findState.draftName, rows: together.lfgPostRows())];
       case Layer.family:
         return [PanelCategory(id: 'family', title: T.text('familyTitle'), rows: together.family.rows())];
       case Layer.crashReport:
@@ -5102,6 +5176,7 @@ class AppModel extends ChangeNotifier {
         detail: T.text('screenshotsDetail'),
         kind: ActionRow(openGallery),
       ),
+      ...together.gameSocialRows(game),
       PanelRow(
         id: 'shaderCache',
         title: T.text('shaderCache'),

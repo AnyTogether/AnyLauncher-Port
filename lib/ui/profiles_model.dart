@@ -69,6 +69,8 @@ extension LauncherProfiles on AppModel {
     'replaySeconds',
     'shortcuts',
     'lastPlayed',
+    'compatNever',
+    'compatAsked',
   };
 
   /// The tiles' colours, as the Mac's.

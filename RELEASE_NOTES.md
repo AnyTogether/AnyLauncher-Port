@@ -18,6 +18,19 @@ release when it is made.
 - **Update Channel** in **Settings › About**: Stable or Nightly. On Nightly the engine picker
   also offers the nightly AnyPS5-ARM engine, built from main on the days it changes, once it is
   signed. Stable never offers going back to an older engine than the one in use.
+- **Activity, leaderboards and notifications from AnyTogether**, as on the Mac. **Friends ›
+  Activity** shows what your friends have been playing: trophies, platinums, first plays, long
+  sessions, new friends and milestones. Each item takes one of four reactions. Left and right
+  pick one, Enter gives it and △ opens the person's profile. **Friends › Leaderboard** ranks
+  trophy points among friends or everyone, with your own place. A game's settings open its own
+  board by points, play time or completion. A **bell** in the top bar, while you are signed in,
+  holds AnyTogether's notifications with the unread count. Choosing one marks it read and opens
+  where it points.
+- **How did it run?** After a game of a minute or more, the launcher asks once per game and
+  launcher version how far it got. One choice sends the report to AnyTogether's compatibility
+  list with the launcher and engine versions, the computer and the system. A game's settings
+  show what the community found on Windows or Linux and send a report any time. **Don't ask
+  after games** turns the question off.
 - **Share play: friends watch your game, and up to three play along.** While a game runs, the
   quick menu has **Share** for it (signed in to AnyTogether). Friends watch live in a browser on
   anytogether.net. **Let Them Play** hands a friend player 2, 3 or 4, and

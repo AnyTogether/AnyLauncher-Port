@@ -15,6 +15,7 @@ import 'profile_picture.dart';
 import 'home.dart';
 import 'strings.dart';
 import 'theme.dart';
+import 'together_model.dart';
 
 /// Every game as a grid, opened from the library button.
 class LibraryGrid extends StatelessWidget {
@@ -200,6 +201,8 @@ class PanelView extends StatelessWidget {
       Layer.settings => T.text('settings'),
       Layer.friends => T.text('friendsTitle'),
       Layer.party => T.text('partyTitle'),
+      Layer.notifications => T.text('socialNotifTitle'),
+      Layer.compat => model.together.compatTitle,
       Layer.controls => T.text('controls'),
       Layer.gameSettings => T.text('gameSettings'),
       // Appearance › Themes.

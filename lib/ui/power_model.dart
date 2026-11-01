@@ -195,12 +195,21 @@ class PowerModel {
     final current = profiles;
     final upstream = !EngineModel.isArm(app.toolkitVersion);
     return [
-      PanelRow(id: 'powerIntro', title: T.text('powerIntro'), kind: const InfoRow('')),
+      PanelRow(
+        id: 'powerIntro',
+        title: T.text('powerIntroTitle'),
+        detail: T.text('powerIntro'),
+        kind: const InfoRow(''),
+      ),
       PanelRow(
         id: 'powerStatus',
         title: sourceLine,
-        detail: [thermalLine, if (reading.lowPowerMode) T.text('powerLowPowerMode')].join('\n'),
-        kind: InfoRow(adjustment.isNone ? T.text('powerInForceNothing') : T.format('powerInForce', [profileLine])),
+        detail: [
+          if (adjustment.isNone) T.text('powerInForceNothing') else T.format('powerInForce', [profileLine]),
+          thermalLine,
+          if (reading.lowPowerMode) T.text('powerLowPowerMode'),
+        ].join('\n'),
+        kind: const InfoRow(''),
       ),
       // Upstream's engine reads no cap and no control file: the launcher's own part still works.
       if (upstream)

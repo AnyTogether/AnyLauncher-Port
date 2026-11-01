@@ -7,6 +7,7 @@ import 'package:anyps5_desktop/core/power_profiles.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:anyps5_desktop/ui/theme.dart';
+import 'package:anyps5_desktop/ui/launcher.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/fake_process.dart';
@@ -57,8 +58,8 @@ void main() {
     powerRows();
     expect(model.panelCategories()[model.panelCategory].title, 'Battery & Heat');
     expect(row('powerStatus').title, 'Plugged in');
-    expect(row('powerStatus').detail, 'Temperature: normal');
-    expect((row('powerStatus').kind as InfoRow).text, 'Games run as you set them');
+    expect(row('powerStatus').detail, 'Games run as you set them\nTemperature: normal');
+    expect(row('powerStatus').detail, startsWith('Games run as you set them'));
     expect(hasRow('powerUndo'), isFalse);
     expect((row('batteryOn').kind as ToggleRow).value, isTrue);
     expect((row('batteryCap').kind as ChoiceRow).options, ['Off', '30 FPS', '40 FPS', '45 FPS']);
@@ -70,7 +71,7 @@ void main() {
   test('on battery the battery profile holds: the line, Undo, the dimmed launcher', () {
     model.powerWatch.take(onBattery);
     expect(row('powerStatus').title, 'On battery at 64%, about 2 h 5 min left');
-    expect((row('powerStatus').kind as InfoRow).text, 'In force now: Battery profile with a 40 FPS cap');
+    expect(row('powerStatus').detail, startsWith('In force now: Battery profile with a 40 FPS cap'));
     expect(model.powerWatch.dimmed, isTrue);
     expect(model.solidGlass, isTrue);
     expect(Motion.reduced, isTrue);
@@ -78,7 +79,7 @@ void main() {
     (row('powerUndo').kind as ActionRow).run();
     expect(model.toast, T.text('powerUndone'));
     expect(hasRow('powerUndo'), isFalse);
-    expect((row('powerStatus').kind as InfoRow).text, 'Games run as you set them');
+    expect(row('powerStatus').detail, startsWith('Games run as you set them'));
     expect(row('powerStatus').title, startsWith('On battery'));
     expect(Motion.reduced, isFalse);
   });
@@ -100,7 +101,7 @@ void main() {
 
   test('where the heat cannot be read, only the battery profile is offered, and that is said', () {
     model.powerWatch.take(const PowerReading(hasBattery: true, onBattery: false, batteryPercent: 80));
-    expect(row('powerStatus').detail, T.text('powerNoHeat'));
+    expect(row('powerStatus').detail, contains(T.text('powerNoHeat')));
     expect(hasRow('hotOn'), isFalse);
     expect(row('hotUnavailable').title, T.text('powerHeatUnavailable'));
     expect(hasRow('batteryOn'), isTrue);
@@ -166,6 +167,16 @@ void main() {
     final file = '${dir.path}/Power/control.txt';
     EngineControl.write(model.powerWatch.adjustment, file);
     expect(File(file).readAsStringSync(), 'fps_cap=0\nframe_gen=1\n');
+  });
+
+  testWidgets('golden: Settings › Battery & Heat on battery, the heat unknown', (tester) async {
+    model.powerWatch.take(
+      const PowerReading(hasBattery: true, onBattery: true, batteryPercent: 64, minutesToEmpty: 125),
+    );
+    model.open(Layer.settings);
+    model.selectCategory(model.panelCategories().indexWhere((category) => category.id == 'power'));
+    await pumpLauncher(tester, model);
+    await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/settings_power.png'));
   });
 
   test('Turkish', () {

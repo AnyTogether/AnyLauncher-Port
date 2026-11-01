@@ -1487,5 +1487,7 @@
   "powerQuickUndoHot": "Isı Profilini Geri Al",
   "powerQuickUndoBattery": "Pil Profilini Geri Al",
   "powerQuickUndoDetail": "Şimdilik senin ayarların geçerli.",
-  "frameGenerationUpstream": "Upstream motorunda ara kare üretimi yok. Bunun için AnyPS5-ARM motoru gerekir."
+  "frameGenerationUpstream": "Upstream motorunda ara kare üretimi yok. Bunun için AnyPS5-ARM motoru gerekir.",
+  "frameGenerationPaused": "Pil ya da ısı profili şu an duraklatıyor. O profil bitince geri gelir.",
+  "powerIntroTitle": "Pildeyken ya da ısınınca"
 }

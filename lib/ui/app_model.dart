@@ -4970,7 +4970,12 @@ class AppModel extends ChangeNotifier {
         id: 'frameGeneration',
         title: T.text('frameGeneration'),
         // Only AnyPS5-ARM's engine makes the frames: said for upstream's, as FSR 1 is.
-        detail: engine.readsDisplaySettings ? T.text('frameGenerationDetail') : T.text('frameGenerationUpstream'),
+        detail: !engine.readsDisplaySettings
+            ? T.text('frameGenerationUpstream')
+            // Settings › Battery & Heat holds it paused now.
+            : settings.frameGeneration == true && powerWatch.adjustment.pauseFrameGeneration
+            ? T.text('frameGenerationPaused')
+            : T.text('frameGenerationDetail'),
         kind: ToggleRow(
           settings.frameGeneration == true,
           (value) => change(settings.copyWith(frameGeneration: value ? true : null)),

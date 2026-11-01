@@ -1487,5 +1487,7 @@
   "powerQuickUndoHot": "Undo Heat Profile",
   "powerQuickUndoBattery": "Undo Battery Profile",
   "powerQuickUndoDetail": "Back to your settings for now.",
-  "frameGenerationUpstream": "Upstream's engine has no frame generation. It needs the AnyPS5-ARM engine."
+  "frameGenerationUpstream": "Upstream's engine has no frame generation. It needs the AnyPS5-ARM engine.",
+  "frameGenerationPaused": "The battery or heat profile pauses it now. It comes back when that profile ends.",
+  "powerIntroTitle": "On battery or running hot"
 }

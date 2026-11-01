@@ -9,7 +9,10 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 import 'ui/soloud_audio.dart';
+import 'core/deep_link.dart';
 import 'core/desktop/desktop.dart';
+import 'core/desktop/url_scheme.dart';
+import 'core/link_relay.dart';
 import 'core/desktop/linux_desktop.dart';
 import 'core/desktop/window_backdrop.dart';
 import 'core/desktop/windows_desktop.dart';
@@ -26,6 +29,7 @@ import 'ui/crash_model.dart';
 import 'ui/launcher.dart';
 import 'ui/launcher_window_channel.dart';
 import 'ui/profile_picture.dart';
+import 'ui/sharing_model.dart';
 import 'ui/strings.dart';
 import 'ui/together_model.dart' show launcherVersion;
 import 'ui/theme.dart';
@@ -40,6 +44,11 @@ Future<void> main(List<String> arguments) async {
   // The built-in languages, and any file a translator put in the Languages folder to try it.
   await T.load(tryOut: Directory(p.join(AppPaths.forSystem(HostSystem.current).config, 'Languages')));
   final options = LaunchOptions.parse(arguments);
+  final paths = AppPaths.forSystem(HostSystem.current);
+  // An anyps5:// link with a launcher already open: that one takes it, and this one quits before
+  // it shows a window.
+  final relayFile = LinkRelay.fileIn(paths.config);
+  if (options.link case final DeepLink link when await LinkRelay.send(relayFile, link.url)) exit(0);
   final padLog = Platform.environment['ANYPS5_PAD_LOG'];
   final DesktopWindows desktop = Platform.isWindows
       ? WindowsDesktop(
@@ -59,7 +68,6 @@ Future<void> main(List<String> arguments) async {
     final LinuxDesktop linux => LinuxBackdrop(linux),
     _ => Platform.isWindows ? WindowsBackdrop() : const NoBackdrop(),
   };
-  final paths = AppPaths.forSystem(HostSystem.current);
   // The launcher's own crashes and long stalls, offered as a report at the next start.
   final health = LauncherHealth(
     p.join(paths.logs, 'Launcher'),
@@ -92,15 +100,20 @@ Future<void> main(List<String> arguments) async {
       ),
       copyText: (text) => unawaited(Clipboard.setData(ClipboardData(text: text))),
       pickImage: () async => (await openFile(
-        acceptedTypeGroups: const [
-          XTypeGroup(label: 'Pictures', extensions: ProfilePicture.extensions),
-        ],
+        acceptedTypeGroups: const [XTypeGroup(label: 'Pictures', extensions: ProfilePicture.extensions)],
       ))?.path,
       saveFile: (name) async => (await getSaveLocation(
         suggestedName: name,
         acceptedTypeGroups: const [
           XTypeGroup(label: 'Text', extensions: ['txt']),
         ],
+      ))?.path,
+      saveFileAs: (name, label, extensions) async => (await getSaveLocation(
+        suggestedName: name,
+        acceptedTypeGroups: [XTypeGroup(label: label, extensions: extensions)],
+      ))?.path,
+      pickFile: (label, extensions) async => (await openFile(
+        acceptedTypeGroups: [XTypeGroup(label: label, extensions: extensions)],
       ))?.path,
       engineReleases: GitHubReleases(),
       launcherReleases: LauncherUpdates.source(),
@@ -177,6 +190,17 @@ Future<void> main(List<String> arguments) async {
   if (options.play case final String titleId when model.preferences.onboarded) {
     unawaited(model.playAtLaunch(titleId, quitAfter: model.steamLaunch.fromSteam));
   }
+  // anyps5:// links: the one this launcher was started for, then the ones later launchers hand
+  // over; and the system told to open them with this launcher.
+  if (options.link case final DeepLink link) model.followLink(link);
+  unawaited(
+    LinkRelay.listen(relayFile).then(
+      (relay) => relay?.links.listen((text) {
+        if (DeepLink.parse(text) case final DeepLink link) model.followLink(link);
+      }),
+    ),
+  );
+  unawaited(UrlScheme.register());
 }
 
 class AnyPS5App extends StatelessWidget {

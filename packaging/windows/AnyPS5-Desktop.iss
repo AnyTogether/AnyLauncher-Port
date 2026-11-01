@@ -70,6 +70,14 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
+[Registry]
+; anyps5:// links open the launcher. The launcher writes the same for the user at start, which
+; covers the zip. HKA is the user's classes for a per-user install, the machine's for all users.
+Root: HKA; Subkey: "Software\Classes\anyps5"; ValueType: string; ValueName: ""; ValueData: "URL:AnyPS5"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\anyps5"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKA; Subkey: "Software\Classes\anyps5\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"",0"
+Root: HKA; Subkey: "Software\Classes\anyps5\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""
+
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 ; The launcher's own update (Restart Now, or Later at the next launch) runs this installer with

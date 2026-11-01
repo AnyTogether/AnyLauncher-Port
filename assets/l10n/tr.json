@@ -1041,7 +1041,7 @@
   "fontsNone": "Seçilmedi",
   "fontsReset": "Font Klasörünü Kaldır",
   "frameGeneration": "Ara Kare Üretimi",
-  "frameGenerationDetail": "Deneysel · her iki karenin arasına bir kare; dikey senkronizasyonu açar.",
+  "frameGenerationDetail": "Deneysel. Oyunun her iki karesinin arasına bir kare ekler ve dikey senkronizasyonu açar.",
   "frameGenerationLowPower": "Düşük Güç Modu açık: ekran 60 Hz'de kalıyor, ara kare çalışmaz",
   "fullscreen": "Tam Ekran",
   "gameArtwork": "Seçili oyunun görselini göster",
@@ -1082,7 +1082,7 @@
   "leftDeadzone": "Sol Çubuk Ölü Bölge",
   "leftStick": "Sol Çubuk",
   "library": "Oyun Kütüphanesi",
-  "linkCopied": "Bağlantı kopyalandı: tıklayan launcher'da bu oyunu açar",
+  "linkCopied": "Bağlantı kopyalandı. Açan kişi bu oyunu başlatıcıda görür.",
   "linkNoGame": "%@ kütüphanende yok",
   "locked": "Kilitli",
   "logTitle": "Günlük",
@@ -1486,5 +1486,6 @@
   "powerHotDetail": "Bilgisayarın ısındı. %@. Geri almak için PS ile Hızlı Menü'yü aç.",
   "powerQuickUndoHot": "Isı Profilini Geri Al",
   "powerQuickUndoBattery": "Pil Profilini Geri Al",
-  "powerQuickUndoDetail": "Şimdilik senin ayarların geçerli."
+  "powerQuickUndoDetail": "Şimdilik senin ayarların geçerli.",
+  "frameGenerationUpstream": "Upstream motorunda ara kare üretimi yok. Bunun için AnyPS5-ARM motoru gerekir."
 }

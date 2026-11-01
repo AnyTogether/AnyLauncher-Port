@@ -229,7 +229,7 @@ extension LauncherProfiles on AppModel {
     values['profileName'] = profile.name;
     preferences = Preferences.fromJson(ProfileSettings.merge(values, personalKeys, _preferencesJson(preferences)));
     T.language = Language.byCode(preferences.language);
-    Motion.reduced = preferences.reducedMotion;
+    Motion.reduced = preferences.reducedMotion || powerWatch.dimmed;
     haptics.enabled = preferences.controllerVibration;
     together.hub.voice.pushToTalk = preferences.pushToTalk;
     _applySound();

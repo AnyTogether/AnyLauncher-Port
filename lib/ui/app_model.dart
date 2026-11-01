@@ -82,6 +82,7 @@ import 'share_play_model.dart';
 import 'game_files_model.dart';
 import 'steam_model.dart';
 import 'glass.dart';
+import 'power_model.dart';
 import 'profile_picture.dart';
 import 'save_sync_model.dart';
 import 'sharing_model.dart';
@@ -150,6 +151,9 @@ class Preferences {
     ..saveSync = json['saveSync'] as bool?
     ..syncFolder = json['syncFolder'] as String?
     ..syncThrough = json['syncThrough'] as String?
+    ..powerProfiles = json['powerProfiles'] is Map<String, dynamic>
+        ? json['powerProfiles'] as Map<String, dynamic>
+        : null
     ..screenshotsFolder = json['screenshotsFolder'] as String?
     ..showHiddenTrophies = json['showHiddenTrophies'] as bool? ?? false
     ..controllerVibration = json['controllerVibration'] as bool? ?? true
@@ -287,6 +291,10 @@ class Preferences {
   String? syncFolder;
   String? syncThrough;
 
+  /// Settings › Battery & Heat: the two profiles as PowerProfiles writes them (the Mac's
+  /// "powerProfiles"); null for the defaults.
+  Map<String, dynamic>? powerProfiles;
+
   /// Settings › Captures › Screenshots Folder: where F12 screenshots, trophy pictures and clips
   /// go; null for Pictures/AnyPS5 (AppPaths.pictures).
   String? screenshotsFolder;
@@ -391,6 +399,7 @@ class Preferences {
     'saveSync': saveSync,
     'syncFolder': syncFolder,
     'syncThrough': syncThrough,
+    'powerProfiles': powerProfiles,
     'screenshotsFolder': screenshotsFolder,
     'showHiddenTrophies': showHiddenTrophies,
     'controllerVibration': controllerVibration,
@@ -1677,6 +1686,9 @@ class AppModel extends ChangeNotifier {
   /// Save Sync and cloud saves (save_sync_model.dart).
   late final SaveSyncModel saveSync = SaveSyncModel(this);
 
+  /// Settings › Battery & Heat: the power read, the profiles applied to the game and launcher.
+  late final PowerModel powerWatch = PowerModel(this);
+
   /// How this launch came from Steam (a shortcut's --steam, SteamGameId, gamescope), and the
   /// controllers Steam Input took over.
   SteamLaunch steamLaunch = const SteamLaunch();
@@ -2117,6 +2129,8 @@ class AppModel extends ChangeNotifier {
   /// Transparency at 0 % on a window that could let the desktop through.
   bool get solidGlass =>
       preferences.reduceTransparency ||
+      // Settings › Battery & Heat › Lighter Launcher, while a profile holds.
+      powerWatch.dimmed ||
       glassFallback ||
       (backdrop.kind.seeThrough && preferences.glassTransparency == 0);
 
@@ -3238,6 +3252,8 @@ class AppModel extends ChangeNotifier {
         ...gamePresets.environment,
         // The engine's online bridge reads the AnyTogether game session there.
         if (together.signedIn) 'ANYPS5_TOGETHER_SESSION': together.hub.games.bridgeFile,
+        // Settings › Battery & Heat: the frame cap now, and the file it changes in while it runs.
+        ...powerWatch.environment(),
         ...online,
       };
       fonts.watch(game, logFile);
@@ -4348,6 +4364,14 @@ class AppModel extends ChangeNotifier {
             title: running!.$1.name,
             rows: [
               PanelRow(id: 'resume', title: T.text('quickResume'), kind: ActionRow(resumeGame)),
+              // Settings › Battery & Heat: the profile that holds lifted for now.
+              if (powerWatch.canUndo)
+                PanelRow(
+                  id: 'powerUndo',
+                  title: powerWatch.undoTitle,
+                  detail: T.text('powerQuickUndoDetail'),
+                  kind: ActionRow(powerWatch.undo),
+                ),
               PanelRow(
                 id: 'gameSettings',
                 title: T.text('gameSettings'),
@@ -4701,7 +4725,7 @@ class AppModel extends ChangeNotifier {
               index,
             ) {
               preferences.reducedMotion = index == 1;
-              Motion.reduced = preferences.reducedMotion;
+              Motion.reduced = preferences.reducedMotion || powerWatch.dimmed;
               savePreferences();
             }),
           ),
@@ -4859,6 +4883,7 @@ class AppModel extends ChangeNotifier {
       PanelCategory(id: 'steam', title: T.text('steam'), rows: steam.settingsRows()),
       PanelCategory(id: 'controllers', title: T.text('padTitle'), rows: controllers.rows()),
       PanelCategory(id: 'displayDefaults', title: T.text('displayDefaults'), rows: _displayDefaultRows()),
+      PanelCategory(id: 'power', title: T.text('powerTitle'), rows: powerWatch.rows()),
       PanelCategory(id: 'presets', title: T.text('presetsTitle'), rows: _presetRows()),
       PanelCategory(id: 'captures', title: T.text('captures'), rows: _captureRows()),
       PanelCategory(id: 'broadcast', title: T.text('broadcastTitle'), rows: media.settingsRows()),
@@ -5188,7 +5213,12 @@ class AppModel extends ChangeNotifier {
         id: 'frameGeneration',
         title: T.text('frameGeneration'),
         // Only AnyPS5-ARM's engine makes the frames: said for upstream's, as FSR 1 is.
-        detail: engine.readsDisplaySettings ? T.text('frameGenerationDetail') : T.text('frameGenerationUpstream'),
+        detail: !engine.readsDisplaySettings
+            ? T.text('frameGenerationUpstream')
+            // Settings › Battery & Heat holds it paused now.
+            : settings.frameGeneration == true && powerWatch.adjustment.pauseFrameGeneration
+            ? T.text('frameGenerationPaused')
+            : T.text('frameGenerationDetail'),
         kind: ToggleRow(
           settings.frameGeneration == true,
           (value) => change(settings.copyWith(frameGeneration: value ? true : null)),
@@ -6209,6 +6239,7 @@ class AppModel extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     saveSync.dispose();
+    powerWatch.stop();
     for (final watcher in _libraries.values) {
       watcher.stop();
     }

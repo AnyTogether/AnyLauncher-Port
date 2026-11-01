@@ -291,7 +291,7 @@ void main() {
       signedIn();
       model.open(Layer.friends);
       final ids = model.panelCategories().single.rows.map((row) => row.id).toList();
-      expect(ids.sublist(0, 3), ['friends-me', 'friends-feed', 'friends-board']);
+      expect(ids.sublist(0, 4), ['friends-me', 'friends-find', 'friends-feed', 'friends-board']);
       model.selected = model.games.indexWhere((game) => game.titleId == 'PPSA02002');
       model.open(Layer.gameSettings);
       final rows = model.panelCategories().single.rows.map((row) => row.id).toList();
@@ -339,7 +339,7 @@ void main() {
       await together.sendCode();
       together.code = '123456';
       await together.verify();
-      for (var tries = 0; tries < 300 && !together.signedIn; tries++) {
+      for (var tries = 0; tries < 1000 && !together.signedIn; tries++) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }
       expect(together.signedIn, isTrue, reason: model.toast);

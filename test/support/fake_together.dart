@@ -824,6 +824,8 @@ class FakeTogether {
           return (204, null);
         case ('PATCH', null):
           if (call.body.containsKey('privacy')) party!['privacy'] = call.body['privacy'];
+          // Listed in public (Find Players) or taken off the list.
+          if (call.body.containsKey('public')) party!['public'] = call.body['public'];
           if (call.body.containsKey('discord')) {
             final link = call.body['discord'] as String?;
             if (link != null && !RegExp(r'^https://(discord\.gg|(www\.)?discord\.com)/').hasMatch(link)) {

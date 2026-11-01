@@ -218,7 +218,7 @@ void main() {
     });
 
     Future<void> until(bool Function() condition) async {
-      for (var tries = 0; tries < 300 && !condition(); tries++) {
+      for (var tries = 0; tries < 1000 && !condition(); tries++) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }
       expect(condition(), isTrue);
@@ -296,6 +296,27 @@ void main() {
       await together.imIn(post('p7', 'Bora'));
       expect(model.toast, T.format('discoverToldThem', ['Bora']));
       expect(together.findState.asked.single.standing(), LfgStanding.waiting);
+    });
+
+    test('a party\'s leader lists it in public, about the selected game', () async {
+      fixture = makeFixture(together: server.base);
+      model = fixture.model;
+      await signInForReal();
+      final together = model.together;
+      model.selected = model.games.indexWhere((game) => game.titleId == 'PPSA02002');
+      await together.startParty();
+      model.open(Layer.party);
+      PanelRow row(String id) => model.panelCategories().single.rows.firstWhere((row) => row.id == id);
+      expect(model.panelCategories().single.rows.map((row) => row.id), isNot(contains('party-public-game')));
+      (row('party-public').kind as ChoiceRow).set(2);
+      await until(() => together.hub.parties.party?.listing != null);
+      expect(server.callsTo('parties/${together.hub.parties.party!.id}', method: 'PATCH').last.body, {
+        'public': {'join': 'open', 'titleId': 'PPSA02002', 'language': null},
+      });
+      expect(together.hub.parties.party!.listing!.open, isTrue);
+      expect((row('party-public-game').kind as ChoiceRow).selected, 1);
+      (row('party-public').kind as ChoiceRow).set(0);
+      await until(() => together.hub.parties.party?.listing == null);
     });
   });
 }

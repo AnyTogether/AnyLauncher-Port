@@ -239,6 +239,7 @@ void main() {
       model.open(Layer.friends);
       expect(rowIds(), [
         'friends-me',
+        'friends-find',
         'friends-feed',
         'friends-board',
         'accept-u-cem',
@@ -248,7 +249,7 @@ void main() {
         'friend-u-bora',
         'friend-u-ana',
       ]);
-      final rows = model.panelCategories().single.rows.skip(3).toList();
+      final rows = model.panelCategories().single.rows.skip(4).toList();
       expect(rows[4].detail, '@bora · Playing Neon Alley');
       expect(rows[4].person?.status, PersonStatus.playing);
       expect(model.together.hub.badge, 1);
@@ -493,7 +494,7 @@ void main() {
     test('a party: start it, invite from a friend\'s options, join its voice, choose the talk key', () async {
       final together = model.together;
       model.open(Layer.party);
-      expect(rowIds(), ['party-start', 'party-open', 'party-code-enter', 'party-code-look']);
+      expect(rowIds(), ['party-start', 'party-open', 'party-code-enter', 'party-code-look', 'party-find']);
       await together.startParty();
       expect(rowIds(), [
         'voice-join',
@@ -502,6 +503,7 @@ void main() {
         'party-member-u-me',
         'party-privacy',
         'party-code-new',
+        'party-public',
         'party-discord',
         'party-invite-title',
         'party-invite-u-ana',
@@ -1574,9 +1576,9 @@ void main() {
       expect(model.toast, 'Ana invites you to Orbit Runner');
       expect(model.together.hub.badge, 1);
       model.open(Layer.friends);
-      // After My Profile, Activity and Leaderboard.
-      expect(rowIds().skip(3).take(2), ['game-accept-gs-ana', 'game-decline-gs-ana']);
-      (model.panelCategories().single.rows[4].kind as ActionRow).run();
+      // After My Profile, Find Players, Activity and Leaderboard.
+      expect(rowIds().skip(4).take(2), ['game-accept-gs-ana', 'game-decline-gs-ana']);
+      (model.panelCategories().single.rows[5].kind as ActionRow).run();
       await until(() => server.callsTo('game-sessions/gs-ana/decline').isNotEmpty);
       expect(model.together.hub.badge, 0);
     });

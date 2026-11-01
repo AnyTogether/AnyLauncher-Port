@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:anyps5_desktop/core/deep_link.dart';
 import 'package:anyps5_desktop/core/together/account.dart';
 import 'package:anyps5_desktop/core/together/theme_hub.dart';
 import 'package:anyps5_desktop/core/together/token_store.dart';
@@ -45,6 +46,15 @@ void main() {
     expect(ThemeHub.onServer(Uri.parse('https://anytogether.net')).toString(), 'https://anytogether.net/api/v1/hub/');
     expect(HubTheme.isId('0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b'), isTrue);
     expect(HubTheme.isId('../etc'), isFalse);
+  });
+
+  test('anyps5://theme/<ID> names a theme on the Hub; anything else is no link', () {
+    const id = '0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b';
+    expect(DeepLink.parse('anyps5://theme/$id'), const ThemeLink(id));
+    expect(DeepLink.parse('anyps5://theme/${id.toUpperCase()}'), const ThemeLink(id));
+    expect(const ThemeLink(id).url, 'anyps5://theme/$id');
+    expect(DeepLink.parse('anyps5://theme/../../etc'), isNull);
+    expect(DeepLink.parse('anyps5://theme/'), isNull);
   });
 
   group('over HTTP', () {

@@ -116,6 +116,17 @@ extension ThemeHubModel on AppModel {
     }
   }
 
+  /// `anyps5://theme/<ID>`: the theme is read from AnyTogether's Hub, downloaded and used.
+  Future<void> installHubTheme(String id) async {
+    try {
+      final theme = await hub.theme(together.account.base, id);
+      if (theme == null) return show(T.text('socialHubNoTheme'));
+      await installFromHub(theme);
+    } on Object {
+      show(T.text('themeInstallFailed'));
+    }
+  }
+
   /// Share on the Hub: signed in, straight onto AnyTogether's Hub; otherwise the file is saved
   /// and the page it is sent from opens.
   Future<void> shareOnHub(ThemeDesign design) async {

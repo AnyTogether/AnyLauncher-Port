@@ -1478,7 +1478,6 @@
   "cloudStorageGameLine": "%d versions, %@",
   "cloudStorageVersionLine": "%@ from %@, %@",
   "frameGenerationUpstream": "Upstream's engine has no frame generation. It needs the AnyPS5-ARM engine.",
-  "frameGenerationUpstream": "Upstream's engine has no frame generation. It needs the AnyPS5-ARM engine.",
   "broadcastTitle": "Broadcasting",
   "broadcastService": "Service",
   "broadcastServiceCustom": "Custom RTMP",

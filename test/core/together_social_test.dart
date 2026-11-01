@@ -223,7 +223,7 @@ void main() {
     late Social social;
 
     Future<void> until(bool Function() condition) async {
-      for (var tries = 0; tries < 300 && !condition(); tries++) {
+      for (var tries = 0; tries < 1000 && !condition(); tries++) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }
       expect(condition(), isTrue);

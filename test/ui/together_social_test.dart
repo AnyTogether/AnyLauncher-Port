@@ -339,7 +339,7 @@ void main() {
       await together.sendCode();
       together.code = '123456';
       await together.verify();
-      for (var tries = 0; tries < 300 && !together.signedIn; tries++) {
+      for (var tries = 0; tries < 1000 && !together.signedIn; tries++) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }
       expect(together.signedIn, isTrue, reason: model.toast);

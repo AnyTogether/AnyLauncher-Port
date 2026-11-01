@@ -275,7 +275,11 @@ class _ActivityCard extends StatelessWidget {
                         if (more > 0)
                           Text(
                             T.format('socialFeedAndMore', [more]),
-                            style: AppText.display(13 * scale, weight: FontWeight.w500, color: ink.withValues(alpha: 0.55)),
+                            style: AppText.display(
+                              13 * scale,
+                              weight: FontWeight.w500,
+                              color: ink.withValues(alpha: 0.55),
+                            ),
                           ),
                       ],
                     ),
@@ -355,10 +359,7 @@ class _TrophyChip extends StatelessWidget {
     final grade = TrophyGrade.values.where((grade) => grade.name == trophy.grade).firstOrNull ?? TrophyGrade.bronze;
     return Container(
       padding: EdgeInsets.fromLTRB(7 * scale, 4 * scale, 10 * scale, 4 * scale),
-      decoration: BoxDecoration(
-        color: ink.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(8 * scale),
-      ),
+      decoration: BoxDecoration(color: ink.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(8 * scale)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -423,7 +424,11 @@ class _ReactionPill extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(FeedView.icon(reaction), size: 17 * scale, color: focused && !mine ? Color.lerp(color, Colors.black, 0.2) : color),
+            Icon(
+              FeedView.icon(reaction),
+              size: 17 * scale,
+              color: focused && !mine ? Color.lerp(color, Colors.black, 0.2) : color,
+            ),
             if (count > 0) ...[
               SizedBox(width: 6 * scale),
               Text(

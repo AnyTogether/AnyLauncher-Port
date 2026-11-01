@@ -1005,7 +1005,10 @@ class StateLabel extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (icon == null) Padlock(size: (size + 2) * scale, color: tint) else Icon(icon, size: (size + 2) * scale, color: tint),
+        if (icon == null)
+          Padlock(size: (size + 2) * scale, color: tint)
+        else
+          Icon(icon, size: (size + 2) * scale, color: tint),
         SizedBox(width: 6 * scale),
         Flexible(
           child: Text(

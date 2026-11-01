@@ -67,7 +67,8 @@ class Reactions {
       counts.entries.every((entry) => other.counts[entry.key] == entry.value);
 
   @override
-  int get hashCode => Object.hash(mine, Object.hashAllUnordered(counts.entries.map((e) => Object.hash(e.key, e.value))));
+  int get hashCode =>
+      Object.hash(mine, Object.hashAllUnordered(counts.entries.map((e) => Object.hash(e.key, e.value))));
 }
 
 /// A game as the social lists name it.

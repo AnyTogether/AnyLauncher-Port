@@ -29,6 +29,15 @@ release when it is made.
   **Settings › AnyTogether** chooses whether people who don't know you find you, and the
   languages you play in. Share plays under Live now are left out, since this launcher has no
   share play to watch yet.
+- **Share play: friends watch your game, and up to three play along.** While a game runs, the
+  quick menu has **Share** for it (signed in to AnyTogether). Friends watch live in a browser on
+  anytogether.net. **Let Them Play** hands a friend player 2, 3 or 4, and
+  their controller reaches the game through the phone server's bridges, so it needs the phone
+  server on and the AnyPS5-ARM engine. Invite online friends, open it to friends, choose how many
+  may watch, and stop it from the same menu. It ends with the game. The picture and sound go
+  from this PC straight to each friend over WebRTC, as from the Mac. Watching a friend's share
+  play in this launcher is not here yet: use the website for that.
+
 - **Remote Play: the game's picture and sound on the phone.** The phone app's Remote Play now
   works with the Windows and Linux launcher, with the same app as on the Mac. The launcher
   records the game's window with ffmpeg and encodes it at once on the graphics card (NVIDIA,

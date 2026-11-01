@@ -659,9 +659,16 @@ class Social with Notifier {
 
   /// The badge alone, read before the list.
   Future<void> loadUnread() async {
-    notices.unread = _unread(await account.call('GET', 'me/notifications/unread'));
+    final heard = _noticeEvents;
+    final unread = _unread(await account.call('GET', 'me/notifications/unread'));
+    // A notification event that came meanwhile has the newer count.
+    if (heard != _noticeEvents) return;
+    notices.unread = unread;
     notifyListeners();
   }
+
+  /// The gateway's notification events so far, so a count read before one is not kept after it.
+  int _noticeEvents = 0;
 
   /// Read here at once, then on the server, whose count follows.
   Future<void> readNotice(String id) async {
@@ -699,6 +706,7 @@ class Social with Notifier {
       case 'notification':
         final notice = Notice.fromJson(data['notification']);
         if (notice == null) return;
+        _noticeEvents++;
         notices
           ..upsert(notice)
           ..unread = _unread(data);
@@ -708,6 +716,7 @@ class Social with Notifier {
           onNotice?.call(notice);
         }
       case 'notification.read':
+        _noticeEvents++;
         final ids = data['ids'];
         notices.readOn(ids is List ? [for (final id in ids) '$id'] : null, _unread(data));
         notifyListeners();

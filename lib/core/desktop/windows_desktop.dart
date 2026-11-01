@@ -42,6 +42,10 @@ final class _Win32 {
           'GetClassNameW',
         );
     getForegroundWindow = user.lookupFunction<_H Function(), int Function()>('GetForegroundWindow');
+    getWindowText = user
+        .lookupFunction<Int32 Function(_H, Pointer<Utf16>, Int32), int Function(int, Pointer<Utf16>, int)>(
+          'GetWindowTextW',
+        );
     setForegroundWindow = user.lookupFunction<Int32 Function(_H), int Function(int)>('SetForegroundWindow');
     bringWindowToTop = user.lookupFunction<Int32 Function(_H), int Function(int)>('BringWindowToTop');
     showWindow = user.lookupFunction<Int32 Function(_H, Int32), int Function(int, int)>('ShowWindow');
@@ -145,6 +149,7 @@ final class _Win32 {
   late final int Function(int, int) getWindow;
   late final int Function(int, Pointer<Int32>) getWindowRect;
   late final int Function(int, Pointer<Int32>) getClientRect;
+  late final int Function(int, Pointer<Utf16>, int) getWindowText;
   late final int Function(int, Pointer<Int32>) clientToScreen;
   late final int Function(int, Pointer<Utf16>, int) getClassName;
   late final int Function() getForegroundWindow;
@@ -462,6 +467,17 @@ class WindowsDesktop implements DesktopWindows, GameAreas {
       final height = rect[3];
       if (width <= 0 || height <= 0) return null;
       return ScreenArea(corner[0], corner[1], width, height);
+    });
+  }
+
+  @override
+  String? gameTitle(int pid) {
+    final window = windowOf(pid);
+    if (window == 0) return null;
+    return using((arena) {
+      final text = arena<Uint16>(512).cast<Utf16>();
+      final length = _w.getWindowText(window, text, 512);
+      return length <= 0 ? null : text.toDartString(length: length);
     });
   }
 

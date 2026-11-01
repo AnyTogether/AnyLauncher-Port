@@ -133,6 +133,17 @@ extension LauncherThemes on AppModel {
         kind: ActionRow(openStudio),
       ),
       PanelRow(id: 'file', title: T.text('installThemeFile'), kind: ActionRow(() => unawaited(chooseThemeFile()))),
+      // The Hub: the themes people share, and sharing the one in use (theme_hub_model.dart).
+      ...hubRows(),
+      PanelRow(
+        id: 'share',
+        title: T.text('shareTheme'),
+        detail: together.signedIn ? T.text('socialHubShareDetail') : T.text('shareThemeHint'),
+        kind: ActionRow(() {
+          final design = activeDesign;
+          design == null ? openStudio() : unawaited(shareOnHub(design));
+        }),
+      ),
     ];
   }
 
@@ -240,6 +251,12 @@ extension LauncherThemes on AppModel {
         title: T.text('exportTheme'),
         detail: T.text('exportThemeDetail'),
         kind: ActionRow(() => unawaited(exportTheme(design))),
+      ),
+      PanelRow(
+        id: 'share',
+        title: T.text('shareTheme'),
+        detail: together.signedIn ? T.text('socialHubShareDetail') : T.text('shareThemeDetail'),
+        kind: ActionRow(() => unawaited(shareOnHub(design))),
       ),
       PanelRow(
         id: 'delete',

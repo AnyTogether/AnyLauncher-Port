@@ -1445,5 +1445,13 @@
   "filesKeepsGoing": "It goes on in the background. AnyPS5 says when it is done.",
   "filesStop": "Stop",
   "filesStopped": "Stopped. Nothing was left behind.",
-  "filesLater": "Not Now"
+  "filesLater": "Not Now",
+  "socialHubSharing": "Sharing %@ on the Hub…",
+  "socialHubShared": "%@ is on the Hub",
+  "socialHubSharedVersion": "%1$@ is on the Hub, version %2$d",
+  "socialHubShareDetail": "Uploads it to AnyTogether's Theme Hub.",
+  "socialHubTooLarge": "The theme is too big for the Hub, 50 MB at most",
+  "socialHubBadTheme": "The Hub didn't take this theme file",
+  "socialHubNoPreview": "The Hub needs a picture of the theme",
+  "socialHubNoTheme": "That theme isn't on the Hub"
 }

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:anyps5_desktop/core/controls.dart';
 import 'package:anyps5_desktop/core/unreal/unreal_controls.dart';
@@ -82,6 +83,18 @@ bAltEnterTogglesFullscreen=True
     expect(controls, isNotNull);
     expect(controls![PadAction.cross], ['Jump']);
     expect(controls[PadAction.triangle], isNull, reason: "the engine's own file says nothing of the game");
+  });
+
+  // The launcher reads them away from the interface; what comes back is the same.
+  test('the controls are read on another isolate', () async {
+    final game = temporaryFolder('game');
+    addTearDown(() => game.deleteSync(recursive: true));
+    final paks = Directory(p.join(game.path, 'Stray', 'Content', 'Paks'))..createSync(recursive: true);
+    PakWriter(files: [(path: 'Stray/Config/DefaultInput.ini', data: utf8.encode(input), zlib: true)])
+        .write(p.join(paks.path, 'pakchunk0-ps5.pak'));
+    final folder = game.path;
+    final controls = await Isolate.run(() => UnrealControls.read(folder));
+    expect(controls?[PadAction.r1], ['Meow']);
   });
 
   test('a game without paks has none', () {

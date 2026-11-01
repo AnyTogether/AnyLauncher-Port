@@ -2317,11 +2317,16 @@ class AppModel extends ChangeNotifier {
 
   bool _measuring = false;
 
+  /// A game's own controls read on another isolate. Static, so the closure sent there holds
+  /// only the folder and not the model.
+  static Future<Map<PadAction, List<String>>?> _readGameControls(String folder) =>
+      Isolate.run(() => UnrealControls.read(folder));
+
   /// Reads what the game's own files say each pad button does, once per game.
   void _readControls(Game game) {
     if (gameControls.containsKey(game.id)) return;
     gameControls[game.id] = const {};
-    final read = services.gameControls ?? (folder) => Isolate.run(() => UnrealControls.read(folder));
+    final read = services.gameControls ?? _readGameControls;
     unawaited(
       read(game.folder).then((controls) {
         if (_disposed || controls == null || controls.isEmpty) return;

@@ -75,6 +75,7 @@ import 'game_files_model.dart';
 import 'steam_model.dart';
 import 'glass.dart';
 import 'profile_picture.dart';
+import 'save_sync_model.dart';
 import 'strings.dart';
 import 'theme.dart';
 import 'together_model.dart';
@@ -127,6 +128,9 @@ class Preferences {
         if (entry.value is String) entry.key: entry.value as String,
     }
     ..fontsFolder = json['fontsFolder'] as String?
+    ..saveSync = json['saveSync'] as bool?
+    ..syncFolder = json['syncFolder'] as String?
+    ..syncThrough = json['syncThrough'] as String?
     ..showHiddenTrophies = json['showHiddenTrophies'] as bool? ?? false
     ..controllerVibration = json['controllerVibration'] as bool? ?? true
     ..steamUser = json['steamUser'] as String?
@@ -234,6 +238,13 @@ class Preferences {
   /// A folder of the user's own fonts (the console's, say) games get first; null for none.
   String? fontsFolder;
 
+  /// Settings › Behaviour › Save Sync: each game's saves kept in step before it starts and after
+  /// it ends (null is off), through [syncFolder] (null for iCloud Drive where it is set up) or,
+  /// with [syncThrough] "together", the AnyTogether cloud. The Mac's keys.
+  bool? saveSync;
+  String? syncFolder;
+  String? syncThrough;
+
   /// Hidden trophies show their name, description and icon before they are earned.
   bool showHiddenTrophies = false;
 
@@ -321,6 +332,9 @@ class Preferences {
     'engineGitBeforePlay': engineGitBeforePlay,
     'engineGitBuilt': engineGitBuilt,
     'fontsFolder': fontsFolder,
+    'saveSync': saveSync,
+    'syncFolder': syncFolder,
+    'syncThrough': syncThrough,
     'showHiddenTrophies': showHiddenTrophies,
     'controllerVibration': controllerVibration,
     'steamUser': steamUser,
@@ -619,6 +633,12 @@ enum Layer {
 
   /// At start, after the launcher itself crashed or stopped responding: Send Report, Not Now.
   launcherReport,
+
+  /// Save Sync through the cloud asks: both sides changed, or the quota is full.
+  cloudQuestion,
+
+  /// Settings › Behaviour › Cloud Storage: the usage and every game's cloud saves.
+  cloudStorage,
 }
 
 /// A settings row the panels draw and the keyboard moves through.
@@ -1550,6 +1570,9 @@ class AppModel extends ChangeNotifier {
 
   /// AnyPS5 and its games in the Steam library (Settings › Steam).
   late final SteamModel steam = SteamModel(this);
+
+  /// Save Sync and cloud saves (save_sync_model.dart).
+  late final SaveSyncModel saveSync = SaveSyncModel(this);
 
   /// How this launch came from Steam (a shortcut's --steam, SteamGameId, gamescope), and the
   /// controllers Steam Input took over.
@@ -3011,11 +3034,14 @@ class AppModel extends ChangeNotifier {
   /// Plays [game]; [trace] turns detailed logging on for this start only.
   Future<void> play(Game game, {bool trace = false}) async {
     final folder = rootOf(game);
-    if (folder == null || starting != null || running != null) return;
+    if (folder == null || starting != null || running != null || saveSync.syncing != null) return;
     // The profile's own saves and trophies in the game's folder before anything reads them.
     activateProfileSaves(game);
     final allowed = together.family.beforePlay(game);
     if (!(allowed is bool ? allowed : await allowed) || starting != null || running != null) return;
+    // Settings › Behaviour › Save Sync: the saves from the other computers (or the cloud) first.
+    await saveSync.sync(game);
+    if (starting != null || running != null) return;
     var settings = launchSettings(game);
     // Settings › Controllers › Stick Dead Zone, for a game that set none of its own.
     if (preferences.stickDeadzone > 0) {
@@ -3120,6 +3146,8 @@ class AppModel extends ChangeNotifier {
       updates.gameEnded();
       together.gameChanged();
       crash.ended(game, code, stopped: _stopped);
+      // The saves it made go to the other computers (or the cloud).
+      unawaited(saveSync.sync(game));
       _changed();
       // Started from a Steam shortcut of the game: the launcher goes with it, so Steam sees
       // the game end. A crash keeps it open on its report.
@@ -3574,6 +3602,12 @@ class AppModel extends ChangeNotifier {
       case Layer.gameFiles when command == Command.back || command == Command.options:
         files.back();
         return;
+      case Layer.cloudQuestion when command == Command.back || command == Command.options:
+        saveSync.answerBack();
+        return;
+      case Layer.cloudStorage when command == Command.back || command == Command.options:
+        saveSync.backFromStorage();
+        return;
       case Layer.friendOptions when command == Command.back || command == Command.options:
         // A question asked in place (together_ask.dart) is answered Cancel first.
         if (!together.cancelAsk()) open(Layer.friends, cue: Cue.back);
@@ -3594,6 +3628,8 @@ class AppModel extends ChangeNotifier {
           Layer.homeMenu ||
           Layer.confirmQuit ||
           Layer.launcherReport ||
+          Layer.cloudQuestion ||
+          Layer.cloudStorage ||
           Layer.profileMenu:
         _panelCommand(command);
         return;
@@ -4177,6 +4213,16 @@ class AppModel extends ChangeNotifier {
             rows: _launcherReportRows(),
           ),
         ];
+      case Layer.cloudQuestion:
+        return [
+          PanelCategory(
+            id: 'cloudQuestion',
+            title: saveSync.question?.title ?? '',
+            rows: saveSync.questionRows(),
+          ),
+        ];
+      case Layer.cloudStorage:
+        return [PanelCategory(id: 'cloudStorage', title: T.text('cloudStorageTitle'), rows: saveSync.storageRows())];
       case Layer.confirmQuit:
         return [
           PanelCategory(
@@ -4576,6 +4622,7 @@ class AppModel extends ChangeNotifier {
               savePreferences();
             }),
           ),
+          ...saveSync.settingsRows(),
           PanelRow(
             id: 'hiddenTrophies',
             title: T.text('showHiddenTrophies'),
@@ -5883,6 +5930,7 @@ class AppModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    saveSync.dispose();
     for (final watcher in _libraries.values) {
       watcher.stop();
     }

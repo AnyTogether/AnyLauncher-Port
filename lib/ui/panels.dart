@@ -180,6 +180,7 @@ class PanelView extends StatelessWidget {
       Layer.launcherReport,
       Layer.profileMenu,
       Layer.signIn,
+      Layer.cloudQuestion,
     }.contains(model.overlay);
     // PS's menus: a heading that may be long (the game's name), and only as tall as their rows.
     final psMenu = const {

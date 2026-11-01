@@ -170,6 +170,7 @@ Future<void> main(List<String> arguments) async {
   // Several profiles (or Ask every time): "Who's playing?" first, the session waiting for the pick.
   model.startProfiles();
   unawaited(model.together.start());
+  unawaited(model.saveSync.refreshInfo());
   unawaited(model.engine.startupCheck());
   unawaited(model.updates.startupCheck());
   runApp(AnyPS5App(model: model));

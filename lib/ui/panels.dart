@@ -210,6 +210,8 @@ class PanelView extends StatelessWidget {
       Layer.controls => T.text('controls'),
       Layer.gameSettings => T.text('gameSettings'),
       Layer.cloudStorage => T.text('cloudStorageTitle'),
+      // Appearance › Themes.
+      Layer.themes => T.text('appearance'),
       _ => category.title,
     };
     return _Scrim(

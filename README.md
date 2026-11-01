@@ -61,6 +61,14 @@ file there, no code: see [TRANSLATING.md](TRANSLATING.md).
     (foreground, F11 and window size for upstream's engine, the window's picture, a layered
     click-through topmost card), Xlib on Linux X11 (override-redirect card, XGetImage), a
     desktop notification on Wayland
+  - `themes/` the Theme Studio's themes (`theme_design.dart`, `theme_library.dart`): one folder
+    each under the config folder's `Themes`, shared as one `.anyps5theme` zip, the same file as
+    the macOS launcher's; `looping_video.dart` a background video looped through ffmpeg;
+    `opened_files.dart` theme files the launcher is started with (handed to a launcher already
+    open over `link_relay.dart`);
+    `desktop/file_types.dart` `.anyps5theme` registered for the zip, the AppImage and the archive
+  - `update_channel.dart` Settings › About › Update Channel (Stable or Nightly) and the macOS
+    launcher's order of versions, a nightly before the release it leads to
   - `audio/` the interface sounds (the macOS launcher's tones, synthesized sample for sample),
     a game's theme song (`snd0.at9` decoded with LibAtrac9 through FFI) and the music's fades
   - `capture/` the game's picture and sound sent somewhere: Remote Play to the phone (the
@@ -395,10 +403,13 @@ use those once changed in the game.
   installer, `build/installer/AnyPS5-Desktop-Setup-<version>-x64.exe`: a per-user install in
   `%LOCALAPPDATA%\Programs\AnyPS5 Desktop` by default (all users on request), Start menu and
   optional desktop shortcuts, an uninstaller; a running launcher is closed before an upgrade.
+  It opens `.anyps5theme` files with the launcher.
 - Linux: `packaging/linux/build-appimage.sh` and `packaging/linux/build-deb.sh` write
   `build/packages/AnyPS5-Desktop-<version>-x86_64.AppImage` and
   `anyps5-desktop_<version>_amd64.deb` (`/opt/anyps5-desktop`, `/usr/bin/anyps5-desktop`).
   Build them on Ubuntu 22.04 so they run on glibc 2.34 and newer; GTK 3 comes from the system.
+  Both bring the `application/x-anyps5theme` MIME type (`anyps5-desktop-mime.xml`), which the
+  desktop entry opens.
 
 ## Credits
 

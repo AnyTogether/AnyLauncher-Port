@@ -63,8 +63,16 @@ file there, no code: see [TRANSLATING.md](TRANSLATING.md).
     desktop notification on Wayland
   - `audio/` the interface sounds (the macOS launcher's tones, synthesized sample for sample),
     a game's theme song (`snd0.at9` decoded with LibAtrac9 through FFI) and the music's fades
+  - `capture/` the game's picture and sound sent somewhere: Remote Play to the phone (the
+    macOS launcher's packets, `stream_packet.dart`), broadcasting to Twitch, YouTube or RTMP
+    (`broadcast.dart`), and the encoders the replay buffer shares. All record with ffmpeg
+    (gdigrab on Windows, x11grab on X11) and encode on the graphics card when ffmpeg has an
+    encoder that works there (NVENC, Quick Sync, AMF, VA-API), x264 otherwise. The sound is
+    WASAPI loopback of the game's process tree on Windows (`native/capture`) and PulseAudio's
+    `parec` on the game's stream on Linux
 - `native/atrac9/` LibAtrac9 (MIT), built by `hook/build.dart` into a small shared library
-  beside the launcher (MSVC on Windows, the system compiler on Linux and for `flutter test`)
+  beside the launcher (MSVC on Windows, the system compiler on Linux and for `flutter test`);
+  `native/capture/` the game's sound on Windows (WASAPI loopback), built the same way
 - `lib/ui/` the PS5-style interface: home row, hero, library grid, settings panels, controls,
   trophies, onboarding, pairing card; `shaders/background.frag` is the macOS launcher's Metal
   background shader in GLSL (cosmic, aurora, sunset); `soloud_audio.dart` plays the sounds

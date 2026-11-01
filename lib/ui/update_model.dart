@@ -353,20 +353,22 @@ class LauncherUpdateModel {
         },
         kind: ActionRow(() => unawaited(check())),
       ),
-      PanelRow(
-        id: 'updateChannel',
-        title: T.text('updateChannel'),
-        detail: T.text(
-          app.updateChannel == UpdateChannel.nightly ? 'updateChannelNightlyDetail' : 'updateChannelStableDetail',
-        ),
-        kind: ChoiceRow(
-          [T.text('channelStable'), T.text('channelNightly')],
-          app.updateChannel.index,
-          (index) => app.setUpdateChannel(UpdateChannel.values[index]),
-        ),
-      ),
     ].nonNulls.toList();
   }
+
+  /// Settings › About › Update Channel: Stable or Nightly, as on the Mac.
+  PanelRow channelRow() => PanelRow(
+    id: 'updateChannel',
+    title: T.text('updateChannel'),
+    detail: T.text(
+      app.updateChannel == UpdateChannel.nightly ? 'updateChannelNightlyDetail' : 'updateChannelStableDetail',
+    ),
+    kind: ChoiceRow(
+      [T.text('channelStable'), T.text('channelNightly')],
+      app.updateChannel.index,
+      (index) => app.setUpdateChannel(UpdateChannel.values[index]),
+    ),
+  );
 
   /// Update Required (AnyTogether's client_too_old): why, the update where it stands (the same
   /// download and restart as About) or the downloads page, and Later.

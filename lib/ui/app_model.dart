@@ -4652,6 +4652,7 @@ class AppModel extends ChangeNotifier {
             kind: InfoRow(kit == null ? '—' : EngineModel.label(kit)),
           ),
           ...updates.aboutRows(),
+          updates.channelRow(),
         ],
       ),
     ];

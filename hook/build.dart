@@ -1,6 +1,7 @@
 // Builds native/atrac9 (LibAtrac9, MIT) into a shared library beside the launcher: MSVC on
 // Windows, the system's C compiler on Linux (and on the Mac for `flutter test`). Dart finds it by
-// its asset id (lib/core/audio/atrac9.dart).
+// its asset id (lib/core/audio/atrac9.dart). native/capture is the game's sound for Remote Play,
+// broadcasting and clips (WASAPI loopback on Windows; elsewhere it says there is none).
 import 'dart:io';
 
 import 'package:code_assets/code_assets.dart';
@@ -23,6 +24,12 @@ void main(List<String> args) async {
       includes: const ['native/atrac9', 'native/atrac9/include'],
       defines: {if (os == OS.windows) '_CRT_SECURE_NO_WARNINGS': null},
       libraries: [if (os == OS.linux) 'm'],
+    ).run(input: input, output: output);
+    await CBuilder.library(
+      name: 'anyps5_capture',
+      assetName: 'core/capture/game_sound_native.dart',
+      sources: const ['native/capture/anyps5_sound.c'],
+      libraries: [if (os == OS.windows) 'ole32'],
     ).run(input: input, output: output);
   });
 }

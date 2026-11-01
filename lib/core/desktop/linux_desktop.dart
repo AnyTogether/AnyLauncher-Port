@@ -166,6 +166,11 @@ final class _Xlib {
           int Function(Pointer<Void>, int, Pointer<Void>, Pointer<Uint8>, int, int, int, int, int, int)
         >('XPutImage');
     flush = x11.lookupFunction<Int32 Function(Pointer<Void>), int Function(Pointer<Void>)>('XFlush');
+    translateCoordinates = x11
+        .lookupFunction<
+          Int32 Function(Pointer<Void>, UnsignedLong, UnsignedLong, Int32, Int32, Pointer<Int32>, Pointer<Int32>, Pointer<UnsignedLong>),
+          int Function(Pointer<Void>, int, int, int, int, Pointer<Int32>, Pointer<Int32>, Pointer<UnsignedLong>)
+        >('XTranslateCoordinates');
     getSelectionOwner = x11
         .lookupFunction<UnsignedLong Function(Pointer<Void>, UnsignedLong), int Function(Pointer<Void>, int)>(
           'XGetSelectionOwner',
@@ -231,6 +236,8 @@ final class _Xlib {
   createImage;
   late final int Function(Pointer<Void>, int, Pointer<Void>, Pointer<Uint8>, int, int, int, int, int, int) putImage;
   late final int Function(Pointer<Void>) flush;
+  late final int Function(Pointer<Void>, int, int, int, int, Pointer<Int32>, Pointer<Int32>, Pointer<UnsignedLong>)
+  translateCoordinates;
   late final int Function(Pointer<Void>, int) getSelectionOwner;
   late final int Function(Pointer<Void>, int, int, int, int, int, Pointer<Uint8>, int) changeProperty;
   late final int Function(Pointer<Void>, int, int) deleteProperty;
@@ -248,7 +255,7 @@ final class _Xlib {
 /// manager's hands, its input shape empty so clicks go through). Windows are brought in front
 /// with xdotool or wmctrl when one is installed. On Wayland, where no program may place a window
 /// over another's or read it, the card is a desktop notification and no picture is taken.
-class LinuxDesktop implements DesktopWindows {
+class LinuxDesktop implements DesktopWindows, GameAreas {
   LinuxDesktop({Map<String, String>? environment}) : session = linuxSession(environment ?? Platform.environment);
 
   final LinuxSession session;
@@ -463,6 +470,27 @@ class LinuxDesktop implements DesktopWindows {
       return false;
     }
   }
+
+  /// The window's corner on the root window (XTranslateCoordinates: its parent is the window
+  /// manager's frame) and its size.
+  @override
+  ScreenArea? gameArea(int pid) => _withDisplay((x, display) {
+    final window = _windowOf(x, display, pid);
+    if (window == 0) return null;
+    return using((arena) {
+      final attributes = arena<Uint8>(136);
+      if (x.getWindowAttributes(display, window, attributes) == 0) return null;
+      final width = attributes.cast<Int32>()[2];
+      final height = attributes.cast<Int32>()[3];
+      if (width <= 0 || height <= 0) return null;
+      final root = x.rootWindow(display, x.defaultScreen(display));
+      final left = arena<Int32>();
+      final top = arena<Int32>();
+      final child = arena<UnsignedLong>();
+      if (x.translateCoordinates(display, window, root, 0, 0, left, top, child) == 0) return null;
+      return ScreenArea(left.value, top.value, width, height);
+    });
+  });
 
   @override
   Future<RgbaImage?> captureGame(int pid) async => _withDisplay((x, display) {

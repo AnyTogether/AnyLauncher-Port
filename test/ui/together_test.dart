@@ -239,6 +239,8 @@ void main() {
       model.open(Layer.friends);
       expect(rowIds(), [
         'friends-me',
+        'friends-feed',
+        'friends-board',
         'accept-u-cem',
         'decline-u-cem',
         'friends-handle',
@@ -246,7 +248,7 @@ void main() {
         'friend-u-bora',
         'friend-u-ana',
       ]);
-      final rows = model.panelCategories().single.rows.skip(1).toList();
+      final rows = model.panelCategories().single.rows.skip(3).toList();
       expect(rows[4].detail, '@bora · Playing Neon Alley');
       expect(rows[4].person?.status, PersonStatus.playing);
       expect(model.together.hub.badge, 1);
@@ -1572,8 +1574,9 @@ void main() {
       expect(model.toast, 'Ana invites you to Orbit Runner');
       expect(model.together.hub.badge, 1);
       model.open(Layer.friends);
-      expect(rowIds().skip(1).take(2), ['game-accept-gs-ana', 'game-decline-gs-ana']);
-      (model.panelCategories().single.rows[2].kind as ActionRow).run();
+      // After My Profile, Activity and Leaderboard.
+      expect(rowIds().skip(3).take(2), ['game-accept-gs-ana', 'game-decline-gs-ana']);
+      (model.panelCategories().single.rows[4].kind as ActionRow).run();
       await until(() => server.callsTo('game-sessions/gs-ana/decline').isNotEmpty);
       expect(model.together.hub.badge, 0);
     });

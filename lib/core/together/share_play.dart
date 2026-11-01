@@ -141,15 +141,21 @@ class SharePlayClient {
     await account.call('PATCH', 'share-plays/$id', {'open': ?open, 'maxViewers': ?maxViewers}),
   );
 
-  Future<void> end(String id) => account.call('DELETE', 'share-plays/$id');
+  Future<void> end(String id) async {
+    await account.call('DELETE', 'share-plays/$id');
+  }
 
-  Future<void> invite(String id, List<String> userIds) => account.call('POST', 'share-plays/$id/invites', {'userIds': userIds});
+  Future<void> invite(String id, List<String> userIds) async {
+    await account.call('POST', 'share-plays/$id/invites', {'userIds': userIds});
+  }
 
   /// Hands a viewer pad 2, 3 or 4, or takes it back (null).
   Future<SharePlay> setPad(String id, String userId, int? slot) async =>
       SharePlay.fromJson(await account.call('PUT', 'share-plays/$id/viewers/$userId/slot', {'slot': slot}));
 
-  Future<void> remove(String id, String userId) => account.call('DELETE', 'share-plays/$id/viewers/$userId');
+  Future<void> remove(String id, String userId) async {
+    await account.call('DELETE', 'share-plays/$id/viewers/$userId');
+  }
 
   Future<SharePlayStart> iceServers(String id) async {
     final json = await account.call('GET', 'share-plays/$id/ice-servers');

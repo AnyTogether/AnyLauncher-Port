@@ -130,9 +130,10 @@ void main() {
 
     server.answers['DELETE share-plays/sp-1'] = (204, null);
     choose('share-stop');
-    await until(() => !model.sharePlay.active);
-    expect(engine.stopped, isTrue);
+    await until(() => engine.stopped);
+    expect(model.sharePlay.active, isFalse);
     expect(engine.links.single.closed, isTrue);
+    expect(server.frames.where((frame) => frame['op'] == 'signal').last['kind'], 'bye');
     expect(quickRows(), contains('share-start'));
     model.stopGame();
     await playing;

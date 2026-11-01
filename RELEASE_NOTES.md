@@ -14,6 +14,30 @@ release when it is made.
   asks which to keep, and the other stays as a backup. **Cloud Storage** shows each game's cloud
   saves, with Restore and Delete. While saves sync, the game does not start twice and the profile
   does not change. A server that keeps no files yet hides the cloud choices.
+- **Share play: friends watch your game, and up to three play along.** While a game runs, the
+  quick menu has **Share** for it (signed in to AnyTogether). Friends watch live in a browser on
+  anytogether.net. **Let Them Play** hands a friend player 2, 3 or 4, and
+  their controller reaches the game through the phone server's bridges, so it needs the phone
+  server on and the AnyPS5-ARM engine. Invite online friends, open it to friends, choose how many
+  may watch, and stop it from the same menu. It ends with the game. The picture and sound go
+  from this PC straight to each friend over WebRTC, as from the Mac. Watching a friend's share
+  play in this launcher is not here yet: use the website for that.
+
+- **Remote Play: the game's picture and sound on the phone.** The phone app's Remote Play now
+  works with the Windows and Linux launcher, with the same app as on the Mac. The launcher
+  records the game's window with ffmpeg and encodes it at once on the graphics card (NVIDIA,
+  Intel, AMD, or VA-API on Linux) when it can, and with x264 otherwise. Sound comes from the game
+  alone on Windows 11 and on PulseAudio or PipeWire. Older Windows 10 sends everything the PC
+  plays. It needs ffmpeg beside AnyPS5 or on the PATH, and an X11 session on Linux. A key frame
+  comes every second, so a picture broken by a lost packet mends within a second.
+- **Broadcasting to Twitch, YouTube or any RTMP server.** Set the service, the stream key and the
+  quality in **Settings › Broadcasting**. The key shows as dots and is kept in a file only your
+  account can read. Go live from the quick menu while a game plays, or with **Go Live** on the
+  phone. The launcher shows how long you have been on air, the bit rate and dropped frames, and
+  tries again a few times when the connection drops. It uses ffmpeg, with the graphics card's
+  encoder when one works.
+- **Clips carry the game's sound,** and the replay buffer encodes on the graphics card when it
+  can, which takes far less of the processor. **Create** on the phone's pad saves a clip too.
 - **Frame Generation** in a game's settings: a generated frame between each two of the
   game's, with vertical sync on while it is. It needs the AnyPS5-ARM engine, and the row says so
   on upstream's.

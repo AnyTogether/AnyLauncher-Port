@@ -1495,6 +1495,7 @@ class _RowTextFieldState extends State<RowTextField> {
       child: TextField(
         controller: _controller,
         focusNode: _node,
+        obscureText: widget.kind.obscure,
         onChanged: widget.kind.set,
         onSubmitted: (_) {
           widget.kind.submit?.call();

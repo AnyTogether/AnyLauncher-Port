@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'capture/game_sound.dart';
+import 'capture/video_encoders.dart';
 import 'host.dart';
 
 /// Starts a program and gives its process; Process.start by default.
@@ -18,9 +20,11 @@ typedef ProcessRunner = Future<ProcessResult> Function(String executable, List<S
 /// newest segments into one MP4 (no re-encoding) beside the game's screenshots.
 ///
 /// The screen comes from gdigrab on Windows and x11grab on X11 (Wayland lets no program read
-/// the screen without asking each time: not offered there). 720p at 30 frames a second with
-/// x264's ultrafast preset: about one CPU core while a game plays, which is why it is off until
-/// the user turns it on.
+/// the screen without asking each time: not offered there), 720p at 30 frames a second. The
+/// graphics card's encoder does the work when one works here ([encoder], chosen as for Remote
+/// Play); x264's ultrafast preset otherwise, about one CPU core while a game plays, which is why
+/// it is off until the user turns it on. The game's sound ([sound]) comes in on ffmpeg's
+/// standard input and goes in the clip as AAC.
 class ReplayBuffer {
   ReplayBuffer({
     required this.ffmpeg,
@@ -28,6 +32,8 @@ class ReplayBuffer {
     required this.seconds,
     required this.system,
     this.environment = const {},
+    this.encoder,
+    this.sound,
     ProcessStarter? start,
     ProcessRunner? run,
   }) : _start = start ?? ((executable, arguments) => Process.start(executable, arguments)),
@@ -47,11 +53,21 @@ class ReplayBuffer {
   final int seconds;
   final HostSystem system;
   final Map<String, String> environment;
+
+  /// The encoder that works here; null for x264 as before encoders were tried.
+  final VideoEncoder? encoder;
+
+  /// The game's sound, recorded with the picture; null for picture alone.
+  final GameSound? sound;
   final ProcessStarter _start;
   final ProcessRunner _run;
 
   Process? _process;
   bool _stopping = false;
+  Timer? _soundTick;
+
+  /// The bit rate of the picture for the encoders that take one (x264 keeps its quality level).
+  static const bitRate = 4000000;
 
   bool get running => _process != null;
 
@@ -93,6 +109,7 @@ class ReplayBuffer {
     '-loglevel',
     'error',
     '-nostdin',
+    ...?encoder?.deviceArguments,
     if (system == HostSystem.windows) ...[
       '-f',
       'gdigrab',
@@ -112,18 +129,41 @@ class ReplayBuffer {
       '-i',
       environment['DISPLAY'] ?? ':0',
     ],
-    '-vf',
-    'scale=-2:$height',
-    '-c:v',
-    'libx264',
-    '-preset',
-    'ultrafast',
-    '-tune',
-    'zerolatency',
-    '-crf',
-    '28',
-    '-pix_fmt',
-    'yuv420p',
+    if (sound != null) ...[
+      '-thread_queue_size',
+      '1024',
+      '-f',
+      's16le',
+      '-ar',
+      '48000',
+      '-ac',
+      '2',
+      '-i',
+      'pipe:0',
+      '-map',
+      '0:v',
+      '-map',
+      '1:a',
+    ],
+    if (encoder == null || encoder == VideoEncoder.x264) ...[
+      '-vf',
+      'scale=-2:$height',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-tune',
+      'zerolatency',
+      '-crf',
+      '28',
+      '-pix_fmt',
+      'yuv420p',
+    ] else ...[
+      '-vf',
+      'scale=-2:$height,${encoder!.filterTail}',
+      ...encoder!.arguments(use: EncodeUse.replay, bitRate: bitRate, keyEvery: framesPerSecond * segmentSeconds),
+    ],
+    if (sound != null) ...['-af', 'aresample=async=1', '-c:a', 'aac', '-b:a', '128000'],
     // A key frame at every segment's start, so each one can be joined on its own.
     '-force_key_frames',
     'expr:gte(t,n_forced*$segmentSeconds)',
@@ -152,6 +192,20 @@ class ReplayBuffer {
       // Its output is drained so it never blocks on a full pipe.
       process.stdout.listen((_) {}, onError: (_) {});
       process.stderr.listen((_) {}, onError: (_) {});
+      final heard = sound;
+      if (heard != null) {
+        // The sound made steady on ffmpeg's input, so it keeps pace with the picture.
+        final steady = SteadyPcm((samples) {
+          try {
+            process.stdin.add(samples);
+          } on Object {
+            // ffmpeg is ending.
+          }
+        });
+        unawaited(process.stdin.done.catchError((_) {}));
+        await heard.start(steady.add);
+        _soundTick = Timer.periodic(const Duration(milliseconds: 20), (_) => steady.tick());
+      }
       unawaited(
         process.exitCode.then((_) {
           if (_process == process) _process = null;
@@ -249,6 +303,9 @@ class ReplayBuffer {
 
   /// Stops recording (ffmpeg is asked to finish, then ended) and deletes the segments.
   Future<void> stop() async {
+    _soundTick?.cancel();
+    _soundTick = null;
+    await sound?.stop();
     final process = _process;
     _process = null;
     if (process != null && !_stopping) {

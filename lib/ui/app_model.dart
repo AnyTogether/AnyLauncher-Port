@@ -9,6 +9,8 @@ import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:path/path.dart' as p;
 
 import '../core/audio/atrac9.dart';
+import '../core/capture/game_sound.dart';
+import '../core/capture/video_encoders.dart';
 import '../core/audio/audio_out.dart';
 import '../core/audio/interface_sounds.dart';
 import '../core/audio/theme_music.dart';
@@ -75,6 +77,7 @@ import 'controllers_model.dart';
 import 'crash_model.dart';
 import 'engine_model.dart';
 import 'fonts_model.dart';
+import 'media_model.dart';
 import 'game_files_model.dart';
 import 'steam_model.dart';
 import 'glass.dart';
@@ -746,11 +749,14 @@ class InfoRow extends RowKind {
 
 /// A field to type in: choosing the row puts the cursor in it; Enter sends [submit].
 class TextRow extends RowKind {
-  const TextRow(this.value, this.set, {this.submit, this.hint});
+  const TextRow(this.value, this.set, {this.submit, this.hint, this.obscure = false});
   final String value;
   final void Function(String) set;
   final void Function()? submit;
   final String? hint;
+
+  /// Typed as dots, never shown (a stream key).
+  final bool obscure;
 }
 
 /// How a person shows in a row: their initials or picture, a dot for what they are doing, a
@@ -1610,6 +1616,9 @@ class AppModel extends ChangeNotifier {
 
   /// The system fonts games get: the folder put together for them, the CJK download.
   late final FontsModel fonts = FontsModel(this);
+
+  /// Remote Play and broadcasting.
+  late final MediaModel media = MediaModel(this);
   late final BrowserPlayModel browserPlay = BrowserPlayModel(this);
 
   /// AnyPS5 and its games in the Steam library (Settings › Steam).
@@ -3191,6 +3200,7 @@ class AppModel extends ChangeNotifier {
       stopping = false;
       _checkPhoneReach(game);
       unawaited(_startReplay());
+      unawaited(media.updateRemotePlay());
       crash.started(game, traced: traced);
       final began = DateTime.now();
       // Upstream's engine does not read ANYPS5_FULLSCREEN or ANYPS5_WINDOW_SIZE: the launcher
@@ -3213,6 +3223,7 @@ class AppModel extends ChangeNotifier {
       _stopTimer?.cancel();
       _stopTimer = null;
       unawaited(_stopReplay());
+      media.gameEnded();
       // The quick menu and the question go with the game.
       if (overlay == Layer.quickMenu || overlay == Layer.closeGame) overlay = null;
       updates.gameEnded();
@@ -3444,6 +3455,17 @@ class AppModel extends ChangeNotifier {
       galleryIndex = 0;
       galleryViewing = false;
     }
+    _skipToFocusable();
+    _changed();
+  }
+
+  /// Settings, on the section [id].
+  void openSettingsCategory(String id) {
+    open(Layer.settings);
+    final index = panelCategories().indexWhere((category) => category.id == id);
+    if (index < 0) return;
+    panelCategory = index;
+    panelRow = 0;
     _skipToFocusable();
     _changed();
   }
@@ -3878,7 +3900,7 @@ class AppModel extends ChangeNotifier {
   /// Whether the replay buffer is recording now.
   bool get replayRecording => _replay?.running ?? false;
 
-  ReplayBuffer? _defaultReplay(int seconds) {
+  ReplayBuffer? _defaultReplay(int seconds, {VideoEncoder? encoder, GameSound? sound}) {
     final environment = services.environment ?? Platform.environment;
     final ffmpeg = replayFfmpeg;
     if (ffmpeg == null || !ReplayBuffer.supported(system, environment)) return null;
@@ -3888,6 +3910,8 @@ class AppModel extends ChangeNotifier {
       seconds: seconds,
       system: system,
       environment: environment,
+      encoder: encoder,
+      sound: sound,
     );
   }
 
@@ -3909,7 +3933,16 @@ class AppModel extends ChangeNotifier {
 
   Future<void> _startReplay() async {
     if (!preferences.replayBuffer || _replay != null || running == null) return;
-    final buffer = (services.replay ?? _defaultReplay)(preferences.replaySeconds);
+    final ReplayBuffer? buffer;
+    if (services.replay case final made?) {
+      buffer = made(preferences.replaySeconds);
+    } else {
+      // The graphics card's encoder when one works, and the game's sound with the picture.
+      final encoder = await media.encoders?.encoder;
+      final playing = running;
+      if (playing == null || !preferences.replayBuffer || _replay != null) return;
+      buffer = _defaultReplay(preferences.replaySeconds, encoder: encoder, sound: media.soundOf(playing.$2.pid));
+    }
     if (buffer == null) return;
     _replay = buffer;
     if (!await buffer.start()) {
@@ -3981,6 +4014,13 @@ class AppModel extends ChangeNotifier {
     show(text);
     if (launcherInFront) return;
     if (!await desktop.notify('AnyPS5', text)) desktopNotify('AnyPS5', text);
+  }
+
+  /// Said as a capture is ([_captureSaid]), with a second line in the desktop notice.
+  Future<void> notice(String text, {String? detail}) async {
+    show(detail == null ? text : '$text. $detail');
+    if (launcherInFront) return;
+    if (!await desktop.notify(text, detail ?? 'AnyPS5')) desktopNotify(text, detail ?? 'AnyPS5');
   }
 
   /// The game's window now, into its gallery (Share held); the picture's path.
@@ -4194,6 +4234,7 @@ class AppModel extends ChangeNotifier {
                 title: T.text('gameSettings'),
                 kind: ActionRow(() => open(Layer.gameSettings)),
               ),
+              ...media.gameRows(),
               PanelRow(
                 id: 'closeGame',
                 title: T.text('quickCloseGame'),
@@ -4689,6 +4730,7 @@ class AppModel extends ChangeNotifier {
       PanelCategory(id: 'displayDefaults', title: T.text('displayDefaults'), rows: _displayDefaultRows()),
       PanelCategory(id: 'presets', title: T.text('presetsTitle'), rows: _presetRows()),
       PanelCategory(id: 'captures', title: T.text('captures'), rows: _captureRows()),
+      PanelCategory(id: 'broadcast', title: T.text('broadcastTitle'), rows: media.settingsRows()),
       PanelCategory(id: 'shortcuts', title: T.text('shortcuts'), rows: _shortcutRows()),
       PanelCategory(
         id: 'about',
@@ -5797,6 +5839,8 @@ class AppModel extends ChangeNotifier {
           _toldLibrary = null;
           _changed();
           _publishLook();
+          // Its Go Live button shows what the launcher does now.
+          if (media.phase.active) remote?.publish(const RemoteBroadcast(true));
           // A phone that comes while a game runs hears at once whether that game reads it.
           if (running case (final Game playing, _)) _checkPhoneReach(playing);
         },
@@ -5806,6 +5850,7 @@ class AppModel extends ChangeNotifier {
           notifyListeners();
         },
         request: _phoneRequest,
+        streamWishes: () => unawaited(media.updateRemotePlay()),
       );
       final devices = PairedDevices(paths.pairedDevicesFile);
       final RemoteServer server;
@@ -5884,6 +5929,14 @@ class AppModel extends ChangeNotifier {
         stopGame();
       case RemoteHome():
         handle(Command.home);
+      case RemoteKeyFrame():
+        media.wantKey();
+      case RemoteCommand(name: 'capture'):
+        // Create on the phone's pad: a clip (or a picture) of the game, the game staying in front.
+        unawaited(saveClip());
+      case RemoteCommand(:final name) when name == 'broadcastStart' || name == 'broadcastStop':
+        // Go Live and End Broadcast on the phone.
+        media.phoneBroadcast(name == 'broadcastStart');
       case RemoteCommand(:final name):
         final command = switch (name) {
           'left' => Command.left,
@@ -6034,8 +6087,9 @@ class AppModel extends ChangeNotifier {
     _pads?.stop();
     _focusWatch?.cancel();
     _captureTimer?.cancel();
-    // The replay buffer's segments go with the launcher.
+    // The replay buffer's segments go with the launcher, as do Remote Play and a broadcast.
     unawaited(_stopReplay());
+    media.dispose();
     _navigator?.dispose();
     _installer?.cancel();
     _preparer?.cancel();

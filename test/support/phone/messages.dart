@@ -47,6 +47,7 @@ sealed class Message {
           icon: json['icon'] as String?,
         ),
         'streaming' => Streaming(json['state'] as String),
+        'broadcast' => Broadcasting(json['on'] as bool),
         'activity' => ActivityUpdate(
           json['activity'] == null ? null : Activity.fromJson(json['activity'] as Map<String, dynamic>),
         ),
@@ -485,4 +486,13 @@ class Typed extends Message {
 
   @override
   String toJson() => jsonEncode({'type': 'typed', 'prompt': prompt, 'text': text, 'action': action.name});
+}
+
+/// Whether the launcher is broadcasting the game; the phone starts and stops it with the
+/// commands broadcastStart and broadcastStop.
+class Broadcasting extends Message {
+  Broadcasting(this.on);
+  final bool on;
+  @override
+  String toJson() => jsonEncode({'type': 'broadcast', 'on': on});
 }

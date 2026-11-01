@@ -65,6 +65,7 @@ import '../core/online/online_peer_mesh.dart';
 import '../core/together/voice_mesh.dart';
 import '../core/trophies.dart';
 import '../core/unlock_space.dart';
+import '../core/unreal/unreal_controls.dart';
 import 'browser_play.dart';
 import 'components.dart';
 import 'controllers_model.dart';
@@ -804,6 +805,7 @@ class LauncherServices {
     this.window,
     this.replay,
     this.folderSize,
+    this.gameControls,
     this.commands,
   });
 
@@ -814,6 +816,10 @@ class LauncherServices {
   /// A game folder's size on disk, read away from the interface (Isolate.run by default): a
   /// dump holds tens of thousands of files.
   final Future<int> Function(String folder)? folderSize;
+
+  /// What an Unreal game's own input settings say each pad button does, read from its paks
+  /// away from the interface (Isolate.run by default); null when they say nothing readable.
+  final Future<Map<PadAction, List<String>>?> Function(String folder)? gameControls;
 
   /// The launcher's own window: full screen or not; nothing when not given.
   final LauncherWindow? window;
@@ -1810,6 +1816,10 @@ class AppModel extends ChangeNotifier {
   final Map<String, String> failures = {};
   final Map<String, int> sizes = {};
 
+  /// Each game's own actions by pad button (UnrealControls), read the first time its controls
+  /// open; empty while being read and for a game whose files name none.
+  final Map<String, Map<PadAction, List<String>>> gameControls = {};
+
   /// The selected game's pictures while the gallery is open, newest first; the one the focus is
   /// on and whether it is shown over the whole screen.
   List<String> galleryShots = const [];
@@ -2334,6 +2344,25 @@ class AppModel extends ChangeNotifier {
   }
 
   bool _measuring = false;
+
+  /// A game's own controls read on another isolate. Static, so the closure sent there holds
+  /// only the folder and not the model.
+  static Future<Map<PadAction, List<String>>?> _readGameControls(String folder) =>
+      Isolate.run(() => UnrealControls.read(folder));
+
+  /// Reads what the game's own files say each pad button does, once per game.
+  void _readControls(Game game) {
+    if (gameControls.containsKey(game.id)) return;
+    gameControls[game.id] = const {};
+    final read = services.gameControls ?? _readGameControls;
+    unawaited(
+      read(game.folder).then((controls) {
+        if (_disposed || controls == null || controls.isEmpty) return;
+        gameControls[game.id] = controls;
+        notifyListeners();
+      }, onError: (Object _) {}),
+    );
+  }
 
   GameState stateOf(Game game) {
     if (running case (final Game playing, final RunningGame run) when playing.id == game.id) {
@@ -3329,6 +3358,7 @@ class AppModel extends ChangeNotifier {
       revealedTrophies = {};
     }
     if (next == Layer.trophies || next == Layer.gallery) _loadShots();
+    if (next == Layer.controls && selectedGame != null) _readControls(selectedGame!);
     // The screens that show the own name and handle read them again first.
     if (next == Layer.friends || next == Layer.profile || next == Layer.settings || next == Layer.profilePicker) {
       together.refreshOwnProfile();
@@ -5202,12 +5232,16 @@ class AppModel extends ChangeNotifier {
   List<PanelRow> _controlRows(Game game) {
     final settings = currentSettings(game);
     final changes = settings.controls ?? const <String, List<String>>{};
+    // The game's own actions, when its files name them, under each button.
+    final actions = gameControls[game.id] ?? const <PadAction, List<String>>{};
     return [
       ..._gyroRows(game, settings),
+      if (actions.isNotEmpty) PanelRow(id: 'fromGame', title: T.text('controlsFromGame'), kind: const InfoRow('')),
       for (final action in PadAction.values)
         PanelRow(
           id: action.key,
           title: padActionTitle(action),
+          detail: actions[action]?.join(', '),
           glyph: switch (action) {
             PadAction.cross => PadGlyph.cross,
             PadAction.circle => PadGlyph.circle,

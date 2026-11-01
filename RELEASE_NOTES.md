@@ -19,6 +19,10 @@ release when it is made.
   installer and the .deb do it too.
 - **Choose the screenshots folder** in **Settings › Captures**. Screenshots, trophy pictures and
   clips go there, and **Show Screenshots** opens it.
+- **Unreal games show what each button does.** A game's Controls page reads the game's own
+  input settings from its .pak files and writes the game's action under each pad button, such as
+  Jump under Cross. It reads them once, the first time the page opens. Games with encrypted paks,
+  Oodle compression or only Enhanced Input assets show nothing extra.
 
 ## 0.1.17
 

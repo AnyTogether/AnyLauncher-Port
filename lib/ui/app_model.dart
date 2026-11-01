@@ -21,6 +21,7 @@ import '../core/launcher_health.dart';
 import '../core/desktop_notice.dart';
 import '../core/desktop/desktop.dart';
 import '../core/desktop/launcher_window.dart';
+import '../core/discord_presence.dart' show DiscordPresence;
 import '../core/desktop/window_backdrop.dart';
 import '../core/font_download.dart';
 import '../core/free_space.dart';
@@ -68,6 +69,7 @@ import 'browser_play.dart';
 import 'components.dart';
 import 'controllers_model.dart';
 import 'crash_model.dart';
+import 'discord_model.dart';
 import 'engine_model.dart';
 import 'fonts_model.dart';
 import 'game_files_model.dart';
@@ -112,6 +114,8 @@ class Preferences {
     ..browserPlayAlways = json['browserPlayAlways'] == true
     ..togetherServer = json['togetherServer'] as String?
     ..friendsJoin = json['friendsJoin'] as bool? ?? true
+    ..discordPresence = json['discordPresence'] as bool? ?? true
+    ..discordJoin = json['discordJoin'] as bool? ?? true
     ..onlinePlay = json['onlinePlay'] == true
     ..onlinePlatformGroups = json['onlinePlatformGroups'] as bool? ?? true
     ..pushToTalk = json['pushToTalk'] as bool? ?? false
@@ -196,6 +200,11 @@ class Preferences {
 
   /// While a game runs, friends see it and can join (an AnyTogether game session).
   bool friendsJoin = true;
+
+  /// Settings › Behaviour: the running game and the party on the user's Discord profile, and a
+  /// Join button there with the party's code (discord_model.dart).
+  bool discordPresence = true;
+  bool discordJoin = true;
 
   /// Settings › AnyTogether › Online play (experimental): games are started with the launcher's
   /// online bridge (signed in as the AnyTogether user, friends, Player Sessions, game packets to
@@ -308,6 +317,8 @@ class Preferences {
     'browserPlayAlways': browserPlayAlways,
     'togetherServer': togetherServer,
     'friendsJoin': friendsJoin,
+    'discordPresence': discordPresence,
+    'discordJoin': discordJoin,
     'onlinePlay': onlinePlay,
     if (!onlinePlatformGroups) 'onlinePlatformGroups': false,
     'pushToTalk': pushToTalk,
@@ -795,7 +806,15 @@ class LauncherServices {
     this.replay,
     this.folderSize,
     this.commands,
+    this.discord,
+    this.discordGames,
   });
+
+  /// Discord's IPC for the "Playing …" status (discord_model.dart); the tests give a fake.
+  final DiscordPresence Function()? discord;
+
+  /// Reads Discord's list of the games it knows (an HTTPS GET), null on a failure.
+  final Future<String?> Function(Uri url)? discordGames;
 
   /// Runs git and CMake for an engine folder that is a git checkout (Update from Git); the
   /// system's processes when not given.
@@ -947,6 +966,8 @@ class AppModel extends ChangeNotifier {
     T.language = Language.byCode(this.preferences.language);
     Motion.reduced = this.preferences.reducedMotion;
     together = TogetherModel(this);
+    // The party and its code changing (and signing out) change what Discord shows.
+    together.hub.addListener(discord.update);
     _applySound();
     sounds.onCue = _cueAsked;
     // Full screen the system made or ended (Maximize, Win+Up): the launcher follows it.
@@ -1163,6 +1184,9 @@ class AppModel extends ChangeNotifier {
 
   /// AnyTogether: the account, friends, messages, parties.
   late final TogetherModel together;
+
+  /// "Playing …" on the user's Discord profile.
+  late final DiscordModel discord = DiscordModel(this);
 
   /// An unlock the user asked for finished (the game's id, whether it worked): Play Together
   /// joins a game it unlocked first.
@@ -3073,6 +3097,7 @@ class AppModel extends ChangeNotifier {
       }
       _watchTrophies(game);
       together.gameChanged();
+      discord.update();
       _changed();
       final code = await run.exitCode;
       _phoneAnswerTimer?.cancel();
@@ -3090,6 +3115,7 @@ class AppModel extends ChangeNotifier {
       if (overlay == Layer.quickMenu || overlay == Layer.closeGame) overlay = null;
       updates.gameEnded();
       together.gameChanged();
+      discord.update();
       crash.ended(game, code, stopped: _stopped);
       _changed();
       // Started from a Steam shortcut of the game: the launcher goes with it, so Steam sees
@@ -3738,6 +3764,7 @@ class AppModel extends ChangeNotifier {
   void quitLauncher() {
     stopGame();
     unawaited(_stopReplay());
+    unawaited(discord.close());
     (services.quit ?? exit)(0);
   }
 
@@ -4555,6 +4582,7 @@ class AppModel extends ChangeNotifier {
               savePreferences();
             }),
           ),
+          ...discord.settingsRows(),
         ],
       ),
       PanelCategory(id: 'steam', title: T.text('steam'), rows: steam.settingsRows()),
@@ -5869,6 +5897,7 @@ class AppModel extends ChangeNotifier {
     engine.cancel();
     fonts.dispose();
     files.dispose();
+    unawaited(discord.close());
     together.dispose();
     updates.dispose();
     music.dispose();

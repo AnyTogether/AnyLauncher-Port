@@ -5,6 +5,12 @@ release when it is made.
 
 ## Next release
 
+- **Your game on Discord.** With Discord open, your profile shows the game you play and for how
+  long, as the Mac launcher does. A game Discord knows shows under its own name and icon. In a
+  party it says **In a party** with the party's size, and a **Join on AnyTogether** button opens
+  the party's join page. You still say yes to whoever asks. Both are on by default and switch off
+  in **Settings › Behaviour**: **Show the game you play on Discord** and **Show a Join button on
+  Discord**.
 - **Upscaling: Bilinear or FSR 1.** A new choice in a game's settings, beside Resolution. With
   AMD FidelityFX Super Resolution 1, a game image smaller than the window is brought up to it
   sharp instead of blurred, so a lower Resolution gives more frames on a weaker PC without the

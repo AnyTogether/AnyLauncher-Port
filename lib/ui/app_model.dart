@@ -51,6 +51,7 @@ import '../core/replay_buffer.dart';
 import '../core/save_backup.dart';
 import '../core/steam/steam_launch.dart';
 import '../core/screenshots.dart';
+import '../core/deep_link.dart';
 import '../core/engine_checkout.dart';
 import '../core/toolkit.dart';
 import '../core/toolkit_download.dart';
@@ -78,6 +79,7 @@ import 'game_files_model.dart';
 import 'steam_model.dart';
 import 'glass.dart';
 import 'profile_picture.dart';
+import 'sharing_model.dart';
 import 'strings.dart';
 import 'theme.dart';
 import 'together_model.dart';
@@ -139,6 +141,7 @@ class Preferences {
         if (entry.value is String) entry.key: entry.value as String,
     }
     ..fontsFolder = json['fontsFolder'] as String?
+    ..screenshotsFolder = json['screenshotsFolder'] as String?
     ..showHiddenTrophies = json['showHiddenTrophies'] as bool? ?? false
     ..controllerVibration = json['controllerVibration'] as bool? ?? true
     ..steamUser = json['steamUser'] as String?
@@ -263,6 +266,10 @@ class Preferences {
   /// A folder of the user's own fonts (the console's, say) games get first; null for none.
   String? fontsFolder;
 
+  /// Settings › Captures › Screenshots Folder: where F12 screenshots, trophy pictures and clips
+  /// go; null for Pictures/AnyPS5 (AppPaths.pictures).
+  String? screenshotsFolder;
+
   /// Hidden trophies show their name, description and icon before they are earned.
   bool showHiddenTrophies = false;
 
@@ -355,6 +362,7 @@ class Preferences {
     'engineGitBeforePlay': engineGitBeforePlay,
     'engineGitBuilt': engineGitBuilt,
     'fontsFolder': fontsFolder,
+    'screenshotsFolder': screenshotsFolder,
     'showHiddenTrophies': showHiddenTrophies,
     'controllerVibration': controllerVibration,
     'steamUser': steamUser,
@@ -874,11 +882,12 @@ class LauncherServices {
   /// Asks the user where to save a file, [suggestedName] first; null when they cancelled.
   final Future<String?> Function(String suggestedName)? saveFile;
 
-  /// Asks the user where to save a file of a kind ([label], its [extensions]); null when they
-  /// cancelled.
+  /// Asks where to save a file of [label]'s kind (one of [extensions]), [suggestedName] first;
+  /// null when they cancelled.
   final Future<String?> Function(String suggestedName, String label, List<String> extensions)? saveFileAs;
 
-  /// Asks the user for a file of a kind ([label], its [extensions]); null when they cancelled.
+  /// Asks the user for a file of [label]'s kind (one of [extensions]) to open; null when they
+  /// cancelled.
   final Future<String?> Function(String label, List<String> extensions)? pickFile;
 
   /// This computer for a crash report; read from the system when not given.
@@ -1869,7 +1878,14 @@ class AppModel extends ChangeNotifier {
 
   static const galleryColumns = 4;
 
-  List<String> screenshotsOf(Game game) => Screenshots.list(paths.pictures, game);
+  List<String> screenshotsOf(Game game) => Screenshots.list(picturesFolder, game);
+
+  /// Where F12 screenshots, trophy pictures and clips go: Settings › Captures › Screenshots
+  /// Folder, else Pictures/AnyPS5.
+  String get picturesFolder => preferences.screenshotsFolder ?? paths.pictures;
+
+  /// The selected game's pictures read again (another screenshots folder).
+  void loadGalleryShots() => _loadShots();
 
   void _loadShots() {
     final game = selectedGame;
@@ -2163,6 +2179,9 @@ class AppModel extends ChangeNotifier {
   /// Facts about a game the settings rows show that cost a disk read (its patch file, its
   /// backups), read when its settings open rather than on every frame.
   final Map<String, ({bool resolution, List<String> backups})> _gameFacts = {};
+
+  /// Whether the title's patch file lets Game Settings choose its resolution.
+  bool supportsResolution(Game game) => _factsOf(game).resolution;
 
   ({bool resolution, List<String> backups}) _factsOf(Game game) => _gameFacts.putIfAbsent(game.id, () {
     final patch = toolkit?.patchFile(game.titleId);
@@ -3108,7 +3127,7 @@ class AppModel extends ChangeNotifier {
       written = false;
     }
     try {
-      Directory(paths.pictures).createSync(recursive: true);
+      Directory(picturesFolder).createSync(recursive: true);
     } on FileSystemException {
       // Screenshots go nowhere then.
     }
@@ -3139,7 +3158,7 @@ class AppModel extends ChangeNotifier {
         ...settings.environment(
           launcherLanguage: T.language.consoleLanguage,
           inputFile: written ? inputFile : null,
-          screenshots: paths.pictures,
+          screenshots: picturesFolder,
           fonts: systemFonts,
           shaderCacheFolder: paths.shaderCache(game.slug),
           trace: traced,
@@ -3293,7 +3312,7 @@ class AppModel extends ChangeNotifier {
     try {
       final frame = await desktop.captureGame(pid);
       if (frame == null) return null;
-      final path = Screenshots.trophyPath(paths.pictures, game, trophy.id, DateTime.now());
+      final path = Screenshots.trophyPath(picturesFolder, game, trophy.id, DateTime.now());
       await Isolate.run(() {
         File(path)
           ..parent.createSync(recursive: true)
@@ -3974,7 +3993,7 @@ class AppModel extends ChangeNotifier {
       unawaited(_captureSaid(T.text('screenshotFailed')));
       return null;
     }
-    final path = Screenshots.shotPath(paths.pictures, game, DateTime.now());
+    final path = Screenshots.shotPath(picturesFolder, game, DateTime.now());
     try {
       await Isolate.run(() {
         File(path)
@@ -3997,7 +4016,7 @@ class AppModel extends ChangeNotifier {
     if (playing == null) return null;
     final buffer = _replay;
     if (buffer == null || !buffer.running) return takeScreenshot();
-    final saved = await buffer.save(Screenshots.clipPath(paths.pictures, playing.$1, DateTime.now()));
+    final saved = await buffer.save(Screenshots.clipPath(picturesFolder, playing.$1, DateTime.now()));
     if (saved != null) sounds.play(Cue.unlocked);
     unawaited(
       _captureSaid(saved == null ? T.text('clipFailed') : T.format('clipSaved', [replayLengthText(buffer.seconds)])),
@@ -4722,6 +4741,13 @@ class AppModel extends ChangeNotifier {
           ),
         ),
       PanelRow(
+        id: 'screenshotsFolder',
+        title: T.text('screenshotsFolder'),
+        detail: picturesFolder,
+        kind: ActionRow(() => unawaited(chooseScreenshotsFolder())),
+      ),
+      PanelRow(id: 'showScreenshots', title: T.text('showScreenshots'), kind: ActionRow(showScreenshots)),
+      PanelRow(
         id: 'capturesHow',
         title: T.text('capturesHow'),
         kind: InfoRow(
@@ -4975,12 +5001,24 @@ class AppModel extends ChangeNotifier {
         title: T.text('vsync'),
         kind: ChoiceRow(
           [byDefault(T.text(defaults.vsync ? 'on' : 'off')), T.text('on'), T.text('off')],
+          // Frame generation needs vertical sync: on whatever is chosen while it is on.
           switch (settings.ownVsync) {
+            _ when settings.frameGeneration == true => 1,
             null => 0,
             true => 1,
             false => 2,
           },
           (index) => change(settings.copyWith(vsync: index == 0 ? null : index == 1)),
+        ),
+      ),
+      PanelRow(
+        id: 'frameGeneration',
+        title: T.text('frameGeneration'),
+        // Only AnyPS5-ARM's engine makes the frames: said for upstream's, as FSR 1 is.
+        detail: engine.readsDisplaySettings ? T.text('frameGenerationDetail') : T.text('frameGenerationUpstream'),
+        kind: ToggleRow(
+          settings.frameGeneration == true,
+          (value) => change(settings.copyWith(frameGeneration: value ? true : null)),
         ),
       ),
       if (!settings.followsDisplayDefaults)
@@ -5044,6 +5082,24 @@ class AppModel extends ChangeNotifier {
           settings.shaderCache ?? true,
           (value) => change(settings.copyWith(shaderCache: value ? null : false)),
         ),
+      ),
+      PanelRow(
+        id: 'export',
+        title: T.text('exportSettings'),
+        detail: T.text('exportSettingsDetail'),
+        kind: ActionRow(() => unawaited(exportSettings(game))),
+      ),
+      PanelRow(
+        id: 'import',
+        title: T.text('importSettings'),
+        detail: T.text('importSettingsDetail'),
+        kind: ActionRow(() => unawaited(importSettings(game))),
+      ),
+      PanelRow(
+        id: 'link',
+        title: T.text('copyLink'),
+        detail: ShowGameLink(game.titleId).url,
+        kind: ActionRow(() => copyLink(game)),
       ),
       PanelRow(
         id: 'addUpdate',

@@ -64,7 +64,8 @@ file there, no code: see [TRANSLATING.md](TRANSLATING.md).
   - `themes/` the Theme Studio's themes (`theme_design.dart`, `theme_library.dart`): one folder
     each under the config folder's `Themes`, shared as one `.anyps5theme` zip, the same file as
     the macOS launcher's; `looping_video.dart` a background video looped through ffmpeg;
-    `launcher_handoff.dart` a theme file opened while the launcher runs, handed to it;
+    `opened_files.dart` theme files the launcher is started with (handed to a launcher already
+    open over `link_relay.dart`);
     `desktop/file_types.dart` `.anyps5theme` registered for the zip, the AppImage and the archive
   - `update_channel.dart` Settings › About › Update Channel (Stable or Nightly) and the macOS
     launcher's order of versions, a nightly before the release it leads to

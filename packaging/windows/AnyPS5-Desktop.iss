@@ -76,6 +76,12 @@ Root: HKA; Subkey: "Software\Classes\.anyps5theme"; ValueType: string; ValueName
 Root: HKA; Subkey: "Software\Classes\AnyPS5.Theme"; ValueType: string; ValueName: ""; ValueData: "AnyPS5 theme"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\AnyPS5.Theme\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"",0"
 Root: HKA; Subkey: "Software\Classes\AnyPS5.Theme\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""
+; anyps5:// links open the launcher. The launcher writes the same for the user at start, which
+; covers the zip. HKA is the user's classes for a per-user install, the machine's for all users.
+Root: HKA; Subkey: "Software\Classes\anyps5"; ValueType: string; ValueName: ""; ValueData: "URL:AnyPS5"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\anyps5"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKA; Subkey: "Software\Classes\anyps5\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"",0"
+Root: HKA; Subkey: "Software\Classes\anyps5\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"

@@ -16,8 +16,10 @@ release when it is made.
   Appearance**. A video loops without sound. It plays with ffmpeg, beside the launcher or
   installed, as clips do. The menu music plays when the selected game has no song of its own.
 - **Update Channel** in **Settings › About**: Stable or Nightly. On Nightly the engine picker
-  also offers the nightly AnyPS5-ARM engine, built from main on the days it changes, once it is signed. Stable never
-  offers going back to an older engine than the one in use.
+  also offers the nightly AnyPS5-ARM engine, built from main on the days it changes, once it is
+  signed. Stable never offers going back to an older engine than the one in use.
+
+## 0.1.17
 
 - **Upscaling: Bilinear or FSR 1.** A new choice in a game's settings, beside Resolution. With
   AMD FidelityFX Super Resolution 1, a game image smaller than the window is brought up to it
@@ -48,6 +50,9 @@ release when it is made.
   Phones says it while upstream's engine is in use. A game on an engine the launcher can't tell
   (a folder of your own) is said only when it hasn't answered the phone for 30 seconds. The game
   log notes the phones and the engine at each start.
+- **One progress bar while a game updates.** The step and its bar beside the buttons are the
+  only ones now; the main button no longer draws a second line inside itself, and the status
+  under the game's name reads just **Updating**.
 
 ## 0.1.16
 

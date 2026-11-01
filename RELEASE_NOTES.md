@@ -5,6 +5,10 @@ release when it is made.
 
 ## Next release
 
+- **Unreal games show what each button does.** A game's Controls page reads the game's own
+  input settings from its .pak files and writes the game's action under each pad button, such as
+  Jump under Cross. It reads them once, the first time the page opens. Games with encrypted paks,
+  Oodle compression or only Enhanced Input assets show nothing extra.
 - **Upscaling: Bilinear or FSR 1.** A new choice in a game's settings, beside Resolution. With
   AMD FidelityFX Super Resolution 1, a game image smaller than the window is brought up to it
   sharp instead of blurred, so a lower Resolution gives more frames on a weaker PC without the

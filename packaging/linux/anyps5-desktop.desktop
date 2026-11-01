@@ -10,4 +10,4 @@ Terminal=false
 Categories=Game;Emulator;
 Keywords=PS5;PlayStation;AnyPS5;games;
 StartupWMClass=anyps5_desktop
-MimeType=application/x-anyps5theme;
+MimeType=x-scheme-handler/anyps5;application/x-anyps5theme;

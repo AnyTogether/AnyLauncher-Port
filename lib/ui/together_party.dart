@@ -83,6 +83,13 @@ extension TogetherParty on TogetherModel {
               person: TogetherModel.card(friend.person, status: TogetherModel.status(friend.presence)),
               kind: ActionRow(() => unawaited(joinParty(open.id))),
             ),
+        if (matchmakingAllowed)
+          PanelRow(
+            id: 'party-find',
+            title: T.text('discoverFindParty'),
+            detail: T.text('discoverFindPartyDetail'),
+            kind: ActionRow(() => openFindPlayers(category: 2)),
+          ),
       ]);
       return rows;
     }
@@ -151,6 +158,7 @@ extension TogetherParty on TogetherModel {
           kind: ToggleRow(party.open, (value) => unawaited(setPartyOpen(value))),
         ),
       if (leader) ...joinCodeRows(party),
+      if (leader) ...partyListingRows(party),
       ...discordRows(party, leader: leader),
     ]);
     final invitable = hub.friends.friends.where((friend) => !party.has(friend.person.id)).toList();

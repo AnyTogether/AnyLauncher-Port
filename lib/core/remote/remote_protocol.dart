@@ -268,6 +268,7 @@ sealed class RemoteMessage {
     ),
     'keyFrame' => const RemoteKeyFrame(),
     'streaming' => RemoteStreaming(json['state'] as String),
+    'broadcast' => RemoteBroadcast(json['on'] == true),
     'togetherHandoff' => RemoteTogetherHandoff(id: json['id'] as String, deviceName: json['deviceName'] as String),
     'togetherHandoffAnswer' => RemoteTogetherHandoffAnswer(
       id: json['id'] as String,
@@ -531,6 +532,17 @@ class RemoteStreaming extends RemoteMessage {
   String get type => 'streaming';
   @override
   Map<String, Object?> get fields => {'state': state};
+}
+
+/// Whether the game is being broadcast (Twitch, YouTube, RTMP), for the phone's Go Live button;
+/// the phone starts and stops it with the commands broadcastStart and broadcastStop.
+class RemoteBroadcast extends RemoteMessage {
+  const RemoteBroadcast(this.on);
+  final bool on;
+  @override
+  String get type => 'broadcast';
+  @override
+  Map<String, Object?> get fields => {'on': on};
 }
 
 /// A sign-in to AnyTogether for the other side to approve, both ways: the launcher asks its

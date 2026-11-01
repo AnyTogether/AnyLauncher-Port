@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import '../together/share_play.dart' show SharePadBridges;
 import 'paired_devices.dart';
 import 'remote_protocol.dart';
 
@@ -78,7 +79,7 @@ class _Client {
 /// relays pad packets between the phones and the running game's bridges. Up to four phones at a
 /// time, one per player, each with its own bridge to the game; one new phone is asked about at
 /// a time. Advertising on the network is [MdnsAdvertiser]'s job.
-class RemoteServer {
+class RemoteServer implements SharePadBridges {
   RemoteServer({
     required this.name,
     required this.devices,
@@ -373,7 +374,7 @@ class RemoteServer {
   void _welcome(_Client client, String key) {
     int? slot;
     for (var candidate = 0; candidate < maxPhones; candidate++) {
-      if (!_phones.any((phone) => phone.slot == candidate)) {
+      if (!_phones.any((phone) => phone.slot == candidate) && !_reservedBridges.contains(candidate)) {
         slot = candidate;
         break;
       }
@@ -564,7 +565,10 @@ class RemoteServer {
         for (final phone in _phones) {
           if (phone.slot == slot) client = phone;
         }
-        if (client == null) continue;
+        if (client == null) {
+          if (_reservedBridges.contains(slot)) padOutput?.call(slot, Uint8List.fromList(data));
+          continue;
+        }
         if (client.padOnChannel) {
           try {
             client.socket.add(Uint8List.fromList(data));
@@ -690,6 +694,39 @@ class RemoteServer {
       return true;
     }
     return false;
+  }
+
+  // Share play: a bridge held for each viewer with a pad (SharePadRouter).
+
+  final Set<int> _reservedBridges = {};
+
+  /// The game's answers on a bridge a share play viewer holds.
+  void Function(int bridge, Uint8List packet)? padOutput;
+
+  /// A bridge no phone uses, held for a share play viewer; null when all are taken.
+  @override
+  int? reservePadBridge() {
+    for (var slot = _bridges.length - 1; slot >= 0; slot--) {
+      if (_phones.any((phone) => phone.slot == slot) || _reservedBridges.contains(slot)) continue;
+      _reservedBridges.add(slot);
+      return slot;
+    }
+    return null;
+  }
+
+  @override
+  void releasePadBridge(int bridge) => _reservedBridges.remove(bridge);
+
+  @override
+  void sendPad(Uint8List data, int bridge) {
+    if (bridge < 0 || bridge >= _bridges.length) return;
+    final game = _gameAddresses[bridge];
+    if (game == null) return;
+    try {
+      _bridges[bridge].send(data, game.$1, game.$2);
+    } on Object {
+      // Closing.
+    }
   }
 
   /// Remote Play's packets to every phone that wants them: by UDP to where its pad comes from, or

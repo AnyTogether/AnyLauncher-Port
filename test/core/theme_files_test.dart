@@ -1,11 +1,11 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:anyps5_desktop/core/desktop/file_types.dart';
 import 'package:anyps5_desktop/core/host.dart';
-import 'package:anyps5_desktop/core/launcher_handoff.dart';
+import 'package:anyps5_desktop/core/link_relay.dart';
 import 'package:anyps5_desktop/core/looping_video.dart';
+import 'package:anyps5_desktop/core/opened_files.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -80,7 +80,7 @@ void main() {
       expect(File('packaging/linux/anyps5-desktop-mime.xml').readAsStringSync(), ThemeFileType.mimePackage);
       expect(
         File('packaging/linux/anyps5-desktop.desktop').readAsStringSync(),
-        contains('MimeType=application/x-anyps5theme;'),
+        matches(RegExp(r'^MimeType=.*application/x-anyps5theme;', multiLine: true)),
       );
       final installer = File('packaging/windows/AnyPS5-Desktop.iss').readAsStringSync();
       expect(installer, contains(r'Software\Classes\.anyps5theme'));
@@ -89,52 +89,10 @@ void main() {
     });
   });
 
-  group('the handoff', () {
-    test('a second launcher hands its theme files to the running one', () async {
-      final opened = <String>[];
-      final handoff = await LauncherHandoff.listen(temp.path, opened.add);
-      expect(handoff, isNotNull);
-      expect(await LauncherHandoff.send(temp.path, ['/a/Ember.anyps5theme']), isTrue);
-      expect(opened, ['/a/Ember.anyps5theme']);
-      await handoff!.close();
-      expect(File(p.join(temp.path, LauncherHandoff.fileName)).existsSync(), isFalse);
-      expect(
-        await LauncherHandoff.send(temp.path, ['/a/b.anyps5theme']),
-        isFalse,
-        reason: 'none runs: this one opens it',
-      );
-    });
-
-    test('a message without the token opens nothing', () async {
-      final opened = <String>[];
-      final handoff = (await LauncherHandoff.listen(temp.path, opened.add))!;
-      final saved =
-          jsonDecode(File(p.join(temp.path, LauncherHandoff.fileName)).readAsStringSync()) as Map<String, dynamic>;
-      final socket = await Socket.connect(InternetAddress.loopbackIPv4, saved['port'] as int);
-      socket.write(
-        '${jsonEncode({
-          'token': 'guess',
-          'open': ['/x.anyps5theme'],
-        })}\n',
-      );
-      await socket.flush();
-      await socket.drain<void>();
-      socket.destroy();
-      expect(opened, isEmpty);
-      await handoff.close();
-    });
-
-    test('a stale file of a launcher that is gone is not a launcher', () async {
-      File(p.join(temp.path, LauncherHandoff.fileName)).writeAsStringSync(jsonEncode({'port': 1, 'token': 'x'}));
-      expect(
-        await LauncherHandoff.send(temp.path, ['/a.anyps5theme'], timeout: const Duration(milliseconds: 300)),
-        isFalse,
-      );
-    });
-
-    test('the files among the arguments: paths and file URIs, not options or a title ID', () {
+  group('the files the launcher is opened with', () {
+    test('paths and file URIs, not options or a title ID', () {
       final theme = File(p.join(temp.path, 'My Theme.anyps5theme'))..writeAsStringSync('x');
-      final found = LauncherHandoff.files([
+      final found = OpenedFiles.of([
         '--fullscreen',
         '--play',
         theme.path,
@@ -142,6 +100,15 @@ void main() {
         p.join(temp.path, 'missing.anyps5theme'),
       ]);
       expect(found, [theme.path]);
+    });
+
+    test('a launcher already open is handed a theme file over the link relay', () async {
+      final file = LinkRelay.fileIn(temp.path);
+      final relay = (await LinkRelay.listen(file))!;
+      final got = relay.links.first;
+      expect(await LinkRelay.send(file, '/a/Ember.anyps5theme'), isTrue);
+      expect(await got, '/a/Ember.anyps5theme');
+      await relay.close();
     });
   });
 

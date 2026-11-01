@@ -142,6 +142,7 @@ class Party {
     this.discord,
     this.requests = const [],
     this.together,
+    this.listing,
   });
 
   factory Party.fromJson(Map<String, dynamic> json) {
@@ -169,6 +170,7 @@ class Party {
           if (person is Map<String, dynamic>) Person.fromJson(person),
       ],
       together: PartyTogether.fromJson(json['together']),
+      listing: PartyListing.fromJson(json['public']),
     );
   }
 
@@ -197,6 +199,9 @@ class Party {
 
   /// The party's Play Together game while one runs (older servers never say).
   final PartyTogether? together;
+
+  /// How the party is listed in public (Find Players); null while it is not.
+  final PartyListing? listing;
 
   /// User ids as a list of strings, or of peers with a userId.
   static Set<String> _ids(Object? list) => {
@@ -236,7 +241,28 @@ class Party {
     discord: discord == null ? this.discord : discord(),
     requests: requests ?? this.requests,
     together: together,
+    listing: listing,
   );
+}
+
+/// How a party is listed in public: who may get in (they ask, or walk in), and the game and
+/// language it is about.
+class PartyListing {
+  const PartyListing({required this.open, this.titleId, this.language});
+
+  static PartyListing? fromJson(Object? json) {
+    if (json is! Map) return null;
+    return PartyListing(
+      open: json['join'] == 'open',
+      titleId: json['titleId'] as String?,
+      language: json['language'] as String?,
+    );
+  }
+
+  /// Anyone may walk in; else they ask.
+  final bool open;
+  final String? titleId;
+  final String? language;
 }
 
 /// An invite to someone's party.

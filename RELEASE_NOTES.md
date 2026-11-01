@@ -18,6 +18,68 @@ release when it is made.
 - **Update Channel** in **Settings › About**: Stable or Nightly. On Nightly the engine picker
   also offers the nightly AnyPS5-ARM engine, built from main on the days it changes, once it is
   signed. Stable never offers going back to an older engine than the one in use.
+- **Activity, leaderboards and notifications from AnyTogether**, as on the Mac. **Friends ›
+  Activity** shows what your friends have been playing: trophies, platinums, first plays, long
+  sessions, new friends and milestones. Each item takes one of four reactions. Left and right
+  pick one, Enter gives it and △ opens the person's profile. **Friends › Leaderboard** ranks
+  trophy points among friends or everyone, with your own place. A game's settings open its own
+  board by points, play time or completion. A **bell** in the top bar, while you are signed in,
+  holds AnyTogether's notifications with the unread count. Choosing one marks it read and opens
+  where it points.
+- **How did it run?** After a game of a minute or more, the launcher asks once per game and
+  launcher version how far it got. One choice sends the report to AnyTogether's compatibility
+  list with the launcher and engine versions, the computer and the system. A game's settings
+  show what the community found on Windows or Linux and send a report any time. **Don't ask
+  after games** turns the question off.
+- **Find Players**, as on the Mac. **Friends › Find Players** shows people looking for a group,
+  filtered by game, purpose, language and what starts soon. Select a post to say I'm in, and
+  select it again to take that back. **Find players for** a game, in its settings or on the
+  board, posts what you want to play with the slots, languages, start, how long it stays up and
+  a note. **My Posts** lists who wants in, to let them into your party or say not now. **Public
+  Parties** lists parties their leader opened to everyone, to ask to join or walk in. **People**
+  suggests players to add. A game's **hub** shows who plays it now, its posts and parties, its
+  leaderboard and how it runs. A party's leader can list it in public from the party panel.
+  **Settings › AnyTogether** chooses whether people who don't know you find you, and the
+  languages you play in. Share plays under Live now are left out, since this launcher has no
+  share play to watch yet.
+- **Share play: friends watch your game, and up to three play along.** While a game runs, the
+  quick menu has **Share** for it (signed in to AnyTogether). Friends watch live in a browser on
+  anytogether.net. **Let Them Play** hands a friend player 2, 3 or 4, and
+  their controller reaches the game through the phone server's bridges, so it needs the phone
+  server on and the AnyPS5-ARM engine. Invite online friends, open it to friends, choose how many
+  may watch, and stop it from the same menu. It ends with the game. The picture and sound go
+  from this PC straight to each friend over WebRTC, as from the Mac. Watching a friend's share
+  play in this launcher is not here yet: use the website for that.
+
+- **Remote Play: the game's picture and sound on the phone.** The phone app's Remote Play now
+  works with the Windows and Linux launcher, with the same app as on the Mac. The launcher
+  records the game's window with ffmpeg and encodes it at once on the graphics card (NVIDIA,
+  Intel, AMD, or VA-API on Linux) when it can, and with x264 otherwise. Sound comes from the game
+  alone on Windows 11 and on PulseAudio or PipeWire. Older Windows 10 sends everything the PC
+  plays. It needs ffmpeg beside AnyPS5 or on the PATH, and an X11 session on Linux. A key frame
+  comes every second, so a picture broken by a lost packet mends within a second.
+- **Broadcasting to Twitch, YouTube or any RTMP server.** Set the service, the stream key and the
+  quality in **Settings › Broadcasting**. The key shows as dots and is kept in a file only your
+  account can read. Go live from the quick menu while a game plays, or with **Go Live** on the
+  phone. The launcher shows how long you have been on air, the bit rate and dropped frames, and
+  tries again a few times when the connection drops. It uses ffmpeg, with the graphics card's
+  encoder when one works.
+- **Clips carry the game's sound,** and the replay buffer encodes on the graphics card when it
+  can, which takes far less of the processor. **Create** on the phone's pad saves a clip too.
+- **Frame Generation** in a game's settings: a generated frame between each two of the
+  game's, with vertical sync on while it is. It needs the AnyPS5-ARM engine, and the row says so
+  on upstream's.
+- **Export and Import Settings** in a game's settings: the game's keys and every setting in one
+  JSON file. The file is the Mac launcher's own format, so it moves between Windows, Linux and
+  macOS. A resolution only comes along when the game offers it.
+- **anyps5:// links and Copy Link.** Copy Link in a game's settings puts its link on the
+  clipboard. Opening `anyps5://game/<title ID>` shows the game, `anyps5://play/<title ID>` plays
+  it, and `anyps5://library` and `anyps5://settings` open those screens, the same links as on the
+  Mac. A link opened while the launcher runs goes to the open launcher. The launcher registers
+  the links for your user at start (the registry on Windows, a desktop entry on Linux), and the
+  installer and the .deb do it too.
+- **Choose the screenshots folder** in **Settings › Captures**. Screenshots, trophy pictures and
+  clips go there, and **Show Screenshots** opens it.
 - **Unreal games show what each button does.** A game's Controls page reads the game's own
   input settings from its .pak files and writes the game's action under each pad button, such as
   Jump under Cross. It reads them once, the first time the page opens. Games with encrypted paks,

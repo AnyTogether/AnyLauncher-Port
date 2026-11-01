@@ -18,9 +18,11 @@ import 'components.dart';
 import 'controller_test_view.dart';
 import 'crash_report_view.dart';
 import 'drag_pan.dart';
+import 'feed_view.dart';
 import 'frame_log.dart';
 import 'glass.dart';
 import 'home.dart';
+import 'leaderboard_view.dart';
 import 'level_badge.dart';
 import 'messages_view.dart';
 import 'profile_view.dart';
@@ -463,6 +465,14 @@ class _LauncherShellState extends State<LauncherShell> {
                                               Layer.compare => WithBackPill(
                                                 onBack: () => model.handle(Command.back),
                                                 child: CompareView(model: model),
+                                              ),
+                                              Layer.feed => WithBackPill(
+                                                onBack: () => model.handle(Command.back),
+                                                child: FeedView(model: model),
+                                              ),
+                                              Layer.leaderboard => WithBackPill(
+                                                onBack: () => model.handle(Command.back),
+                                                child: LeaderboardView(model: model),
                                               ),
                                               null => const SizedBox.shrink(),
                                               _ => PanelView(model: model),

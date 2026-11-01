@@ -9,6 +9,8 @@ import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:path/path.dart' as p;
 
 import '../core/audio/atrac9.dart';
+import '../core/capture/game_sound.dart';
+import '../core/capture/video_encoders.dart';
 import '../core/audio/audio_out.dart';
 import '../core/audio/interface_sounds.dart';
 import '../core/audio/theme_music.dart';
@@ -51,6 +53,7 @@ import '../core/replay_buffer.dart';
 import '../core/save_backup.dart';
 import '../core/steam/steam_launch.dart';
 import '../core/screenshots.dart';
+import '../core/deep_link.dart';
 import '../core/engine_checkout.dart';
 import '../core/toolkit.dart';
 import '../core/toolkit_download.dart';
@@ -74,10 +77,13 @@ import 'controllers_model.dart';
 import 'crash_model.dart';
 import 'engine_model.dart';
 import 'fonts_model.dart';
+import 'media_model.dart';
+import 'share_play_model.dart';
 import 'game_files_model.dart';
 import 'steam_model.dart';
 import 'glass.dart';
 import 'profile_picture.dart';
+import 'sharing_model.dart';
 import 'strings.dart';
 import 'theme.dart';
 import 'theme_hub_model.dart';
@@ -140,6 +146,7 @@ class Preferences {
         if (entry.value is String) entry.key: entry.value as String,
     }
     ..fontsFolder = json['fontsFolder'] as String?
+    ..screenshotsFolder = json['screenshotsFolder'] as String?
     ..showHiddenTrophies = json['showHiddenTrophies'] as bool? ?? false
     ..controllerVibration = json['controllerVibration'] as bool? ?? true
     ..steamUser = json['steamUser'] as String?
@@ -167,6 +174,11 @@ class Preferences {
       _ => ReplayBuffer.defaultLength,
     }
     ..shortcuts = ShortcutMap.fromJson(json['shortcuts'])
+    ..compatNever = json['compatNever'] == true
+    ..compatAsked = {
+      for (final entry in (json['compatAsked'] as Map<String, dynamic>? ?? const {}).entries)
+        if (entry.value is String) entry.key: entry.value as String,
+    }
     ..lastPlayed = {
       for (final entry in (json['lastPlayed'] as Map<String, dynamic>? ?? const {}).entries)
         entry.key: entry.value as String,
@@ -264,6 +276,10 @@ class Preferences {
   /// A folder of the user's own fonts (the console's, say) games get first; null for none.
   String? fontsFolder;
 
+  /// Settings › Captures › Screenshots Folder: where F12 screenshots, trophy pictures and clips
+  /// go; null for Pictures/AnyPS5 (AppPaths.pictures).
+  String? screenshotsFolder;
+
   /// Hidden trophies show their name, description and icon before they are earned.
   bool showHiddenTrophies = false;
 
@@ -318,6 +334,11 @@ class Preferences {
   /// Settings › Shortcuts.
   ShortcutMap shortcuts = ShortcutMap();
 
+  /// "How did it run?" after a game (AnyTogether's compatibility list): never asked, and the
+  /// launcher version each game (by title ID) was last asked about.
+  bool compatNever = false;
+  Map<String, String> compatAsked = {};
+
   Map<String, Object?> toJson() => {
     'language': language,
     'theme': theme,
@@ -356,6 +377,7 @@ class Preferences {
     'engineGitBeforePlay': engineGitBeforePlay,
     'engineGitBuilt': engineGitBuilt,
     'fontsFolder': fontsFolder,
+    'screenshotsFolder': screenshotsFolder,
     'showHiddenTrophies': showHiddenTrophies,
     'controllerVibration': controllerVibration,
     'steamUser': steamUser,
@@ -374,6 +396,8 @@ class Preferences {
     'replayBuffer': replayBuffer,
     'replaySeconds': replaySeconds,
     if (!shortcuts.isDefault) 'shortcuts': shortcuts.toJson(),
+    if (compatNever) 'compatNever': true,
+    if (compatAsked.isNotEmpty) 'compatAsked': compatAsked,
   };
 
   /// The saved list of games folders, or a file from before with one (`gamesFolder`) as a list of
@@ -608,6 +632,19 @@ enum Layer {
   /// side by side.
   compare,
 
+  /// AnyTogether's social screens (together_social.dart): friends' activity, a leaderboard, the
+  /// notifications behind the bell, and "How did it run?" after a game.
+  feed,
+  leaderboard,
+  notifications,
+  compat,
+
+  /// Find Players (together_find.dart): the looking-for-group board, the user's posts, public
+  /// parties and people to meet; the post form; one game's hub.
+  findPlayers,
+  lfgPost,
+  gameHub,
+
   /// Family limits: today's play time, asking a parent for more.
   family,
 
@@ -739,11 +776,14 @@ class InfoRow extends RowKind {
 
 /// A field to type in: choosing the row puts the cursor in it; Enter sends [submit].
 class TextRow extends RowKind {
-  const TextRow(this.value, this.set, {this.submit, this.hint});
+  const TextRow(this.value, this.set, {this.submit, this.hint, this.obscure = false});
   final String value;
   final void Function(String) set;
   final void Function()? submit;
   final String? hint;
+
+  /// Typed as dots, never shown (a stream key).
+  final bool obscure;
 }
 
 /// How a person shows in a row: their initials or picture, a dot for what they are doing, a
@@ -875,11 +915,12 @@ class LauncherServices {
   /// Asks the user where to save a file, [suggestedName] first; null when they cancelled.
   final Future<String?> Function(String suggestedName)? saveFile;
 
-  /// Asks the user where to save a file of a kind ([label], its [extensions]); null when they
-  /// cancelled.
+  /// Asks where to save a file of [label]'s kind (one of [extensions]), [suggestedName] first;
+  /// null when they cancelled.
   final Future<String?> Function(String suggestedName, String label, List<String> extensions)? saveFileAs;
 
-  /// Asks the user for a file of a kind ([label], its [extensions]); null when they cancelled.
+  /// Asks the user for a file of [label]'s kind (one of [extensions]) to open; null when they
+  /// cancelled.
   final Future<String?> Function(String label, List<String> extensions)? pickFile;
 
   /// This computer for a crash report; read from the system when not given.
@@ -1602,6 +1643,12 @@ class AppModel extends ChangeNotifier {
 
   /// The system fonts games get: the folder put together for them, the CJK download.
   late final FontsModel fonts = FontsModel(this);
+
+  /// Remote Play and broadcasting.
+  late final MediaModel media = MediaModel(this);
+
+  /// Hosting share play while a game runs.
+  late final SharePlayModel sharePlay = SharePlayModel(this);
   late final BrowserPlayModel browserPlay = BrowserPlayModel(this);
 
   /// AnyPS5 and its games in the Steam library (Settings › Steam).
@@ -1870,7 +1917,14 @@ class AppModel extends ChangeNotifier {
 
   static const galleryColumns = 4;
 
-  List<String> screenshotsOf(Game game) => Screenshots.list(paths.pictures, game);
+  List<String> screenshotsOf(Game game) => Screenshots.list(picturesFolder, game);
+
+  /// Where F12 screenshots, trophy pictures and clips go: Settings › Captures › Screenshots
+  /// Folder, else Pictures/AnyPS5.
+  String get picturesFolder => preferences.screenshotsFolder ?? paths.pictures;
+
+  /// The selected game's pictures read again (another screenshots folder).
+  void loadGalleryShots() => _loadShots();
 
   void _loadShots() {
     final game = selectedGame;
@@ -2164,6 +2218,9 @@ class AppModel extends ChangeNotifier {
   /// Facts about a game the settings rows show that cost a disk read (its patch file, its
   /// backups), read when its settings open rather than on every frame.
   final Map<String, ({bool resolution, List<String> backups})> _gameFacts = {};
+
+  /// Whether the title's patch file lets Game Settings choose its resolution.
+  bool supportsResolution(Game game) => _factsOf(game).resolution;
 
   ({bool resolution, List<String> backups}) _factsOf(Game game) => _gameFacts.putIfAbsent(game.id, () {
     final patch = toolkit?.patchFile(game.titleId);
@@ -3109,7 +3166,7 @@ class AppModel extends ChangeNotifier {
       written = false;
     }
     try {
-      Directory(paths.pictures).createSync(recursive: true);
+      Directory(picturesFolder).createSync(recursive: true);
     } on FileSystemException {
       // Screenshots go nowhere then.
     }
@@ -3140,7 +3197,7 @@ class AppModel extends ChangeNotifier {
         ...settings.environment(
           launcherLanguage: T.language.consoleLanguage,
           inputFile: written ? inputFile : null,
-          screenshots: paths.pictures,
+          screenshots: picturesFolder,
           fonts: systemFonts,
           shaderCacheFolder: paths.shaderCache(game.slug),
           trace: traced,
@@ -3173,6 +3230,7 @@ class AppModel extends ChangeNotifier {
       stopping = false;
       _checkPhoneReach(game);
       unawaited(_startReplay());
+      unawaited(media.updateRemotePlay());
       crash.started(game, traced: traced);
       final began = DateTime.now();
       // Upstream's engine does not read ANYPS5_FULLSCREEN or ANYPS5_WINDOW_SIZE: the launcher
@@ -3195,11 +3253,15 @@ class AppModel extends ChangeNotifier {
       _stopTimer?.cancel();
       _stopTimer = null;
       unawaited(_stopReplay());
+      media.gameEnded();
+      sharePlay.gameEnded();
       // The quick menu and the question go with the game.
       if (overlay == Layer.quickMenu || overlay == Layer.closeGame) overlay = null;
       updates.gameEnded();
       together.gameChanged();
       crash.ended(game, code, stopped: _stopped);
+      // "How did it run?", once the launcher is back over the home screen.
+      together.askHowItRan(game, DateTime.now().difference(began));
       _changed();
       // Started from a Steam shortcut of the game: the launcher goes with it, so Steam sees
       // the game end. A crash keeps it open on its report.
@@ -3294,7 +3356,7 @@ class AppModel extends ChangeNotifier {
     try {
       final frame = await desktop.captureGame(pid);
       if (frame == null) return null;
-      final path = Screenshots.trophyPath(paths.pictures, game, trophy.id, DateTime.now());
+      final path = Screenshots.trophyPath(picturesFolder, game, trophy.id, DateTime.now());
       await Isolate.run(() {
         File(path)
           ..parent.createSync(recursive: true)
@@ -3426,6 +3488,17 @@ class AppModel extends ChangeNotifier {
       galleryIndex = 0;
       galleryViewing = false;
     }
+    _skipToFocusable();
+    _changed();
+  }
+
+  /// Settings, on the section [id].
+  void openSettingsCategory(String id) {
+    open(Layer.settings);
+    final index = panelCategories().indexWhere((category) => category.id == id);
+    if (index < 0) return;
+    panelCategory = index;
+    panelRow = 0;
     _skipToFocusable();
     _changed();
   }
@@ -3639,6 +3712,12 @@ class AppModel extends ChangeNotifier {
       case Layer.compare:
         together.compareCommand(command);
         return;
+      case Layer.feed:
+        together.feedCommand(command);
+        return;
+      case Layer.leaderboard:
+        together.leaderboardCommand(command);
+        return;
       case Layer.quickMenu || Layer.closeGame when command == Command.back || command == Command.options:
         resumeGame();
         return;
@@ -3653,6 +3732,14 @@ class AppModel extends ChangeNotifier {
         return;
       case Layer.gameFiles when command == Command.back || command == Command.options:
         files.back();
+        return;
+      case Layer.lfgPost || Layer.gameHub when command == Command.back || command == Command.options:
+        together.backFromFind();
+        return;
+      case Layer.findPlayers when command == Command.back || command == Command.options:
+        _panelCommand(command);
+        // Closed: the board's topics are no longer listened to.
+        if (overlay != Layer.findPlayers) together.findClosed();
         return;
       case Layer.friendOptions when command == Command.back || command == Command.options:
         // A question asked in place (together_ask.dart) is answered Cancel first.
@@ -3676,7 +3763,12 @@ class AppModel extends ChangeNotifier {
           Layer.launcherReport ||
           Layer.profileMenu ||
           Layer.themes ||
-          Layer.themeStudio:
+          Layer.themeStudio ||
+          Layer.notifications ||
+          Layer.compat ||
+          Layer.findPlayers ||
+          Layer.lfgPost ||
+          Layer.gameHub:
         _panelCommand(command);
         return;
       case null:
@@ -3725,7 +3817,14 @@ class AppModel extends ChangeNotifier {
         _moveFocus(HomeFocus.tiles);
       case ('top', Command.select):
         final layer = topLayers[focus.index.clamp(0, topButtons - 1)];
-        layer == Layer.messages ? unawaited(together.openMessages()) : open(layer);
+        switch (layer) {
+          case Layer.messages:
+            unawaited(together.openMessages());
+          case Layer.notifications:
+            together.openNotifications();
+          default:
+            open(layer);
+        }
       case ('actions', Command.left):
         _moveFocus(HomeFocus.actions((focus.index - 1).clamp(0, actionCount - 1)));
       case ('actions', Command.right):
@@ -3860,7 +3959,7 @@ class AppModel extends ChangeNotifier {
   /// Whether the replay buffer is recording now.
   bool get replayRecording => _replay?.running ?? false;
 
-  ReplayBuffer? _defaultReplay(int seconds) {
+  ReplayBuffer? _defaultReplay(int seconds, {VideoEncoder? encoder, GameSound? sound}) {
     final environment = services.environment ?? Platform.environment;
     final ffmpeg = replayFfmpeg;
     if (ffmpeg == null || !ReplayBuffer.supported(system, environment)) return null;
@@ -3870,6 +3969,8 @@ class AppModel extends ChangeNotifier {
       seconds: seconds,
       system: system,
       environment: environment,
+      encoder: encoder,
+      sound: sound,
     );
   }
 
@@ -3891,7 +3992,16 @@ class AppModel extends ChangeNotifier {
 
   Future<void> _startReplay() async {
     if (!preferences.replayBuffer || _replay != null || running == null) return;
-    final buffer = (services.replay ?? _defaultReplay)(preferences.replaySeconds);
+    final ReplayBuffer? buffer;
+    if (services.replay case final made?) {
+      buffer = made(preferences.replaySeconds);
+    } else {
+      // The graphics card's encoder when one works, and the game's sound with the picture.
+      final encoder = await media.encoders?.encoder;
+      final playing = running;
+      if (playing == null || !preferences.replayBuffer || _replay != null) return;
+      buffer = _defaultReplay(preferences.replaySeconds, encoder: encoder, sound: media.soundOf(playing.$2.pid));
+    }
     if (buffer == null) return;
     _replay = buffer;
     if (!await buffer.start()) {
@@ -3965,6 +4075,13 @@ class AppModel extends ChangeNotifier {
     if (!await desktop.notify('AnyPS5', text)) desktopNotify('AnyPS5', text);
   }
 
+  /// Said as a capture is ([_captureSaid]), with a second line in the desktop notice.
+  Future<void> notice(String text, {String? detail}) async {
+    show(detail == null ? text : '$text. $detail');
+    if (launcherInFront) return;
+    if (!await desktop.notify(text, detail ?? 'AnyPS5')) desktopNotify(text, detail ?? 'AnyPS5');
+  }
+
   /// The game's window now, into its gallery (Share held); the picture's path.
   Future<String?> takeScreenshot() async {
     final playing = running;
@@ -3975,7 +4092,7 @@ class AppModel extends ChangeNotifier {
       unawaited(_captureSaid(T.text('screenshotFailed')));
       return null;
     }
-    final path = Screenshots.shotPath(paths.pictures, game, DateTime.now());
+    final path = Screenshots.shotPath(picturesFolder, game, DateTime.now());
     try {
       await Isolate.run(() {
         File(path)
@@ -3998,7 +4115,7 @@ class AppModel extends ChangeNotifier {
     if (playing == null) return null;
     final buffer = _replay;
     if (buffer == null || !buffer.running) return takeScreenshot();
-    final saved = await buffer.save(Screenshots.clipPath(paths.pictures, playing.$1, DateTime.now()));
+    final saved = await buffer.save(Screenshots.clipPath(picturesFolder, playing.$1, DateTime.now()));
     if (saved != null) sounds.play(Cue.unlocked);
     unawaited(
       _captureSaid(saved == null ? T.text('clipFailed') : T.format('clipSaved', [replayLengthText(buffer.seconds)])),
@@ -4076,8 +4193,17 @@ class AppModel extends ChangeNotifier {
   static const libraryColumns = 6;
 
   /// The top bar's buttons, left to right.
-  static const topLayers = [Layer.library, Layer.settings, Layer.friends, Layer.messages, Layer.party];
-  static int get topButtons => topLayers.length;
+  static const topLayers = [
+    Layer.library,
+    Layer.settings,
+    Layer.friends,
+    Layer.messages,
+    Layer.party,
+    Layer.notifications,
+  ];
+
+  /// The bell (the last) shows only while signed in to AnyTogether.
+  int get topButtons => together.signedIn ? topLayers.length : topLayers.length - 1;
 
   void _moveLibrary(int delta) {
     final next = (libraryIndex + delta).clamp(0, games.isEmpty ? 0 : games.length - 1);
@@ -4140,6 +4266,18 @@ class AppModel extends ChangeNotifier {
         return [PanelCategory(id: 'friends', title: T.text('friendsTitle'), rows: together.friendRows())];
       case Layer.party:
         return [PanelCategory(id: 'party', title: T.text('partyTitle'), rows: together.partyRows())];
+      case Layer.notifications:
+        return [
+          PanelCategory(id: 'notifications', title: together.notificationsSubtitle, rows: together.notificationRows()),
+        ];
+      case Layer.compat:
+        return [PanelCategory(id: 'compat', title: T.text('socialCompatSubtitle'), rows: together.compatRows())];
+      case Layer.findPlayers:
+        return together.findPlayersCategories();
+      case Layer.gameHub:
+        return together.hubCategories();
+      case Layer.lfgPost:
+        return [PanelCategory(id: 'post', title: together.findState.draftName, rows: together.lfgPostRows())];
       case Layer.family:
         return [PanelCategory(id: 'family', title: T.text('familyTitle'), rows: together.family.rows())];
       case Layer.crashReport:
@@ -4176,6 +4314,8 @@ class AppModel extends ChangeNotifier {
                 title: T.text('gameSettings'),
                 kind: ActionRow(() => open(Layer.gameSettings)),
               ),
+              ...media.gameRows(),
+              ...sharePlay.rows(),
               PanelRow(
                 id: 'closeGame',
                 title: T.text('quickCloseGame'),
@@ -4671,6 +4811,7 @@ class AppModel extends ChangeNotifier {
       PanelCategory(id: 'displayDefaults', title: T.text('displayDefaults'), rows: _displayDefaultRows()),
       PanelCategory(id: 'presets', title: T.text('presetsTitle'), rows: _presetRows()),
       PanelCategory(id: 'captures', title: T.text('captures'), rows: _captureRows()),
+      PanelCategory(id: 'broadcast', title: T.text('broadcastTitle'), rows: media.settingsRows()),
       PanelCategory(id: 'shortcuts', title: T.text('shortcuts'), rows: _shortcutRows()),
       PanelCategory(
         id: 'about',
@@ -4722,6 +4863,13 @@ class AppModel extends ChangeNotifier {
             },
           ),
         ),
+      PanelRow(
+        id: 'screenshotsFolder',
+        title: T.text('screenshotsFolder'),
+        detail: picturesFolder,
+        kind: ActionRow(() => unawaited(chooseScreenshotsFolder())),
+      ),
+      PanelRow(id: 'showScreenshots', title: T.text('showScreenshots'), kind: ActionRow(showScreenshots)),
       PanelRow(
         id: 'capturesHow',
         title: T.text('capturesHow'),
@@ -4976,12 +5124,24 @@ class AppModel extends ChangeNotifier {
         title: T.text('vsync'),
         kind: ChoiceRow(
           [byDefault(T.text(defaults.vsync ? 'on' : 'off')), T.text('on'), T.text('off')],
+          // Frame generation needs vertical sync: on whatever is chosen while it is on.
           switch (settings.ownVsync) {
+            _ when settings.frameGeneration == true => 1,
             null => 0,
             true => 1,
             false => 2,
           },
           (index) => change(settings.copyWith(vsync: index == 0 ? null : index == 1)),
+        ),
+      ),
+      PanelRow(
+        id: 'frameGeneration',
+        title: T.text('frameGeneration'),
+        // Only AnyPS5-ARM's engine makes the frames: said for upstream's, as FSR 1 is.
+        detail: engine.readsDisplaySettings ? T.text('frameGenerationDetail') : T.text('frameGenerationUpstream'),
+        kind: ToggleRow(
+          settings.frameGeneration == true,
+          (value) => change(settings.copyWith(frameGeneration: value ? true : null)),
         ),
       ),
       if (!settings.followsDisplayDefaults)
@@ -5037,6 +5197,7 @@ class AppModel extends ChangeNotifier {
         detail: T.text('screenshotsDetail'),
         kind: ActionRow(openGallery),
       ),
+      ...together.gameSocialRows(game),
       PanelRow(
         id: 'shaderCache',
         title: T.text('shaderCache'),
@@ -5045,6 +5206,24 @@ class AppModel extends ChangeNotifier {
           settings.shaderCache ?? true,
           (value) => change(settings.copyWith(shaderCache: value ? null : false)),
         ),
+      ),
+      PanelRow(
+        id: 'export',
+        title: T.text('exportSettings'),
+        detail: T.text('exportSettingsDetail'),
+        kind: ActionRow(() => unawaited(exportSettings(game))),
+      ),
+      PanelRow(
+        id: 'import',
+        title: T.text('importSettings'),
+        detail: T.text('importSettingsDetail'),
+        kind: ActionRow(() => unawaited(importSettings(game))),
+      ),
+      PanelRow(
+        id: 'link',
+        title: T.text('copyLink'),
+        detail: ShowGameLink(game.titleId).url,
+        kind: ActionRow(() => copyLink(game)),
       ),
       PanelRow(
         id: 'addUpdate',
@@ -5742,6 +5921,8 @@ class AppModel extends ChangeNotifier {
           _toldLibrary = null;
           _changed();
           _publishLook();
+          // Its Go Live button shows what the launcher does now.
+          if (media.phase.active) remote?.publish(const RemoteBroadcast(true));
           // A phone that comes while a game runs hears at once whether that game reads it.
           if (running case (final Game playing, _)) _checkPhoneReach(playing);
         },
@@ -5751,6 +5932,7 @@ class AppModel extends ChangeNotifier {
           notifyListeners();
         },
         request: _phoneRequest,
+        streamWishes: () => unawaited(media.updateRemotePlay()),
       );
       final devices = PairedDevices(paths.pairedDevicesFile);
       final RemoteServer server;
@@ -5829,6 +6011,14 @@ class AppModel extends ChangeNotifier {
         stopGame();
       case RemoteHome():
         handle(Command.home);
+      case RemoteKeyFrame():
+        media.wantKey();
+      case RemoteCommand(name: 'capture'):
+        // Create on the phone's pad: a clip (or a picture) of the game, the game staying in front.
+        unawaited(saveClip());
+      case RemoteCommand(:final name) when name == 'broadcastStart' || name == 'broadcastStop':
+        // Go Live and End Broadcast on the phone.
+        media.phoneBroadcast(name == 'broadcastStart');
       case RemoteCommand(:final name):
         final command = switch (name) {
           'left' => Command.left,
@@ -5979,8 +6169,10 @@ class AppModel extends ChangeNotifier {
     _pads?.stop();
     _focusWatch?.cancel();
     _captureTimer?.cancel();
-    // The replay buffer's segments go with the launcher.
+    // The replay buffer's segments go with the launcher, as do Remote Play and a broadcast.
     unawaited(_stopReplay());
+    media.dispose();
+    sharePlay.dispose();
     _navigator?.dispose();
     _installer?.cancel();
     _preparer?.cancel();

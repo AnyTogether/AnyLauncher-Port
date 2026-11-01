@@ -89,6 +89,36 @@ abstract class DesktopWindows {
   void dispose();
 }
 
+/// Where a window's picture is on the screen, in pixels: what Remote Play and broadcasting
+/// record.
+class ScreenArea {
+  const ScreenArea(this.x, this.y, this.width, this.height);
+  final int x;
+  final int y;
+  final int width;
+  final int height;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ScreenArea && other.x == x && other.y == y && other.width == width && other.height == height;
+
+  @override
+  int get hashCode => Object.hash(x, y, width, height);
+
+  @override
+  String toString() => '${width}x$height at $x,$y';
+}
+
+/// A desktop that can say where the game's window is (Windows, X11), for recording it.
+abstract interface class GameAreas {
+  /// The game's window inside its frame, on the screen in pixels; null when it has none open
+  /// or it is minimised.
+  ScreenArea? gameArea(int pid);
+
+  /// The game's window title, as a window capturer lists it (share play picks its window by it).
+  String? gameTitle(int pid);
+}
+
 /// A desktop the launcher does nothing with (tests, unknown systems).
 class NoDesktop implements DesktopWindows {
   const NoDesktop();

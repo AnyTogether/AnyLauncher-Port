@@ -7,6 +7,7 @@ import '../core/game_settings.dart';
 import '../core/shared_settings.dart';
 import 'app_model.dart';
 import 'strings.dart';
+import 'theme_hub_model.dart';
 
 /// A game shared with others: its anyps5:// link (Copy Link, and the links other programs open
 /// the launcher with), its settings as a file (Export and Import Settings), and the screenshots
@@ -35,6 +36,8 @@ extension GameSharing on AppModel {
         if (overlay != null) closeOverlay();
         select(index);
         if (link is PlayLink) primaryAction(games[index]);
+      case ThemeLink(:final id):
+        unawaited(installHubTheme(id));
     }
   }
 

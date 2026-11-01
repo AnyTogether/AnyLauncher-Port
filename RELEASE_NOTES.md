@@ -13,6 +13,21 @@ release when it is made.
   GetSystemPowerStatus on Windows and from /sys on Linux. The heat comes from the processor's
   sensors on Linux. Windows tells programs no temperature, so there only the battery profile
   works, and the page says so. The profiles are the Mac's, with its settings keys.
+- **Remote Play: the game's picture and sound on the phone.** The phone app's Remote Play now
+  works with the Windows and Linux launcher, with the same app as on the Mac. The launcher
+  records the game's window with ffmpeg and encodes it at once on the graphics card (NVIDIA,
+  Intel, AMD, or VA-API on Linux) when it can, and with x264 otherwise. Sound comes from the game
+  alone on Windows 11 and on PulseAudio or PipeWire. Older Windows 10 sends everything the PC
+  plays. It needs ffmpeg beside AnyPS5 or on the PATH, and an X11 session on Linux. A key frame
+  comes every second, so a picture broken by a lost packet mends within a second.
+- **Broadcasting to Twitch, YouTube or any RTMP server.** Set the service, the stream key and the
+  quality in **Settings › Broadcasting**. The key shows as dots and is kept in a file only your
+  account can read. Go live from the quick menu while a game plays, or with **Go Live** on the
+  phone. The launcher shows how long you have been on air, the bit rate and dropped frames, and
+  tries again a few times when the connection drops. It uses ffmpeg, with the graphics card's
+  encoder when one works.
+- **Clips carry the game's sound,** and the replay buffer encodes on the graphics card when it
+  can, which takes far less of the processor. **Create** on the phone's pad saves a clip too.
 - **Frame Generation** in a game's settings: a generated frame between each two of the
   game's, with vertical sync on while it is. It needs the AnyPS5-ARM engine, and the row says so
   on upstream's.

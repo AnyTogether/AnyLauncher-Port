@@ -13,6 +13,19 @@ release when it is made.
   GetSystemPowerStatus on Windows and from /sys on Linux. The heat comes from the processor's
   sensors on Linux. Windows tells programs no temperature, so there only the battery profile
   works, and the page says so. The profiles are the Mac's, with its settings keys.
+- **Theme Studio.** Make your own look in **Settings › Appearance › Theme Studio**, with the
+  launcher showing each change behind it: the motion, the colour, the highlight, the lightness,
+  the accent, a picture or video behind it all, and menu music. **Save as a File…** makes one
+  `.anyps5theme` file. It is the same file as the Mac launcher's, so themes move between the two.
+- **Theme files open with the launcher.** Double-click a `.anyps5theme` and the launcher
+  installs it and puts it on. A launcher already open takes it. **Settings › Appearance ›
+  Themes** lists the built-in looks and yours, and has **Install from a File…**.
+- **Your own picture or video as the background, and your own menu music**, in **Settings ›
+  Appearance**. A video loops without sound. It plays with ffmpeg, beside the launcher or
+  installed, as clips do. The menu music plays when the selected game has no song of its own.
+- **Update Channel** in **Settings › About**: Stable or Nightly. On Nightly the engine picker
+  also offers the nightly AnyPS5-ARM engine, built from main on the days it changes, once it is
+  signed. Stable never offers going back to an older engine than the one in use.
 - **Activity, leaderboards and notifications from AnyTogether**, as on the Mac. **Friends ›
   Activity** shows what your friends have been playing: trophies, platinums, first plays, long
   sessions, new friends and milestones. Each item takes one of four reactions. Left and right
@@ -26,6 +39,17 @@ release when it is made.
   list with the launcher and engine versions, the computer and the system. A game's settings
   show what the community found on Windows or Linux and send a report any time. **Don't ask
   after games** turns the question off.
+- **Find Players**, as on the Mac. **Friends › Find Players** shows people looking for a group,
+  filtered by game, purpose, language and what starts soon. Select a post to say I'm in, and
+  select it again to take that back. **Find players for** a game, in its settings or on the
+  board, posts what you want to play with the slots, languages, start, how long it stays up and
+  a note. **My Posts** lists who wants in, to let them into your party or say not now. **Public
+  Parties** lists parties their leader opened to everyone, to ask to join or walk in. **People**
+  suggests players to add. A game's **hub** shows who plays it now, its posts and parties, its
+  leaderboard and how it runs. A party's leader can list it in public from the party panel.
+  **Settings › AnyTogether** chooses whether people who don't know you find you, and the
+  languages you play in. Share plays under Live now are left out, since this launcher has no
+  share play to watch yet.
 - **Share play: friends watch your game, and up to three play along.** While a game runs, the
   quick menu has **Share** for it (signed in to AnyTogether). Friends watch live in a browser on
   anytogether.net. **Let Them Play** hands a friend player 2, 3 or 4, and

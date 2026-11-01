@@ -5,8 +5,10 @@ import 'package:path/path.dart' as p;
 import '../core/audio/tones.dart';
 import '../core/glibc.dart';
 import '../core/host.dart';
+import '../core/release_signing.dart';
 import '../core/toolkit.dart';
 import '../core/toolkit_download.dart';
+import '../core/update_channel.dart';
 import 'app_model.dart';
 import 'components.dart';
 import 'engine_git_model.dart';
@@ -76,6 +78,7 @@ class EngineModel {
       final newest = armPackage;
       return newest != null &&
           newest.version != version &&
+          !armInUseIsNewer &&
           !downloaded.any((kit) => p.basename(kit.root) == newest.version);
     }
     final package = latestPackage;
@@ -100,6 +103,9 @@ class EngineModel {
 
   /// The newest AnyPS5-ARM engine for this system GitHub lists, once asked.
   ArmToolkitPackage? armPackage;
+
+  /// Every recent AnyPS5-ARM release GitHub listed, nightlies too, whatever the channel.
+  List<UpstreamRelease> armReleases = const [];
   bool armChecked = false;
   bool armChecking = false;
   String? armError;
@@ -115,7 +121,8 @@ class EngineModel {
     armError = null;
     app.refresh();
     try {
-      armPackage = ArmToolkitPackage.find(await source.all(), app.system);
+      armReleases = await source.all();
+      _offerArm();
       armChecked = true;
       if (!quiet) {
         app.show(
@@ -131,6 +138,41 @@ class EngineModel {
       armChecking = false;
       app.refresh();
     }
+  }
+
+  /// The newest engine the update channel offers: nightly engines (those of pre-releases) only on
+  /// Nightly, in the order releases come out (ReleaseVersion).
+  /// A nightly is published by CI first and signed on the release Mac after: until then it would
+  /// only be refused, so it is not offered.
+  void _offerArm() {
+    final ready = [
+      for (final release in armReleases)
+        if (!release.prerelease || release.trust != ReleaseTrust.unsignedRefused) release,
+    ];
+    armPackage = ArmToolkitPackage.find(ChannelReleases.offered(ready, app.updateChannel), app.system);
+  }
+
+  /// The update channel changed: the engine it offers, from the releases already listed (and
+  /// asked again when there are none yet).
+  void channelChanged() {
+    _offerArm();
+    if (armSelected && !armChecked) unawaited(checkArm(quiet: true));
+  }
+
+  /// The AnyPS5-ARM engine in use came from a newer release than the one offered (a nightly, on
+  /// Stable again): Stable never offers going back to an older engine.
+  bool get armInUseIsNewer {
+    final version = app.toolkitVersion;
+    final offered = armPackage;
+    if (!isArm(version) || offered == null) return false;
+    final commit = version!.substring('arm-'.length);
+    final from = armReleases.where(
+      (release) =>
+          release.assets.any((asset) => asset.name.startsWith('AnyPS5-toolkit-') && asset.name.contains('-$commit.')),
+    );
+    final mine = from.map((release) => ReleaseVersion.parse(release.tag)).nonNulls.firstOrNull;
+    final theirs = ReleaseVersion.parse(offered.release.tag);
+    return mine != null && theirs != null && mine > theirs;
   }
 
   /// Switches the settings between upstream's engine and AnyPS5-ARM's; a downloaded one of that
@@ -183,7 +225,7 @@ class EngineModel {
           detail: T.format('engineUnverifiedDetail', [waiting.commit]),
           kind: ActionRow(() => unawaited(download(waiting, true)), destructive: true),
         )
-      else if (package != null && have == null)
+      else if (package != null && have == null && !armInUseIsNewer)
         PanelRow(
           id: 'engineDownload',
           title: T.format('engineArmDownload', [package.commit]),

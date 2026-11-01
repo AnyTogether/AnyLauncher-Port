@@ -203,8 +203,12 @@ class PanelView extends StatelessWidget {
       Layer.party => T.text('partyTitle'),
       Layer.notifications => T.text('socialNotifTitle'),
       Layer.compat => model.together.compatTitle,
+      Layer.findPlayers || Layer.lfgPost => T.text('discoverFindPlayers'),
+      Layer.gameHub => T.format('discoverHubOf', [model.together.findState.hubName]),
       Layer.controls => T.text('controls'),
       Layer.gameSettings => T.text('gameSettings'),
+      // Appearance › Themes.
+      Layer.themes => T.text('appearance'),
       _ => category.title,
     };
     return _Scrim(
@@ -293,7 +297,14 @@ class PanelView extends StatelessWidget {
                       )
                     else
                       Text(heading, style: AppText.display(34 * scale, weight: FontWeight.w300)),
-                    if (!const {Layer.settings, Layer.friends, Layer.party}.contains(model.overlay) && !compact) ...[
+                    if (!const {
+                          Layer.settings,
+                          Layer.friends,
+                          Layer.party,
+                          Layer.findPlayers,
+                          Layer.gameHub,
+                        }.contains(model.overlay) &&
+                        !compact) ...[
                       SizedBox(width: 14 * scale),
                       Expanded(
                         child: Padding(

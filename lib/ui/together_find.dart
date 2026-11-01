@@ -863,7 +863,7 @@ extension TogetherFind on TogetherModel {
       ),
       PanelRow(
         id: 'post-note',
-        title: T.text('discoverNote'),
+        title: T.text('discoverNoteTitle'),
         detail: T.text('discoverNoteDetail'),
         kind: TextRow(
           draft.note,

@@ -1681,7 +1681,7 @@
   "discoverStaysUp": "Stays up",
   "discoverStaysUpDetail": "After it starts, for a day at most.",
   "discoverHours": "%d h",
-  "discoverNote": "Note",
+  "discoverNoteTitle": "Note",
   "discoverNoteDetail": "Up to 140 characters. No links.",
   "discoverPost": "Post",
   "discoverPostDetail": "Your post shows on the board for this game.",

@@ -1681,7 +1681,7 @@
   "discoverStaysUp": "Yayında kalma",
   "discoverStaysUpDetail": "Başladıktan sonra, en çok bir gün.",
   "discoverHours": "%d sa",
-  "discoverNote": "Not",
+  "discoverNoteTitle": "Not",
   "discoverNoteDetail": "En çok 140 karakter. Bağlantı yok.",
   "discoverPost": "İlan ver",
   "discoverPostDetail": "İlanın bu oyunun panosunda görünür.",

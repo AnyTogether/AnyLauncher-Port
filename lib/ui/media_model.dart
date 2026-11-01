@@ -274,7 +274,8 @@ class MediaModel {
     ]);
   }
 
-  /// On the game playing: Go Live, or how the broadcast goes and Stop.
+  /// On the game playing: Go Live, or how the broadcast goes and Stop. Where nothing can be
+  /// recorded there are none: Settings › Broadcasting says why.
   List<PanelRow> gameRows() {
     if (app.running == null && !phase.active) return const [];
     final rows = <PanelRow>[];
@@ -283,7 +284,7 @@ class MediaModel {
         final (target, _) = endpoint();
         final reason = unavailable;
         if (reason != null) {
-          rows.add(PanelRow(id: 'broadcast-unavailable', title: T.text('broadcastTitle'), kind: InfoRow(reason)));
+          return const [];
         } else if (target != null) {
           final failed = phase is BroadcastFailed ? failureText((phase as BroadcastFailed).reason) : null;
           rows.add(
@@ -348,7 +349,10 @@ class MediaModel {
     final qualities = BroadcastQuality.values;
     final current = key;
     return [
-      ...gameRows(),
+      if (unavailable case final reason?)
+        PanelRow(id: 'broadcast-unavailable', title: T.text('broadcastTitle'), kind: InfoRow(reason))
+      else
+        ...gameRows(),
       PanelRow(
         id: 'broadcast-service',
         title: T.text('broadcastService'),

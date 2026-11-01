@@ -78,6 +78,7 @@ import 'crash_model.dart';
 import 'engine_model.dart';
 import 'fonts_model.dart';
 import 'media_model.dart';
+import 'share_play_model.dart';
 import 'game_files_model.dart';
 import 'steam_model.dart';
 import 'glass.dart';
@@ -1619,6 +1620,9 @@ class AppModel extends ChangeNotifier {
 
   /// Remote Play and broadcasting.
   late final MediaModel media = MediaModel(this);
+
+  /// Hosting share play while a game runs.
+  late final SharePlayModel sharePlay = SharePlayModel(this);
   late final BrowserPlayModel browserPlay = BrowserPlayModel(this);
 
   /// AnyPS5 and its games in the Steam library (Settings › Steam).
@@ -3224,6 +3228,7 @@ class AppModel extends ChangeNotifier {
       _stopTimer = null;
       unawaited(_stopReplay());
       media.gameEnded();
+      sharePlay.gameEnded();
       // The quick menu and the question go with the game.
       if (overlay == Layer.quickMenu || overlay == Layer.closeGame) overlay = null;
       updates.gameEnded();
@@ -4235,6 +4240,7 @@ class AppModel extends ChangeNotifier {
                 kind: ActionRow(() => open(Layer.gameSettings)),
               ),
               ...media.gameRows(),
+              ...sharePlay.rows(),
               PanelRow(
                 id: 'closeGame',
                 title: T.text('quickCloseGame'),
@@ -6090,6 +6096,7 @@ class AppModel extends ChangeNotifier {
     // The replay buffer's segments go with the launcher, as do Remote Play and a broadcast.
     unawaited(_stopReplay());
     media.dispose();
+    sharePlay.dispose();
     _navigator?.dispose();
     _installer?.cancel();
     _preparer?.cancel();

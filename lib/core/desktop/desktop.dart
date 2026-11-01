@@ -114,6 +114,9 @@ abstract interface class GameAreas {
   /// The game's window inside its frame, on the screen in pixels; null when it has none open
   /// or it is minimised.
   ScreenArea? gameArea(int pid);
+
+  /// The game's window title, as a window capturer lists it (share play picks its window by it).
+  String? gameTitle(int pid);
 }
 
 /// A desktop the launcher does nothing with (tests, unknown systems).

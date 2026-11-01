@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
@@ -489,6 +490,35 @@ class LinuxDesktop implements DesktopWindows, GameAreas {
       final child = arena<UnsignedLong>();
       if (x.translateCoordinates(display, window, root, 0, 0, left, top, child) == 0) return null;
       return ScreenArea(left.value, top.value, width, height);
+    });
+  });
+
+  /// _NET_WM_NAME (UTF-8), else WM_NAME.
+  @override
+  String? gameTitle(int pid) => _withDisplay((x, display) {
+    final window = _windowOf(x, display, pid);
+    if (window == 0) return null;
+    return using((arena) {
+      for (final name in const ['_NET_WM_NAME', 'WM_NAME']) {
+        final atom = x.internAtom(display, name.toNativeUtf8(allocator: arena), 1);
+        if (atom == 0) continue;
+        final type = arena<UnsignedLong>();
+        final format = arena<Int32>();
+        final count = arena<UnsignedLong>();
+        final after = arena<UnsignedLong>();
+        final data = arena<Pointer<Uint8>>();
+        if (x.getWindowProperty(display, window, atom, 0, 1024, 0, 0, type, format, count, after, data) != 0 ||
+            data.value == nullptr) {
+          continue;
+        }
+        try {
+          if (format.value != 8 || count.value == 0) continue;
+          return utf8.decode(data.value.asTypedList(count.value), allowMalformed: true);
+        } finally {
+          x.free(data.value.cast());
+        }
+      }
+      return null;
     });
   });
 

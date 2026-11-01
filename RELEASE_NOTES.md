@@ -5,6 +5,20 @@ release when it is made.
 
 ## Next release
 
+- **Frame Generation** in a game's settings: a generated frame between each two of the
+  game's, with vertical sync on while it is. It needs the AnyPS5-ARM engine, and the row says so
+  on upstream's.
+- **Export and Import Settings** in a game's settings: the game's keys and every setting in one
+  JSON file. The file is the Mac launcher's own format, so it moves between Windows, Linux and
+  macOS. A resolution only comes along when the game offers it.
+- **anyps5:// links and Copy Link.** Copy Link in a game's settings puts its link on the
+  clipboard. Opening `anyps5://game/<title ID>` shows the game, `anyps5://play/<title ID>` plays
+  it, and `anyps5://library` and `anyps5://settings` open those screens, the same links as on the
+  Mac. A link opened while the launcher runs goes to the open launcher. The launcher registers
+  the links for your user at start (the registry on Windows, a desktop entry on Linux), and the
+  installer and the .deb do it too.
+- **Choose the screenshots folder** in **Settings › Captures**. Screenshots, trophy pictures and
+  clips go there, and **Show Screenshots** opens it.
 - **Unreal games show what each button does.** A game's Controls page reads the game's own
   input settings from its .pak files and writes the game's action under each pad button, such as
   Jump under Cross. It reads them once, the first time the page opens. Games with encrypted paks,

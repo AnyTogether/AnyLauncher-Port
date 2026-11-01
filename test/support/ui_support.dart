@@ -30,6 +30,7 @@ import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/background.dart';
 import 'package:anyps5_desktop/ui/components.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
+import 'package:anyps5_desktop/ui/theme_hub_model.dart';
 import 'package:flutter/foundation.dart' show SynchronousFuture;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -203,6 +204,8 @@ Fixture makeFixture({
     ..toolkitFolder = withToolkit ? toolkit : null
     // Off unless a test is about it: a game copied in would otherwise start unlocking.
     ..prepareNewGames = prepareNewGames;
+  // The Theme Hub reads no server in the tests unless one asks for it: an empty Hub.
+  ThemeHubModel.basesInstead = const [];
   final model = AppModel(
     paths: AppPaths.forSystem(HostSystem.linux, environment: {'HOME': p.join(temp.path, 'home')}),
     preferences: preferences,

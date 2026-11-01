@@ -5,6 +5,11 @@ release when it is made.
 
 ## Next release
 
+- **Theme Hub**, as on the Mac. **Settings › Appearance › Themes** lists the themes people share
+  on AnyTogether's Hub, and one choice downloads, installs and uses a theme. **Share on the Hub**
+  uploads the theme in use with a picture in its colours while you are signed in. A theme shared
+  before goes up as its new version. Signed out, it saves the file and opens the page to send it
+  from. An `anyps5://theme/<ID>` link installs that theme from the Hub.
 - **Theme Studio.** Make your own look in **Settings › Appearance › Theme Studio**, with the
   launcher showing each change behind it: the motion, the colour, the highlight, the lightness,
   the accent, a picture or video behind it all, and menu music. **Save as a File…** makes one

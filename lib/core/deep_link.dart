@@ -1,6 +1,7 @@
 /// An anyps5:// link from a web page, a message or another program: anyps5://game/<title ID>
 /// shows the game, anyps5://play/<title ID> does what Play does for it, anyps5://library and
-/// anyps5://settings open those screens. The macOS launcher's DeepLink, link for link, so a link
+/// anyps5://settings open those screens, and `anyps5://theme/<ID>` installs a theme from the Hub.
+/// The macOS launcher's DeepLink, link for link, so a link
 /// copied on one system opens on the other.
 sealed class DeepLink {
   const DeepLink();
@@ -9,6 +10,9 @@ sealed class DeepLink {
 
   /// Title IDs are four letters and five digits (PPSA15065, CUSA00001).
   static final _titleId = RegExp(r'^[A-Z]{4}[0-9]{5}$');
+
+  /// Theme IDs on AnyTogether's Hub are UUIDs.
+  static final _themeId = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
 
   /// The link in [text], null when it is not one of the launcher's.
   static DeepLink? parse(String text) {
@@ -30,6 +34,9 @@ sealed class DeepLink {
         final id = parts.single.toUpperCase();
         if (!_titleId.hasMatch(id)) return null;
         return host == 'game' ? ShowGameLink(id) : PlayLink(id);
+      case ('theme', 1):
+        final id = parts.single.toLowerCase();
+        return _themeId.hasMatch(id) ? ThemeLink(id) : null;
       default:
         return null;
     }
@@ -88,4 +95,13 @@ class SettingsLink extends DeepLink {
 
   @override
   String get url => '${DeepLink.scheme}://settings';
+}
+
+/// Downloads the theme with this ID from AnyTogether's Theme Hub, installs it and uses it.
+class ThemeLink extends DeepLink {
+  const ThemeLink(this.id);
+  final String id;
+
+  @override
+  String get url => '${DeepLink.scheme}://theme/$id';
 }

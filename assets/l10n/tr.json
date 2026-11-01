@@ -1721,5 +1721,13 @@
   "discoverOff": "Kapalı",
   "discoverLanguagesTitle": "Oynadığım diller",
   "discoverLanguagesDetail": "Öneriler ve yeni ilanlar için. En çok beş.",
-  "discoverLanguagesFull": "En çok beş dil"
+  "discoverLanguagesFull": "En çok beş dil",
+  "socialHubSharing": "%@ Hub'da paylaşılıyor…",
+  "socialHubShared": "%@ Hub'da",
+  "socialHubSharedVersion": "%1$@ Hub'da, sürüm %2$d",
+  "socialHubShareDetail": "AnyTogether'ın Tema Hub'ına yükler.",
+  "socialHubTooLarge": "Tema Hub için çok büyük, en çok 50 MB",
+  "socialHubBadTheme": "Hub bu tema dosyasını kabul etmedi",
+  "socialHubNoPreview": "Hub temanın bir resmini istiyor",
+  "socialHubNoTheme": "Bu tema Hub'da yok"
 }

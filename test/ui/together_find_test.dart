@@ -1,0 +1,301 @@
+import 'dart:io';
+
+import 'package:anyps5_desktop/core/together/account.dart';
+import 'package:anyps5_desktop/core/together/discover.dart';
+import 'package:anyps5_desktop/ui/app_model.dart' hide GameState;
+import 'package:anyps5_desktop/ui/launcher.dart';
+import 'package:anyps5_desktop/ui/strings.dart';
+import 'package:anyps5_desktop/ui/together_model.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import '../support/fake_together.dart';
+import '../support/ui_support.dart';
+
+/// Find Players as the macOS launcher has it: the looking-for-group board with its filters, the
+/// user's posts with who wants in, public parties, people to meet, the post form and a game's
+/// hub. Goldens rendered headless, each in one language.
+void main() {
+  late Fixture fixture;
+  late AppModel model;
+
+  tearDown(() {
+    T.language = Language.english;
+    fixture.dispose();
+  });
+
+  void signedIn() {
+    model.together.account.user = const TogetherUser(id: 'u-me', handle: 'utku', displayName: 'Utku Halis');
+  }
+
+  Map<String, dynamic> card(String id, String name) => {
+    'userId': id,
+    'handle': name.toLowerCase(),
+    'displayName': name,
+    'avatar': null,
+  };
+
+  String later(Duration time) => DateTime.now().add(time).toUtc().toIso8601String();
+
+  LfgPost post(
+    String id,
+    String author, {
+    String titleId = 'PPSA02002',
+    String purpose = 'coop',
+    Duration? starts,
+    List<String> languages = const ['en'],
+    int slots = 3,
+    int filled = 0,
+    String? note,
+    bool mine = false,
+    Map<String, dynamic>? myRequest,
+    List<Map<String, dynamic>>? requests,
+    String status = 'open',
+  }) => LfgPost.fromJson({
+    'id': id,
+    'author': mine ? card('u-me', 'Utku Halis') : card('u-${author.toLowerCase()}', author),
+    'titleId': titleId,
+    'game': {
+      'names': {
+        'en': switch (titleId) {
+          'PPSA02002' => 'Neon Alley',
+          'PPSA01001' => 'Orbit Runner',
+          _ => 'Quiet Forest',
+        },
+      },
+    },
+    'purpose': purpose,
+    'startsAt': starts == null ? null : later(starts + const Duration(seconds: 20)),
+    'languages': languages,
+    'slots': slots,
+    'filled': filled,
+    'note': note,
+    'expiresAt': later(const Duration(hours: 3)),
+    'status': status,
+    'mine': mine,
+    'myRequest': myRequest,
+    'requests': ?requests,
+  })!;
+
+  void board() {
+    model.together.findState
+      ..loaded = true
+      ..games = const [
+        LfgGame(titleId: 'PPSA01001', posts: 2, names: {'en': 'Orbit Runner'}),
+      ]
+      ..board = [
+        post('p4', 'Bora', note: 'Chill run, mics optional', languages: ['en', 'tr']),
+        post('p3', 'Ana', purpose: 'trophies', starts: const Duration(minutes: 30), slots: 2, filled: 1),
+        post(
+          'p2',
+          'Deniz',
+          titleId: 'PPSA01001',
+          purpose: 'party',
+          slots: 5,
+          myRequest: {'status': 'pending', 'invite': null},
+        ),
+        post('p1', 'Eren', titleId: 'PPSA01001', purpose: 'online', slots: 1, filled: 1),
+      ]
+      ..more = true;
+  }
+
+  group('goldens', () {
+    testWidgets('golden: the looking-for-group board with its filters (en)', (tester) async {
+      fixture = makeFixture();
+      model = fixture.model;
+      signedIn();
+      model.selected = model.games.indexWhere((game) => game.titleId == 'PPSA02002');
+      board();
+      model.open(Layer.findPlayers);
+      model.panelRow = 6;
+      await pumpLauncher(tester, model);
+      expect(find.text('Neon Alley: ${T.text('discoverPurposeCoop')}'), findsOneWidget);
+      expect(find.text(T.format('discoverFindFor', ['Neon Alley'])), findsOneWidget);
+      await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/find_players_en.png'));
+    });
+
+    testWidgets('golden: my posts with someone who wants in (tr)', (tester) async {
+      fixture = makeFixture(language: Language.byCode('tr'));
+      model = fixture.model;
+      signedIn();
+      model.together.findState
+        ..loaded = true
+        ..mine = [
+          post(
+            'm1',
+            'Utku',
+            mine: true,
+            filled: 1,
+            note: 'Bölüm 4, gizli kapı',
+            languages: ['tr'],
+            requests: [
+              {'user': card('u-ana', 'Ana'), 'status': 'pending', 'invite': null},
+              {
+                'user': card('u-bora', 'Bora'),
+                'status': 'accepted',
+                'invite': {'kind': 'party', 'id': 'party-1'},
+              },
+            ],
+          ),
+        ];
+      model.open(Layer.findPlayers);
+      model.selectCategory(1);
+      model.panelRow = 2;
+      await pumpLauncher(tester, model);
+      expect(find.text(T.format('discoverLetIn', ['Ana'])), findsOneWidget);
+      expect(find.text('${T.text('discoverMyPosts')} (1)'), findsOneWidget);
+      await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/find_players_mine_tr.png'));
+    });
+
+    testWidgets('golden: the post form (en)', (tester) async {
+      fixture = makeFixture();
+      model = fixture.model;
+      signedIn();
+      model.together.findState.discovery = const Discovery(discoverable: true, languages: ['en', 'tr']);
+      model.together.openLfgPost('PPSA02002', 'Neon Alley');
+      model.together.findState.draft!.setStart(30);
+      model.panelRow = 4;
+      await pumpLauncher(tester, model);
+      expect(model.together.findState.draft!.languages, ['en', 'tr']);
+      await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/find_players_post_en.png'));
+    });
+  });
+
+  group('behaviour', () {
+    test('Friends offers Find Players; a game\'s settings post for it; a parent\'s settings can keep it off', () {
+      fixture = makeFixture();
+      model = fixture.model;
+      signedIn();
+      model.open(Layer.friends);
+      expect(model.panelCategories().single.rows.map((row) => row.id), contains('friends-find'));
+      model.selected = model.games.indexWhere((game) => game.titleId == 'PPSA02002');
+      model.open(Layer.gameSettings);
+      expect(model.panelCategories().single.rows.map((row) => row.id), contains('find-players'));
+    });
+
+    test('a post\'s row follows where the user stands with it', () {
+      fixture = makeFixture();
+      model = fixture.model;
+      signedIn();
+      final together = model.together;
+      expect(together.postRow(post('a', 'Bora')).kind, isA<ActionRow>());
+      expect(together.postRow(post('a', 'Bora')).detail, contains(T.text('discoverSelectImIn')));
+      expect(
+        together.postRow(post('a', 'Bora', myRequest: {'status': 'declined'})).detail,
+        contains(T.format('discoverSaidNo', ['Bora'])),
+      );
+      expect(together.postRow(post('a', 'Bora', status: 'closed')).kind, isA<InfoRow>());
+      expect(
+        together.postRow(post('a', 'Bora', starts: const Duration(minutes: 30))).detail,
+        contains(T.format('discoverInMinutes', [30])),
+      );
+    });
+
+    test('back from the post form returns to the game\'s settings it came from', () {
+      fixture = makeFixture();
+      model = fixture.model;
+      signedIn();
+      model.selected = model.games.indexWhere((game) => game.titleId == 'PPSA02002');
+      model.open(Layer.gameSettings);
+      model.together.openLfgPost('PPSA02002', 'Neon Alley');
+      expect(model.overlay, Layer.lfgPost);
+      model.handle(Command.back);
+      expect(model.overlay, Layer.gameSettings);
+    });
+  });
+
+  group('with the server', () {
+    late FakeTogether server;
+
+    setUp(() async {
+      // The widget tests above put in Flutter's fake HTTP client: the fake server needs the real one.
+      HttpOverrides.global = null;
+      server = await FakeTogether.start();
+    });
+
+    tearDown(() async {
+      model.dispose();
+      await server.close();
+    });
+
+    Future<void> until(bool Function() condition) async {
+      for (var tries = 0; tries < 300 && !condition(); tries++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(condition(), isTrue);
+    }
+
+    Future<void> signInForReal() async {
+      final together = model.together;
+      together.email = 'utku@example.com';
+      await together.sendCode();
+      together.code = '123456';
+      await together.verify();
+      await until(() => together.signedIn);
+    }
+
+    test('posting goes to My Posts; I\'m in tells the poster', () async {
+      fixture = makeFixture(together: server.base);
+      model = fixture.model;
+      await signInForReal();
+      server.answers['lfg'] = (200, {'posts': <Object>[], 'more': false});
+      server.answers['lfg/games'] = (200, {'games': <Object>[]});
+      server.answers['me/lfg'] = (200, {'posts': <Object>[], 'asked': <Object>[]});
+      server.answers['parties/public'] = (200, {'parties': <Object>[]});
+      server.answers['discover/suggestions'] = (200, {'suggestions': <Object>[]});
+      server.answers['me/discovery'] = (
+        200,
+        {
+          'discoverable': true,
+          'chosen': null,
+          'languages': ['tr'],
+        },
+      );
+      server.answers['POST lfg'] = (
+        201,
+        {
+          'id': 'new',
+          'author': card('u-me', 'Utku'),
+          'titleId': 'PPSA02002',
+          'purpose': 'coop',
+          'languages': ['tr'],
+          'slots': 1,
+          'filled': 0,
+          'expiresAt': later(const Duration(hours: 3)),
+          'status': 'open',
+          'mine': true,
+        },
+      );
+      final together = model.together;
+      together.openFindPlayers();
+      await until(() => together.findState.discovery != null);
+      together.openLfgPost('PPSA02002', 'Neon Alley');
+      expect(together.findState.draft!.languages, ['tr']);
+      final send = model.panelCategories().single.rows.firstWhere((row) => row.id == 'post-send');
+      (send.kind as ActionRow).run();
+      await until(() => model.overlay == Layer.findPlayers && model.panelCategory == 1);
+      expect(model.toast, T.format('discoverPosted', ['Neon Alley']));
+      expect(server.callsTo('lfg', method: 'POST').single.body['titleId'], 'PPSA02002');
+      // The board and the lists are listened to while Find Players is open.
+      await until(() => server.frames.any((frame) => frame['op'] == 'watch'));
+
+      server.answers['POST lfg/p7/requests'] = (
+        201,
+        {
+          'id': 'p7',
+          'author': card('u-bora', 'Bora'),
+          'titleId': 'PPSA02002',
+          'purpose': 'coop',
+          'languages': ['en'],
+          'slots': 3,
+          'filled': 0,
+          'expiresAt': later(const Duration(hours: 3)),
+          'status': 'open',
+          'myRequest': {'status': 'pending', 'invite': null},
+        },
+      );
+      await together.imIn(post('p7', 'Bora'));
+      expect(model.toast, T.format('discoverToldThem', ['Bora']));
+      expect(together.findState.asked.single.standing(), LfgStanding.waiting);
+    });
+  });
+}

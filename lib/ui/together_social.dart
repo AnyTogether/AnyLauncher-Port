@@ -34,7 +34,10 @@ class SocialScreens {
 
   /// The community's verdict per title ID on this platform; null inside while it is read.
   final Map<String, CompatSummary?> compat = {};
-  final Set<String> compatAsked = {};
+
+  /// When each game's verdict was asked for: once a run, or again a minute after a failure.
+  final Map<String, DateTime> compatAsked = {};
+  final Set<String> compatFailed = {};
 
   void clear() {
     feedIndex = 0;
@@ -47,6 +50,7 @@ class SocialScreens {
     noticesFailed = false;
     compat.clear();
     compatAsked.clear();
+    compatFailed.clear();
   }
 }
 
@@ -95,6 +99,15 @@ extension TogetherSocial on TogetherModel {
             : '${T.text('socialCompatCommunity')}: ${compatText(summary)}',
         kind: ActionRow(() => openCompat(game)),
       ),
+      if (matchmakingAllowed)
+        PanelRow(
+          id: 'find-players',
+          title: T.format('discoverFindFor', [
+            game.nameFor([T.language.code]),
+          ]),
+          detail: T.text('discoverFindForDetail'),
+          kind: ActionRow(() => openLfgPost(game.titleId, game.nameFor([T.language.code]))),
+        ),
     ];
   }
 
@@ -218,7 +231,10 @@ extension TogetherSocial on TogetherModel {
       ActivityKind.trophy => T.format('socialFeedTrophy', [game]),
       ActivityKind.platinum => T.format('socialFeedPlatinum', [game]),
       ActivityKind.firstPlay => T.format('socialFeedFirstPlay', [game]),
-      ActivityKind.longSession => T.format('socialFeedLongSession', [game, TogetherProfiles.playTime(item.seconds ?? 0)]),
+      ActivityKind.longSession => T.format('socialFeedLongSession', [
+        game,
+        TogetherProfiles.playTime(item.seconds ?? 0),
+      ]),
       ActivityKind.friendship => T.format('socialFeedFriendship', [
         item.friend == null ? '' : TogetherModel.shown(item.friend!).name,
       ]),
@@ -434,10 +450,12 @@ extension TogetherSocial on TogetherModel {
     switch (note.kind) {
       case NoticeKind.friendRequest || NoticeKind.friendAccepted || NoticeKind.gameInvite || NoticeKind.missedCall:
         app.open(Layer.friends);
-      case NoticeKind.partyInvite || NoticeKind.lfgAccepted:
+      case NoticeKind.partyInvite:
         app.open(Layer.party);
+      case NoticeKind.lfgAccepted:
+        followInvite(LfgInvite.fromJson(note.data['invite']));
       case NoticeKind.lfgRequest:
-        app.open(Layer.friends);
+        openFindPlayers(category: 1);
       case NoticeKind.levelUp:
         unawaited(openMyProfile());
       case NoticeKind.message:
@@ -532,7 +550,9 @@ extension TogetherSocial on TogetherModel {
     app.open(Layer.compat);
   }
 
-  String get compatTitle => T.format('socialCompatAsk', [screens.compatGame?.nameFor([T.language.code]) ?? '']);
+  String get compatTitle => T.format('socialCompatAsk', [
+    screens.compatGame?.nameFor([T.language.code]) ?? '',
+  ]);
 
   List<PanelRow> compatRows() {
     final game = screens.compatGame;
@@ -562,7 +582,8 @@ extension TogetherSocial on TogetherModel {
 
   /// What goes with the report, said plainly: the launcher's version, the engine's, the computer
   /// and the system.
-  String compatSent(Game game) => [launcherVersion, ?engineVersionOf(game), ?TogetherModel.machineModel(app.system), osName].join(', ');
+  String compatSent(Game game) =>
+      [launcherVersion, ?engineVersionOf(game), ?TogetherModel.machineModel(app.system), osName].join(', ');
 
   String? engineVersionOf(Game game) => CompatReport.version(app.records[game.id]?.toolkit ?? app.toolkit?.version);
 
@@ -601,8 +622,14 @@ extension TogetherSocial on TogetherModel {
 
   /// The community's verdict for a game on this platform, read once a run (signed in only).
   Future<void> loadCompat(String titleId) async {
-    if (!signedIn || screens.compatAsked.contains(titleId)) return;
-    screens.compatAsked.add(titleId);
+    final asked = screens.compatAsked[titleId];
+    if (!signedIn) return;
+    if (asked != null &&
+        (!screens.compatFailed.contains(titleId) || DateTime.now().difference(asked) < const Duration(minutes: 1))) {
+      return;
+    }
+    screens.compatAsked[titleId] = DateTime.now();
+    screens.compatFailed.remove(titleId);
     try {
       final game = await Compat(account).game(titleId);
       final summary = game?.platforms[CompatReport.platformOf(app.system)];
@@ -610,8 +637,8 @@ extension TogetherSocial on TogetherModel {
       screens.compat[titleId] = summary;
       app.refresh();
     } on Object {
-      // Asked again next time.
-      screens.compatAsked.remove(titleId);
+      // Asked again a minute later, when the game's settings show next.
+      screens.compatFailed.add(titleId);
     }
   }
 

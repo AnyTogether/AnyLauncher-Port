@@ -591,6 +591,12 @@ enum Layer {
   notifications,
   compat,
 
+  /// Find Players (together_find.dart): the looking-for-group board, the user's posts, public
+  /// parties and people to meet; the post form; one game's hub.
+  findPlayers,
+  lfgPost,
+  gameHub,
+
   /// Family limits: today's play time, asking a parent for more.
   family,
 
@@ -3571,6 +3577,14 @@ class AppModel extends ChangeNotifier {
       case Layer.gameFiles when command == Command.back || command == Command.options:
         files.back();
         return;
+      case Layer.lfgPost || Layer.gameHub when command == Command.back || command == Command.options:
+        together.backFromFind();
+        return;
+      case Layer.findPlayers when command == Command.back || command == Command.options:
+        _panelCommand(command);
+        // Closed: the board's topics are no longer listened to.
+        if (overlay != Layer.findPlayers) together.findClosed();
+        return;
       case Layer.friendOptions when command == Command.back || command == Command.options:
         // A question asked in place (together_ask.dart) is answered Cancel first.
         if (!together.cancelAsk()) open(Layer.friends, cue: Cue.back);
@@ -3593,7 +3607,10 @@ class AppModel extends ChangeNotifier {
           Layer.launcherReport ||
           Layer.profileMenu ||
           Layer.notifications ||
-          Layer.compat:
+          Layer.compat ||
+          Layer.findPlayers ||
+          Layer.lfgPost ||
+          Layer.gameHub:
         _panelCommand(command);
         return;
       case null:
@@ -4079,6 +4096,12 @@ class AppModel extends ChangeNotifier {
         ];
       case Layer.compat:
         return [PanelCategory(id: 'compat', title: T.text('socialCompatSubtitle'), rows: together.compatRows())];
+      case Layer.findPlayers:
+        return together.findPlayersCategories();
+      case Layer.gameHub:
+        return together.hubCategories();
+      case Layer.lfgPost:
+        return [PanelCategory(id: 'post', title: together.findState.draftName, rows: together.lfgPostRows())];
       case Layer.family:
         return [PanelCategory(id: 'family', title: T.text('familyTitle'), rows: together.family.rows())];
       case Layer.crashReport:

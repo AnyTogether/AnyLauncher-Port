@@ -12,6 +12,7 @@ import '../core/profiles/profiles.dart' show ProfileAccount, ProfileMode;
 import '../core/remote/remote_protocol.dart';
 import '../core/together/account.dart';
 import '../core/together/compat.dart';
+import '../core/together/discover.dart';
 import '../core/together/family.dart';
 import '../core/together/friends.dart';
 import '../core/together/hub.dart';
@@ -45,6 +46,7 @@ part 'together_ask.dart';
 part 'together_party.dart';
 part 'together_play.dart';
 part 'together_profile.dart';
+part 'together_find.dart';
 part 'together_social.dart';
 
 /// The launcher's version, as AnyTogether hears it.
@@ -205,6 +207,9 @@ class TogetherModel {
   /// The activity feed, the leaderboards, the notifications and "How did it run?" (together_social.dart).
   final SocialScreens screens = SocialScreens();
 
+  /// Find Players, a game's hub and the post form (together_find.dart).
+  final FindState findState = FindState();
+
   /// The profile shown: the page once read, the card it was opened with, whether reading failed,
   /// the row the keys are on, and the layer it goes back to.
   ProfilePage? profile;
@@ -328,6 +333,7 @@ class TogetherModel {
       comparison = null;
       compareTitleId = null;
       screens.clear();
+      findState.clear();
       if (const {
         Layer.friendOptions,
         Layer.messages,
@@ -337,6 +343,9 @@ class TogetherModel {
         Layer.leaderboard,
         Layer.notifications,
         Layer.compat,
+        Layer.findPlayers,
+        Layer.lfgPost,
+        Layer.gameHub,
       }.contains(app.overlay)) {
         app.closeOverlay();
       }
@@ -740,6 +749,13 @@ class TogetherModel {
         level: hub.self.level,
         kind: ActionRow(() => unawaited(openMyProfile())),
       ),
+      if (matchmakingAllowed)
+        PanelRow(
+          id: 'friends-find',
+          title: T.text('discoverFindPlayers'),
+          detail: T.text('discoverFindPlayersDetail'),
+          kind: ActionRow(openFindPlayers),
+        ),
       ...socialRows(),
       ...gameRows(),
       for (final person in friends.incoming) ...[
@@ -927,6 +943,7 @@ class TogetherModel {
           kind: ActionRow(() => unawaited(openMyProfile())),
         ),
         ...privateIdentityRows(),
+        ...discoveryRows(),
         PanelRow(
           id: 'together-join',
           title: T.text('togetherFriendsJoin'),
@@ -1128,6 +1145,7 @@ class TogetherModel {
   void _event(TogetherEvent event) {
     // Online play follows the same game session: players joining, leaving, signalling.
     online.handle(event);
+    findEvent(event);
     final data = event.json;
     switch (event.type) {
       case 'live.ready':

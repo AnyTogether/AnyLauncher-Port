@@ -1463,7 +1463,7 @@
   "cloudStorageRunning": "Önce oyunu kapat",
   "cloudSavesUploaded": "Kayıtlar bulutunda",
   "cloudSavesDownloaded": "%@ cihazındaki kayıtlar bu bilgisayarda",
-  "cloudConflictTitle": "Kayıtlar hem burada hem bulutunda değişti",
+  "cloudConflictTitle": "Hangi kayıtlar kalsın?",
   "cloudConflictDetail": "Bulutunda %@ için %@ cihazından daha yeni kayıtlar var (%@). Tutmadığın yedek olarak kalır.",
   "cloudConflictKeepMine": "Bu Bilgisayardakini Tut",
   "cloudConflictTakeCloud": "Yeni Olanı Al",

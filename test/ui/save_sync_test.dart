@@ -121,9 +121,9 @@ void main() {
       starts.last.quit();
       await until(() => model.running == null);
       await until(() => model.saveSync.syncing == null);
-      final info =
-          jsonDecode(File(p.join(SaveSync.folder(sync, 'PPSA01001'), 'info.json')).readAsStringSync())
-              as Map<String, dynamic>;
+      final info = jsonDecode(
+        File(p.join(SaveSync.folder(sync, 'PPSA01001'), 'info.json')).readAsStringSync(),
+      ) as Map<String, dynamic>;
       expect(info['mac'], 'Desk');
     });
 
@@ -204,7 +204,7 @@ void main() {
       await until(() => model.overlay == Layer.cloudQuestion);
       final category = model.panelCategories().single;
       expect(category.title, T.text('cloudConflictTitle'));
-      expect(category.rows.first.title, contains('Laptop'));
+      expect(category.rows.first.detail, contains('Laptop'));
       expect(category.rows.skip(1).map((row) => row.title), [
         T.text('cloudConflictTakeCloud'),
         T.text('cloudConflictKeepMine'),

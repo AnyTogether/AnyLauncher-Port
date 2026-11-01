@@ -5,6 +5,15 @@ release when it is made.
 
 ## Next release
 
+- **Save Sync** in **Settings › Behaviour**: each game's saves and trophies stay the same on
+  your other computers. They are brought over before a game starts and sent after it ends. It
+  works through a folder your computers share (OneDrive, Dropbox, Syncthing or a network drive,
+  and iCloud Drive where iCloud for Windows set it up), in the Mac launcher's own layout, so a Mac
+  and a PC can share one folder. Signed in to AnyTogether, it can go through your AnyTogether
+  cloud instead, in parts that pick up where they stopped. When both sides changed, the launcher
+  asks which to keep, and the other stays as a backup. **Cloud Storage** shows each game's cloud
+  saves, with Restore and Delete. While saves sync, the game does not start twice and the profile
+  does not change. A server that keeps no files yet hides the cloud choices.
 - **Frame Generation** in a game's settings: a generated frame between each two of the
   game's, with vertical sync on while it is. It needs the AnyPS5-ARM engine, and the row says so
   on upstream's.

@@ -190,6 +190,7 @@ class PanelView extends StatelessWidget {
       Layer.confirmQuit,
       Layer.launcherReport,
       Layer.profileMenu,
+      Layer.cloudQuestion,
     }.contains(model.overlay);
     // The quick menu and Close Game? are about the game playing: its icon by the heading.
     final gameIcon = model.overlay == Layer.quickMenu || model.overlay == Layer.closeGame
@@ -203,6 +204,7 @@ class PanelView extends StatelessWidget {
       Layer.party => T.text('partyTitle'),
       Layer.controls => T.text('controls'),
       Layer.gameSettings => T.text('gameSettings'),
+      Layer.cloudStorage => T.text('cloudStorageTitle'),
       _ => category.title,
     };
     return _Scrim(
@@ -219,6 +221,8 @@ class PanelView extends StatelessWidget {
                               Layer.profileMenu => 74,
                               // Send Report says what it sends: two lines more.
                               Layer.launcherReport => 98,
+                              // The question's line is a sentence or two.
+                              Layer.cloudQuestion => 72,
                               _ => 62,
                             } *
                             category.rows.length

@@ -1463,7 +1463,7 @@
   "cloudStorageRunning": "Close the game first",
   "cloudSavesUploaded": "Saves are in your cloud",
   "cloudSavesDownloaded": "Saves from %@ are on this computer",
-  "cloudConflictTitle": "Saves changed here and in your cloud",
+  "cloudConflictTitle": "Which saves to keep?",
   "cloudConflictDetail": "Your cloud has newer saves of %@ from %@ (%@). The ones you do not keep stay as a backup.",
   "cloudConflictKeepMine": "Keep This Computer's",
   "cloudConflictTakeCloud": "Take the Newer One",

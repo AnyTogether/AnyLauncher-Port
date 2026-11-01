@@ -4250,7 +4250,7 @@ class AppModel extends ChangeNotifier {
           ),
         ];
       case Layer.cloudStorage:
-        return [PanelCategory(id: 'cloudStorage', title: T.text('cloudStorageTitle'), rows: saveSync.storageRows())];
+        return [PanelCategory(id: 'cloudStorage', title: T.text('cloudStorageSubtitle'), rows: saveSync.storageRows())];
       case Layer.confirmQuit:
         return [
           PanelCategory(

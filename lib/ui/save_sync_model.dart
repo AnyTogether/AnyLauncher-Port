@@ -273,7 +273,7 @@ class SaveSyncModel {
     final asked = question;
     if (asked == null) return const [];
     return [
-      PanelRow(id: 'cloudQuestionDetail', title: asked.detail, kind: const InfoRow('')),
+      PanelRow(id: 'cloudQuestionDetail', title: '', detail: asked.detail, kind: const InfoRow('')),
       for (final (index, (label, _)) in asked.answers.indexed)
         PanelRow(id: 'cloudAnswer$index', title: label, kind: ActionRow(() => answer(index))),
     ];

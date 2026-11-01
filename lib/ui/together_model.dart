@@ -11,12 +11,14 @@ import '../core/online/online_play.dart';
 import '../core/profiles/profiles.dart' show ProfileAccount, ProfileMode;
 import '../core/remote/remote_protocol.dart';
 import '../core/together/account.dart';
+import '../core/together/compat.dart';
 import '../core/together/family.dart';
 import '../core/together/friends.dart';
 import '../core/together/hub.dart';
 import '../core/together/levels.dart';
 import '../core/together/people.dart';
 import '../core/together/server.dart';
+import '../core/together/social.dart';
 import '../core/together/socket.dart';
 import '../core/together/game_sessions.dart';
 import '../core/together/messages.dart';
@@ -32,6 +34,7 @@ import '../core/together/token_store.dart';
 import '../core/trophies.dart';
 import '../core/game_settings.dart';
 import 'app_model.dart';
+import 'compare_view.dart';
 import 'family_gate.dart';
 import 'online_webrtc.dart';
 import 'strings.dart';
@@ -42,6 +45,7 @@ part 'together_ask.dart';
 part 'together_party.dart';
 part 'together_play.dart';
 part 'together_profile.dart';
+part 'together_social.dart';
 
 /// The launcher's version, as AnyTogether hears it.
 const launcherVersion = '0.1.16';
@@ -87,6 +91,9 @@ class TogetherModel {
       if (!accepted) app.show(T.text('partyRequestDeclined'));
     };
     hub.addListener(app.refresh);
+    hub.social
+      ..onNotice = noticeArrived
+      ..onFamilyNotice = (_) => unawaited(family.refresh());
     // The friends-only names and pictures the friends list brought, for every card shown.
     identities = hub.friends.identities;
     hub.friends.onRequest = (person) {
@@ -194,6 +201,9 @@ class TogetherModel {
   MessageMenu? messageMenu;
   int? replyingTo;
   ChatMessage? editingMessage;
+
+  /// The activity feed, the leaderboards, the notifications and "How did it run?" (together_social.dart).
+  final SocialScreens screens = SocialScreens();
 
   /// The profile shown: the page once read, the card it was opened with, whether reading failed,
   /// the row the keys are on, and the layer it goes back to.
@@ -317,7 +327,17 @@ class TogetherModel {
       compareGames = null;
       comparison = null;
       compareTitleId = null;
-      if (const {Layer.friendOptions, Layer.messages, Layer.profile, Layer.compare}.contains(app.overlay)) {
+      screens.clear();
+      if (const {
+        Layer.friendOptions,
+        Layer.messages,
+        Layer.profile,
+        Layer.compare,
+        Layer.feed,
+        Layer.leaderboard,
+        Layer.notifications,
+        Layer.compat,
+      }.contains(app.overlay)) {
         app.closeOverlay();
       }
     } else {
@@ -720,6 +740,7 @@ class TogetherModel {
         level: hub.self.level,
         kind: ActionRow(() => unawaited(openMyProfile())),
       ),
+      ...socialRows(),
       ...gameRows(),
       for (final person in friends.incoming) ...[
         PanelRow(

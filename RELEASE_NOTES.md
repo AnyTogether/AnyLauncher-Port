@@ -5,6 +5,19 @@ release when it is made.
 
 ## Next release
 
+- **Activity, leaderboards and notifications from AnyTogether**, as on the Mac. **Friends ›
+  Activity** shows what your friends have been playing: trophies, platinums, first plays, long
+  sessions, new friends and milestones. Each item takes one of four reactions. Left and right
+  pick one, Enter gives it and △ opens the person's profile. **Friends › Leaderboard** ranks
+  trophy points among friends or everyone, with your own place. A game's settings open its own
+  board by points, play time or completion. A **bell** in the top bar, while you are signed in,
+  holds AnyTogether's notifications with the unread count. Choosing one marks it read and opens
+  where it points.
+- **How did it run?** After a game of a minute or more, the launcher asks once per game and
+  launcher version how far it got. One choice sends the report to AnyTogether's compatibility
+  list with the launcher and engine versions, the computer and the system. A game's settings
+  show what the community found on Windows or Linux and send a report any time. **Don't ask
+  after games** turns the question off.
 - **Upscaling: Bilinear or FSR 1.** A new choice in a game's settings, beside Resolution. With
   AMD FidelityFX Super Resolution 1, a game image smaller than the window is brought up to it
   sharp instead of blurred, so a lower Resolution gives more frames on a weaker PC without the

@@ -1772,5 +1772,13 @@
   "discoverOff": "Off",
   "discoverLanguagesTitle": "Languages I play in",
   "discoverLanguagesDetail": "For suggestions and new posts. Up to five.",
-  "discoverLanguagesFull": "Five languages at most"
+  "discoverLanguagesFull": "Five languages at most",
+  "socialHubSharing": "Sharing %@ on the Hub…",
+  "socialHubShared": "%@ is on the Hub",
+  "socialHubSharedVersion": "%1$@ is on the Hub, version %2$d",
+  "socialHubShareDetail": "Uploads it to AnyTogether's Theme Hub.",
+  "socialHubTooLarge": "The theme is too big for the Hub, 50 MB at most",
+  "socialHubBadTheme": "The Hub didn't take this theme file",
+  "socialHubNoPreview": "The Hub needs a picture of the theme",
+  "socialHubNoTheme": "That theme isn't on the Hub"
 }

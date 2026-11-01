@@ -87,6 +87,7 @@ import 'profile_picture.dart';
 import 'sharing_model.dart';
 import 'strings.dart';
 import 'theme.dart';
+import 'theme_hub_model.dart';
 import 'together_model.dart';
 import 'update_model.dart';
 import 'trophy_card.dart';

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../core/audio/tones.dart' show Cue;
 import '../core/crash_report.dart';
+import '../core/deep_link.dart';
 import '../core/game_library.dart';
 import '../core/game_log.dart';
 import '../core/game_settings.dart';
@@ -17,7 +18,7 @@ import 'together_model.dart' show launcherVersion;
 
 /// What the launcher was started with: `--trace` gives every start of this run detailed logging.
 class LaunchOptions {
-  const LaunchOptions({this.trace = false, this.steam = false, this.fullscreen = false, this.play});
+  const LaunchOptions({this.trace = false, this.steam = false, this.fullscreen = false, this.play, this.link});
 
   factory LaunchOptions.parse(List<String> arguments) {
     final at = arguments.indexOf('--play');
@@ -27,6 +28,7 @@ class LaunchOptions {
       steam: arguments.contains('--steam'),
       fullscreen: arguments.contains('--fullscreen'),
       play: play == null || play.startsWith('--') ? null : play,
+      link: DeepLink.inArguments(arguments),
     );
   }
 
@@ -40,6 +42,9 @@ class LaunchOptions {
 
   /// The title ID of a game to start at once (a game's Steam shortcut).
   final String? play;
+
+  /// The anyps5:// link the system started the launcher for.
+  final DeepLink? link;
 }
 
 /// What the launcher knows about a game's last start beyond its log.

@@ -207,6 +207,8 @@ class PanelView extends StatelessWidget {
       Layer.gameHub => T.format('discoverHubOf', [model.together.findState.hubName]),
       Layer.controls => T.text('controls'),
       Layer.gameSettings => T.text('gameSettings'),
+      // Appearance › Themes.
+      Layer.themes => T.text('appearance'),
       _ => category.title,
     };
     return _Scrim(

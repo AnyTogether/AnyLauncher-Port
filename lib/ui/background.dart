@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../core/looping_video.dart';
 import 'components.dart';
 import 'glass.dart';
 import 'theme.dart';
@@ -17,7 +19,7 @@ import 'theme.dart';
 /// up (its light is soft, the half resolution does not show); still ([paused], or under a muted
 /// [TickerMode], as while a game is in front), it asks for no frame at all.
 class ThemeBackground extends StatefulWidget {
-  const ThemeBackground({super.key, required this.style, this.paused = false, this.time});
+  const ThemeBackground({super.key, required this.style, this.palette, this.paused = false, this.time});
 
   /// Loads the shaders ahead of the first background (tests load them outside their fake clock).
   static Future<void> preload() => Future.wait([_ThemeBackgroundState.preload(), FrostGrain.preload()]);
@@ -30,6 +32,9 @@ class ThemeBackground extends StatefulWidget {
   static const resolution = 0.5;
 
   final LookStyle style;
+
+  /// The tones to draw it in: a custom theme's; null for the look's own.
+  final ThemePalette? palette;
   final bool paused;
 
   /// A fixed moment of the animation (previews, tests); null animates.
@@ -110,10 +115,11 @@ class _ThemeBackgroundState extends State<ThemeBackground> {
     return RepaintBoundary(
       child: CustomPaint(
         painter: program == null
-            ? _FallbackPainter(widget.style)
+            ? _FallbackPainter(widget.palette ?? widget.style.palette)
             : _ShaderPainter(
                 program.fragmentShader(),
                 widget.style,
+                widget.palette ?? widget.style.palette,
                 time,
                 // A still frame is drawn once: it may as well be sharp.
                 resolution: widget.time == null ? ThemeBackground.resolution : 1,
@@ -125,10 +131,11 @@ class _ThemeBackgroundState extends State<ThemeBackground> {
 }
 
 class _ShaderPainter extends CustomPainter {
-  _ShaderPainter(this.shader, this.style, this.time, {this.resolution = 1});
+  _ShaderPainter(this.shader, this.style, this.palette, this.time, {this.resolution = 1});
 
   final ui.FragmentShader shader;
   final LookStyle style;
+  final ThemePalette palette;
   final double time;
   final double resolution;
 
@@ -139,7 +146,7 @@ class _ShaderPainter extends CustomPainter {
     set(math.max(1, size.height));
     set(time);
     set(style.index.toDouble());
-    for (final color in [style.deep, style.middle, style.bright]) {
+    for (final color in [palette.deep, palette.middle, palette.bright]) {
       set(color.r);
       set(color.g);
       set(color.b);
@@ -168,13 +175,16 @@ class _ShaderPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_ShaderPainter oldDelegate) =>
-      oldDelegate.time != time || oldDelegate.style != style || oldDelegate.resolution != resolution;
+      oldDelegate.time != time ||
+      oldDelegate.style != style ||
+      oldDelegate.palette != palette ||
+      oldDelegate.resolution != resolution;
 }
 
 /// The theme's tones as a still gradient with its glow, where shaders are missing.
 class _FallbackPainter extends CustomPainter {
   _FallbackPainter(this.style);
-  final LookStyle style;
+  final ThemePalette style;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -336,4 +346,181 @@ class _IceTint extends CustomPainter {
 
   @override
   bool shouldRepaint(_IceTint oldDelegate) => false;
+}
+
+/// The user's own picture behind the launcher (Settings › Appearance › Background, or a theme's),
+/// drifting slowly as the macOS launcher's DriftingImage does: a 28-second ease in and out,
+/// settling back while it should rest (a game playing, reduced motion, under a layer).
+class DriftingImage extends StatefulWidget {
+  const DriftingImage({super.key, required this.path, this.animated = true});
+
+  final String path;
+  final bool animated;
+
+  @override
+  State<DriftingImage> createState() => _DriftingImageState();
+}
+
+class _DriftingImageState extends State<DriftingImage> with SingleTickerProviderStateMixin {
+  late final AnimationController _drift = AnimationController(vsync: this, duration: const Duration(seconds: 28));
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.animated) _drift.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(DriftingImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.animated == oldWidget.animated) return;
+    if (widget.animated) {
+      _drift.repeat(reverse: true);
+    } else {
+      unawaited(_drift.animateTo(0, duration: const Duration(milliseconds: 600), curve: Curves.easeOut));
+    }
+  }
+
+  @override
+  void dispose() {
+    _drift.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: LayoutBuilder(
+        builder: (context, constraints) => AnimatedBuilder(
+          animation: _drift,
+          builder: (context, child) {
+            final t = Curves.easeInOut.transform(_drift.value);
+            return Transform.translate(
+              offset: Offset(constraints.maxWidth * 0.015 * (1 - 2 * t), 0),
+              child: Transform.scale(scale: 1 + 0.08 * t, child: child),
+            );
+          },
+          child: ArtworkImage(path: widget.path, cacheWidth: GameArtwork.cacheWidth),
+        ),
+      ),
+    );
+  }
+}
+
+/// The user's own video behind the launcher, looping without sound (LoopingVideo decodes it with
+/// ffmpeg). While [paused] the decoding stops and the last frame stays. Without ffmpeg, or when
+/// the file cannot be played, [fallback] shows instead.
+class LoopingVideoView extends StatefulWidget {
+  const LoopingVideoView({
+    super.key,
+    required this.path,
+    required this.ffmpeg,
+    required this.fallback,
+    this.paused = false,
+    this.make,
+  });
+
+  final String path;
+  final String? ffmpeg;
+  final Widget fallback;
+  final bool paused;
+
+  /// Makes the decoder (tests); LoopingVideo by default.
+  final LoopingVideo Function(String ffmpeg, String path)? make;
+
+  @override
+  State<LoopingVideoView> createState() => _LoopingVideoViewState();
+}
+
+class _LoopingVideoViewState extends State<LoopingVideoView> {
+  LoopingVideo? _video;
+  ui.Image? _image;
+  bool _failed = false;
+  bool _decoding = false;
+
+  @override
+  void didUpdateWidget(LoopingVideoView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.path != oldWidget.path || widget.ffmpeg != oldWidget.ffmpeg) {
+      unawaited(_video?.stop());
+      _video = null;
+      _failed = false;
+    }
+    _follow();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _follow();
+  }
+
+  /// Decoding while shown and not paused (nor under muted tickers, as behind a game).
+  void _follow() {
+    final ffmpeg = widget.ffmpeg;
+    if (ffmpeg == null || _failed) return;
+    final moving = !widget.paused && TickerMode.valuesOf(context).enabled;
+    final video = _video ??= (widget.make ?? (ffmpeg, path) => LoopingVideo(ffmpeg: ffmpeg, file: path))(
+      ffmpeg,
+      widget.path,
+    );
+    if (moving && !video.running) {
+      unawaited(
+        video.start(_show).then((started) {
+          if (!started && mounted) setState(() => _failed = true);
+        }),
+      );
+    } else if (!moving && video.running) {
+      unawaited(video.stop());
+    }
+  }
+
+  /// One frame from ffmpeg, made into an image; frames that come while one is being made are
+  /// let go (the screen only needs the newest).
+  void _show(Uint8List frame) {
+    final video = _video;
+    if (_decoding || video == null) return;
+    _decoding = true;
+    unawaited(() async {
+      try {
+        final buffer = await ui.ImmutableBuffer.fromUint8List(frame);
+        final descriptor = ui.ImageDescriptor.raw(
+          buffer,
+          width: video.width,
+          height: video.height,
+          pixelFormat: ui.PixelFormat.rgba8888,
+        );
+        final codec = await descriptor.instantiateCodec();
+        final next = (await codec.getNextFrame()).image;
+        codec.dispose();
+        descriptor.dispose();
+        buffer.dispose();
+        if (!mounted || !identical(video, _video)) {
+          next.dispose();
+          return;
+        }
+        final old = _image;
+        setState(() => _image = next);
+        old?.dispose();
+      } on Object {
+        // A frame that cannot be made is skipped.
+      } finally {
+        _decoding = false;
+      }
+    }());
+  }
+
+  @override
+  void dispose() {
+    unawaited(_video?.stop());
+    _image?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final image = _image;
+    if (widget.ffmpeg == null || _failed || image == null) return widget.fallback;
+    return RawImage(image: image, fit: BoxFit.cover, filterQuality: FilterQuality.low);
+  }
 }

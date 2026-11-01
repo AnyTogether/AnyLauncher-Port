@@ -13,6 +13,9 @@ mkdir -p "$PKG/DEBIAN" "$PKG/opt/anyps5-desktop" "$PKG/usr/bin" "$PKG/usr/share/
 cp -a "$BUNDLE/." "$PKG/opt/anyps5-desktop/"
 ln -s /opt/anyps5-desktop/anyps5_desktop "$PKG/usr/bin/anyps5-desktop"
 cp "$HERE/anyps5-desktop.desktop" "$PKG/usr/share/applications/"
+# .anyps5theme files (the MIME type the desktop entry opens).
+mkdir -p "$PKG/usr/share/mime/packages"
+cp "$HERE/anyps5-desktop-mime.xml" "$PKG/usr/share/mime/packages/anyps5-desktop.xml"
 cp "$HERE/anyps5-desktop.png" "$PKG/usr/share/icons/hicolor/256x256/apps/anyps5-desktop.png"
 cp "$HERE/anyps5-desktop-512.png" "$PKG/usr/share/icons/hicolor/512x512/apps/anyps5-desktop.png"
 

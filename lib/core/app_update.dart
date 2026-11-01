@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'host.dart';
 import 'release_signing.dart';
 import 'toolkit_download.dart';
+import 'update_channel.dart';
 
 /// New releases of AnyPS5 Desktop itself (AnyTogether/AnyLauncher-Port on GitHub). The launcher says
 /// when one is out and downloads its installer for this system, checked against the release's
@@ -19,8 +20,9 @@ abstract final class LauncherUpdates {
   static GitHubReleases source({Uri? api, List<ReleaseKey>? keys, HttpClient Function()? client}) =>
       GitHubReleases(api: api, repository: repository, signingKeys: keys ?? ReleaseSigning.trustedKeys, client: client);
 
-  /// Whether [release] is past the running version [current].
-  static bool isNewer(UpstreamRelease release, String current) => compareVersions(release.version, current) > 0;
+  /// Whether [release] is past the running version [current], in the order releases come out
+  /// (a nightly before the release it leads to).
+  static bool isNewer(UpstreamRelease release, String current) => ChannelReleases.isNewer(release.tag, current);
 
   /// The file of [release] for this system: the installer on Windows; on Linux the AppImage when
   /// the launcher runs from one ([appImage]), the archive otherwise.

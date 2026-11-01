@@ -5,6 +5,19 @@ release when it is made.
 
 ## Next release
 
+- **Theme Studio.** Make your own look in **Settings › Appearance › Theme Studio**, with the
+  launcher showing each change behind it: the motion, the colour, the highlight, the lightness,
+  the accent, a picture or video behind it all, and menu music. **Save as a File…** makes one
+  `.anyps5theme` file. It is the same file as the Mac launcher's, so themes move between the two.
+- **Theme files open with the launcher.** Double-click a `.anyps5theme` and the launcher
+  installs it and puts it on. A launcher already open takes it. **Settings › Appearance ›
+  Themes** lists the built-in looks and yours, and has **Install from a File…**.
+- **Your own picture or video as the background, and your own menu music**, in **Settings ›
+  Appearance**. A video loops without sound. It plays with ffmpeg, beside the launcher or
+  installed, as clips do. The menu music plays when the selected game has no song of its own.
+- **Update Channel** in **Settings › About**: Stable or Nightly. On Nightly the engine picker
+  also offers the nightly AnyPS5-ARM engine, built from main on the days it changes, once it is
+  signed. Stable never offers going back to an older engine than the one in use.
 - **Activity, leaderboards and notifications from AnyTogether**, as on the Mac. **Friends ›
   Activity** shows what your friends have been playing: trophies, platinums, first plays, long
   sessions, new friends and milestones. Each item takes one of four reactions. Left and right

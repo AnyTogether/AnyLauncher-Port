@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-anyps5theme">
+    <comment>AnyPS5 theme</comment>
+    <sub-class-of type="application/zip"/>
+    <glob pattern="*.anyps5theme"/>
+  </mime-type>
+</mime-info>

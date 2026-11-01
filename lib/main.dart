@@ -164,6 +164,7 @@ Future<void> main(List<String> arguments) async {
   if (options.fullscreen) model.windowFullscreen = true;
   unawaited(model.startAudio());
   model.startPads();
+  model.powerWatch.start();
   if (model.preferences.onboarded) model.rescan();
   model.watchGamesFolders();
   unawaited(model.startPhoneServer());

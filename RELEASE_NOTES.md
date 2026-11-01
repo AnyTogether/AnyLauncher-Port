@@ -5,7 +5,14 @@ release when it is made.
 
 ## Next release
 
-Nothing yet.
+- **Settings › Battery & Heat.** On battery (or with battery saver on) and when the processor
+  runs hot, a game can be held to 30, 40 or 45 FPS, its frame generation paused and the
+  launcher's Glass blur and animations turned down. Plugged in and cool, nothing changes. The
+  cap and the pause change at once, during a game too, with the AnyPS5-ARM engine. A note shows
+  over a game that runs hot, and **Undo** is in the quick menu. The battery is read with
+  GetSystemPowerStatus on Windows and from /sys on Linux. The heat comes from the processor's
+  sensors on Linux. Windows tells programs no temperature, so there only the battery profile
+  works, and the page says so. The profiles are the Mac's, with its settings keys.
 
 ## 0.1.17
 

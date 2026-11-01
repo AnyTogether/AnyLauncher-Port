@@ -73,6 +73,7 @@ import 'fonts_model.dart';
 import 'game_files_model.dart';
 import 'steam_model.dart';
 import 'glass.dart';
+import 'power_model.dart';
 import 'profile_picture.dart';
 import 'strings.dart';
 import 'theme.dart';
@@ -126,6 +127,9 @@ class Preferences {
         if (entry.value is String) entry.key: entry.value as String,
     }
     ..fontsFolder = json['fontsFolder'] as String?
+    ..powerProfiles = json['powerProfiles'] is Map<String, dynamic>
+        ? json['powerProfiles'] as Map<String, dynamic>
+        : null
     ..showHiddenTrophies = json['showHiddenTrophies'] as bool? ?? false
     ..controllerVibration = json['controllerVibration'] as bool? ?? true
     ..steamUser = json['steamUser'] as String?
@@ -233,6 +237,10 @@ class Preferences {
   /// A folder of the user's own fonts (the console's, say) games get first; null for none.
   String? fontsFolder;
 
+  /// Settings › Battery & Heat: the two profiles as PowerProfiles writes them (the Mac's
+  /// "powerProfiles"); null for the defaults.
+  Map<String, dynamic>? powerProfiles;
+
   /// Hidden trophies show their name, description and icon before they are earned.
   bool showHiddenTrophies = false;
 
@@ -320,6 +328,7 @@ class Preferences {
     'engineGitBeforePlay': engineGitBeforePlay,
     'engineGitBuilt': engineGitBuilt,
     'fontsFolder': fontsFolder,
+    'powerProfiles': powerProfiles,
     'showHiddenTrophies': showHiddenTrophies,
     'controllerVibration': controllerVibration,
     'steamUser': steamUser,
@@ -1545,6 +1554,9 @@ class AppModel extends ChangeNotifier {
   /// AnyPS5 and its games in the Steam library (Settings › Steam).
   late final SteamModel steam = SteamModel(this);
 
+  /// Settings › Battery & Heat: the power read, the profiles applied to the game and launcher.
+  late final PowerModel powerWatch = PowerModel(this);
+
   /// How this launch came from Steam (a shortcut's --steam, SteamGameId, gamescope), and the
   /// controllers Steam Input took over.
   SteamLaunch steamLaunch = const SteamLaunch();
@@ -1959,6 +1971,8 @@ class AppModel extends ChangeNotifier {
   /// Transparency at 0 % on a window that could let the desktop through.
   bool get solidGlass =>
       preferences.reduceTransparency ||
+      // Settings › Battery & Heat › Lighter Launcher, while a profile holds.
+      powerWatch.dimmed ||
       glassFallback ||
       (backdrop.kind.seeThrough && preferences.glassTransparency == 0);
 
@@ -3043,6 +3057,8 @@ class AppModel extends ChangeNotifier {
         ...gamePresets.environment,
         // The engine's online bridge reads the AnyTogether game session there.
         if (together.signedIn) 'ANYPS5_TOGETHER_SESSION': together.hub.games.bridgeFile,
+        // Settings › Battery & Heat: the frame cap now, and the file it changes in while it runs.
+        ...powerWatch.environment(),
         ...online,
       };
       fonts.watch(game, logFile);
@@ -4055,6 +4071,14 @@ class AppModel extends ChangeNotifier {
             title: running!.$1.name,
             rows: [
               PanelRow(id: 'resume', title: T.text('quickResume'), kind: ActionRow(resumeGame)),
+              // Settings › Battery & Heat: the profile that holds lifted for now.
+              if (powerWatch.canUndo)
+                PanelRow(
+                  id: 'powerUndo',
+                  title: powerWatch.undoTitle,
+                  detail: T.text('powerQuickUndoDetail'),
+                  kind: ActionRow(powerWatch.undo),
+                ),
               PanelRow(
                 id: 'gameSettings',
                 title: T.text('gameSettings'),
@@ -4403,7 +4427,7 @@ class AppModel extends ChangeNotifier {
               index,
             ) {
               preferences.reducedMotion = index == 1;
-              Motion.reduced = preferences.reducedMotion;
+              Motion.reduced = preferences.reducedMotion || powerWatch.dimmed;
               savePreferences();
             }),
           ),
@@ -4560,6 +4584,7 @@ class AppModel extends ChangeNotifier {
       PanelCategory(id: 'steam', title: T.text('steam'), rows: steam.settingsRows()),
       PanelCategory(id: 'controllers', title: T.text('padTitle'), rows: controllers.rows()),
       PanelCategory(id: 'displayDefaults', title: T.text('displayDefaults'), rows: _displayDefaultRows()),
+      PanelCategory(id: 'power', title: T.text('powerTitle'), rows: powerWatch.rows()),
       PanelCategory(id: 'presets', title: T.text('presetsTitle'), rows: _presetRows()),
       PanelCategory(id: 'captures', title: T.text('captures'), rows: _captureRows()),
       PanelCategory(id: 'shortcuts', title: T.text('shortcuts'), rows: _shortcutRows()),
@@ -5849,6 +5874,7 @@ class AppModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    powerWatch.stop();
     for (final watcher in _libraries.values) {
       watcher.stop();
     }

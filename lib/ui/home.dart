@@ -40,16 +40,19 @@ class Backdrop extends StatelessWidget {
         model.preferences.onboarded &&
         model.preferences.gameArtwork &&
         model.overlay != Layer.settings &&
+        // In the Theme Studio the theme itself is what is looked at.
+        model.overlay != Layer.themeStudio &&
         game?.background != null;
     // Under a layer the background is blurred and darkened: kept still, the blur is not worked
     // out again on every frame, which is what made opening and closing layers stutter.
-    final covered = model.overlay != null || model.starting != null;
+    // The Theme Studio is the exception: its changes show behind it as they are made.
+    final covered = (model.overlay != null && model.overlay != Layer.themeStudio) || model.starting != null;
     // Glass shows the picture frosted, from a small decode, and still; over the whole screen it
     // hides the background, which then rests.
     final glass = model.look == LookStyle.glass;
     // Glass's see-through window: the desktop is the background, the picture only when asked.
     final seeThrough = model.glassWindow.seeThrough;
-    if (seeThrough) {
+    if (seeThrough && model.ownBackground == null) {
       final shown =
           model.preferences.onboarded &&
           model.preferences.glassArtwork &&
@@ -82,20 +85,32 @@ class Backdrop extends StatelessWidget {
         }
       }
     }
+    // Still while a game runs (in front or not: the GPU is the game's), while the launcher is not
+    // in front, under a layer and with reduced motion.
+    final still =
+        model.running != null || model.resting || model.preferences.reducedMotion || covered || (glass && artwork);
+    final animation = ThemeBackground(style: model.look, palette: model.palette, paused: still, time: time);
+    // The user's own picture or video (Appearance › Background, or the theme's), else the animation.
+    final own = model.ownBackground;
     return Stack(
       fit: StackFit.expand,
       children: [
-        ThemeBackground(
-          style: model.look,
-          // Still while a game runs (in front or not: the GPU is the game's), while the launcher
-          // is not in front, under a layer and with reduced motion.
-          paused:
-              model.running != null ||
-              model.resting ||
-              model.preferences.reducedMotion ||
-              covered ||
-              (glass && artwork),
-          time: time,
+        AnimatedSwitcher(
+          layoutBuilder: uniqueSwitcherLayout(),
+          duration: Motion.fade,
+          child: KeyedSubtree(
+            key: ValueKey(own?.path),
+            child: switch (own) {
+              null => animation,
+              (:final path, video: true) => LoopingVideoView(
+                path: path,
+                ffmpeg: model.replayFfmpeg,
+                paused: still || time != null,
+                fallback: animation,
+              ),
+              (:final path, video: false) => DriftingImage(path: path, animated: !still && time == null),
+            },
+          ),
         ),
         RepaintBoundary(
           child: AnimatedSwitcher(
@@ -459,6 +474,16 @@ class TopBar extends StatelessWidget {
           badge: together.partyBadge,
         ),
         SizedBox(width: 22 * scale),
+        // AnyTogether's notifications, while signed in: the bell with the unread count.
+        if (together.signedIn) ...[
+          iconButton(
+            together.hub.social.notices.unread > 0 ? Icons.notifications_active_rounded : Icons.notifications_rounded,
+            5,
+            together.openNotifications,
+            badge: together.hub.social.notices.unread,
+          ),
+          SizedBox(width: 22 * scale),
+        ],
         // A controller running out of battery says so here (and in Settings › Controllers).
         if (PadTroubleshooter.statusLine(model.controllers.pads) case final line?) ...[
           PadStatusPill(text: line),
@@ -995,7 +1020,10 @@ class StateLabel extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (icon == null) Padlock(size: (size + 2) * scale, color: tint) else Icon(icon, size: (size + 2) * scale, color: tint),
+        if (icon == null)
+          Padlock(size: (size + 2) * scale, color: tint)
+        else
+          Icon(icon, size: (size + 2) * scale, color: tint),
         SizedBox(width: 6 * scale),
         Flexible(
           child: Text(

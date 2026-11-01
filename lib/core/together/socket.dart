@@ -131,6 +131,27 @@ class TogetherSocket with Notifier {
 
   void _heartbeat() => send({'op': 'heartbeat', 'presence': _presence.json});
 
+  List<String> _topics = const [];
+
+  /// The public topics listened to (the looking-for-group board, the public lists).
+  List<String> get watching => _topics;
+
+  /// Listens to these public topics instead of the ones before (none stops); sent again after
+  /// every reconnect. They only say "something changed": the list is read again.
+  void watch(List<String> topics) {
+    if (_listEquals(topics, _topics)) return;
+    _topics = List.unmodifiable(topics);
+    send({'op': 'watch', 'topics': _topics});
+  }
+
+  static bool _listEquals(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var index = 0; index < a.length; index++) {
+      if (a[index] != b[index]) return false;
+    }
+    return true;
+  }
+
   void _set(SocketStatus next) {
     if (status == next) return;
     status = next;
@@ -192,6 +213,7 @@ class TogetherSocket with Notifier {
         _beat = Timer.periodic(Duration(milliseconds: (every * 1000).round()), (_) => _heartbeat());
         _set(SocketStatus.ready);
         _heartbeat();
+        if (_topics.isNotEmpty) send({'op': 'watch', 'topics': _topics});
         _events.add(const TogetherEvent('', 'live.ready', null));
       case 'event':
         final id = frame['id'] as String? ?? '';

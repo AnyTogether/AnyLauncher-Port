@@ -85,10 +85,10 @@ void main() {
       addTearDown(fixture.dispose);
       final model = fixture.model;
       expect(model.look, LookStyle.glass);
-      expect(model.accentChoice, Accent.ice);
+      expect(model.builtInAccent, Accent.ice);
       model.preferences.theme = 42;
       expect(model.look, LookStyle.cosmic);
-      expect(model.accentChoice, Accent.blue);
+      expect(model.builtInAccent, Accent.blue);
     });
 
     test('choosing Glass in the settings resets the accent to Ice; Reduce Transparency shows only there', () {
@@ -104,7 +104,7 @@ void main() {
       }
       expect(model.preferences.theme, 3);
       expect(model.look, LookStyle.glass);
-      expect(model.accentChoice, Accent.ice);
+      expect(model.builtInAccent, Accent.ice);
       expect(rows(), containsAllInOrder(['theme', 'transparency', 'accent']));
       expect(model.solidGlass, isFalse);
       model.panelRow = rows().indexOf('transparency');

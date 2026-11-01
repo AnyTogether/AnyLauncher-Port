@@ -9,6 +9,8 @@ import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:path/path.dart' as p;
 
 import '../core/audio/atrac9.dart';
+import '../core/capture/game_sound.dart';
+import '../core/capture/video_encoders.dart';
 import '../core/audio/audio_out.dart';
 import '../core/audio/interface_sounds.dart';
 import '../core/audio/theme_music.dart';
@@ -52,6 +54,7 @@ import '../core/replay_buffer.dart';
 import '../core/save_backup.dart';
 import '../core/steam/steam_launch.dart';
 import '../core/screenshots.dart';
+import '../core/deep_link.dart';
 import '../core/engine_checkout.dart';
 import '../core/toolkit.dart';
 import '../core/toolkit_download.dart';
@@ -63,8 +66,12 @@ import '../core/together/talk_key.dart';
 import '../core/together/token_store.dart';
 import '../core/online/online_peer_mesh.dart';
 import '../core/together/voice_mesh.dart';
+import '../core/themes/theme_design.dart';
+import '../core/themes/theme_library.dart';
 import '../core/trophies.dart';
 import '../core/unlock_space.dart';
+import '../core/update_channel.dart';
+import '../core/unreal/unreal_controls.dart';
 import 'browser_play.dart';
 import 'components.dart';
 import 'controllers_model.dart';
@@ -72,17 +79,22 @@ import 'crash_model.dart';
 import 'discord_model.dart';
 import 'engine_model.dart';
 import 'fonts_model.dart';
+import 'media_model.dart';
+import 'share_play_model.dart';
 import 'game_files_model.dart';
 import 'steam_model.dart';
 import 'glass.dart';
 import 'profile_picture.dart';
+import 'sharing_model.dart';
 import 'strings.dart';
 import 'theme.dart';
+import 'theme_hub_model.dart';
 import 'together_model.dart';
 import 'update_model.dart';
 import 'trophy_card.dart';
 
 part 'profiles_model.dart';
+part 'themes_model.dart';
 
 /// The launcher's own choices, kept as JSON in the config folder.
 class Preferences {
@@ -96,6 +108,13 @@ class Preferences {
       _ => LookStyle.cosmic.index,
     }
     ..accent = json['accent'] as String?
+    ..customTheme = json['customTheme'] as String?
+    ..backdrop = switch (json['backdrop']) {
+      final String kind when Preferences.backdrops.contains(kind) => kind,
+      _ => 'theme',
+    }
+    ..backdropFile = json['backdropFile'] as String?
+    ..menuMusicFile = json['menuMusicFile'] as String?
     ..profileName = json['profileName'] as String? ?? ''
     ..gamesFolders = _folders(json['gamesFolders'], json['gamesFolder'])
     ..toolkitFolder = json['toolkitFolder'] as String?
@@ -124,12 +143,14 @@ class Preferences {
     ..soundVolume = (json['soundVolume'] as num?)?.toInt()
     ..musicVolume = (json['musicVolume'] as num?)?.toInt()
     ..engineSource = json['engineSource'] as String? ?? 'upstream'
+    ..updateChannel = json['updateChannel'] as String?
     ..engineGitBeforePlay = json['engineGitBeforePlay'] == true
     ..engineGitBuilt = {
       for (final entry in (json['engineGitBuilt'] as Map<String, dynamic>? ?? const {}).entries)
         if (entry.value is String) entry.key: entry.value as String,
     }
     ..fontsFolder = json['fontsFolder'] as String?
+    ..screenshotsFolder = json['screenshotsFolder'] as String?
     ..showHiddenTrophies = json['showHiddenTrophies'] as bool? ?? false
     ..controllerVibration = json['controllerVibration'] as bool? ?? true
     ..steamUser = json['steamUser'] as String?
@@ -157,6 +178,11 @@ class Preferences {
       _ => ReplayBuffer.defaultLength,
     }
     ..shortcuts = ShortcutMap.fromJson(json['shortcuts'])
+    ..compatNever = json['compatNever'] == true
+    ..compatAsked = {
+      for (final entry in (json['compatAsked'] as Map<String, dynamic>? ?? const {}).entries)
+        if (entry.value is String) entry.key: entry.value as String,
+    }
     ..lastPlayed = {
       for (final entry in (json['lastPlayed'] as Map<String, dynamic>? ?? const {}).entries)
         entry.key: entry.value as String,
@@ -165,6 +191,20 @@ class Preferences {
   String language = 'en';
   int theme = 0;
   String? accent;
+
+  /// The id of the theme in use made in the Theme Studio or installed from a file (its folder
+  /// in the config folder's Themes); null for the built-in look [theme] and its [accent].
+  String? customTheme;
+
+  /// Settings › Appearance › Background: the theme's animation ('theme'), the user's own picture
+  /// ('image') or video ('video') in [backdropFile]. The macOS launcher's keys and values.
+  String backdrop = 'theme';
+  String? backdropFile;
+  static const backdrops = ['theme', 'image', 'video'];
+
+  /// Settings › Appearance › Menu Music: a song of the user's own that plays when the selected
+  /// game has none (a custom theme's own music comes first); null for none.
+  String? menuMusicFile;
 
   /// Empty until the first profile is made: it is then the profile's name (the language's word
   /// for a player when none was typed).
@@ -232,6 +272,9 @@ class Preferences {
   /// with the phone controller, full screen and window size).
   String engineSource = 'upstream';
 
+  /// Settings › About › Update Channel: null for Stable, 'nightly' for Nightly (UpdateChannel).
+  String? updateChannel;
+
   /// Settings › AnyPS5 Engine › Update from Git Before Playing, for an engine folder that is a
   /// git checkout: pulled and built before a game starts when the remote has new commits.
   bool engineGitBeforePlay = false;
@@ -241,6 +284,10 @@ class Preferences {
 
   /// A folder of the user's own fonts (the console's, say) games get first; null for none.
   String? fontsFolder;
+
+  /// Settings › Captures › Screenshots Folder: where F12 screenshots, trophy pictures and clips
+  /// go; null for Pictures/AnyPS5 (AppPaths.pictures).
+  String? screenshotsFolder;
 
   /// Hidden trophies show their name, description and icon before they are earned.
   bool showHiddenTrophies = false;
@@ -296,10 +343,19 @@ class Preferences {
   /// Settings › Shortcuts.
   ShortcutMap shortcuts = ShortcutMap();
 
+  /// "How did it run?" after a game (AnyTogether's compatibility list): never asked, and the
+  /// launcher version each game (by title ID) was last asked about.
+  bool compatNever = false;
+  Map<String, String> compatAsked = {};
+
   Map<String, Object?> toJson() => {
     'language': language,
     'theme': theme,
     'accent': accent,
+    'customTheme': customTheme,
+    'backdrop': backdrop,
+    'backdropFile': backdropFile,
+    'menuMusicFile': menuMusicFile,
     'profileName': profileName,
     'gamesFolders': gamesFolders,
     // The first one under the old name too, for an older launcher started again.
@@ -328,9 +384,11 @@ class Preferences {
     'musicVolume': musicVolume,
     'lastPlayed': lastPlayed,
     'engineSource': engineSource,
+    if (updateChannel != null) 'updateChannel': updateChannel,
     'engineGitBeforePlay': engineGitBeforePlay,
     'engineGitBuilt': engineGitBuilt,
     'fontsFolder': fontsFolder,
+    'screenshotsFolder': screenshotsFolder,
     'showHiddenTrophies': showHiddenTrophies,
     'controllerVibration': controllerVibration,
     'steamUser': steamUser,
@@ -349,6 +407,8 @@ class Preferences {
     'replayBuffer': replayBuffer,
     'replaySeconds': replaySeconds,
     if (!shortcuts.isDefault) 'shortcuts': shortcuts.toJson(),
+    if (compatNever) 'compatNever': true,
+    if (compatAsked.isNotEmpty) 'compatAsked': compatAsked,
   };
 
   /// The saved list of games folders, or a file from before with one (`gamesFolder`) as a list of
@@ -583,6 +643,19 @@ enum Layer {
   /// side by side.
   compare,
 
+  /// AnyTogether's social screens (together_social.dart): friends' activity, a leaderboard, the
+  /// notifications behind the bell, and "How did it run?" after a game.
+  feed,
+  leaderboard,
+  notifications,
+  compat,
+
+  /// Find Players (together_find.dart): the looking-for-group board, the user's posts, public
+  /// parties and people to meet; the post form; one game's hub.
+  findPlayers,
+  lfgPost,
+  gameHub,
+
   /// Family limits: today's play time, asking a parent for more.
   family,
 
@@ -629,6 +702,13 @@ enum Layer {
 
   /// At start, after the launcher itself crashed or stopped responding: Send Report, Not Now.
   launcherReport,
+
+  /// Settings › Appearance › Themes: the built-in looks, the custom themes, the Studio and
+  /// Install from a File (themes_model.dart).
+  themes,
+
+  /// The Theme Studio: the theme in use changed live, the launcher behind it showing each change.
+  themeStudio,
 }
 
 /// A settings row the panels draw and the keyboard moves through.
@@ -707,11 +787,14 @@ class InfoRow extends RowKind {
 
 /// A field to type in: choosing the row puts the cursor in it; Enter sends [submit].
 class TextRow extends RowKind {
-  const TextRow(this.value, this.set, {this.submit, this.hint});
+  const TextRow(this.value, this.set, {this.submit, this.hint, this.obscure = false});
   final String value;
   final void Function(String) set;
   final void Function()? submit;
   final String? hint;
+
+  /// Typed as dots, never shown (a stream key).
+  final bool obscure;
 }
 
 /// How a person shows in a row: their initials or picture, a dot for what they are doing, a
@@ -798,6 +881,8 @@ class LauncherServices {
     this.fontClient,
     this.builtInFonts,
     this.saveFile,
+    this.saveFileAs,
+    this.pickFile,
     this.pickImage,
     this.systemInfo,
     this.startDetached,
@@ -805,6 +890,7 @@ class LauncherServices {
     this.window,
     this.replay,
     this.folderSize,
+    this.gameControls,
     this.commands,
     this.discord,
     this.discordGames,
@@ -823,6 +909,10 @@ class LauncherServices {
   /// A game folder's size on disk, read away from the interface (Isolate.run by default): a
   /// dump holds tens of thousands of files.
   final Future<int> Function(String folder)? folderSize;
+
+  /// What an Unreal game's own input settings say each pad button does, read from its paks
+  /// away from the interface (Isolate.run by default); null when they say nothing readable.
+  final Future<Map<PadAction, List<String>>?> Function(String folder)? gameControls;
 
   /// The launcher's own window: full screen or not; nothing when not given.
   final LauncherWindow? window;
@@ -843,6 +933,14 @@ class LauncherServices {
 
   /// Asks the user where to save a file, [suggestedName] first; null when they cancelled.
   final Future<String?> Function(String suggestedName)? saveFile;
+
+  /// Asks where to save a file of [label]'s kind (one of [extensions]), [suggestedName] first;
+  /// null when they cancelled.
+  final Future<String?> Function(String suggestedName, String label, List<String> extensions)? saveFileAs;
+
+  /// Asks the user for a file of [label]'s kind (one of [extensions]) to open; null when they
+  /// cancelled.
+  final Future<String?> Function(String label, List<String> extensions)? pickFile;
 
   /// This computer for a crash report; read from the system when not given.
   final Future<SystemInfo> Function()? systemInfo;
@@ -1133,6 +1231,10 @@ class AppModel extends ChangeNotifier {
   /// The selected game's theme song.
   late final ThemeMusic music = ThemeMusic(_audio, decode: services.decodeSong);
 
+  /// The themes made in the Theme Studio or installed from files (themes_model.dart).
+  late final ThemeLibrary themes = ThemeLibrary(p.join(paths.config, 'Themes'));
+  late List<ThemeDesign> designs = themes.all;
+
   /// Whether the launcher's window is in front: the theme song plays only then.
   bool active = true;
 
@@ -1177,7 +1279,8 @@ class AppModel extends ChangeNotifier {
   /// while a game is in front.
   void _updateMusic() {
     final quiet = !preferences.onboarded || !active || running != null || starting != null || musicVolume == 0;
-    music.play(quiet ? null : selectedGame);
+    // The theme's (or the user's own) menu music when the selected game has no song.
+    music.play(quiet ? null : selectedGame, fallback: quiet ? null : menuMusic);
     // With the game in front, the launcher says nothing.
     sounds.muted = running != null && !active;
   }
@@ -1564,6 +1667,12 @@ class AppModel extends ChangeNotifier {
 
   /// The system fonts games get: the folder put together for them, the CJK download.
   late final FontsModel fonts = FontsModel(this);
+
+  /// Remote Play and broadcasting.
+  late final MediaModel media = MediaModel(this);
+
+  /// Hosting share play while a game runs.
+  late final SharePlayModel sharePlay = SharePlayModel(this);
   late final BrowserPlayModel browserPlay = BrowserPlayModel(this);
 
   /// AnyPS5 and its games in the Steam library (Settings › Steam).
@@ -1816,6 +1925,10 @@ class AppModel extends ChangeNotifier {
   final Map<String, String> failures = {};
   final Map<String, int> sizes = {};
 
+  /// Each game's own actions by pad button (UnrealControls), read the first time its controls
+  /// open; empty while being read and for a game whose files name none.
+  final Map<String, Map<PadAction, List<String>>> gameControls = {};
+
   /// The selected game's pictures while the gallery is open, newest first; the one the focus is
   /// on and whether it is shown over the whole screen.
   List<String> galleryShots = const [];
@@ -1828,7 +1941,14 @@ class AppModel extends ChangeNotifier {
 
   static const galleryColumns = 4;
 
-  List<String> screenshotsOf(Game game) => Screenshots.list(paths.pictures, game);
+  List<String> screenshotsOf(Game game) => Screenshots.list(picturesFolder, game);
+
+  /// Where F12 screenshots, trophy pictures and clips go: Settings › Captures › Screenshots
+  /// Folder, else Pictures/AnyPS5.
+  String get picturesFolder => preferences.screenshotsFolder ?? paths.pictures;
+
+  /// The selected game's pictures read again (another screenshots folder).
+  void loadGalleryShots() => _loadShots();
 
   void _loadShots() {
     final game = selectedGame;
@@ -1973,7 +2093,22 @@ class AppModel extends ChangeNotifier {
   String? remoteError;
   RemoteMessage? _toldLibrary;
 
-  LookStyle get look => LookStyle.fromIndex(preferences.theme);
+  /// Settings › About › Update Channel.
+  UpdateChannel get updateChannel => UpdateChannel.of(preferences.updateChannel);
+
+  /// A new update channel: the engine picker and the launcher's own update ask for it at once.
+  /// Stable offers a release only when it is newer than what is in use, so going back to Stable
+  /// never installs an older engine or launcher.
+  void setUpdateChannel(UpdateChannel channel) {
+    if (channel == updateChannel) return;
+    preferences.updateChannel = channel.saved;
+    savePreferences();
+    engine.channelChanged();
+    updates.channelChanged();
+  }
+
+  /// The animated background in use: the custom theme's when one is used.
+  LookStyle get look => LookStyle.fromIndex(activeDesign?.style ?? preferences.theme);
 
   /// Glass gave up its transparency: the GPU took too long to draw it (RasterWatch), this run or
   /// an earlier one (kept as Preferences.glassTooSlow).
@@ -2063,8 +2198,17 @@ class AppModel extends ChangeNotifier {
     checkFront();
   }
 
-  Accent get accentChoice =>
+  /// The built-in accent chosen in Settings › Appearance (or the look's own).
+  Accent get builtInAccent =>
       Accent.values.firstWhere((accent) => accent.name == preferences.accent, orElse: () => look.defaultAccent);
+
+  /// The accent in use: a custom theme's own colour, else the built-in one.
+  AccentChoice get accentChoice {
+    final design = activeDesign;
+    if (design == null) return AccentChoice(builtInAccent.color, index: builtInAccent.index);
+    final rgb = design.accentRgb;
+    return AccentChoice(Color.fromRGBO((rgb.r * 255).round(), (rgb.g * 255).round(), (rgb.b * 255).round(), 1));
+  }
 
   Game? get selectedGame => games.isEmpty ? null : games[selected.clamp(0, games.length - 1)];
 
@@ -2098,6 +2242,9 @@ class AppModel extends ChangeNotifier {
   /// Facts about a game the settings rows show that cost a disk read (its patch file, its
   /// backups), read when its settings open rather than on every frame.
   final Map<String, ({bool resolution, List<String> backups})> _gameFacts = {};
+
+  /// Whether the title's patch file lets Game Settings choose its resolution.
+  bool supportsResolution(Game game) => _factsOf(game).resolution;
 
   ({bool resolution, List<String> backups}) _factsOf(Game game) => _gameFacts.putIfAbsent(game.id, () {
     final patch = toolkit?.patchFile(game.titleId);
@@ -2330,6 +2477,25 @@ class AppModel extends ChangeNotifier {
   }
 
   bool _measuring = false;
+
+  /// A game's own controls read on another isolate. Static, so the closure sent there holds
+  /// only the folder and not the model.
+  static Future<Map<PadAction, List<String>>?> _readGameControls(String folder) =>
+      Isolate.run(() => UnrealControls.read(folder));
+
+  /// Reads what the game's own files say each pad button does, once per game.
+  void _readControls(Game game) {
+    if (gameControls.containsKey(game.id)) return;
+    gameControls[game.id] = const {};
+    final read = services.gameControls ?? _readGameControls;
+    unawaited(
+      read(game.folder).then((controls) {
+        if (_disposed || controls == null || controls.isEmpty) return;
+        gameControls[game.id] = controls;
+        notifyListeners();
+      }, onError: (Object _) {}),
+    );
+  }
 
   GameState stateOf(Game game) {
     if (running case (final Game playing, final RunningGame run) when playing.id == game.id) {
@@ -3024,7 +3190,7 @@ class AppModel extends ChangeNotifier {
       written = false;
     }
     try {
-      Directory(paths.pictures).createSync(recursive: true);
+      Directory(picturesFolder).createSync(recursive: true);
     } on FileSystemException {
       // Screenshots go nowhere then.
     }
@@ -3055,7 +3221,7 @@ class AppModel extends ChangeNotifier {
         ...settings.environment(
           launcherLanguage: T.language.consoleLanguage,
           inputFile: written ? inputFile : null,
-          screenshots: paths.pictures,
+          screenshots: picturesFolder,
           fonts: systemFonts,
           shaderCacheFolder: paths.shaderCache(game.slug),
           trace: traced,
@@ -3088,6 +3254,7 @@ class AppModel extends ChangeNotifier {
       stopping = false;
       _checkPhoneReach(game);
       unawaited(_startReplay());
+      unawaited(media.updateRemotePlay());
       crash.started(game, traced: traced);
       final began = DateTime.now();
       // Upstream's engine does not read ANYPS5_FULLSCREEN or ANYPS5_WINDOW_SIZE: the launcher
@@ -3111,12 +3278,16 @@ class AppModel extends ChangeNotifier {
       _stopTimer?.cancel();
       _stopTimer = null;
       unawaited(_stopReplay());
+      media.gameEnded();
+      sharePlay.gameEnded();
       // The quick menu and the question go with the game.
       if (overlay == Layer.quickMenu || overlay == Layer.closeGame) overlay = null;
       updates.gameEnded();
       together.gameChanged();
       discord.update();
       crash.ended(game, code, stopped: _stopped);
+      // "How did it run?", once the launcher is back over the home screen.
+      together.askHowItRan(game, DateTime.now().difference(began));
       _changed();
       // Started from a Steam shortcut of the game: the launcher goes with it, so Steam sees
       // the game end. A crash keeps it open on its report.
@@ -3211,7 +3382,7 @@ class AppModel extends ChangeNotifier {
     try {
       final frame = await desktop.captureGame(pid);
       if (frame == null) return null;
-      final path = Screenshots.trophyPath(paths.pictures, game, trophy.id, DateTime.now());
+      final path = Screenshots.trophyPath(picturesFolder, game, trophy.id, DateTime.now());
       await Isolate.run(() {
         File(path)
           ..parent.createSync(recursive: true)
@@ -3327,6 +3498,7 @@ class AppModel extends ChangeNotifier {
       revealedTrophies = {};
     }
     if (next == Layer.trophies || next == Layer.gallery) _loadShots();
+    if (next == Layer.controls && selectedGame != null) _readControls(selectedGame!);
     // The screens that show the own name and handle read them again first.
     if (next == Layer.friends || next == Layer.profile || next == Layer.settings || next == Layer.profilePicker) {
       together.refreshOwnProfile();
@@ -3342,6 +3514,17 @@ class AppModel extends ChangeNotifier {
       galleryIndex = 0;
       galleryViewing = false;
     }
+    _skipToFocusable();
+    _changed();
+  }
+
+  /// Settings, on the section [id].
+  void openSettingsCategory(String id) {
+    open(Layer.settings);
+    final index = panelCategories().indexWhere((category) => category.id == id);
+    if (index < 0) return;
+    panelCategory = index;
+    panelRow = 0;
     _skipToFocusable();
     _changed();
   }
@@ -3555,6 +3738,12 @@ class AppModel extends ChangeNotifier {
       case Layer.compare:
         together.compareCommand(command);
         return;
+      case Layer.feed:
+        together.feedCommand(command);
+        return;
+      case Layer.leaderboard:
+        together.leaderboardCommand(command);
+        return;
       case Layer.quickMenu || Layer.closeGame when command == Command.back || command == Command.options:
         resumeGame();
         return;
@@ -3569,6 +3758,14 @@ class AppModel extends ChangeNotifier {
         return;
       case Layer.gameFiles when command == Command.back || command == Command.options:
         files.back();
+        return;
+      case Layer.lfgPost || Layer.gameHub when command == Command.back || command == Command.options:
+        together.backFromFind();
+        return;
+      case Layer.findPlayers when command == Command.back || command == Command.options:
+        _panelCommand(command);
+        // Closed: the board's topics are no longer listened to.
+        if (overlay != Layer.findPlayers) together.findClosed();
         return;
       case Layer.friendOptions when command == Command.back || command == Command.options:
         // A question asked in place (together_ask.dart) is answered Cancel first.
@@ -3590,7 +3787,14 @@ class AppModel extends ChangeNotifier {
           Layer.homeMenu ||
           Layer.confirmQuit ||
           Layer.launcherReport ||
-          Layer.profileMenu:
+          Layer.profileMenu ||
+          Layer.themes ||
+          Layer.themeStudio ||
+          Layer.notifications ||
+          Layer.compat ||
+          Layer.findPlayers ||
+          Layer.lfgPost ||
+          Layer.gameHub:
         _panelCommand(command);
         return;
       case null:
@@ -3639,7 +3843,14 @@ class AppModel extends ChangeNotifier {
         _moveFocus(HomeFocus.tiles);
       case ('top', Command.select):
         final layer = topLayers[focus.index.clamp(0, topButtons - 1)];
-        layer == Layer.messages ? unawaited(together.openMessages()) : open(layer);
+        switch (layer) {
+          case Layer.messages:
+            unawaited(together.openMessages());
+          case Layer.notifications:
+            together.openNotifications();
+          default:
+            open(layer);
+        }
       case ('actions', Command.left):
         _moveFocus(HomeFocus.actions((focus.index - 1).clamp(0, actionCount - 1)));
       case ('actions', Command.right):
@@ -3775,7 +3986,7 @@ class AppModel extends ChangeNotifier {
   /// Whether the replay buffer is recording now.
   bool get replayRecording => _replay?.running ?? false;
 
-  ReplayBuffer? _defaultReplay(int seconds) {
+  ReplayBuffer? _defaultReplay(int seconds, {VideoEncoder? encoder, GameSound? sound}) {
     final environment = services.environment ?? Platform.environment;
     final ffmpeg = replayFfmpeg;
     if (ffmpeg == null || !ReplayBuffer.supported(system, environment)) return null;
@@ -3785,6 +3996,8 @@ class AppModel extends ChangeNotifier {
       seconds: seconds,
       system: system,
       environment: environment,
+      encoder: encoder,
+      sound: sound,
     );
   }
 
@@ -3806,7 +4019,16 @@ class AppModel extends ChangeNotifier {
 
   Future<void> _startReplay() async {
     if (!preferences.replayBuffer || _replay != null || running == null) return;
-    final buffer = (services.replay ?? _defaultReplay)(preferences.replaySeconds);
+    final ReplayBuffer? buffer;
+    if (services.replay case final made?) {
+      buffer = made(preferences.replaySeconds);
+    } else {
+      // The graphics card's encoder when one works, and the game's sound with the picture.
+      final encoder = await media.encoders?.encoder;
+      final playing = running;
+      if (playing == null || !preferences.replayBuffer || _replay != null) return;
+      buffer = _defaultReplay(preferences.replaySeconds, encoder: encoder, sound: media.soundOf(playing.$2.pid));
+    }
     if (buffer == null) return;
     _replay = buffer;
     if (!await buffer.start()) {
@@ -3880,6 +4102,13 @@ class AppModel extends ChangeNotifier {
     if (!await desktop.notify('AnyPS5', text)) desktopNotify('AnyPS5', text);
   }
 
+  /// Said as a capture is ([_captureSaid]), with a second line in the desktop notice.
+  Future<void> notice(String text, {String? detail}) async {
+    show(detail == null ? text : '$text. $detail');
+    if (launcherInFront) return;
+    if (!await desktop.notify(text, detail ?? 'AnyPS5')) desktopNotify(text, detail ?? 'AnyPS5');
+  }
+
   /// The game's window now, into its gallery (Share held); the picture's path.
   Future<String?> takeScreenshot() async {
     final playing = running;
@@ -3890,7 +4119,7 @@ class AppModel extends ChangeNotifier {
       unawaited(_captureSaid(T.text('screenshotFailed')));
       return null;
     }
-    final path = Screenshots.shotPath(paths.pictures, game, DateTime.now());
+    final path = Screenshots.shotPath(picturesFolder, game, DateTime.now());
     try {
       await Isolate.run(() {
         File(path)
@@ -3913,7 +4142,7 @@ class AppModel extends ChangeNotifier {
     if (playing == null) return null;
     final buffer = _replay;
     if (buffer == null || !buffer.running) return takeScreenshot();
-    final saved = await buffer.save(Screenshots.clipPath(paths.pictures, playing.$1, DateTime.now()));
+    final saved = await buffer.save(Screenshots.clipPath(picturesFolder, playing.$1, DateTime.now()));
     if (saved != null) sounds.play(Cue.unlocked);
     unawaited(
       _captureSaid(saved == null ? T.text('clipFailed') : T.format('clipSaved', [replayLengthText(buffer.seconds)])),
@@ -3991,8 +4220,17 @@ class AppModel extends ChangeNotifier {
   static const libraryColumns = 6;
 
   /// The top bar's buttons, left to right.
-  static const topLayers = [Layer.library, Layer.settings, Layer.friends, Layer.messages, Layer.party];
-  static int get topButtons => topLayers.length;
+  static const topLayers = [
+    Layer.library,
+    Layer.settings,
+    Layer.friends,
+    Layer.messages,
+    Layer.party,
+    Layer.notifications,
+  ];
+
+  /// The bell (the last) shows only while signed in to AnyTogether.
+  int get topButtons => together.signedIn ? topLayers.length : topLayers.length - 1;
 
   void _moveLibrary(int delta) {
     final next = (libraryIndex + delta).clamp(0, games.isEmpty ? 0 : games.length - 1);
@@ -4055,10 +4293,26 @@ class AppModel extends ChangeNotifier {
         return [PanelCategory(id: 'friends', title: T.text('friendsTitle'), rows: together.friendRows())];
       case Layer.party:
         return [PanelCategory(id: 'party', title: T.text('partyTitle'), rows: together.partyRows())];
+      case Layer.notifications:
+        return [
+          PanelCategory(id: 'notifications', title: together.notificationsSubtitle, rows: together.notificationRows()),
+        ];
+      case Layer.compat:
+        return [PanelCategory(id: 'compat', title: T.text('socialCompatSubtitle'), rows: together.compatRows())];
+      case Layer.findPlayers:
+        return together.findPlayersCategories();
+      case Layer.gameHub:
+        return together.hubCategories();
+      case Layer.lfgPost:
+        return [PanelCategory(id: 'post', title: together.findState.draftName, rows: together.lfgPostRows())];
       case Layer.family:
         return [PanelCategory(id: 'family', title: T.text('familyTitle'), rows: together.family.rows())];
       case Layer.crashReport:
         return [PanelCategory(id: 'report', title: T.text('reportKicker'), rows: crash.rows())];
+      case Layer.themes:
+        return [PanelCategory(id: 'themes', title: T.text('themes'), rows: themeRows())];
+      case Layer.themeStudio:
+        return [PanelCategory(id: 'studio', title: T.text('themeStudio'), rows: studioRows())];
       case Layer.friendOptions:
         return [
           PanelCategory(
@@ -4087,6 +4341,8 @@ class AppModel extends ChangeNotifier {
                 title: T.text('gameSettings'),
                 kind: ActionRow(() => open(Layer.gameSettings)),
               ),
+              ...media.gameRows(),
+              ...sharePlay.rows(),
               PanelRow(
                 id: 'closeGame',
                 title: T.text('quickCloseGame'),
@@ -4334,21 +4590,8 @@ class AppModel extends ChangeNotifier {
         id: 'appearance',
         title: T.text('appearance'),
         rows: [
-          PanelRow(
-            id: 'theme',
-            title: T.text('theme'),
-            kind: ChoiceRow([for (final style in LookStyle.values) style.title], look.index, (index) {
-              preferences
-                ..theme = index
-                ..accent = null;
-              // Glass picked again: its transparency gets another try on this graphics card.
-              if (index == LookStyle.glass.index) {
-                preferences.glassTooSlow = false;
-                glassFallback = false;
-              }
-              savePreferences();
-            }),
-          ),
+          // The theme, built-in or custom (themes_model.dart).
+          ...appearanceThemeRows(),
           // Only Glass has transparency to reduce.
           if (look == LookStyle.glass)
             PanelRow(
@@ -4378,14 +4621,18 @@ class AppModel extends ChangeNotifier {
                 },
               ),
             ),
-          PanelRow(
-            id: 'accent',
-            title: T.text('accent'),
-            kind: ChoiceRow([for (final accent in Accent.values) accent.title], accentChoice.index, (index) {
-              preferences.accent = Accent.values[index].name;
-              savePreferences();
-            }),
-          ),
+          // A custom theme brings its own accent.
+          if (activeDesign == null)
+            PanelRow(
+              id: 'accent',
+              title: T.text('accent'),
+              kind: ChoiceRow([for (final accent in Accent.values) accent.title], builtInAccent.index, (index) {
+                preferences.accent = Accent.values[index].name;
+                savePreferences();
+              }),
+            ),
+          // Themes and the Theme Studio.
+          ...appearanceThemeLinks(),
           // Over the see-through window the picture is laid only when asked for.
           if (glassWindow.seeThrough)
             PanelRow(
@@ -4406,6 +4653,8 @@ class AppModel extends ChangeNotifier {
                 savePreferences();
               }),
             ),
+          // Background (the theme's animation, a picture or a video) and Menu Music.
+          ...appearanceMediaRows(),
           PanelRow(
             id: 'fullscreen',
             title: T.text('launcherFullscreen'),
@@ -4590,6 +4839,7 @@ class AppModel extends ChangeNotifier {
       PanelCategory(id: 'displayDefaults', title: T.text('displayDefaults'), rows: _displayDefaultRows()),
       PanelCategory(id: 'presets', title: T.text('presetsTitle'), rows: _presetRows()),
       PanelCategory(id: 'captures', title: T.text('captures'), rows: _captureRows()),
+      PanelCategory(id: 'broadcast', title: T.text('broadcastTitle'), rows: media.settingsRows()),
       PanelCategory(id: 'shortcuts', title: T.text('shortcuts'), rows: _shortcutRows()),
       PanelCategory(
         id: 'about',
@@ -4602,6 +4852,7 @@ class AppModel extends ChangeNotifier {
             kind: InfoRow(kit == null ? '—' : EngineModel.label(kit)),
           ),
           ...updates.aboutRows(),
+          updates.channelRow(),
         ],
       ),
     ];
@@ -4640,6 +4891,13 @@ class AppModel extends ChangeNotifier {
             },
           ),
         ),
+      PanelRow(
+        id: 'screenshotsFolder',
+        title: T.text('screenshotsFolder'),
+        detail: picturesFolder,
+        kind: ActionRow(() => unawaited(chooseScreenshotsFolder())),
+      ),
+      PanelRow(id: 'showScreenshots', title: T.text('showScreenshots'), kind: ActionRow(showScreenshots)),
       PanelRow(
         id: 'capturesHow',
         title: T.text('capturesHow'),
@@ -4894,12 +5152,24 @@ class AppModel extends ChangeNotifier {
         title: T.text('vsync'),
         kind: ChoiceRow(
           [byDefault(T.text(defaults.vsync ? 'on' : 'off')), T.text('on'), T.text('off')],
+          // Frame generation needs vertical sync: on whatever is chosen while it is on.
           switch (settings.ownVsync) {
+            _ when settings.frameGeneration == true => 1,
             null => 0,
             true => 1,
             false => 2,
           },
           (index) => change(settings.copyWith(vsync: index == 0 ? null : index == 1)),
+        ),
+      ),
+      PanelRow(
+        id: 'frameGeneration',
+        title: T.text('frameGeneration'),
+        // Only AnyPS5-ARM's engine makes the frames: said for upstream's, as FSR 1 is.
+        detail: engine.readsDisplaySettings ? T.text('frameGenerationDetail') : T.text('frameGenerationUpstream'),
+        kind: ToggleRow(
+          settings.frameGeneration == true,
+          (value) => change(settings.copyWith(frameGeneration: value ? true : null)),
         ),
       ),
       if (!settings.followsDisplayDefaults)
@@ -4955,6 +5225,7 @@ class AppModel extends ChangeNotifier {
         detail: T.text('screenshotsDetail'),
         kind: ActionRow(openGallery),
       ),
+      ...together.gameSocialRows(game),
       PanelRow(
         id: 'shaderCache',
         title: T.text('shaderCache'),
@@ -4963,6 +5234,24 @@ class AppModel extends ChangeNotifier {
           settings.shaderCache ?? true,
           (value) => change(settings.copyWith(shaderCache: value ? null : false)),
         ),
+      ),
+      PanelRow(
+        id: 'export',
+        title: T.text('exportSettings'),
+        detail: T.text('exportSettingsDetail'),
+        kind: ActionRow(() => unawaited(exportSettings(game))),
+      ),
+      PanelRow(
+        id: 'import',
+        title: T.text('importSettings'),
+        detail: T.text('importSettingsDetail'),
+        kind: ActionRow(() => unawaited(importSettings(game))),
+      ),
+      PanelRow(
+        id: 'link',
+        title: T.text('copyLink'),
+        detail: ShowGameLink(game.titleId).url,
+        kind: ActionRow(() => copyLink(game)),
       ),
       PanelRow(
         id: 'addUpdate',
@@ -5165,12 +5454,16 @@ class AppModel extends ChangeNotifier {
   List<PanelRow> _controlRows(Game game) {
     final settings = currentSettings(game);
     final changes = settings.controls ?? const <String, List<String>>{};
+    // The game's own actions, when its files name them, under each button.
+    final actions = gameControls[game.id] ?? const <PadAction, List<String>>{};
     return [
       ..._gyroRows(game, settings),
+      if (actions.isNotEmpty) PanelRow(id: 'fromGame', title: T.text('controlsFromGame'), kind: const InfoRow('')),
       for (final action in PadAction.values)
         PanelRow(
           id: action.key,
           title: padActionTitle(action),
+          detail: actions[action]?.join(', '),
           glyph: switch (action) {
             PadAction.cross => PadGlyph.cross,
             PadAction.circle => PadGlyph.circle,
@@ -5337,7 +5630,12 @@ class AppModel extends ChangeNotifier {
         }
       case Command.back || Command.options:
         // A question asked in place (together_ask.dart) is answered Cancel first.
-        if (!together.cancelAsk()) closeOverlay();
+        if (together.cancelAsk()) break;
+        if (overlay == Layer.themes || overlay == Layer.themeStudio) {
+          backFromThemes();
+        } else {
+          closeOverlay();
+        }
       default:
         break;
     }
@@ -5651,6 +5949,8 @@ class AppModel extends ChangeNotifier {
           _toldLibrary = null;
           _changed();
           _publishLook();
+          // Its Go Live button shows what the launcher does now.
+          if (media.phase.active) remote?.publish(const RemoteBroadcast(true));
           // A phone that comes while a game runs hears at once whether that game reads it.
           if (running case (final Game playing, _)) _checkPhoneReach(playing);
         },
@@ -5660,6 +5960,7 @@ class AppModel extends ChangeNotifier {
           notifyListeners();
         },
         request: _phoneRequest,
+        streamWishes: () => unawaited(media.updateRemotePlay()),
       );
       final devices = PairedDevices(paths.pairedDevicesFile);
       final RemoteServer server;
@@ -5738,6 +6039,14 @@ class AppModel extends ChangeNotifier {
         stopGame();
       case RemoteHome():
         handle(Command.home);
+      case RemoteKeyFrame():
+        media.wantKey();
+      case RemoteCommand(name: 'capture'):
+        // Create on the phone's pad: a clip (or a picture) of the game, the game staying in front.
+        unawaited(saveClip());
+      case RemoteCommand(:final name) when name == 'broadcastStart' || name == 'broadcastStop':
+        // Go Live and End Broadcast on the phone.
+        media.phoneBroadcast(name == 'broadcastStart');
       case RemoteCommand(:final name):
         final command = switch (name) {
           'left' => Command.left,
@@ -5848,8 +6157,8 @@ class AppModel extends ChangeNotifier {
   void _publishLook() {
     remote?.publish(
       RemoteLook(
-        deep: LookStyle.hex(look.deep),
-        middle: LookStyle.hex(look.middle),
+        deep: LookStyle.hex(palette.deep),
+        middle: LookStyle.hex(palette.middle),
         accent: LookStyle.hex(accentChoice.color),
       ),
     );
@@ -5888,8 +6197,10 @@ class AppModel extends ChangeNotifier {
     _pads?.stop();
     _focusWatch?.cancel();
     _captureTimer?.cancel();
-    // The replay buffer's segments go with the launcher.
+    // The replay buffer's segments go with the launcher, as do Remote Play and a broadcast.
     unawaited(_stopReplay());
+    media.dispose();
+    sharePlay.dispose();
     _navigator?.dispose();
     _installer?.cancel();
     _preparer?.cancel();

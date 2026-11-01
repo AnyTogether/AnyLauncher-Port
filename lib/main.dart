@@ -9,7 +9,11 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 import 'ui/soloud_audio.dart';
+import 'core/deep_link.dart';
 import 'core/desktop/desktop.dart';
+import 'core/desktop/file_types.dart';
+import 'core/desktop/url_scheme.dart';
+import 'core/link_relay.dart';
 import 'core/desktop/linux_desktop.dart';
 import 'core/desktop/window_backdrop.dart';
 import 'core/desktop/windows_desktop.dart';
@@ -17,6 +21,7 @@ import 'core/controllers/pad_reader.dart';
 import 'core/controllers/troubleshooter.dart';
 import 'core/app_update.dart';
 import 'core/host.dart';
+import 'core/opened_files.dart';
 import 'core/launcher_health.dart';
 import 'core/release_signing.dart';
 import 'core/steam/steam_launch.dart';
@@ -26,6 +31,7 @@ import 'ui/crash_model.dart';
 import 'ui/launcher.dart';
 import 'ui/launcher_window_channel.dart';
 import 'ui/profile_picture.dart';
+import 'ui/sharing_model.dart';
 import 'ui/strings.dart';
 import 'ui/together_model.dart' show launcherVersion;
 import 'ui/theme.dart';
@@ -37,9 +43,24 @@ late final AppLifecycleListener _exit;
 
 Future<void> main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
+  final paths = AppPaths.forSystem(HostSystem.current);
+  final relayFile = LinkRelay.fileIn(paths.config);
+  // A theme file opened while a launcher already runs goes to that one (as anyps5:// links do);
+  // this one quits before it shows a window.
+  final opened = OpenedFiles.of(arguments).where(LauncherThemes.isThemeFile).toList();
+  if (opened.isNotEmpty) {
+    var handed = true;
+    for (final file in opened) {
+      handed = await LinkRelay.send(relayFile, file) && handed;
+    }
+    if (handed) exit(0);
+  }
   // The built-in languages, and any file a translator put in the Languages folder to try it.
-  await T.load(tryOut: Directory(p.join(AppPaths.forSystem(HostSystem.current).config, 'Languages')));
+  await T.load(tryOut: Directory(p.join(paths.config, 'Languages')));
   final options = LaunchOptions.parse(arguments);
+  // An anyps5:// link with a launcher already open: that one takes it, and this one quits before
+  // it shows a window.
+  if (options.link case final DeepLink link when await LinkRelay.send(relayFile, link.url)) exit(0);
   final padLog = Platform.environment['ANYPS5_PAD_LOG'];
   final DesktopWindows desktop = Platform.isWindows
       ? WindowsDesktop(
@@ -59,7 +80,6 @@ Future<void> main(List<String> arguments) async {
     final LinuxDesktop linux => LinuxBackdrop(linux),
     _ => Platform.isWindows ? WindowsBackdrop() : const NoBackdrop(),
   };
-  final paths = AppPaths.forSystem(HostSystem.current);
   // The launcher's own crashes and long stalls, offered as a report at the next start.
   final health = LauncherHealth(
     p.join(paths.logs, 'Launcher'),
@@ -92,15 +112,20 @@ Future<void> main(List<String> arguments) async {
       ),
       copyText: (text) => unawaited(Clipboard.setData(ClipboardData(text: text))),
       pickImage: () async => (await openFile(
-        acceptedTypeGroups: const [
-          XTypeGroup(label: 'Pictures', extensions: ProfilePicture.extensions),
-        ],
+        acceptedTypeGroups: const [XTypeGroup(label: 'Pictures', extensions: ProfilePicture.extensions)],
       ))?.path,
       saveFile: (name) async => (await getSaveLocation(
         suggestedName: name,
         acceptedTypeGroups: const [
           XTypeGroup(label: 'Text', extensions: ['txt']),
         ],
+      ))?.path,
+      saveFileAs: (name, label, extensions) async => (await getSaveLocation(
+        suggestedName: name,
+        acceptedTypeGroups: [XTypeGroup(label: label, extensions: extensions)],
+      ))?.path,
+      pickFile: (label, extensions) async => (await openFile(
+        acceptedTypeGroups: [XTypeGroup(label: label, extensions: extensions)],
       ))?.path,
       engineReleases: GitHubReleases(),
       launcherReleases: LauncherUpdates.source(),
@@ -173,10 +198,42 @@ Future<void> main(List<String> arguments) async {
   unawaited(model.engine.startupCheck());
   unawaited(model.updates.startupCheck());
   runApp(AnyPS5App(model: model));
+  // .anyps5theme files open with this launcher (the zip, the AppImage and the archive install
+  // nothing that would say so); not for a development build.
+  if (!kDebugMode) {
+    unawaited(
+      ThemeFileType(
+        system: HostSystem.current,
+        executable: ThemeFileType.launcherProgram(Platform.environment),
+        environment: Platform.environment,
+      ).register(),
+    );
+  }
+  // Theme files this launcher was opened with: installed and used.
+  for (final file in opened) {
+    unawaited(model.installTheme(file));
+  }
   // A game's Steam shortcut: straight into the game.
   if (options.play case final String titleId when model.preferences.onboarded) {
     unawaited(model.playAtLaunch(titleId, quitAfter: model.steamLaunch.fromSteam));
   }
+  // anyps5:// links: the one this launcher was started for, then the ones later launchers hand
+  // over; and the system told to open them with this launcher.
+  if (options.link case final DeepLink link) model.followLink(link);
+  unawaited(
+    LinkRelay.listen(relayFile).then(
+      (relay) => relay?.links.listen((text) {
+        // A theme file double-clicked while this launcher runs: installed, and the launcher shown.
+        if (LauncherThemes.isThemeFile(text) && File(text).existsSync()) {
+          unawaited(model.installTheme(text));
+          unawaited(model.desktop.raiseLauncher());
+        } else if (DeepLink.parse(text) case final DeepLink link) {
+          model.followLink(link);
+        }
+      }),
+    ),
+  );
+  unawaited(UrlScheme.register());
 }
 
 class AnyPS5App extends StatelessWidget {

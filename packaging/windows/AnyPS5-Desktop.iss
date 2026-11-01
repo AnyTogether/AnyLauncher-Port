@@ -51,6 +51,8 @@ WizardStyle=modern
 ; below) before files are replaced or removed.
 CloseApplications=force
 RestartApplications=no
+; .anyps5theme files open with the launcher, which installs the theme.
+ChangesAssociations=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -65,6 +67,21 @@ Type: filesandordirs; Name: "{app}\data"
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Registry]
+; .anyps5theme (AnyPS5 theme files, the same as the macOS launcher's): opened with the launcher.
+; HKA is the current user's classes for a per-user install, the machine's for all users.
+Root: HKA; Subkey: "Software\Classes\.anyps5theme"; ValueType: string; ValueName: ""; ValueData: "AnyPS5.Theme"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.anyps5theme"; ValueType: string; ValueName: "Content Type"; ValueData: "application/x-anyps5theme"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\AnyPS5.Theme"; ValueType: string; ValueName: ""; ValueData: "AnyPS5 theme"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\AnyPS5.Theme\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"",0"
+Root: HKA; Subkey: "Software\Classes\AnyPS5.Theme\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""
+; anyps5:// links open the launcher. The launcher writes the same for the user at start, which
+; covers the zip. HKA is the user's classes for a per-user install, the machine's for all users.
+Root: HKA; Subkey: "Software\Classes\anyps5"; ValueType: string; ValueName: ""; ValueData: "URL:AnyPS5"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\anyps5"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKA; Subkey: "Software\Classes\anyps5\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"",0"
+Root: HKA; Subkey: "Software\Classes\anyps5\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"

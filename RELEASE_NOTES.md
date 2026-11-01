@@ -18,6 +18,9 @@ release when it is made.
   list with the launcher and engine versions, the computer and the system. A game's settings
   show what the community found on Windows or Linux and send a report any time. **Don't ask
   after games** turns the question off.
+
+## 0.1.17
+
 - **Upscaling: Bilinear or FSR 1.** A new choice in a game's settings, beside Resolution. With
   AMD FidelityFX Super Resolution 1, a game image smaller than the window is brought up to it
   sharp instead of blurred, so a lower Resolution gives more frames on a weaker PC without the
@@ -47,6 +50,9 @@ release when it is made.
   Phones says it while upstream's engine is in use. A game on an engine the launcher can't tell
   (a folder of your own) is said only when it hasn't answered the phone for 30 seconds. The game
   log notes the phones and the engine at each start.
+- **One progress bar while a game updates.** The step and its bar beside the buttons are the
+  only ones now; the main button no longer draws a second line inside itself, and the status
+  under the game's name reads just **Updating**.
 
 ## 0.1.16
 

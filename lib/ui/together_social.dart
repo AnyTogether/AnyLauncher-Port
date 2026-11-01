@@ -99,6 +99,15 @@ extension TogetherSocial on TogetherModel {
             : '${T.text('socialCompatCommunity')}: ${compatText(summary)}',
         kind: ActionRow(() => openCompat(game)),
       ),
+      if (matchmakingAllowed)
+        PanelRow(
+          id: 'find-players',
+          title: T.format('discoverFindFor', [
+            game.nameFor([T.language.code]),
+          ]),
+          detail: T.text('discoverFindForDetail'),
+          kind: ActionRow(() => openLfgPost(game.titleId, game.nameFor([T.language.code]))),
+        ),
     ];
   }
 
@@ -441,10 +450,12 @@ extension TogetherSocial on TogetherModel {
     switch (note.kind) {
       case NoticeKind.friendRequest || NoticeKind.friendAccepted || NoticeKind.gameInvite || NoticeKind.missedCall:
         app.open(Layer.friends);
-      case NoticeKind.partyInvite || NoticeKind.lfgAccepted:
+      case NoticeKind.partyInvite:
         app.open(Layer.party);
+      case NoticeKind.lfgAccepted:
+        followInvite(LfgInvite.fromJson(note.data['invite']));
       case NoticeKind.lfgRequest:
-        app.open(Layer.friends);
+        openFindPlayers(category: 1);
       case NoticeKind.levelUp:
         unawaited(openMyProfile());
       case NoticeKind.message:

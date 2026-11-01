@@ -3068,8 +3068,11 @@ class AppModel extends ChangeNotifier {
     final allowed = together.family.beforePlay(game);
     if (!(allowed is bool ? allowed : await allowed) || starting != null || running != null) return;
     // Settings › Behaviour › Save Sync: the saves from the other computers (or the cloud) first.
-    await saveSync.sync(game);
-    if (starting != null || running != null) return;
+    // Off, the game starts at once, as it always did.
+    if (saveSync.on) {
+      await saveSync.sync(game);
+      if (starting != null || running != null) return;
+    }
     var settings = launchSettings(game);
     // Settings › Controllers › Stick Dead Zone, for a game that set none of its own.
     if (preferences.stickDeadzone > 0) {

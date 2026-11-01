@@ -84,6 +84,7 @@ import 'steam_model.dart';
 import 'glass.dart';
 import 'power_model.dart';
 import 'profile_picture.dart';
+import 'save_sync_model.dart';
 import 'sharing_model.dart';
 import 'strings.dart';
 import 'theme.dart';
@@ -147,6 +148,9 @@ class Preferences {
         if (entry.value is String) entry.key: entry.value as String,
     }
     ..fontsFolder = json['fontsFolder'] as String?
+    ..saveSync = json['saveSync'] as bool?
+    ..syncFolder = json['syncFolder'] as String?
+    ..syncThrough = json['syncThrough'] as String?
     ..powerProfiles = json['powerProfiles'] is Map<String, dynamic>
         ? json['powerProfiles'] as Map<String, dynamic>
         : null
@@ -280,6 +284,13 @@ class Preferences {
   /// A folder of the user's own fonts (the console's, say) games get first; null for none.
   String? fontsFolder;
 
+  /// Settings › Behaviour › Save Sync: each game's saves kept in step before it starts and after
+  /// it ends (null is off), through [syncFolder] (null for iCloud Drive where it is set up) or,
+  /// with [syncThrough] "together", the AnyTogether cloud. The Mac's keys.
+  bool? saveSync;
+  String? syncFolder;
+  String? syncThrough;
+
   /// Settings › Battery & Heat: the two profiles as PowerProfiles writes them (the Mac's
   /// "powerProfiles"); null for the defaults.
   Map<String, dynamic>? powerProfiles;
@@ -385,6 +396,9 @@ class Preferences {
     'engineGitBeforePlay': engineGitBeforePlay,
     'engineGitBuilt': engineGitBuilt,
     'fontsFolder': fontsFolder,
+    'saveSync': saveSync,
+    'syncFolder': syncFolder,
+    'syncThrough': syncThrough,
     'powerProfiles': powerProfiles,
     'screenshotsFolder': screenshotsFolder,
     'showHiddenTrophies': showHiddenTrophies,
@@ -700,6 +714,12 @@ enum Layer {
 
   /// At start, after the launcher itself crashed or stopped responding: Send Report, Not Now.
   launcherReport,
+
+  /// Save Sync through the cloud asks: both sides changed, or the quota is full.
+  cloudQuestion,
+
+  /// Settings › Behaviour › Cloud Storage: the usage and every game's cloud saves.
+  cloudStorage,
 
   /// Settings › Appearance › Themes: the built-in looks, the custom themes, the Studio and
   /// Install from a File (themes_model.dart).
@@ -1662,6 +1682,9 @@ class AppModel extends ChangeNotifier {
 
   /// AnyPS5 and its games in the Steam library (Settings › Steam).
   late final SteamModel steam = SteamModel(this);
+
+  /// Save Sync and cloud saves (save_sync_model.dart).
+  late final SaveSyncModel saveSync = SaveSyncModel(this);
 
   /// Settings › Battery & Heat: the power read, the profiles applied to the game and launcher.
   late final PowerModel powerWatch = PowerModel(this);
@@ -3162,11 +3185,17 @@ class AppModel extends ChangeNotifier {
   /// Plays [game]; [trace] turns detailed logging on for this start only.
   Future<void> play(Game game, {bool trace = false}) async {
     final folder = rootOf(game);
-    if (folder == null || starting != null || running != null) return;
+    if (folder == null || starting != null || running != null || saveSync.syncing != null) return;
     // The profile's own saves and trophies in the game's folder before anything reads them.
     activateProfileSaves(game);
     final allowed = together.family.beforePlay(game);
     if (!(allowed is bool ? allowed : await allowed) || starting != null || running != null) return;
+    // Settings › Behaviour › Save Sync: the saves from the other computers (or the cloud) first.
+    // Off, the game starts at once, as it always did.
+    if (saveSync.on) {
+      await saveSync.sync(game);
+      if (starting != null || running != null) return;
+    }
     var settings = launchSettings(game);
     // Settings › Controllers › Stick Dead Zone, for a game that set none of its own.
     if (preferences.stickDeadzone > 0) {
@@ -3276,6 +3305,8 @@ class AppModel extends ChangeNotifier {
       updates.gameEnded();
       together.gameChanged();
       crash.ended(game, code, stopped: _stopped);
+      // The saves it made go to the other computers (or the cloud).
+      unawaited(saveSync.sync(game));
       // "How did it run?", once the launcher is back over the home screen.
       together.askHowItRan(game, DateTime.now().difference(began));
       _changed();
@@ -3749,6 +3780,12 @@ class AppModel extends ChangeNotifier {
       case Layer.gameFiles when command == Command.back || command == Command.options:
         files.back();
         return;
+      case Layer.cloudQuestion when command == Command.back || command == Command.options:
+        saveSync.answerBack();
+        return;
+      case Layer.cloudStorage when command == Command.back || command == Command.options:
+        saveSync.backFromStorage();
+        return;
       case Layer.lfgPost || Layer.gameHub when command == Command.back || command == Command.options:
         together.backFromFind();
         return;
@@ -3777,6 +3814,8 @@ class AppModel extends ChangeNotifier {
           Layer.homeMenu ||
           Layer.confirmQuit ||
           Layer.launcherReport ||
+          Layer.cloudQuestion ||
+          Layer.cloudStorage ||
           Layer.profileMenu ||
           Layer.themes ||
           Layer.themeStudio ||
@@ -4427,6 +4466,16 @@ class AppModel extends ChangeNotifier {
             rows: _launcherReportRows(),
           ),
         ];
+      case Layer.cloudQuestion:
+        return [
+          PanelCategory(
+            id: 'cloudQuestion',
+            title: saveSync.question?.title ?? '',
+            rows: saveSync.questionRows(),
+          ),
+        ];
+      case Layer.cloudStorage:
+        return [PanelCategory(id: 'cloudStorage', title: T.text('cloudStorageSubtitle'), rows: saveSync.storageRows())];
       case Layer.confirmQuit:
         return [
           PanelCategory(
@@ -4819,6 +4868,7 @@ class AppModel extends ChangeNotifier {
               savePreferences();
             }),
           ),
+          ...saveSync.settingsRows(),
           PanelRow(
             id: 'hiddenTrophies',
             title: T.text('showHiddenTrophies'),
@@ -6188,6 +6238,7 @@ class AppModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    saveSync.dispose();
     powerWatch.stop();
     for (final watcher in _libraries.values) {
       watcher.stop();

@@ -181,6 +181,7 @@ class PanelView extends StatelessWidget {
       Layer.launcherReport,
       Layer.profileMenu,
       Layer.signIn,
+      Layer.cloudQuestion,
     }.contains(model.overlay);
     // PS's menus: a heading that may be long (the game's name), and only as tall as their rows.
     final psMenu = const {
@@ -190,6 +191,7 @@ class PanelView extends StatelessWidget {
       Layer.confirmQuit,
       Layer.launcherReport,
       Layer.profileMenu,
+      Layer.cloudQuestion,
     }.contains(model.overlay);
     // The quick menu and Close Game? are about the game playing: its icon by the heading.
     final gameIcon = model.overlay == Layer.quickMenu || model.overlay == Layer.closeGame
@@ -207,6 +209,7 @@ class PanelView extends StatelessWidget {
       Layer.gameHub => T.format('discoverHubOf', [model.together.findState.hubName]),
       Layer.controls => T.text('controls'),
       Layer.gameSettings => T.text('gameSettings'),
+      Layer.cloudStorage => T.text('cloudStorageTitle'),
       // Appearance › Themes.
       Layer.themes => T.text('appearance'),
       _ => category.title,
@@ -225,6 +228,8 @@ class PanelView extends StatelessWidget {
                               Layer.profileMenu => 74,
                               // Send Report says what it sends: two lines more.
                               Layer.launcherReport => 98,
+                              // The question's line is a sentence or two.
+                              Layer.cloudQuestion => 72,
                               _ => 62,
                             } *
                             category.rows.length

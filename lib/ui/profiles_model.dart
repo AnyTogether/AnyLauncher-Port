@@ -66,6 +66,9 @@ extension LauncherProfiles on AppModel {
     'confirmCircle',
     'stickDeadzone',
     'pauseOnMenu',
+    'saveSync',
+    'syncFolder',
+    'syncThrough',
     'replayBuffer',
     'replaySeconds',
     'shortcuts',
@@ -148,7 +151,13 @@ extension LauncherProfiles on AppModel {
   // Switching.
 
   ProfileRefusal? switchRefusal(String id) =>
-      ProfileSwitch.check(id, profiles.book, running: running?.$1.name, starting: starting?.name);
+      ProfileSwitch.check(
+        id,
+        profiles.book,
+        running: running?.$1.name,
+        starting: starting?.name,
+        syncing: saveSync.syncing != null,
+      );
 
   ProfileRefusal? _modeChangeRefusal() =>
       ProfileSwitch.checkModeChange(running: running?.$1.name, starting: starting?.name);

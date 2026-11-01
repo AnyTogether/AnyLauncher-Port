@@ -5,6 +5,15 @@ release when it is made.
 
 ## Next release
 
+- **Save Sync** in **Settings › Behaviour**: each game's saves and trophies stay the same on
+  your other computers. They are brought over before a game starts and sent after it ends. It
+  works through a folder your computers share (OneDrive, Dropbox, Syncthing or a network drive,
+  and iCloud Drive where iCloud for Windows set it up), in the Mac launcher's own layout, so a Mac
+  and a PC can share one folder. Signed in to AnyTogether, it can go through your AnyTogether
+  cloud instead, in parts that pick up where they stopped. When both sides changed, the launcher
+  asks which to keep, and the other stays as a backup. **Cloud Storage** shows each game's cloud
+  saves, with Restore and Delete. While saves sync, the game does not start twice and the profile
+  does not change. A server that keeps no files yet hides the cloud choices.
 - **Settings › Battery & Heat.** On battery (or with battery saver on) and when the processor
   runs hot, a game can be held to 30, 40 or 45 FPS, its frame generation paused and the
   launcher's Glass blur and animations turned down. Plugged in and cool, nothing changes. The

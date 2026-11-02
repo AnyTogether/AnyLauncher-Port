@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:anyps5_desktop/core/together/account.dart';
 import 'package:anyps5_desktop/core/together/friends.dart';
 import 'package:anyps5_desktop/core/together/levels.dart';
+import 'package:anyps5_desktop/core/together/people.dart';
 import 'package:anyps5_desktop/core/together/profiles.dart';
 import 'package:anyps5_desktop/core/together/self.dart';
 import 'package:anyps5_desktop/core/together/socket.dart';
@@ -336,13 +337,79 @@ void main() {
       self.addListener(() => changes++);
       await self.setAppearOffline(true);
       expect(self.appearOffline, isTrue);
-      expect(server.callsTo('me/presence', method: 'PATCH').single.body, {'appearOffline': true});
+      // Both fields go: a server before statuses reads appearOffline, a newer one status.
+      expect(server.callsTo('me/presence', method: 'PATCH').single.body, {
+        'appearOffline': true,
+        'status': 'invisible',
+      });
+      expect(self.status, PresenceStatus.invisible);
       expect(changes, greaterThan(0));
 
       server.answers['PATCH me/presence'] = FakeTogether.problem(404, 'not_found');
       await expectLater(self.setAppearOffline(false), throwsA(isA<TogetherProblem>()));
       expect(self.appearOffline, isTrue, reason: 'turned back to what it was');
       self.dispose();
+    });
+
+    test('idle and do not disturb: kept by a server that has them, turned back by one that has not', () async {
+      final self = SelfProfile(account: account, socket: socket);
+      // Today's server: invisible and online work, idle comes back as online with a word.
+      await expectLater(self.setStatus(PresenceStatus.idle), throwsA(isA<PresenceStatusUnsupported>()));
+      expect(self.status, PresenceStatus.online);
+      expect(server.callsTo('me/presence', method: 'PATCH').last.body, {'appearOffline': false, 'status': 'idle'});
+      await self.setStatus(PresenceStatus.invisible);
+      expect(self.appearOffline, isTrue);
+
+      server.presenceStatuses = true;
+      await self.setStatus(PresenceStatus.dnd);
+      expect(self.status, PresenceStatus.dnd);
+      expect(self.appearOffline, isFalse);
+      expect(server.me['status'], 'dnd');
+      await self.setStatus(PresenceStatus.idle);
+      expect(self.status, PresenceStatus.idle);
+
+      // /me's status decides; without one (an older server) appearOffline does.
+      server.me['status'] = 'dnd';
+      await self.refresh();
+      expect(self.status, PresenceStatus.dnd);
+      server.me
+        ..remove('status')
+        ..['appearOffline'] = true;
+      await self.refresh();
+      expect(self.status, PresenceStatus.invisible);
+      server.me['appearOffline'] = false;
+      await self.refresh();
+      expect(self.status, PresenceStatus.online);
+      self.dispose();
+    });
+
+    test('presence.mode carries the status from another device, or only appearOffline from an older server', () async {
+      final self = SelfProfile(account: account, socket: socket);
+      socket.start();
+      await until(() => self.loaded);
+      server.push('presence.mode', {'appearOffline': false, 'status': 'idle'});
+      await until(() => self.status == PresenceStatus.idle);
+      server.push('presence.mode', {'appearOffline': false, 'status': 'dnd'});
+      await until(() => self.status == PresenceStatus.dnd);
+      server.push('presence.mode', {'appearOffline': true, 'status': 'invisible'});
+      await until(() => self.status == PresenceStatus.invisible);
+      server.push('presence.mode', {'appearOffline': false});
+      await until(() => self.status == PresenceStatus.online);
+      self.dispose();
+    });
+
+    test("a friend's status: idle and do not disturb shown, invisible is offline, none is today's", () {
+      expect(Presence.fromJson({'state': 'online'}).status, isNull);
+      expect(Presence.fromJson({'state': 'online', 'status': 'idle'}).status, PresenceStatus.idle);
+      expect(
+        Presence.fromJson({'state': 'in_game', 'titleId': 'PPSA01001', 'status': 'dnd'}).status,
+        PresenceStatus.dnd,
+      );
+      final hidden = Presence.fromJson({'state': 'online', 'status': 'invisible'});
+      expect(hidden.online, isFalse);
+      expect(hidden.status, isNull);
+      expect(Presence.fromJson({'state': 'away', 'status': 'something new'}).status, isNull);
+      expect(Presence.fromJson({'state': 'away', 'status': 'something new'}).state, PresenceState.away);
     });
 
     test('level.up for me and presence.mode from another device; level.up for a friend', () async {

@@ -71,13 +71,14 @@ abstract final class SdlMaps {
   };
 
   /// SDL_JoystickPowerLevel: UNKNOWN -1, EMPTY 0, LOW 1, MEDIUM 2, FULL 3, WIRED 4. SDL2 gives
-  /// levels, not percentages: each is shown as its middle, marked approximate. WIRED is a
-  /// controller on its cable (charging, or one without a battery): no battery shown.
+  /// levels, not percentages (SDL_GetJoystickPowerInfo, with one, is SDL3's), so a level is all
+  /// that is shown: a number made up from it read as a measurement. WIRED is a controller on its
+  /// cable (charging, or one without a battery): no battery shown.
   static PadBattery? battery(int level) => switch (level) {
-    0 => PadBattery(5, approximate: true, charging: false),
-    1 => PadBattery(20, approximate: true, charging: false),
-    2 => PadBattery(55, approximate: true, charging: false),
-    3 => PadBattery(100, approximate: true, charging: false),
+    0 => const PadBattery.level(PadBatteryLevel.empty, charging: false),
+    1 => const PadBattery.level(PadBatteryLevel.low, charging: false),
+    2 => const PadBattery.level(PadBatteryLevel.medium, charging: false),
+    3 => const PadBattery.level(PadBatteryLevel.full, charging: false),
     _ => null,
   };
 

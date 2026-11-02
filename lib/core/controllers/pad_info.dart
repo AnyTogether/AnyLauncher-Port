@@ -84,28 +84,55 @@ enum PadConnection {
   };
 }
 
-/// A controller's battery: a percentage (a level's middle where the reader only gives levels)
-/// and whether it charges, where that is known.
+/// How full a battery is in words, where the reader gives no percentage (SDL2's power levels):
+/// nearly empty, low, medium, full.
+enum PadBatteryLevel {
+  empty,
+  low,
+  medium,
+  full;
+
+  /// A real percentage's level: the bars its icon shows.
+  static PadBatteryLevel of(int percent) => percent <= 10
+      ? empty
+      : percent <= 35
+      ? low
+      : percent <= 75
+      ? medium
+      : full;
+
+  /// The bars of three a battery icon fills.
+  int get bars => index;
+}
+
+/// A controller's battery and whether it charges, where that is known. [percent] only when the
+/// reader measures it; SDL2 gives one of four levels, which is all that is shown then.
 class PadBattery {
-  PadBattery(int percent, {this.approximate = false, this.charging}) : percent = percent.clamp(0, 100);
+  PadBattery(int percent, {this.charging}) : percent = percent.clamp(0, 100), level = PadBatteryLevel.of(percent.clamp(0, 100));
 
-  final int percent;
+  /// A battery the reader gives only as a level.
+  const PadBattery.level(this.level, {this.charging}) : percent = null;
 
-  /// The reader gives only a few levels.
-  final bool approximate;
+  /// The measured percentage, null when the reader gives only [level].
+  final int? percent;
+  final PadBatteryLevel level;
   final bool? charging;
 
-  /// Low enough to say so (the troubleshooter, the controller indicator).
-  bool get low => percent <= 15 && charging != true;
+  /// The reader gives only a few levels: no number is shown for it.
+  bool get approximate => percent == null;
 
-  String get reportText => '${approximate ? 'about ' : ''}$percent%${charging == true ? ' charging' : ''}';
+  /// Low enough to say so (the troubleshooter, the controller indicator): at most 15%, or the
+  /// lowest level.
+  bool get low => (percent == null ? level == PadBatteryLevel.empty : percent! <= 15) && charging != true;
+
+  String get reportText => '${percent == null ? 'level ${level.name}' : '$percent%'}${charging == true ? ' charging' : ''}';
 
   @override
   bool operator ==(Object other) =>
-      other is PadBattery && other.percent == percent && other.approximate == approximate && other.charging == charging;
+      other is PadBattery && other.percent == percent && other.level == level && other.charging == charging;
 
   @override
-  int get hashCode => Object.hash(percent, approximate, charging);
+  int get hashCode => Object.hash(percent, level, charging);
 }
 
 /// One controller as the launcher shows it.

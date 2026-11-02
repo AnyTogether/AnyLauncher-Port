@@ -33,6 +33,10 @@ class FakeTogether {
 
   /// The user signing in, and the code the mail would carry.
   Map<String, dynamic> me = {'id': 'u-me', 'handle': 'utku', 'displayName': 'Utku'};
+
+  /// Whether it has idle and do not disturb (`status`); a server before them only knows
+  /// appear offline and drops the field, as AnyTogether's checks do.
+  bool presenceStatuses = false;
   String emailCode = '123456';
 
   /// How long an access token lives; a refresh gives a new one.
@@ -446,6 +450,12 @@ class FakeTogether {
           },
         );
       case ('PATCH', 'me/presence'):
+        if (call.body['status'] case final String status when presenceStatuses) {
+          if (!const ['online', 'idle', 'dnd', 'invisible'].contains(status)) return problem(400, 'bad_request');
+          me['status'] = status;
+          me['appearOffline'] = status == 'invisible';
+          return (200, {'appearOffline': me['appearOffline'], 'status': status});
+        }
         if (call.body['appearOffline'] is! bool) return problem(400, 'bad_request');
         me['appearOffline'] = call.body['appearOffline'];
         return (200, {'appearOffline': me['appearOffline']});

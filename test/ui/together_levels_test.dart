@@ -1,4 +1,5 @@
 import 'package:anyps5_desktop/core/together/levels.dart';
+import 'package:anyps5_desktop/core/together/people.dart';
 import 'package:anyps5_desktop/core/together/profiles.dart';
 import 'package:anyps5_desktop/ui/app_model.dart' hide Command, GameState;
 import 'package:anyps5_desktop/ui/app_model.dart' as launcher show Command;
@@ -263,31 +264,79 @@ void main() {
   });
 
   group('appearing offline', () {
-    test('the setting: Online or Appear offline, sent to the server, shown on my name', () async {
+    test('the setting: Online, Idle, Do Not Disturb or Invisible, sent to the server, shown on my name', () async {
       model.together.openSettings();
       final ids = rows().map((row) => row.id).toList();
       expect(ids.indexOf('together-presence'), ids.indexOf('together-online') + 1);
       final presence = row('together-presence');
       expect(presence.title, 'Show me as');
-      expect(presence.detail, 'Friends see you as offline. Messages, parties and cloud saves keep working.');
+      expect(presence.detail, 'Friends see you online and what you play.');
       final choice = presence.kind as ChoiceRow;
-      expect(choice.options, ['Online', 'Appear offline']);
+      expect(choice.options, ['Online', 'Idle', 'Do Not Disturb', 'Invisible']);
       expect(choice.selected, 0);
-      choice.set(1);
+      choice.set(3);
       await until(() => server.callsTo('me/presence', method: 'PATCH').isNotEmpty);
-      expect(server.callsTo('me/presence', method: 'PATCH').single.body, {'appearOffline': true});
-      expect((row('together-presence').kind as ChoiceRow).selected, 1);
+      expect(server.callsTo('me/presence', method: 'PATCH').single.body, {
+        'appearOffline': true,
+        'status': 'invisible',
+      });
+      expect((row('together-presence').kind as ChoiceRow).selected, 3);
+      expect(
+        row('together-presence').detail,
+        'Friends see you as offline. Messages, parties and cloud saves keep working.',
+      );
       expect(row('together-user').detail, 'Utku · Appearing offline');
       expect(row('together-user').person?.status, PersonStatus.offline);
       model.open(Layer.friends);
       expect(row('friends-me').detail, contains('Appearing offline'));
     });
 
+    test('Do Not Disturb and Idle on a server that has them: a red dot and a moon on my name', () async {
+      server.presenceStatuses = true;
+      model.together.openSettings();
+      (row('together-presence').kind as ChoiceRow).set(2);
+      await until(() => model.together.myStatus == PresenceStatus.dnd && server.me['status'] == 'dnd');
+      expect(server.callsTo('me/presence', method: 'PATCH').single.body, {'appearOffline': false, 'status': 'dnd'});
+      expect((row('together-presence').kind as ChoiceRow).selected, 2);
+      expect(row('together-presence').detail, 'Friends see that you do not want to be disturbed.');
+      expect(row('together-user').detail, 'Utku · Do Not Disturb');
+      expect(row('together-user').person?.status, PersonStatus.dnd);
+      (row('together-presence').kind as ChoiceRow).set(1);
+      await until(() => server.me['status'] == 'idle');
+      expect(row('together-user').person?.status, PersonStatus.idle);
+      expect(row('together-presence').detail, 'Friends see you as away.');
+    });
+
+    test('Idle on a server before statuses: back to Online, with a short note', () async {
+      model.together.openSettings();
+      (row('together-presence').kind as ChoiceRow).set(1);
+      await until(() => model.toast == 'Idle and Do Not Disturb are not available on this server yet');
+      expect(model.together.myStatus, PresenceStatus.online);
+      expect((row('together-presence').kind as ChoiceRow).selected, 0);
+    });
+
+    test("friends' idle and do not disturb: their dots and words; invisible and a missing status as today", () {
+      final together = model.together;
+      expect(TogetherModel.status(Presence.fromJson({'state': 'online', 'status': 'idle'})), PersonStatus.idle);
+      expect(TogetherModel.status(Presence.fromJson({'state': 'online', 'status': 'dnd'})), PersonStatus.dnd);
+      expect(
+        TogetherModel.status(Presence.fromJson({'state': 'in_game', 'titleId': 'PPSA01001', 'status': 'dnd'})),
+        PersonStatus.dnd,
+      );
+      expect(TogetherModel.status(Presence.fromJson({'state': 'online', 'status': 'invisible'})), PersonStatus.offline);
+      expect(TogetherModel.status(Presence.fromJson({'state': 'online'})), PersonStatus.online);
+      expect(TogetherModel.status(Presence.fromJson({'state': 'away'})), PersonStatus.away);
+      expect(together.presenceText(Presence.fromJson({'state': 'online', 'status': 'idle'})), 'Idle');
+      expect(together.presenceText(Presence.fromJson({'state': 'online', 'status': 'dnd'})), 'Do Not Disturb');
+      expect(together.presenceText(Presence.fromJson({'state': 'online', 'status': 'invisible'})), 'Offline');
+      expect(together.presenceText(Presence.fromJson({'state': 'online'})), 'Online');
+    });
+
     test('another device turns it on and off; the next start reads it from /me', () async {
       server.push('presence.mode', {'appearOffline': true});
       await until(() => model.together.hub.self.appearOffline);
       model.together.openSettings();
-      expect((row('together-presence').kind as ChoiceRow).selected, 1);
+      expect((row('together-presence').kind as ChoiceRow).selected, 3);
       server.push('presence.mode', {'appearOffline': false});
       await until(() => !model.together.hub.self.appearOffline);
 
@@ -299,7 +348,7 @@ void main() {
     test('a server without it: turned back, with a short note', () async {
       server.answers['PATCH me/presence'] = FakeTogether.problem(404, 'not_found');
       model.together.openSettings();
-      (row('together-presence').kind as ChoiceRow).set(1);
+      (row('together-presence').kind as ChoiceRow).set(3);
       await until(() => model.toast == 'Appearing offline is not available on this server yet');
       expect(model.together.hub.self.appearOffline, isFalse);
       expect((row('together-presence').kind as ChoiceRow).selected, 0);

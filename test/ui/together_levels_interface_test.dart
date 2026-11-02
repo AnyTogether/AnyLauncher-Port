@@ -177,7 +177,7 @@ void main() {
       (row) => row.id == 'together-presence',
     );
     await pumpLauncher(tester, model);
-    expect(find.text(T.text('presenceAppearOffline')), findsOneWidget);
+    expect(find.text(T.text('presenceInvisible')), findsOneWidget);
   });
 }
 

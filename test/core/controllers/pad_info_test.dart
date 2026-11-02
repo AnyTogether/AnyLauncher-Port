@@ -118,7 +118,13 @@ void main() {
 
     test('battery texts', () {
       expect(PadBattery(80).reportText, '80%');
-      expect(PadBattery(55, approximate: true, charging: true).reportText, 'about 55% charging');
+      expect(const PadBattery.level(PadBatteryLevel.medium, charging: true).reportText, 'level medium charging');
+      expect(const PadBattery.level(PadBatteryLevel.low).low, isFalse);
+      expect(const PadBattery.level(PadBatteryLevel.empty).low, isTrue);
+      expect(PadBattery(80).approximate, isFalse);
+      expect(PadBattery(80).level, PadBatteryLevel.full);
+      expect(PadBattery(9).level, PadBatteryLevel.empty);
+      expect(PadBattery(30).level.bars, 1);
       expect(PadBattery(10).low, isTrue);
       expect(PadBattery(10, charging: true).low, isFalse);
       expect(PadBattery(140).percent, 100);

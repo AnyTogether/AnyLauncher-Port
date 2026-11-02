@@ -57,9 +57,9 @@ abstract final class T {
 
   /// Finds the language files in [bundle]'s manifest and reads them, then the ones in [tryOut]
   /// (the Languages folder beside the settings, where a translator tries a file in a released
-  /// launcher: one there comes before the built-in file of its code). A file that cannot be read
-  /// or is not a JSON object is left out for the next one of its code; without en.json each text
-  /// is its key.
+  /// launcher: its texts come before the built-in file's of its code, and the built-in file
+  /// still gives the ones it lacks). A file that cannot be read or is not a JSON object is left
+  /// out; without en.json each text is its key.
   static Future<void> load({AssetBundle? bundle, Directory? tryOut}) async {
     final assets = bundle ?? rootBundle;
     final files = <String, List<(String, Future<String> Function())>>{};
@@ -86,31 +86,38 @@ abstract final class T {
     final texts = <String, Map<String, String>>{};
     final found = <Language>[];
     for (final MapEntry(key: code, value: candidates) in files.entries) {
-      for (final (path, read) in candidates) {
+      // The built-in file first, the Languages folder's over it text by text: a text the
+      // translator's file lacks (one added after it was made) stays the built-in translation.
+      Map<String, String>? merged;
+      // The name in the file that wins: its own languageName, else its "@meta" name.
+      Object? name;
+      Object? legacyConsole;
+      for (final (path, read) in candidates.reversed) {
         try {
-          final json = jsonDecode(await read());
+          // Windows PowerShell 5 saves UTF-8 with a byte order mark, which JSON does not allow.
+          final json = jsonDecode((await read()).replaceFirst(RegExp('^\uFEFF'), ''));
           if (json is! Map<String, Object?>) throw const FormatException('not a JSON object');
           final about = json[legacyMeta];
-          final legacyName = about is Map<String, Object?> ? about['name'] : null;
-          final legacyConsole = about is Map<String, Object?> ? about['consoleLanguage'] : null;
-          final file = texts[code] = {
+          final file = {
             for (final MapEntry(:key, :value) in json.entries)
               if (key != legacyMeta && value is String) key: value,
           };
-          final name = file[nameKey] ?? legacyName;
-          found.add(
-            Language(
-              code,
-              name is String && name.trim().isNotEmpty ? name.trim() : code,
-              ConsoleLanguage.forLocale(code) ??
-                  (legacyConsole is int ? legacyConsole : Language.english.consoleLanguage),
-            ),
-          );
-          break;
+          name = file[nameKey] ?? (about is Map<String, Object?> ? about['name'] : null) ?? name;
+          if (about is Map<String, Object?>) legacyConsole = about['consoleLanguage'] ?? legacyConsole;
+          (merged ??= {}).addAll(file);
         } on Object catch (error) {
           debugPrint('[anyps5-launcher] the language file $path is left out: $error');
         }
       }
+      if (merged == null) continue;
+      texts[code] = merged;
+      found.add(
+        Language(
+          code,
+          name is String && name.trim().isNotEmpty ? name.trim() : code,
+          ConsoleLanguage.forLocale(code) ?? (legacyConsole is int ? legacyConsole : Language.english.consoleLanguage),
+        ),
+      );
     }
     found.sort((a, b) {
       if (a.code == 'en' || b.code == 'en') return a.code == 'en' ? -1 : 1;
@@ -122,8 +129,16 @@ abstract final class T {
     language = Language.byCode(language.code);
   }
 
-  /// The text for [key] in the current language, English when the language has none.
-  static String text(String key) => _texts[language.code]?[key] ?? _texts['en']?[key] ?? key;
+  /// The text for [key] in the current language, then in its base language (de for de-AT), then
+  /// in English.
+  static String text(String key) => _textOr(key, key);
+
+  /// The base language of [code] when it has a region or a script (de-AT, pt_BR): its texts
+  /// stand in for the ones the regional file lacks.
+  static String? _base(String code) {
+    final base = code.split(RegExp('[-_]')).first;
+    return base == code ? null : base;
+  }
 
   /// The languages whose i and ı are two letters: their capitals are İ and I.
   static const _dottedI = {'tr', 'az'};
@@ -164,7 +179,14 @@ abstract final class T {
   static String decimal(double value, int digits) =>
       value.toStringAsFixed(digits).replaceAll('.', _textOr('numberDecimalSeparator', '.'));
 
-  static String _textOr(String key, String fallback) => _texts[language.code]?[key] ?? _texts['en']?[key] ?? fallback;
+  static String _textOr(String key, String fallback) =>
+      _texts[language.code]?[key] ??
+      switch (_base(language.code)) {
+        final base? => _texts[base]?[key],
+        null => null,
+      } ??
+      _texts['en']?[key] ??
+      fallback;
 
   /// [text] with its %@ and %d placeholders filled in order (%1\$@ names its argument);
   /// %% is a percent sign.

@@ -18,6 +18,7 @@ import '../core/together/friends.dart';
 import '../core/together/hub.dart';
 import '../core/together/levels.dart';
 import '../core/together/people.dart';
+import '../core/together/self.dart';
 import '../core/together/server.dart';
 import '../core/together/social.dart';
 import '../core/together/socket.dart';
@@ -465,18 +466,39 @@ class TogetherModel {
   /// Friends see this user as offline (their choice); the socket and heartbeats go on as ever.
   bool get appearingOffline => hub.self.appearOffline;
 
-  /// The user as their own rows show them: a grey dot while appearing offline.
-  PanelPerson get myCard => PanelPerson(
-    name: user?.displayName ?? '',
-    avatar: user?.avatar,
-    status: appearingOffline ? PersonStatus.offline : null,
-  );
+  /// What this user chose to show friends.
+  PresenceStatus get myStatus => hub.self.status;
+
+  /// The dot for a status this user chose; null for online, which needs none on their own rows.
+  static PersonStatus? ownDot(PresenceStatus status) => switch (status) {
+    PresenceStatus.online => null,
+    PresenceStatus.idle => PersonStatus.idle,
+    PresenceStatus.dnd => PersonStatus.dnd,
+    PresenceStatus.invisible => PersonStatus.offline,
+  };
+
+  /// The status in words, as the choice lists it; invisible as "Appearing offline".
+  static String ownStatusText(PresenceStatus status) => switch (status) {
+    PresenceStatus.online => T.text('presenceOnline'),
+    PresenceStatus.idle => T.text('presenceIdle'),
+    PresenceStatus.dnd => T.text('presenceDnd'),
+    PresenceStatus.invisible => T.text('presenceAppearing'),
+  };
+
+  /// The user as their own rows show them: their status's dot (a grey one while invisible).
+  PanelPerson get myCard => PanelPerson(name: user?.displayName ?? '', avatar: user?.avatar, status: ownDot(myStatus));
 
   /// Online or appear offline: shown at once, turned back with a word when the server cannot.
-  Future<void> setAppearOffline(bool on) async {
-    if (on == appearingOffline) return;
+  Future<void> setAppearOffline(bool on) => setStatus(on ? PresenceStatus.invisible : PresenceStatus.online);
+
+  /// Online, idle, do not disturb or invisible: shown at once, turned back with a word when the
+  /// server cannot (a server before statuses keeps online and invisible only).
+  Future<void> setStatus(PresenceStatus next) async {
+    if (next == myStatus) return;
     try {
-      await hub.self.setAppearOffline(on);
+      await hub.self.setStatus(next);
+    } on PresenceStatusUnsupported {
+      app.show(T.text('presenceStatusNotYet'));
     } on TogetherProblem catch (problem) {
       app.show(problem.status == 404 ? T.text('presenceNotYet') : message(problem));
     } on Object catch (error) {
@@ -688,11 +710,15 @@ class TogetherModel {
   String gameName(String titleId) =>
       app.games.where((game) => game.titleId == titleId).firstOrNull?.nameFor([T.language.code]) ?? titleId;
 
-  /// "Playing Neon Alley · 25 min", "Online", "Offline", with the party they are in.
+  /// "Playing Neon Alley · 25 min", "Online", "Idle", "Do Not Disturb", "Offline", with the
+  /// party they are in.
   String presenceText(Presence presence, {DateTime? now}) {
     if (!presence.online) return T.text('friendsOffline');
     final titleId = presence.titleId;
     var text = switch (presence.state) {
+      // In a game the game says more; the dot still shows idle or do not disturb.
+      PresenceState.online || PresenceState.away when presence.status == PresenceStatus.idle => T.text('presenceIdle'),
+      PresenceState.online || PresenceState.away when presence.status == PresenceStatus.dnd => T.text('presenceDnd'),
       PresenceState.inGame when titleId != null =>
         presence.since == null
             ? T.format('friendsPlaying', [gameName(titleId)])
@@ -714,11 +740,15 @@ class TogetherModel {
     return text;
   }
 
+  /// A friend's dot: do not disturb and idle as they chose them, else what they do (a server
+  /// before statuses sends none).
   static PersonStatus status(Presence presence) => switch (presence.state) {
+    PresenceState.offline => PersonStatus.offline,
+    _ when presence.status == PresenceStatus.dnd => PersonStatus.dnd,
+    _ when presence.status == PresenceStatus.idle => PersonStatus.idle,
     PresenceState.inGame => PersonStatus.playing,
     PresenceState.online => PersonStatus.online,
     PresenceState.away => PersonStatus.away,
-    PresenceState.offline => PersonStatus.offline,
   };
 
   /// A person's avatar on a row: their friends-only name and picture when there.
@@ -742,9 +772,9 @@ class TogetherModel {
       PanelRow(
         id: 'friends-me',
         title: T.text('profileMine'),
-        detail: appearingOffline
-            ? '${T.text('presenceAppearing')} · ${T.text('profileMineDetail')}'
-            : T.text('profileMineDetail'),
+        detail: myStatus == PresenceStatus.online
+            ? T.text('profileMineDetail')
+            : '${ownStatusText(myStatus)} · ${T.text('profileMineDetail')}',
         person: myCard,
         level: hub.self.level,
         kind: ActionRow(() => unawaited(openMyProfile())),
@@ -909,7 +939,7 @@ class TogetherModel {
         PanelRow(
           id: 'together-user',
           title: '@${me.handle}',
-          detail: appearingOffline ? '${me.displayName} · ${T.text('presenceAppearing')}' : me.displayName,
+          detail: myStatus == PresenceStatus.online ? me.displayName : '${me.displayName} · ${ownStatusText(myStatus)}',
           person: myCard,
           level: hub.self.level,
           kind: const InfoRow(''),
@@ -922,11 +952,24 @@ class TogetherModel {
         PanelRow(
           id: 'together-presence',
           title: T.text('presenceShowAs'),
-          detail: T.text('presenceHint'),
+          detail: T.text(switch (myStatus) {
+            PresenceStatus.online => 'presenceOnlineDetail',
+            PresenceStatus.idle => 'presenceIdleDetail',
+            PresenceStatus.dnd => 'presenceDndDetail',
+            PresenceStatus.invisible => 'presenceHint',
+          }),
           kind: ChoiceRow(
-            [T.text('presenceOnline'), T.text('presenceAppearOffline')],
-            appearingOffline ? 1 : 0,
-            (index) => unawaited(setAppearOffline(index == 1)),
+            [
+              for (final status in PresenceStatus.values)
+                switch (status) {
+                  PresenceStatus.online => T.text('presenceOnline'),
+                  PresenceStatus.idle => T.text('presenceIdle'),
+                  PresenceStatus.dnd => T.text('presenceDnd'),
+                  PresenceStatus.invisible => T.text('presenceInvisible'),
+                },
+            ],
+            PresenceStatus.values.indexOf(myStatus),
+            (index) => unawaited(setStatus(PresenceStatus.values[index])),
           ),
         ),
         PanelRow(

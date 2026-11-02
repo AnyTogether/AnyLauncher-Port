@@ -18,7 +18,7 @@ import 'game_action.dart';
 import 'glass.dart';
 import 'level_badge.dart';
 import 'padlock.dart';
-import 'panels.dart' show PersonAvatar;
+import 'panels.dart' show StatusDot;
 import 'profiles_view.dart' show ProfileTile;
 import 'strings.dart';
 import 'theme.dart';
@@ -344,7 +344,8 @@ class TopBar extends StatelessWidget {
     final together = model.together;
     final name = together.user?.displayName ?? model.preferences.profileName;
     final level = together.signedIn ? together.hub.self.level : null;
-    final offline = together.signedIn && together.appearingOffline;
+    // The status the user chose, when it is not plain online: its dot and its word.
+    final ownDot = together.signedIn ? TogetherModel.ownDot(together.myStatus) : null;
     final glass = LookScope.isGlass(context);
     Widget iconButton(IconData icon, int index, VoidCallback action, {int badge = 0}) {
       final focused = model.focus == HomeFocus.top(index) && model.overlay == null;
@@ -502,20 +503,12 @@ class TopBar extends StatelessWidget {
               picture: model.profiles.pictureOf(model.currentProfile),
               size: 36 * scale,
             ),
-            // Appearing offline: a grey dot on the picture, as friends see it.
-            if (offline)
+            // Idle, do not disturb or invisible: the dot on the picture, as friends see it.
+            if (ownDot != null)
               Positioned(
                 right: -2 * scale,
                 bottom: -2 * scale,
-                child: Container(
-                  width: 13 * scale,
-                  height: 13 * scale,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: PersonAvatar.statusColor(PersonStatus.offline),
-                    border: Border.all(color: Colors.black, width: 2.2 * scale),
-                  ),
-                ),
+                child: StatusDot(status: ownDot, size: 14 * scale, ring: Colors.black, ringWidth: 2.2 * scale),
               ),
           ],
         ),
@@ -538,9 +531,9 @@ class TopBar extends StatelessWidget {
                       color: Colors.white.withValues(alpha: 0.9),
                     ),
                   ),
-                  if (offline)
+                  if (ownDot != null)
                     Text(
-                      T.text('presenceAppearing'),
+                      TogetherModel.ownStatusText(together.myStatus),
                       style: AppText.display(
                         12 * scale,
                         weight: FontWeight.w500,

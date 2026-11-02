@@ -45,6 +45,24 @@ class Person {
 
 enum PresenceState { inGame, online, away, offline }
 
+/// What a user chose to show on AnyTogether (`status`): online, idle, do not disturb, or
+/// invisible (others see them offline). Servers before it only had appear offline.
+enum PresenceStatus {
+  online,
+  idle,
+  dnd,
+  invisible;
+
+  /// The server's word for it, null for none or one this launcher does not know.
+  static PresenceStatus? parse(Object? value) => switch (value) {
+    'online' => online,
+    'idle' => idle,
+    'dnd' => dnd,
+    'invisible' => invisible,
+    _ => null,
+  };
+}
+
 /// The party a friend is in: its size, and whether friends may walk in.
 class PresenceParty {
   const PresenceParty({required this.id, required this.size, required this.max, required this.open});
@@ -84,19 +102,24 @@ class PresenceGame {
 /// What a friend shows: in a game (which, since when), online, away or offline, the party they
 /// are in and the game session they host.
 class Presence {
-  const Presence({this.state = PresenceState.offline, this.titleId, this.since, this.party, this.game});
+  const Presence({this.state = PresenceState.offline, this.status, this.titleId, this.since, this.party, this.game});
 
   factory Presence.fromJson(Map<String, dynamic>? json) {
     if (json == null) return const Presence();
     final party = json['party'];
     final game = json['game'];
+    final status = PresenceStatus.parse(json['status']);
     return Presence(
-      state: switch (json['state']) {
-        'in_game' => PresenceState.inGame,
-        'online' => PresenceState.online,
-        'away' => PresenceState.away,
-        _ => PresenceState.offline,
-      },
+      // Invisible is offline to everyone else, whatever else came with it.
+      state: status == PresenceStatus.invisible
+          ? PresenceState.offline
+          : switch (json['state']) {
+              'in_game' => PresenceState.inGame,
+              'online' => PresenceState.online,
+              'away' => PresenceState.away,
+              _ => PresenceState.offline,
+            },
+      status: status == PresenceStatus.invisible ? null : status,
       titleId: json['titleId'] as String?,
       since: DateTime.tryParse(json['since'] as String? ?? ''),
       party: party is Map<String, dynamic> && party['id'] is String
@@ -122,6 +145,9 @@ class Presence {
   }
 
   final PresenceState state;
+
+  /// Idle or do not disturb, as they chose it; null from older servers (and for online).
+  final PresenceStatus? status;
   final String? titleId;
   final DateTime? since;
   final PresenceParty? party;

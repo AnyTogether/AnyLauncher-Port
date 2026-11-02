@@ -3,6 +3,7 @@ import 'dart:async';
 import 'account.dart';
 import 'levels.dart';
 import 'notifier.dart';
+import 'people.dart';
 import 'socket.dart';
 
 /// The signed-in user's own side of AnyTogether that the lists do not carry: their trophy level,
@@ -25,8 +26,13 @@ class SelfProfile with Notifier {
   /// null before it is read, on a server older than levels.
   TrophyLevel? level;
 
-  /// Friends see this user as offline; everything else keeps working.
-  bool appearOffline = false;
+  /// What friends see: online, idle, do not disturb, or offline (invisible); everything else
+  /// keeps working whichever it is.
+  PresenceStatus status = PresenceStatus.online;
+
+  /// Friends see this user as offline.
+  bool get appearOffline => status == PresenceStatus.invisible;
+  set appearOffline(bool on) => status = on ? PresenceStatus.invisible : PresenceStatus.online;
 
   /// Others see when this user has read their messages (and this user sees theirs); on unless
   /// turned off.
@@ -75,7 +81,7 @@ class SelfProfile with Notifier {
       // An older server leaves the level out: what was known stays.
       if (profile.containsKey('trophyLevel')) level = TrophyLevel.fromJson(profile['trophyLevel']);
       // Not while a change of ours is on its way: that answer decides.
-      if (_changing == 0) appearOffline = profile['appearOffline'] == true;
+      if (_changing == 0) status = _statusIn(profile) ?? status;
       if (_changingReceipts == 0) readReceipts = profile['readReceipts'] != false;
       privateName = _text(profile['privateName']);
       privateAvatar = _text(profile['privateAvatar']);
@@ -84,18 +90,43 @@ class SelfProfile with Notifier {
     notifyListeners();
   }
 
-  /// Appear offline, or online again: shown at once, turned back (and thrown) when the server
-  /// says no or does not have it yet (404).
-  Future<void> setAppearOffline(bool on) async {
-    final before = appearOffline;
-    appearOffline = on;
+  /// The status in a profile or a `presence.mode` event: its `status`, else (a server before
+  /// statuses) online or invisible from `appearOffline`; null when it has neither.
+  static PresenceStatus? _statusIn(Map<String, dynamic> json) {
+    if (PresenceStatus.parse(json['status']) case final status?) return status;
+    if (json['appearOffline'] case final bool hidden) return hidden ? PresenceStatus.invisible : PresenceStatus.online;
+    // A profile from a server before appear offline: online.
+    return json.containsKey('status') ? null : PresenceStatus.online;
+  }
+
+  /// Appear offline, or online again.
+  Future<void> setAppearOffline(bool on) => setStatus(on ? PresenceStatus.invisible : PresenceStatus.online);
+
+  /// Online, idle, do not disturb or invisible: shown at once, turned back (and thrown) when the
+  /// server says no or does not have it yet (404). Both fields go, so a server before statuses
+  /// still takes invisible; one that answers without `status` cannot keep idle or do not disturb,
+  /// which throws [PresenceStatusUnsupported] with what it kept.
+  Future<void> setStatus(PresenceStatus next) async {
+    final before = status;
+    status = next;
     _changing++;
     notifyListeners();
     try {
-      final answer = await account.call('PATCH', 'me/presence', {'appearOffline': on});
-      if (answer['appearOffline'] is bool) appearOffline = answer['appearOffline'] as bool;
+      final answer = await account.call('PATCH', 'me/presence', {
+        'appearOffline': next == PresenceStatus.invisible,
+        'status': next.name,
+      });
+      final kept = PresenceStatus.parse(answer['status']);
+      if (kept != null) {
+        status = kept;
+      } else if (answer['appearOffline'] case final bool hidden) {
+        status = hidden ? PresenceStatus.invisible : PresenceStatus.online;
+        if (next == PresenceStatus.idle || next == PresenceStatus.dnd) throw const PresenceStatusUnsupported();
+      }
+    } on PresenceStatusUnsupported {
+      rethrow;
     } on Object {
-      appearOffline = before;
+      status = before;
       rethrow;
     } finally {
       _changing--;
@@ -161,7 +192,7 @@ class SelfProfile with Notifier {
     privateName = null;
     privateAvatar = null;
     level = null;
-    appearOffline = false;
+    status = PresenceStatus.online;
     readReceipts = true;
     loaded = false;
     readAt = null;
@@ -187,11 +218,26 @@ class SelfProfile with Notifier {
         readReceipts = data['readReceipts'] as bool;
         notifyListeners();
       case 'presence.mode':
-        if (data['appearOffline'] is! bool) return;
-        appearOffline = data['appearOffline'] as bool;
+        // Another device's choice: its status, or (a server before statuses) appear offline.
+        final next =
+            PresenceStatus.parse(data['status']) ??
+            switch (data['appearOffline']) {
+              final bool hidden => hidden ? PresenceStatus.invisible : PresenceStatus.online,
+              _ => null,
+            };
+        if (next == null) return;
+        status = next;
         notifyListeners();
     }
   }
 
   void dispose() => unawaited(_events.cancel());
+}
+
+/// The server kept online or invisible but has no idle or do not disturb yet.
+class PresenceStatusUnsupported implements Exception {
+  const PresenceStatusUnsupported();
+
+  @override
+  String toString() => 'this server has no idle or do not disturb yet';
 }

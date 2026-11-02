@@ -849,7 +849,9 @@ class PanelPerson {
   }
 }
 
-enum PersonStatus { playing, online, away, offline }
+/// What a person's dot shows: playing (blue), online (green), away (yellow), idle (a yellow
+/// moon), do not disturb (red, with a bar) or offline (grey).
+enum PersonStatus { playing, online, away, idle, dnd, offline }
 
 /// A pad action's keys and mouse buttons; choosing it waits for a key.
 class KeysRow extends RowKind {
@@ -4495,11 +4497,7 @@ class AppModel extends ChangeNotifier {
         ];
       case Layer.cloudQuestion:
         return [
-          PanelCategory(
-            id: 'cloudQuestion',
-            title: saveSync.question?.title ?? '',
-            rows: saveSync.questionRows(),
-          ),
+          PanelCategory(id: 'cloudQuestion', title: saveSync.question?.title ?? '', rows: saveSync.questionRows()),
         ];
       case Layer.cloudStorage:
         return [PanelCategory(id: 'cloudStorage', title: T.text('cloudStorageSubtitle'), rows: saveSync.storageRows())];

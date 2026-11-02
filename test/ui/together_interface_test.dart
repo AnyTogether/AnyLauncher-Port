@@ -85,6 +85,47 @@ void main() {
       await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_friends.png'));
     });
 
+    testWidgets('golden: friends idle and on Do Not Disturb, and me on Do Not Disturb', (tester) async {
+      fixture = makeFixture();
+      model = fixture.model;
+      signedInPreview(model);
+      final friends = model.together.hub.friends;
+      friends.friends = [
+        ...friends.friends,
+        const Friend(
+          Person(id: 'u-deniz', handle: 'deniz', displayName: 'Deniz'),
+          Presence(state: PresenceState.online, status: PresenceStatus.idle),
+        ),
+        const Friend(
+          Person(id: 'u-ece', handle: 'ece', displayName: 'Ece'),
+          Presence(state: PresenceState.online, status: PresenceStatus.dnd),
+        ),
+      ];
+      model.together.hub.self.status = PresenceStatus.dnd;
+      model.open(Layer.friends);
+      // Down to the friends: Ece on Do Not Disturb, Deniz idle, Ana online above them.
+      await pumpLauncher(tester, model);
+      final ece = model.panelCategories().single.rows.indexWhere((row) => row.id == 'friend-u-ece');
+      expect(ece, greaterThan(0));
+      while (model.panelRow < ece) {
+        await press(tester, LogicalKeyboardKey.arrowDown);
+      }
+      await settle(tester);
+      expect(find.text('@deniz · Idle'), findsOneWidget);
+      expect(find.text('@ece · Do Not Disturb'), findsOneWidget);
+      await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_friends_statuses.png'));
+    });
+
+    testWidgets('golden: home with my own status, Idle, in Turkish', (tester) async {
+      fixture = makeFixture(language: Language.byCode('tr'));
+      model = fixture.model;
+      signedInPreview(model);
+      model.together.hub.self.status = PresenceStatus.idle;
+      await pumpLauncher(tester, model);
+      expect(find.text('Boşta'), findsOneWidget);
+      await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_home_idle_tr.png'));
+    });
+
     testWidgets('golden: home with the friends button and its badge, in Turkish', (tester) async {
       fixture = makeFixture(language: Language.byCode('tr'));
       model = fixture.model;

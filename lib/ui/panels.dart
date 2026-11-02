@@ -1538,7 +1538,8 @@ class PersonAvatar extends StatelessWidget {
   static Color statusColor(PersonStatus status) => switch (status) {
     PersonStatus.playing => const Color(0xFF6FA8FF),
     PersonStatus.online => Palette.success,
-    PersonStatus.away => Palette.warning,
+    PersonStatus.away || PersonStatus.idle => Palette.warning,
+    PersonStatus.dnd => const Color(0xFFF2545B),
     PersonStatus.offline => const Color(0xFF8A8F98),
   };
 
@@ -1601,20 +1602,75 @@ class PersonAvatar extends StatelessWidget {
             Positioned(
               right: -size * 0.02,
               bottom: -size * 0.02,
-              child: Container(
-                width: size * 0.3,
-                height: size * 0.3,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: statusColor(person.status!),
-                  border: Border.all(color: focused ? Colors.white : Colors.black, width: size * 0.06),
-                ),
+              child: StatusDot(
+                status: person.status!,
+                size: size * 0.3,
+                ring: focused ? Colors.white : Colors.black,
+                ringWidth: size * 0.06,
               ),
             ),
         ],
       ),
     );
   }
+}
+
+/// A person's status dot in a ring: a plain dot, a crescent moon for idle, a dot with a bar
+/// across for do not disturb, as friends know them from chat apps.
+class StatusDot extends StatelessWidget {
+  const StatusDot({super.key, required this.status, required this.size, required this.ring, required this.ringWidth});
+
+  final PersonStatus status;
+
+  /// Its width with the ring.
+  final double size;
+  final Color ring;
+  final double ringWidth;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+    size: Size.square(size),
+    painter: _StatusDotPainter(status: status, ring: ring, ringWidth: ringWidth),
+  );
+}
+
+class _StatusDotPainter extends CustomPainter {
+  const _StatusDotPainter({required this.status, required this.ring, required this.ringWidth});
+
+  final PersonStatus status;
+  final Color ring;
+  final double ringWidth;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final outer = size.shortestSide / 2;
+    final inner = (outer - ringWidth).clamp(1.0, outer);
+    canvas.drawCircle(center, outer, Paint()..color = ring);
+    final fill = Paint()..color = PersonAvatar.statusColor(status);
+    switch (status) {
+      case PersonStatus.idle:
+        // The moon: the dot with a circle of the ring's colour bitten out of its top left.
+        final dot = Path()..addOval(Rect.fromCircle(center: center, radius: inner));
+        final bite = Path()
+          ..addOval(Rect.fromCircle(center: center + Offset(-inner * 0.5, -inner * 0.5), radius: inner * 0.62));
+        canvas.drawPath(Path.combine(PathOperation.difference, dot, bite), fill);
+      case PersonStatus.dnd:
+        canvas.drawCircle(center, inner, fill);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(center: center, width: inner * 1.25, height: inner * 0.42),
+            Radius.circular(inner * 0.21),
+          ),
+          Paint()..color = ring,
+        );
+      default:
+        canvas.drawCircle(center, inner, fill);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_StatusDotPainter old) => old.status != status || old.ring != ring || old.ringWidth != ringWidth;
 }
 
 /// The selected game's pictures: a grid, or one over the whole screen.

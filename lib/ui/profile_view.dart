@@ -33,7 +33,8 @@ class ProfileView extends StatelessWidget {
     final muted = Colors.white.withValues(alpha: 0.6);
     final totals = page?.totals;
     final level = page?.profile.trophyLevel;
-    final appearing = page?.profile.isMe == true && together.appearingOffline;
+    // The user's own page: the status they chose, when it is not plain online.
+    final ownDot = page?.profile.isMe == true && together.signedIn ? TogetherModel.ownDot(together.myStatus) : null;
     return LayerScrim(
       opacity: 0.64,
       child: Padding(
@@ -49,11 +50,7 @@ class ProfileView extends StatelessWidget {
                   Text(T.text('profileTitle'), style: AppText.display(18 * scale, color: muted)),
                   SizedBox(height: 22 * scale),
                   PersonAvatar(
-                    person: PanelPerson(
-                      name: name,
-                      avatar: identity?.avatar,
-                      status: appearing ? PersonStatus.offline : null,
-                    ),
+                    person: PanelPerson(name: name, avatar: identity?.avatar, status: ownDot),
                     size: 112 * scale,
                   ),
                   SizedBox(height: 20 * scale),
@@ -92,9 +89,9 @@ class ProfileView extends StatelessWidget {
                       ],
                     ],
                   ),
-                  if (appearing) ...[
+                  if (ownDot != null) ...[
                     SizedBox(height: 10 * scale),
-                    _Tag(text: T.text('presenceAppearing'), color: PersonAvatar.statusColor(PersonStatus.offline)),
+                    _Tag(text: TogetherModel.ownStatusText(together.myStatus), color: PersonAvatar.statusColor(ownDot)),
                   ],
                   if (page?.profile.bio case final String bio) ...[
                     SizedBox(height: 16 * scale),

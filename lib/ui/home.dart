@@ -485,8 +485,8 @@ class TopBar extends StatelessWidget {
           SizedBox(width: 22 * scale),
         ],
         // A controller running out of battery says so here (and in Settings › Controllers).
-        if (PadTroubleshooter.statusLine(model.controllers.pads) case final line?) ...[
-          PadStatusPill(text: line),
+        if (PadTroubleshooter.statusPad(model.controllers.pads) case final pad?) ...[
+          PadStatusPill(pad: pad),
           SizedBox(width: 12 * scale),
         ],
         PhoneIndicator(model: model),

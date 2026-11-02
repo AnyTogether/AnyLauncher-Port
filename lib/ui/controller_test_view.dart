@@ -508,15 +508,17 @@ class _SilhouettePainter extends CustomPainter {
 }
 
 /// The top bar's controller line, shown only when there is something to say (a controller's
-/// battery nearly empty): its name and what is left.
+/// battery nearly empty): its name, a battery with the bars left and the level in words (or the
+/// percentage, where the reader measures one).
 class PadStatusPill extends StatelessWidget {
-  const PadStatusPill({super.key, required this.text});
+  const PadStatusPill({super.key, required this.pad});
 
-  final String text;
+  final PadInfo pad;
 
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
+    final battery = pad.battery;
     return Container(
       height: 36 * scale,
       padding: EdgeInsets.symmetric(horizontal: 14 * scale),
@@ -524,11 +526,92 @@ class PadStatusPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.battery_alert_rounded, size: 16 * scale, color: const Color.fromRGBO(255, 158, 51, 1)),
-          SizedBox(width: 8 * scale),
-          Text(text, style: AppText.display(14 * scale, weight: FontWeight.w600, color: Colors.white.withValues(alpha: 0.9))),
+          if (battery != null) ...[BatteryGlyph(battery: battery, size: 21 * scale), SizedBox(width: 9 * scale)],
+          Text(pad.name, style: AppText.display(14 * scale, weight: FontWeight.w600, color: Colors.white.withValues(alpha: 0.9))),
+          if (battery != null) ...[
+            SizedBox(width: 8 * scale),
+            Text(
+              ControllersModel.batteryText(battery),
+              style: AppText.display(14 * scale, weight: FontWeight.w500, color: BatteryGlyph.colorOf(battery)),
+            ),
+          ],
         ],
       ),
     );
   }
+}
+
+/// A battery drawn on its side with three bars, as many filled as its level: an honest picture
+/// for a reader that gives only a level. Nearly empty is drawn with a red sliver, low in amber.
+class BatteryGlyph extends StatelessWidget {
+  const BatteryGlyph({super.key, required this.battery, required this.size});
+
+  final PadBattery battery;
+
+  /// Its width; the height is half of it.
+  final double size;
+
+  static Color colorOf(PadBattery battery) => switch (battery.level) {
+    _ when battery.charging == true => Palette.success,
+    PadBatteryLevel.empty => Palette.danger,
+    PadBatteryLevel.low => const Color.fromRGBO(255, 158, 51, 1),
+    _ => Colors.white.withValues(alpha: 0.9),
+  };
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: ControllersModel.batteryText(battery),
+    child: CustomPaint(
+      size: Size(size, size * 0.5),
+      painter: _BatteryPainter(bars: battery.level.bars, color: colorOf(battery)),
+    ),
+  );
+}
+
+class _BatteryPainter extends CustomPainter {
+  const _BatteryPainter({required this.bars, required this.color});
+
+  final int bars;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = (size.height * 0.12).clamp(1.0, 3.0);
+    final nub = size.width * 0.09;
+    final body = Rect.fromLTWH(stroke / 2, stroke / 2, size.width - nub - stroke, size.height - stroke);
+    final radius = Radius.circular(size.height * 0.22);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(body, radius),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..color = color,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(body.right + stroke * 0.6, size.height * 0.3, nub - stroke * 0.6, size.height * 0.4),
+        Radius.circular(nub * 0.4),
+      ),
+      Paint()..color = color,
+    );
+    final inner = body.deflate(stroke * 1.4);
+    final gap = inner.width * 0.07;
+    final bar = (inner.width - gap * 2) / 3;
+    final fill = Paint()..color = color;
+    final hollow = Paint()..color = color.withValues(alpha: 0.18);
+    for (var index = 0; index < 3; index++) {
+      final rect = Rect.fromLTWH(inner.left + index * (bar + gap), inner.top, bar, inner.height);
+      canvas.drawRRect(RRect.fromRectAndRadius(rect, Radius.circular(stroke * 0.6)), index < bars ? fill : hollow);
+    }
+    // Nearly empty: a sliver in the first bar, so it never reads as no battery at all.
+    if (bars == 0) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(Rect.fromLTWH(inner.left, inner.top, bar * 0.35, inner.height), Radius.circular(stroke * 0.6)),
+        fill,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_BatteryPainter old) => old.bars != bars || old.color != color;
 }

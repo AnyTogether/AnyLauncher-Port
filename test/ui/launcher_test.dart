@@ -334,6 +334,10 @@ void main() {
         ]),
         '${game.name} is ready, but some of its files are encrypted in the dump. If it does not start, dump it again.',
       );
+      // Gran Turismo 7's pdiWheel_0.prx, neither an ELF nor a SELF: the same short note, no file named.
+      final note = AppModel.leftOutText(game, const [LeftOutModule('sce_module/pdiWheel_0.prx', LeftOutReason.encrypted)]);
+      expect(note, '${game.name} is ready, but some of its files are encrypted in the dump. If it does not start, dump it again.');
+      expect(note, isNot(contains('pdiWheel')));
     });
   });
 

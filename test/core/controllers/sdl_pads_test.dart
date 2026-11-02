@@ -45,8 +45,16 @@ void main() {
       expect(SdlMaps.kind(0, vendor: 0x054C, product: 0x0268), PadKind.dualShock3);
     });
 
-    test('power levels are batteries; wired is none', () {
-      expect(SdlMaps.battery(3), PadBattery(100, approximate: true, charging: false));
+    test('power levels are batteries shown as levels, never as made-up percentages; wired is none', () {
+      // VK's Xbox One S pad read EMPTY and the pill said 5%, a number SDL2 never gave.
+      expect(SdlMaps.battery(0), const PadBattery.level(PadBatteryLevel.empty, charging: false));
+      expect(SdlMaps.battery(1), const PadBattery.level(PadBatteryLevel.low, charging: false));
+      expect(SdlMaps.battery(2), const PadBattery.level(PadBatteryLevel.medium, charging: false));
+      expect(SdlMaps.battery(3), const PadBattery.level(PadBatteryLevel.full, charging: false));
+      for (final level in [0, 1, 2, 3]) {
+        expect(SdlMaps.battery(level)!.percent, isNull);
+        expect(SdlMaps.battery(level)!.approximate, isTrue);
+      }
       expect(SdlMaps.battery(1)!.low, isFalse);
       expect(SdlMaps.battery(0)!.low, isTrue);
       expect(SdlMaps.battery(4), isNull);
@@ -128,7 +136,7 @@ void main() {
       expect(pad.id, 'sdl3');
       expect(pad.kind, PadKind.dualSense);
       expect(pad.connection, PadConnection.bluetooth);
-      expect(pad.battery!.percent, 55);
+      expect(pad.battery, const PadBattery.level(PadBatteryLevel.medium, charging: false));
       expect(pad.driver, 'SDL HIDAPI');
       expect(pad.usbId, '054c:0ce6');
       sdl.hold(3, {0});

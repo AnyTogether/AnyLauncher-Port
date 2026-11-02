@@ -205,12 +205,24 @@ class ControllersModel {
     PadConnection.unknown => T.text('padConnected'),
   };
 
-  /// "DualSense · Bluetooth · 80% · charging".
+  /// A battery in words: its percentage where the reader measures one ("80%"), else its level
+  /// ("Low"), never a number made up from a level.
+  static String batteryText(PadBattery battery) => switch (battery.percent) {
+    final int percent => T.format('padBattery', [percent]),
+    null => T.text(switch (battery.level) {
+      PadBatteryLevel.empty => 'padLevelEmpty',
+      PadBatteryLevel.low => 'padLevelLow',
+      PadBatteryLevel.medium => 'padLevelMedium',
+      PadBatteryLevel.full => 'padLevelFull',
+    }),
+  };
+
+  /// "DualSense · Bluetooth · 80% · charging", or "Xbox · Bluetooth · Battery: Low".
   static String summary(PadInfo pad) => [
     kindName(pad.kind),
     connectionName(pad.connection),
     if (pad.battery case final battery?) ...[
-      T.format(battery.approximate ? 'padBatteryAbout' : 'padBattery', [battery.percent]),
+      if (battery.approximate) T.format('padBatteryLevel', [batteryText(battery)]) else batteryText(battery),
       if (battery.charging == true) T.text('padCharging'),
     ],
   ].join(' · ');

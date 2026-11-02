@@ -63,8 +63,20 @@ void main() {
       expect(findings.map((finding) => finding.id), ['unmapped', 'lowBattery']);
       expect(findings[0].arguments, ['Thrustmaster Wheel']);
       expect(findings[1].arguments, ['PS5 Controller', 9]);
-      expect(PadTroubleshooter.statusLine([sense.copyWith(battery: PadBattery(9))]), 'PS5 Controller · 9%');
-      expect(PadTroubleshooter.statusLine([sense]), isNull);
+      final xbox = PadInfo(id: 'sdl1', name: 'Xbox Controller', kind: PadKind.xbox, battery: PadBattery(9), driver: 'SDL XInput');
+      expect(PadTroubleshooter.statusPad([sense, xbox]), xbox);
+      expect(PadTroubleshooter.statusPad([sense]), isNull);
+    });
+
+    test('a battery known only as a level is named without a number', () {
+      final empty = sense.copyWith(battery: const PadBattery.level(PadBatteryLevel.empty, charging: false));
+      final findings = PadTroubleshooter.diagnose(PadFacts(system: HostSystem.windows, pads: [empty]));
+      expect(findings.single.id, 'lowBatteryLevel');
+      expect(findings.single.arguments, ['PS5 Controller']);
+      expect(PadTroubleshooter.statusPad([empty]), empty);
+      final low = sense.copyWith(battery: const PadBattery.level(PadBatteryLevel.low, charging: false));
+      expect(PadTroubleshooter.diagnose(PadFacts(system: HostSystem.windows, pads: [low])), isEmpty);
+      expect(PadTroubleshooter.statusPad([low]), isNull);
     });
 
     test('tasklist and Steam config are read', () {

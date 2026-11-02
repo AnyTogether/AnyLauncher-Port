@@ -1,4 +1,5 @@
 import 'package:anyps5_desktop/core/controllers/pad_info.dart';
+import 'package:anyps5_desktop/core/controllers/sdl_maps.dart';
 import 'package:anyps5_desktop/core/controllers/sdl_pads.dart';
 import 'package:anyps5_desktop/core/controllers/troubleshooter.dart';
 import 'package:anyps5_desktop/core/crash_report.dart';
@@ -8,6 +9,8 @@ import 'package:anyps5_desktop/core/host.dart';
 import 'package:anyps5_desktop/core/steam/steam_launch.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/components.dart';
+import 'package:anyps5_desktop/ui/controller_test_view.dart';
+import 'package:anyps5_desktop/ui/controllers_model.dart';
 import 'package:anyps5_desktop/ui/launcher.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:anyps5_desktop/ui/theme.dart';
@@ -32,12 +35,12 @@ void main() {
 
   final shell = find.byType(LauncherShell);
 
-  final sense = PadInfo(
+  const sense = PadInfo(
     id: 'sdl0',
     name: 'DualSense Wireless Controller',
     kind: PadKind.dualSense,
     connection: PadConnection.bluetooth,
-    battery: PadBattery(55, approximate: true, charging: false),
+    battery: PadBattery.level(PadBatteryLevel.medium, charging: false),
     driver: 'SDL HIDAPI',
     vendor: 0x054C,
     product: 0x0CE6,
@@ -66,11 +69,11 @@ void main() {
     testWidgets('controllers: two pads, Player 1 a DualSense over Bluetooth', (tester) async {
       final fixture = start(makeFixture(system: HostSystem.windows));
       final model = fixture.model;
-      model.controllers.preview([sense, xbox], playerOne: 'sdl0', facts: PadFacts(system: HostSystem.windows, pads: [sense, xbox]));
+      model.controllers.preview([sense, xbox], playerOne: 'sdl0', facts: const PadFacts(system: HostSystem.windows, pads: [sense, xbox]));
       openControllers(model, row: 'padLight');
       await pumpLauncher(tester, model);
       expect(find.text('DualSense Wireless Controller · Player 1'), findsOneWidget);
-      expect(find.text('DualSense · Bluetooth · about 55%'), findsOneWidget);
+      expect(find.text('DualSense · Bluetooth · Battery: Medium'), findsOneWidget);
       await expectLater(shell, matchesGoldenFile('goldens/controllers_two_en.png'));
     });
 
@@ -105,14 +108,14 @@ void main() {
         ..stickDeadzone = 8
         ..controllerLight = 'purple';
       model.savePreferences();
-      final low = PadInfo(id: 'sdl2', name: 'PS4 Controller', kind: PadKind.dualShock4, connection: PadConnection.usb,
-          battery: PadBattery(5, approximate: true, charging: false), driver: 'SDL evdev');
+      const low = PadInfo(id: 'sdl2', name: 'PS4 Controller', kind: PadKind.dualShock4, connection: PadConnection.usb,
+          battery: PadBattery.level(PadBatteryLevel.empty, charging: false), driver: 'SDL evdev');
       model.controllers.preview(
         [low],
-        facts: PadFacts(
+        facts: const PadFacts(
           system: HostSystem.linux,
           pads: [low],
-          refused: const ['Nintendo Switch Pro Controller'],
+          refused: ['Nintendo Switch Pro Controller'],
           hidrawDenied: true,
         ),
       );
@@ -166,8 +169,36 @@ void main() {
       final model = fixture.model;
       model.controllers.preview([sense.copyWith(battery: PadBattery(9))]);
       await pumpLauncher(tester, model);
-      expect(find.text('DualSense Wireless Controller · 9%'), findsOneWidget);
+      // A measured percentage is shown as one.
+      expect(find.text('DualSense Wireless Controller'), findsOneWidget);
+      expect(find.text('9%'), findsOneWidget);
       await expectLater(shell, matchesGoldenFile('goldens/home_pad_battery.png'));
+    });
+
+    testWidgets('home: a battery known only as a level shows the level, not a made-up percentage', (tester) async {
+      // VK's pill: "Xbox One S Controller · 5%" from SDL2's EMPTY level.
+      final fixture = start(makeFixture());
+      final model = fixture.model;
+      final pad = PadInfo(
+        id: 'sdl3',
+        name: 'Xbox One S Controller',
+        kind: PadKind.xbox,
+        connection: PadConnection.bluetooth,
+        battery: SdlMaps.battery(0),
+        driver: 'SDL XInput',
+      );
+      model.controllers.preview([pad]);
+      await pumpLauncher(tester, model);
+      expect(find.text('Xbox One S Controller'), findsOneWidget);
+      expect(find.text('Nearly empty'), findsOneWidget);
+      expect(find.textContaining('%'), findsNothing);
+      expect(find.byType(BatteryGlyph), findsOneWidget);
+      expect(ControllersModel.summary(pad), 'Xbox · Bluetooth · Battery: Nearly empty');
+      await expectLater(shell, matchesGoldenFile('goldens/home_pad_battery_level.png'));
+      model.preferences.language = 'tr';
+      T.language = Language.byCode('tr');
+      expect(ControllersModel.batteryText(pad.battery!), 'Neredeyse boş');
+      expect(ControllersModel.batteryText(PadBattery(64)), '%64');
     });
   });
 
@@ -182,7 +213,7 @@ void main() {
       sdl.plug(dualSense(0), power: 3);
       (model.controllers.inventory! as SdlPadSource).poll();
       expect(model.controllers.pads.single.kind, PadKind.dualSense);
-      expect(model.controllers.log.lines.single, contains('controller connected: PS5 Controller (DualSense, Bluetooth, battery about 100%, SDL HIDAPI, 054c:0ce6)'));
+      expect(model.controllers.log.lines.single, contains('controller connected: PS5 Controller (DualSense, Bluetooth, battery level full, SDL HIDAPI, 054c:0ce6)'));
       expect(sdl.calls, contains('led 0 255 13 13'));
       expect(sdl.calls, contains('player 0 0'));
       sdl.plug(xbox360(1));
@@ -320,7 +351,7 @@ void main() {
       final turkish = languageFile('tr');
       final keys = [for (final light in PadLight.values) 'padLight_${light.name}'];
       const ids = [
-        'noControllers', 'usbCable', 'bluetoothPairing', 'dualShock3Windows', 'dualShock3Linux', 'unmapped', 'lowBattery',
+        'noControllers', 'usbCable', 'bluetoothPairing', 'dualShock3Windows', 'dualShock3Linux', 'unmapped', 'lowBattery', 'lowBatteryLevel',
         'steamPlayStation', 'steamRunning', 'steamLaunched', 'ds4windows', 'dualSenseX', 'hidHide', 'vigem',
         'linuxPermission', 'linuxHidraw', 'sdlMissingWindows', 'sdlMissingLinux', //
       ];

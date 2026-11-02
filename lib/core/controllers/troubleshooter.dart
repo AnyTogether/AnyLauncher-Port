@@ -111,7 +111,11 @@ abstract final class PadTroubleshooter {
     }
     for (final pad in facts.pads) {
       if (pad.battery case final battery? when battery.low) {
-        findings.add(PadFinding('lowBattery', problem: true, arguments: [pad.name, battery.percent]));
+        findings.add(switch (battery.percent) {
+          final int percent => PadFinding('lowBattery', problem: true, arguments: [pad.name, percent]),
+          // Only a level: no number to give.
+          null => PadFinding('lowBatteryLevel', problem: true, arguments: [pad.name]),
+        });
       }
     }
     // Steam: from Steam its virtual pad is used; outside, its PlayStation support turns the pad
@@ -155,10 +159,11 @@ abstract final class PadTroubleshooter {
     return findings;
   }
 
-  /// One line for the controller indicator in the top bar: nil when there is nothing to say.
-  static String? statusLine(List<PadInfo> pads) {
+  /// The controller the top bar's indicator is about (one running out of battery): null when
+  /// there is nothing to say.
+  static PadInfo? statusPad(List<PadInfo> pads) {
     for (final pad in pads) {
-      if (pad.battery case final battery? when battery.low) return '${pad.name} · ${battery.percent}%';
+      if (pad.battery case final battery? when battery.low) return pad;
     }
     return null;
   }

@@ -373,6 +373,30 @@ void main() {
       expect(Directory(installed).existsSync(), isTrue);
     });
 
+    // ctrl's Gran Turismo 7 report: "pdiWheel_0.prx is neither an ELF nor a decrypted SELF
+    // container" stopped another launcher's unlock. Here such a module is left out and the game
+    // unlocks, whether its bytes are no container at all or an encrypted SELF.
+    for (final (kind, bytes) in [
+      ('neither an ELF nor a SELF', [for (var index = 0; index < 4096; index++) (index * 131 + 7) & 0xFF]),
+      ('a SELF that cannot be unwrapped', [0x4F, 0x15, 0x3D, 0x1D, ...List.filled(60, 0xA5)]),
+    ]) {
+      test('Gran Turismo 7: a pdiWheel_0.prx that is $kind is left out; the game unlocks', () async {
+        final game = makeGame();
+        File(p.join(game.folder, 'sce_module', 'pdiWheel_0.prx')).writeAsBytesSync(bytes);
+        final lines = <String>[];
+        final installer = Installer(game: game, toolkit: Toolkit(toolkitFolder), root: root, onLog: lines.add);
+        final installed = await installer.run();
+        expect(installer.leftOut.map((module) => (module.path, module.reason)), [
+          ('sce_module/pdiWheel_0.prx', LeftOutReason.encrypted),
+        ]);
+        expect(lines.where((line) => line.contains('pdiWheel_0.prx') && line.contains('it is left out')), hasLength(1));
+        expect(fakeRelinkerInputs(toolkitFolder).single, isNot(contains('sce_module/pdiWheel_0.prx')));
+        expect(fakeRelinkerInputs(toolkitFolder).single, contains('sce_module/libgame.sprx'));
+        expect(File(p.join(installed, 'app.elf')).existsSync(), isTrue);
+        expect(Directory(installed).existsSync(), isTrue);
+      });
+    }
+
     test('a module the relinker cannot convert is left out and the relink runs again', () async {
       makeFakeToolkit(toolkitFolder, failOn: 'sce_module/libgame.sprx');
       final game = makeGame();

@@ -446,7 +446,13 @@ class Preferences {
     return folders;
   }
 
-  static Preferences load(String file) {
+  /// The launcher's choices in [file]. Without the file (the first start) the launcher's language
+  /// is the first of the computer's languages it has a file for: [systemLocales], else the ones
+  /// the system gives, as Settings lists them.
+  static Preferences load(String file, {List<String>? systemLocales}) {
+    if (!File(file).existsSync()) {
+      return Preferences()..language = Language.forSystem(systemLocales ?? Preferences.systemLocales()).code;
+    }
     try {
       final json = jsonDecode(File(file).readAsStringSync());
       return json is Map<String, dynamic> ? Preferences.fromJson(json) : Preferences();
@@ -454,6 +460,13 @@ class Preferences {
       return Preferences();
     }
   }
+
+  /// The computer's languages, the one it is set to first: Windows' list of display languages
+  /// and Linux's LANGUAGE and LANG as Flutter reads them, then Dart's locale name.
+  static List<String> systemLocales() => [
+    for (final locale in PlatformDispatcher.instance.locales) locale.toLanguageTag(),
+    Platform.localeName,
+  ];
 
   void save(String file) {
     try {
@@ -5918,7 +5931,7 @@ class AppModel extends ChangeNotifier {
   }
 
   /// How many language cards the first step has in a row.
-  static const languageColumns = 6;
+  static const languageColumns = 7;
 
   /// The language and theme steps show their choice at once.
   void _previewChoice() {

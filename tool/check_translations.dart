@@ -23,14 +23,16 @@ const legacyMeta = '@meta';
 /// The keys of texts that are descriptions, sentences under a row or a title: the names they
 /// end in. Each one ends as a sentence does, with . ! ? … or : (or the script's own marks), so
 /// no description shows without its full stop. A placeholder in brackets may follow the mark:
-/// "Reinstall it. (%@)".
+/// "Reinstall it. (%@)", or in Chinese's full-width ones: "请重新安装。（%@）".
 const descriptionEndings = ['Detail', 'Hint', 'Subtitle', 'Text', 'Note', 'Description', 'Info', 'Explanation'];
 
 /// Description keys that are not sentences: a text field's placeholder, a line of facts.
 const notSentences = {'profileNameHint', 'engineDownloadDetail', 'togetherTitleDetail', 'engineDeleteOldDetail'};
 
-/// How a sentence may end, in the scripts the files may be written in.
-final _sentenceEnd = RegExp(r'[.!?…:。！？：．؟۔।։።;]\s*(\(%(\d\$)?[@d]\))?$');
+/// How a sentence may end, in the scripts the files may be written in: Chinese and Japanese 。,
+/// Arabic and Urdu ؟ and ۔, Hindi and Bengali ।, Armenian ։, Amharic ።, Khmer ។. Lao ends a
+/// sentence with a full stop.
+final _sentenceEnd = RegExp(r'[.!?…:。！？：．؟۔।։።។;]\s*([(（]%(\d\$)?[@d][)）])?$');
 
 /// Whether [key] names a description that has to end as a sentence.
 bool isDescription(String key) =>

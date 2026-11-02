@@ -335,8 +335,13 @@ void main() {
         '${game.name} is ready, but some of its files are encrypted in the dump. If it does not start, dump it again.',
       );
       // Gran Turismo 7's pdiWheel_0.prx, neither an ELF nor a SELF: the same short note, no file named.
-      final note = AppModel.leftOutText(game, const [LeftOutModule('sce_module/pdiWheel_0.prx', LeftOutReason.encrypted)]);
-      expect(note, '${game.name} is ready, but some of its files are encrypted in the dump. If it does not start, dump it again.');
+      final note = AppModel.leftOutText(game, const [
+        LeftOutModule('sce_module/pdiWheel_0.prx', LeftOutReason.encrypted),
+      ]);
+      expect(
+        note,
+        '${game.name} is ready, but some of its files are encrypted in the dump. If it does not start, dump it again.',
+      );
       expect(note, isNot(contains('pdiWheel')));
     });
   });
@@ -573,9 +578,14 @@ void main() {
       model.games = [];
       await pumpLauncher(tester, model);
       expect(find.text('Welcome to AnyPS5'), findsOneWidget);
-      // Down is the next row of languages; Türkçe is the first of the second row.
+      // Down is the next row of languages, right the next card: Türkçe is on the second row.
       await press(tester, LogicalKeyboardKey.arrowDown);
-      expect(T.languages.indexOf(Language.byCode('tr')), AppModel.languageColumns);
+      expect(T.language, T.languages[AppModel.languageColumns]);
+      final turkish = T.languages.indexOf(Language.byCode('tr'));
+      expect(turkish ~/ AppModel.languageColumns, 1);
+      for (var card = AppModel.languageColumns; card < turkish; card++) {
+        await press(tester, LogicalKeyboardKey.arrowRight);
+      }
       expect(T.language, Language.byCode('tr'));
       expect(find.text("AnyPS5'e hoş geldin"), findsOneWidget);
       await press(tester, LogicalKeyboardKey.enter);

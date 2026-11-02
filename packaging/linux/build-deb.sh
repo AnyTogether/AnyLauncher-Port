@@ -35,6 +35,11 @@ depends="libc6 (>= $glibc)"
 for package in $packages; do depends="$depends, $package"; done
 depends="$depends, xdg-utils"
 
+# The launcher's own font has Latin letters only. Flutter draws every other script with a
+# system font that has it (fontconfig), so the Noto fonts are recommended: Khmer, Lao, Ethiopic,
+# Devanagari, Bengali and Arabic in fonts-noto-core, Chinese, Japanese and Korean in fonts-noto-cjk.
+recommends="libsecret-tools, libsdl2-2.0-0, fonts-noto-core | fonts-noto, fonts-noto-cjk"
+
 size=$(du -sk "$PKG" | cut -f1)
 cat > "$PKG/DEBIAN/control" <<CONTROL
 Package: anyps5-desktop
@@ -45,7 +50,7 @@ Architecture: amd64
 Maintainer: Utku Halis <personal@utkuhalis.com.tr>
 Installed-Size: $size
 Depends: $depends
-Recommends: libsecret-tools, libsdl2-2.0-0
+Recommends: $recommends
 Homepage: https://github.com/AnyTogether/AnyPS5-Desktop
 Description: PS5-style launcher for AnyPS5
  Finds PS5 game dumps in a games folder, unlocks them with the AnyPS5 toolkit

@@ -194,45 +194,72 @@ class _LanguageStep extends StatelessWidget {
           ).copyWith(letterSpacing: 0.8),
         ),
         SizedBox(height: 16 * scale),
-        // Rows of cards, AppModel.languageColumns to a row: the step's arrows move along them.
-        Wrap(
-          spacing: 20 * scale,
-          runSpacing: 18 * scale,
-          children: [
-            for (final (index, language) in T.languages.indexed)
-              _ChoiceCard(
-                focused: model.onboardingChoice == index,
-                width: 200 * scale,
-                height: 96 * scale,
-                padding: 18,
-                onTap: () {
-                  model.onboardingChoice = index;
-                  model.onboardingConfirm();
-                },
-                child: Builder(
-                  builder: (context) {
-                    final color = model.onboardingChoice == index ? Colors.black : Colors.white;
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Text(
-                          language.code.toUpperCase(),
-                          style: AppText.display(13 * scale, weight: FontWeight.w700, color: color.withValues(alpha: 0.6)),
-                        ),
-                        SizedBox(height: 6 * scale),
-                        Text(
-                          language.displayName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppText.display(22 * scale, weight: FontWeight.w500, color: color),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-          ],
+        // Rows of cards, AppModel.languageColumns to a row: the step's arrows move along them. The
+        // cards share the space the step has: as wide and tall as they fit, up to 200 by 96.
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              const columns = AppModel.languageColumns;
+              final rows = (T.languages.length / columns).ceil();
+              final spacing = 20 * scale;
+              final runSpacing = 18 * scale;
+              final width = math.min(200 * scale, (constraints.maxWidth - spacing * (columns - 1)) / columns);
+              // Room under the last row, so it does not run into the hint bar.
+              final room = constraints.maxHeight - 28 * scale;
+              final height = math.min(96 * scale, (room - runSpacing * (rows - 1)) / rows);
+              // A short card leaves the code out: the name is what a person looks for.
+              final withCode = height >= 80 * scale;
+              return Wrap(
+                spacing: spacing,
+                runSpacing: runSpacing,
+                children: [
+                  for (final (index, language) in T.languages.indexed)
+                    _ChoiceCard(
+                      focused: model.onboardingChoice == index,
+                      width: width,
+                      height: height,
+                      padding: height >= 96 * scale ? 18 : 12,
+                      onTap: () {
+                        model.onboardingChoice = index;
+                        model.onboardingConfirm();
+                      },
+                      child: Builder(
+                        builder: (context) {
+                          final color = model.onboardingChoice == index ? Colors.black : Colors.white;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              if (withCode) ...[
+                                Text(
+                                  language.code.toUpperCase(),
+                                  style: AppText.display(
+                                    13 * scale,
+                                    weight: FontWeight.w700,
+                                    color: color.withValues(alpha: 0.6),
+                                  ),
+                                ),
+                                SizedBox(height: 6 * scale),
+                              ],
+                              // A long name (Bahasa Indonesia) is drawn smaller, never cut off.
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: AlignmentDirectional.centerStart,
+                                child: Text(
+                                  language.displayName,
+                                  maxLines: 1,
+                                  style: AppText.display(22 * scale, weight: FontWeight.w500, color: color),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
         ),
       ],
     );

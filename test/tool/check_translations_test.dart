@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -117,6 +118,31 @@ void main() {
         'gyroDetail': 'Turn the controller.',
       }).problems,
       isEmpty,
+    );
+    // Khmer ends a sentence with its khan, Amharic with ።, Lao with a full stop, and Chinese may
+    // put the placeholder in full-width brackets.
+    final scripts = {
+      'km': 'បង្វិលឧបករណ៍បញ្ជា។ (%@)',
+      'am': 'መቆጣጠሪያውን ያዙሩ። (%@)',
+      'lo': 'ໝຸນຕົວຄວບຄຸມ. (%@)',
+      'zh-Hans': '请重新安装 AnyPS5 Desktop。（%@）',
+    };
+    for (final MapEntry(key: code, value: text) in scripts.entries) {
+      expect(
+        checkLanguage(code, jsonEncode({'languageName': code, 'sdlMissingDetail': text}), {
+          ...english,
+          'sdlMissingDetail': 'Reinstall AnyPS5 Desktop. (%@)',
+        }).problems,
+        isEmpty,
+        reason: code,
+      );
+    }
+    expect(
+      checkLanguage('km', jsonEncode({'languageName': 'ខ្មែរ', 'gyroDetail': 'បង្វិលឧបករណ៍បញ្ជា'}), {
+        ...english,
+        'gyroDetail': 'Turn the controller.',
+      }).problems.single,
+      contains('gyroDetail'),
     );
   });
 

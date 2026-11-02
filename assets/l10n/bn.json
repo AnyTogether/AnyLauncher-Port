@@ -1347,7 +1347,7 @@
   "reportGitHub": "GitHub এ খুলুন",
   "reportGitHubDetail": "%@ · ইঞ্জিনের বাগ ফর্ম, তারপর এটিতে crash_log.txt টেনে আনুন।",
   "reportLauncher": "একটি লঞ্চার বাগ রিপোর্ট করুন",
-  "reportLauncherDetail": "AnyTogether/AnyLauncher-Port · যখন লঞ্চার নিজেই ভুল হয়ে যায়, একই পাঠ্য।",
+  "reportLauncherDetail": "AnyTogether/AnyPS5-Desktop · যখন লঞ্চার নিজেই ভুল হয়ে যায়, একই পাঠ্য।",
   "reportLogTail": "লগের শেষ",
   "reportNoLog": "গেমটি তার লগে কিছুই লেখেনি।",
   "reportFactSystem": "সিস্টেম",

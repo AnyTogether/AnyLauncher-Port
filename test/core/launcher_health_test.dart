@@ -199,7 +199,7 @@ void main() {
       system: const SystemInfo(os: 'Windows 11 Pro 10.0 (Build 22631)', cpu: 'AMD Ryzen 7 5800X', memoryGB: 32),
       privacy: const ReportPrivacy(home: r'C:\Users\ada', names: ['ada', 'ADA-PC']),
     );
-    expect(draft.repository, 'AnyTogether/AnyLauncher-Port');
+    expect(draft.repository, 'AnyTogether/AnyPS5-Desktop');
     expect(draft.url.queryParameters['template'], 'launcher_crash.yml');
     expect(draft.title, 'Launcher stopped responding (9s)');
     final text = draft.preview;

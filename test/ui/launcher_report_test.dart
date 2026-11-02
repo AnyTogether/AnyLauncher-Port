@@ -45,7 +45,7 @@ void main() {
     expect(done, 1, reason: 'not offered again');
     final issue = fixture.opened.single;
     expect(issue.host, 'github.com');
-    expect(issue.path, '/AnyTogether/AnyLauncher-Port/issues/new');
+    expect(issue.path, '/AnyTogether/AnyPS5-Desktop/issues/new');
     expect(issue.queryParameters['template'], 'launcher_crash.yml');
     expect(issue.queryParameters['versions'], 'Launcher 0.1.12 (Linux)');
     expect(issue.queryParameters['error'], contains('HomeView.build'));

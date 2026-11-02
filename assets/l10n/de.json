@@ -1347,7 +1347,7 @@
   "reportGitHub": "Auf GitHub öffnen",
   "reportGitHubDetail": "%@ · Fehlerformular der Engine; ziehe anschließend crash_log.txt hinein.",
   "reportLauncher": "Launcher-Fehler melden",
-  "reportLauncherDetail": "AnyTogether/AnyLauncher-Port · wenn der Launcher selbst Probleme macht; derselbe Text wird verwendet.",
+  "reportLauncherDetail": "AnyTogether/AnyPS5-Desktop · wenn der Launcher selbst Probleme macht; derselbe Text wird verwendet.",
   "reportLogTail": "Ende des Protokolls",
   "reportNoLog": "Das Spiel hat nichts in sein Protokoll geschrieben.",
   "reportFactSystem": "System",

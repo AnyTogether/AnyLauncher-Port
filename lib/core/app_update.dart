@@ -9,12 +9,12 @@ import 'release_signing.dart';
 import 'toolkit_download.dart';
 import 'update_channel.dart';
 
-/// New releases of AnyPS5 Desktop itself (AnyTogether/AnyLauncher-Port on GitHub). The launcher says
+/// New releases of AnyPS5 Desktop itself (AnyTogether/AnyPS5-Desktop on GitHub). The launcher says
 /// when one is out and downloads its installer for this system, checked against the release's
 /// signed SHA256SUMS; the user runs it. Every release newer than a launcher that checks
 /// signatures came out after signing began, so an unsigned one is never downloaded.
 abstract final class LauncherUpdates {
-  static const repository = 'AnyTogether/AnyLauncher-Port';
+  static const repository = 'AnyTogether/AnyPS5-Desktop';
 
   /// Where the launcher's releases are read from, signed with the built-in keys.
   static GitHubReleases source({Uri? api, List<ReleaseKey>? keys, HttpClient Function()? client}) =>

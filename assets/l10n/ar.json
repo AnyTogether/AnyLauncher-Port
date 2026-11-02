@@ -1347,7 +1347,7 @@
   "reportGitHub": "مفتوح على GitHub",
   "reportGitHubDetail": "%@ · نموذج خطأ المحرك، ثم اسحب crash_log.txt إليه.",
   "reportLauncher": "الإبلاغ عن خطأ في المشغل",
-  "reportLauncherDetail": "AnyTogether/AnyLauncher-Port · عندما حدث خطأ في المشغل نفسه، نفس النص.",
+  "reportLauncherDetail": "AnyTogether/AnyPS5-Desktop · عندما حدث خطأ في المشغل نفسه، نفس النص.",
   "reportLogTail": "نهاية السجل",
   "reportNoLog": "لم تكتب اللعبة شيئًا في سجلها.",
   "reportFactSystem": "النظام",

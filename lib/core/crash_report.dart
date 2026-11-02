@@ -694,7 +694,7 @@ class IssueDraft {
   static const armRepository = 'AnyTogether/AnyPS5-ARM';
 
   /// This launcher, for a bug in the launcher itself.
-  static const launcherRepository = 'AnyTogether/AnyLauncher-Port';
+  static const launcherRepository = 'AnyTogether/AnyPS5-Desktop';
 
   static const maximumLength = 7000;
 

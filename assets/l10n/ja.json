@@ -1347,7 +1347,7 @@
   "reportGitHub": "GitHub で開く",
   "reportGitHubDetail": "%@ · エンジンのバグ フォームに crash_log.txt をドラッグします。",
   "reportLauncher": "ランチャーのバグを報告する",
-  "reportLauncherDetail": "AnyTogether/AnyLauncher-Port · ランチャー自体が失敗した場合、同じテキスト。",
+  "reportLauncherDetail": "AnyTogether/AnyPS5-Desktop · ランチャー自体が失敗した場合、同じテキスト。",
   "reportLogTail": "ログの終わり",
   "reportNoLog": "ゲームはログに何も書き込みませんでした。",
   "reportFactSystem": "システム",

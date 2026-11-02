@@ -1347,7 +1347,7 @@
   "reportGitHub": "GitHub पर खोलें",
   "reportGitHubDetail": "%@ · इंजन का बग फॉर्म, फिर इसमें crash_log.txt खींचें।?",
   "reportLauncher": "लॉन्चर बग की रिपोर्ट करें",
-  "reportLauncherDetail": "AnyTogether/AnyLauncher-Port · जब लॉन्चर ही गलत हो गया, वही पाठ।?",
+  "reportLauncherDetail": "AnyTogether/AnyPS5-Desktop · जब लॉन्चर ही गलत हो गया, वही पाठ।?",
   "reportLogTail": "लॉग का अंत",
   "reportNoLog": "गेम ने अपने लॉग में कुछ नहीं लिखा।?",
   "reportFactSystem": "प्रणाली",

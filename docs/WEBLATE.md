@@ -19,7 +19,7 @@ from the file name.
 
 | Component | Repository, branch | File mask | Monolingual base language file |
 |---|---|---|---|
-| Windows/Linux launcher | `https://github.com/AnyTogether/AnyLauncher-Port.git`, `main` | `assets/l10n/*.json` | `assets/l10n/en.json` |
+| Windows/Linux launcher | `https://github.com/AnyTogether/AnyPS5-Desktop.git`, `main` | `assets/l10n/*.json` | `assets/l10n/en.json` |
 | Mac launcher | `https://github.com/AnyTogether/AnyPS5-ARM.git`, `main` | `tools/macos/launcher/l10n/*.json` | `tools/macos/launcher/l10n/en.json` |
 | Phone app | `weblate://anyps5/mac-launcher` (the Mac component's checkout), `main` | `mobile/assets/l10n/*.json` | `mobile/assets/l10n/en.json` |
 

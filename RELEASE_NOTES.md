@@ -5,6 +5,10 @@ release when it is made.
 
 ## Next release
 
+Nothing yet.
+
+## 0.1.18
+
 - **Save Sync** in **Settings › Behaviour**: each game's saves and trophies stay the same on
   your other computers. They are brought over before a game starts and sent after it ends. It
   works through a folder your computers share (OneDrive, Dropbox, Syncthing or a network drive,
@@ -72,7 +76,6 @@ release when it is made.
   may watch, and stop it from the same menu. It ends with the game. The picture and sound go
   from this PC straight to each friend over WebRTC, as from the Mac. Watching a friend's share
   play in this launcher is not here yet: use the website for that.
-
 - **Remote Play: the game's picture and sound on the phone.** The phone app's Remote Play now
   works with the Windows and Linux launcher, with the same app as on the Mac. The launcher
   records the game's window with ffmpeg and encodes it at once on the graphics card (NVIDIA,
@@ -112,6 +115,16 @@ release when it is made.
   the party's join page. You still say yes to whoever asks. Both are on by default and switch off
   in **Settings › Behaviour**: **Show the game you play on Discord** and **Show a Join button on
   Discord**.
+- **Show me as Online, Idle, Do Not Disturb or Invisible**, in **Settings › AnyTogether**.
+  Friends who are idle show a yellow moon, and Do Not Disturb a red dot with a bar. Your own dot
+  and word show on the home screen, your profile and the account rows.
+- **A translation in the Languages folder only changes the texts it has.** Before, a file there
+  replaced the built-in language whole, and every text it lacked showed in English, the home
+  screen's hints too. A regional file (de-AT) now falls back to its base language before
+  English, and a file saved with a byte order mark is read.
+- **A controller's battery shows as a level.** SDL2 reports one of four levels, never a
+  percentage, so the pill showed a made-up number. It now shows a battery with its bars and a
+  word: Nearly empty, Low, Medium or Full.
 
 ## 0.1.17
 

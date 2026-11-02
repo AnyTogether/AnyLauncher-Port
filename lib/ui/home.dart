@@ -872,9 +872,15 @@ class GameTile extends StatelessWidget {
               Padlock(size: size * 0.13, color: Colors.white),
               if (focused) ...[
                 SizedBox(width: size * 0.03),
-                Text(
-                  T.text('locked'),
-                  style: AppText.display(size * 0.07, weight: FontWeight.w600).copyWith(height: 1),
+                // A long word ("Заблокировано") fades at the tile's edge instead of overflowing it.
+                Flexible(
+                  child: Text(
+                    T.text('locked'),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.fade,
+                    style: AppText.display(size * 0.07, weight: FontWeight.w600).copyWith(height: 1),
+                  ),
                 ),
               ],
             ],

@@ -115,7 +115,8 @@ folder (create it if it is not there) and start the launcher again.
 - Mac: `~/Library/Application Support/AnyPS5/Languages` (in Finder, **Go › Go to Folder…**)
 
 Open **Settings › Language** and choose your language. A file there comes before the built-in
-one of the same code, so you can try a changed `tr.json` the same way. If your language does not
+one of the same code, so you can try a changed `tr.json` the same way. A text your file does not
+have yet still shows the built-in translation. If your language does not
 appear, the file is not valid JSON: the check below says where. A file made for an older
 launcher, with an `"@meta"` part at the top, still works there; for the repository, replace it
 with a `languageName` line.

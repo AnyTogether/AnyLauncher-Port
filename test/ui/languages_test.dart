@@ -6,6 +6,7 @@ import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart' show SizedBox;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/ui_support.dart';
@@ -251,5 +252,79 @@ void main() {
     expect(find.text('Select'), findsNothing);
     expect(T.text('hintMove'), isNot('Move'));
     expect(find.text(T.text('hintMove')), findsWidgets);
+  });
+
+  test('a file in the Languages folder changes texts one by one: the ones it lacks stay translated', () async {
+    final folder = Directory.systemTemp.createTempSync('anyps5_languages');
+    addTearDown(() => folder.deleteSync(recursive: true));
+    // A translator's file made before "back" was translated, saved by PowerShell 5 with a BOM.
+    File('${folder.path}/de.json').writeAsStringSync('\uFEFF{"languageName": "Deutsch", "language": "Sprache (neu)"}');
+    await T.load(
+      bundle: _Bundle({
+        'assets/l10n/en.json': english,
+        'assets/l10n/de.json': '{"languageName": "Deutsch", "language": "Sprache", "back": "Zurück"}',
+      }),
+      tryOut: folder,
+    );
+    expect([for (final language in T.languages) language.code], ['en', 'de']);
+    T.language = Language.byCode('de');
+    expect(T.text('language'), 'Sprache (neu)');
+    expect(T.text('back'), 'Zurück');
+    expect(T.text('gamesFound'), '%d games found');
+  });
+
+  test('a regional file falls back to its base language before English', () async {
+    await T.load(
+      bundle: _Bundle({
+        'assets/l10n/en.json': english,
+        'assets/l10n/de.json': german,
+        'assets/l10n/de-AT.json': '{"languageName": "Deutsch (Österreich)", "language": "Sprach"}',
+      }),
+    );
+    T.language = Language.byCode('de-AT');
+    expect(T.text('language'), 'Sprach');
+    expect(T.format('gamesFound', [2]), '2 Spiele gefunden');
+    expect(T.text('back'), 'Back');
+  });
+
+  testWidgets('a translator\'s file without the hint texts leaves the home hint bar in the built-in translation', (
+    tester,
+  ) async {
+    // VK's path: the language files VK made, tried from the Languages folder, are older than the
+    // built-in ones and have no hint texts. The folder's file replaced the built-in one whole,
+    // so the hint bar fell back to English.
+    final folder = Directory.systemTemp.createTempSync('anyps5_languages');
+    addTearDown(() => folder.deleteSync(recursive: true));
+    File('${folder.path}/de.json').writeAsStringSync('{"languageName": "Deutsch", "language": "Sprache"}');
+    await tester.runAsync(() => T.load(tryOut: folder));
+    final fixture = makeFixture(language: Language.byCode('de'));
+    addTearDown(fixture.dispose);
+    await pumpLauncher(tester, fixture.model);
+    expect(T.language.code, 'de');
+    for (final english in ['Move', 'Previous', 'Next', 'Select', 'Back']) {
+      expect(find.text(english), findsNothing, reason: '"$english" is English');
+    }
+    expect(find.text('Bewegen'), findsWidgets);
+    expect(find.text('Auswählen'), findsWidgets);
+  });
+
+  testWidgets('a saved language shows on the home hint bar from the start', (tester) async {
+    await tester.runAsync(T.load);
+    final fixture = makeFixture(language: Language.byCode('de'));
+    addTearDown(fixture.dispose);
+    await pumpLauncher(tester, fixture.model);
+    expect(find.text('Move'), findsNothing);
+    expect(find.text('Bewegen'), findsWidgets);
+  });
+
+  testWidgets('the home screen fits in every bundled language', (tester) async {
+    await tester.runAsync(T.load);
+    for (final language in T.languages) {
+      final fixture = makeFixture(language: language);
+      await pumpLauncher(tester, fixture.model);
+      expect(tester.takeException(), isNull, reason: language.code);
+      await tester.pumpWidget(const SizedBox());
+      fixture.dispose();
+    }
   });
 }

@@ -28,6 +28,55 @@ class Language {
   static Language byCode(String? code) =>
       T.languages.firstWhere((language) => language.code == code, orElse: () => english);
 
+  /// The language the launcher starts in the first time: the first of the computer's
+  /// [preferred] languages it has a file for, English when it has none of them.
+  static Language forSystem(Iterable<String> preferred) =>
+      byCode(matchLocale(preferred, [for (final language in T.languages) language.code]));
+
+  /// Codes a system may give for a language whose file has another one: Norwegian Bokmål and
+  /// Nynorsk read the Norwegian file, Tagalog the Filipino one, and Java's old code for
+  /// Indonesian the Indonesian one.
+  static const _sameLanguage = {'nb': 'no', 'nn': 'no', 'tl': 'fil', 'in': 'id'};
+
+  /// The regions that write Chinese in traditional characters when the system gives no script.
+  static const _traditional = {'TW', 'HK', 'MO'};
+
+  /// The first of [preferred] (locale names as systems give them: zh-Hant-TW, pt_BR.UTF-8, nb-NO)
+  /// one of [codes] (the files' codes: zh-Hans, pt-BR, no) is for, or null. A locale takes the
+  /// file of its language and script or region (pt-BR), else its language's (pt). Chinese takes
+  /// zh-Hant for Taiwan, Hong Kong and Macau or the Hant script, and zh-Hans otherwise. The same
+  /// rules as the Mac launcher's LanguageFiles.match.
+  static String? matchLocale(Iterable<String> preferred, Iterable<String> codes) {
+    final byKey = {for (final code in codes) code.replaceAll('_', '-').toLowerCase(): code};
+    for (final name in preferred) {
+      // en_US.UTF-8 and de_DE@euro are Linux's: the part before the dot or @ names the locale.
+      final parts = name.split(RegExp('[.@]')).first.split(RegExp('[-_]')).where((part) => part.isNotEmpty).toList();
+      if (parts.isEmpty) continue;
+      final language = _sameLanguage[parts.first.toLowerCase()] ?? parts.first.toLowerCase();
+      String? script;
+      String? region;
+      for (final part in parts.skip(1)) {
+        if (part.length == 4 && script == null) {
+          script = part[0].toUpperCase() + part.substring(1).toLowerCase();
+        } else if ((part.length == 2 || part.length == 3) && region == null) {
+          region = part.toUpperCase();
+        }
+      }
+      if (language == 'zh') {
+        script ??= _traditional.contains(region) ? 'Hant' : 'Hans';
+      }
+      for (final candidate in [
+        if (script != null && region != null) '$language-$script-$region',
+        if (script != null) '$language-$script',
+        if (region != null) '$language-$region',
+        language,
+      ]) {
+        if (byKey[candidate.toLowerCase()] case final code?) return code;
+      }
+    }
+    return null;
+  }
+
   @override
   bool operator ==(Object other) => other is Language && other.code == code;
 

@@ -20,8 +20,13 @@ The Windows/Linux launcher has these languages so far:
 | Turkish | `tr.json` | the AnyPS5 team |
 | German, Spanish, French, Portuguese, Indonesian, Russian, Japanese | `de`, `es`, `fr`, `pt`, `id`, `ru`, `ja` | VK |
 | Hindi, Bengali, Bhojpuri, Arabic, Urdu | `hi`, `bn`, `bho`, `ar`, `ur` | VK |
+| Czech, Danish, Hungarian, Norwegian, Romanian, Swedish, Filipino, Malay | `cs`, `da`, `hu`, `no`, `ro`, `sv`, `fil`, `ms` | VK |
+| Simplified Chinese, Traditional Chinese, Korean, Khmer, Lao, Amharic | `zh-Hans`, `zh-Hant`, `ko`, `km`, `lo`, `am` | VK |
 
 Arabic and Urdu read right to left, but the launcher's screens are not mirrored for them yet.
+The launcher starts in the computer's language the first time when it has a file for it. Chinese
+follows the script or region (zh-Hant for Taiwan, Hong Kong and Macau). Norwegian Bokmål and
+Nynorsk read `no.json`, and Tagalog reads `fil.json`.
 Improvements to any of these files are welcome, the same way as a new language. A hosted Weblate project is coming, where several people can translate one language
 at once in the browser; until then, translate the files as below. The files stay the same
 either way, so nothing you do now is lost.

@@ -57,7 +57,10 @@ void main() {
     await T.load();
     expect(
       [for (final language in T.languages) language.code],
-      ['en', 'id', 'de', 'es', 'fr', 'pt', 'tr', 'ru', 'ur', 'ar', 'bho', 'hi', 'bn', 'ja'],
+      [
+        'en', 'id', 'ms', 'da', 'de', 'es', 'fil', 'fr', 'hu', 'no', 'pt', 'ro', 'sv', 'tr', 'cs', 'ru', 'ur', 'ar', //
+        'bho', 'hi', 'bn', 'lo', 'am', 'km', 'ja', 'zh-Hans', 'zh-Hant', 'ko',
+      ],
     );
     expect(T.languages.first.displayName, 'English');
     final names = {for (final language in T.languages) language.code: language.displayName};
@@ -66,6 +69,21 @@ void main() {
     expect(names['fr'], 'Français');
     expect(names['pt'], 'Português');
     expect(names['ja'], '日本語');
+    // VK's second batch, each in its own name and script.
+    expect(names, containsPair('am', 'አማርኛ'));
+    expect(names, containsPair('cs', 'Čeština'));
+    expect(names, containsPair('da', 'Dansk'));
+    expect(names, containsPair('fil', 'Filipino'));
+    expect(names, containsPair('hu', 'Magyar'));
+    expect(names, containsPair('km', 'ភាសាខ្មែរ'));
+    expect(names, containsPair('ko', '한국어'));
+    expect(names, containsPair('lo', 'ພາສາລາວ'));
+    expect(names, containsPair('ms', 'Bahasa Melayu'));
+    expect(names, containsPair('no', 'Norsk'));
+    expect(names, containsPair('ro', 'Română'));
+    expect(names, containsPair('sv', 'Svenska'));
+    expect(names, containsPair('zh-Hans', '简体中文'));
+    expect(names, containsPair('zh-Hant', '繁體中文'));
     // No letter of a name was lost to a question mark when a file was saved.
     expect(names.values.where((name) => name.contains('?')), isEmpty);
     expect(Language.byCode('tr').consoleLanguage, 19);
@@ -315,6 +333,89 @@ void main() {
     await pumpLauncher(tester, fixture.model);
     expect(find.text('Move'), findsNothing);
     expect(find.text('Bewegen'), findsWidgets);
+  });
+
+  test(
+    'the first start picks the computer\'s language: Chinese by script or region, Norwegian and Filipino by any code',
+    () async {
+      await T.load();
+      String? match(List<String> preferred) => Language.forSystem(preferred).code;
+      expect(match(['zh-Hans-CN']), 'zh-Hans');
+      expect(match(['zh-CN']), 'zh-Hans');
+      expect(match(['zh_SG.UTF-8']), 'zh-Hans');
+      expect(match(['zh']), 'zh-Hans');
+      expect(match(['zh-Hant-TW']), 'zh-Hant');
+      expect(match(['zh-TW']), 'zh-Hant');
+      expect(match(['zh_HK.UTF-8']), 'zh-Hant');
+      expect(match(['zh-MO']), 'zh-Hant');
+      expect(match(['zh-Hant']), 'zh-Hant');
+      // Windows writes Chinese in Hong Kong with its script too.
+      expect(match(['zh-Hant-HK']), 'zh-Hant');
+      expect(match(['nb-NO']), 'no');
+      expect(match(['nn_NO.UTF-8']), 'no');
+      expect(match(['no']), 'no');
+      expect(match(['fil-PH']), 'fil');
+      expect(match(['tl_PH.UTF-8']), 'fil');
+      expect(match(['ko-KR']), 'ko');
+      expect(match(['km-KH']), 'km');
+      expect(match(['lo_LA.UTF-8']), 'lo');
+      expect(match(['am-ET']), 'am');
+      expect(match(['cs-CZ']), 'cs');
+      expect(match(['hu-HU']), 'hu');
+      expect(match(['ro-RO']), 'ro');
+      expect(match(['ms-MY']), 'ms');
+      expect(match(['sv-SE']), 'sv');
+      expect(match(['da-DK']), 'da');
+      expect(match(['de_DE@euro']), 'de');
+      expect(match(['pt-BR']), 'pt');
+      // The first of the computer's languages the launcher has, else English.
+      expect(match(['eo', 'fr-CA', 'en-US']), 'fr');
+      expect(match(['eo', 'C', '']), 'en');
+      expect(match(const []), 'en');
+      // A regional file comes before its language's.
+      expect(Language.matchLocale(['pt-BR'], ['en', 'pt', 'pt-BR']), 'pt-BR');
+      expect(Language.matchLocale(['pt_PT'], ['en', 'pt', 'pt-BR']), 'pt');
+
+      // Only the first start: a launcher with its settings keeps the language they have.
+      final folder = Directory.systemTemp.createTempSync('anyps5_first_start');
+      addTearDown(() => folder.deleteSync(recursive: true));
+      final file = '${folder.path}/preferences.json';
+      expect(Preferences.load(file, systemLocales: ['zh-Hant-TW', 'en-US']).language, 'zh-Hant');
+      expect(Preferences.load(file, systemLocales: ['eo']).language, 'en');
+      (Preferences()..language = 'de').save(file);
+      expect(Preferences.load(file, systemLocales: ['ko-KR']).language, 'de');
+    },
+  );
+
+  test('Settings lists every bundled language by its own name', () async {
+    await T.load();
+    final fixture = makeFixture();
+    addTearDown(fixture.dispose);
+    fixture.model.open(Layer.settings);
+    final row = fixture.model
+        .panelCategories()
+        .expand((category) => category.rows)
+        .firstWhere((row) => row.id == 'language');
+    final options = (row.kind as ChoiceRow).options;
+    expect(options, [for (final language in T.languages) language.displayName]);
+    expect(options, containsAll(['한국어', '简体中文', '繁體中文', 'ភាសាខ្មែរ', 'ພາສາລາວ', 'አማርኛ', 'Norsk', 'Filipino']));
+    expect(options.where((name) => !T.languages.any((language) => language.code == name)), hasLength(options.length));
+  });
+
+  test('no bundled text lost a letter to a question mark when its file was saved', () {
+    final english = jsonDecode(File('assets/l10n/en.json').readAsStringSync()) as Map<String, Object?>;
+    final damaged = <String>[];
+    for (final file in Directory('assets/l10n').listSync().whereType<File>().where((f) => f.path.endsWith('.json'))) {
+      final texts = jsonDecode(file.readAsStringSync()) as Map<String, Object?>;
+      for (final MapEntry(:key, :value) in texts.entries) {
+        if (value is! String) continue;
+        final englishText = english[key] is String ? english[key]! as String : '';
+        if (RegExp(r'\p{L}\?\p{L}', unicode: true).hasMatch(value) && !englishText.contains('?')) {
+          damaged.add('${file.uri.pathSegments.last}: $key');
+        }
+      }
+    }
+    expect(damaged, isEmpty);
   });
 
   testWidgets('the home screen fits in every bundled language', (tester) async {

@@ -1344,7 +1344,7 @@
   "reportGitHub": "Abrir en GitHub",
   "reportGitHubDetail": "%@ · formulario de errores del motor; después, arrastra crash_log.txt hasta allí.",
   "reportLauncher": "Informar de un error del lanzador",
-  "reportLauncherDetail": "AnyTogether/AnyLauncher-Port · para problemas del propio lanzador; se usa el mismo texto.",
+  "reportLauncherDetail": "AnyTogether/AnyPS5-Desktop · para problemas del propio lanzador; se usa el mismo texto.",
   "reportLogTail": "Final del registro",
   "reportNoLog": "El juego no escribió nada en su registro.",
   "reportFactSystem": "Sistema",

@@ -1347,7 +1347,7 @@
   "reportGitHub": "Открыто GitHub",
   "reportGitHubDetail": "%@ · форма ошибки движка, затем перетащите в нее crash_log.txt.",
   "reportLauncher": "Сообщить об ошибке в лаунчере",
-  "reportLauncherDetail": "AnyTogether/AnyLauncher-Port · когда сама программа запуска пошла не так, тот же текст.",
+  "reportLauncherDetail": "AnyTogether/AnyPS5-Desktop · когда сама программа запуска пошла не так, тот же текст.",
   "reportLogTail": "Конец журнала",
   "reportNoLog": "Игра ничего не писала в свой лог.",
   "reportFactSystem": "Система",

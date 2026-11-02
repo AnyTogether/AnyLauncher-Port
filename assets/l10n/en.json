@@ -1363,7 +1363,7 @@
   "reportGitHub": "Open on GitHub",
   "reportGitHubDetail": "%@ · the engine's bug form, then drag crash_log.txt into it.",
   "reportLauncher": "Report a Launcher Bug",
-  "reportLauncherDetail": "AnyTogether/AnyLauncher-Port · when the launcher itself went wrong, same text.",
+  "reportLauncherDetail": "AnyTogether/AnyPS5-Desktop · when the launcher itself went wrong, same text.",
   "reportLogTail": "End of the log",
   "reportNoLog": "The game wrote nothing to its log.",
   "reportFactSystem": "System",

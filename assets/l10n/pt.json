@@ -1347,7 +1347,7 @@
   "reportGitHub": "Abrir no GitHub",
   "reportGitHubDetail": "%@ · formulário de bugs do mecanismo; depois arraste crash_log.txt para lá.",
   "reportLauncher": "Relatar bug do inicializador",
-  "reportLauncherDetail": "AnyTogether/AnyLauncher-Port · para problemas no próprio inicializador; o texto é o mesmo.",
+  "reportLauncherDetail": "AnyTogether/AnyPS5-Desktop · para problemas no próprio inicializador; o texto é o mesmo.",
   "reportLogTail": "Fim do log",
   "reportNoLog": "O jogo não gravou nada no log.",
   "reportFactSystem": "Sistema",

@@ -1363,7 +1363,7 @@
   "reportGitHub": "GitHub'da Aç",
   "reportGitHubDetail": "%@ · motorun hata formu; sonra crash_log.txt dosyasını içine sürükle.",
   "reportLauncher": "Başlatıcı Hatası Bildir",
-  "reportLauncherDetail": "AnyTogether/AnyLauncher-Port · hata başlatıcının kendisindeyse, aynı metin.",
+  "reportLauncherDetail": "AnyTogether/AnyPS5-Desktop · hata başlatıcının kendisindeyse, aynı metin.",
   "reportLogTail": "Günlüğün sonu",
   "reportNoLog": "Oyun günlüğüne hiçbir şey yazmadı.",
   "reportFactSystem": "Sistem",

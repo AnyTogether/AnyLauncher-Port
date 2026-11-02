@@ -1347,7 +1347,7 @@
   "reportGitHub": "Ouvrir sur GitHub",
   "reportGitHubDetail": "%@ · formulaire de signalement de bugs du moteur ; faites-y ensuite glisser crash_log.txt.",
   "reportLauncher": "Signaler un bug du lanceur",
-  "reportLauncherDetail": "AnyTogether/AnyLauncher-Port · pour un problème du lanceur lui-même, avec le même texte.",
+  "reportLauncherDetail": "AnyTogether/AnyPS5-Desktop · pour un problème du lanceur lui-même, avec le même texte.",
   "reportLogTail": "Fin du journal",
   "reportNoLog": "Le jeu n’a rien écrit dans son journal.",
   "reportFactSystem": "Système",

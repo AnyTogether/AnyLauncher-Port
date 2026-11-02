@@ -1347,7 +1347,7 @@
   "reportGitHub": "Buka pada GitHub",
   "reportGitHubDetail": "%@ · bentuk bug mesin, lalu drag crash_log.txt ke dalamnya.",
   "reportLauncher": "Laporkan Bug Peluncur",
-  "reportLauncherDetail": "AnyTogether/AnyLauncher-Port · ketika peluncurnya sendiri bermasalah, teks yang sama.",
+  "reportLauncherDetail": "AnyTogether/AnyPS5-Desktop · ketika peluncurnya sendiri bermasalah, teks yang sama.",
   "reportLogTail": "Akhir log",
   "reportNoLog": "Permainan tidak menulis apa pun ke lognya.",
   "reportFactSystem": "Sistem",

@@ -1,9 +1,11 @@
 import 'dart:io';
 
+import 'package:flutter/gestures.dart' show kPrimaryMouseButton;
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import '../core/controls.dart';
+import '../core/gamepad/feel.dart' show HoldRepeater;
 import '../core/replay_buffer.dart';
 import '../core/screenshots.dart';
 import '../core/trophies.dart';
@@ -536,7 +538,7 @@ class PanelRows extends StatelessWidget {
                 // While a controller is on the sections' column, no row has the focus.
                 focused: index == model.panelRow && !model.panelSections,
                 onTap: () => model.activateRow(index),
-                onStep: (delta) => model.stepRow(index, delta),
+                onStep: (delta, {repeat = false}) => model.stepRow(index, delta, repeat: repeat),
                 onHover: () => model.hoverRow(index),
               ),
             ),
@@ -562,8 +564,8 @@ class _RowView extends StatelessWidget {
   final bool focused;
   final VoidCallback onTap;
 
-  /// One step back (-1) or on (1), from a click on ‹ › or − +.
-  final void Function(int delta) onStep;
+  /// One step back (-1) or on (1), from a click on ‹ › or − +; [repeat] while − + is held.
+  final void Function(int delta, {bool repeat}) onStep;
   final VoidCallback onHover;
 
   @override
@@ -647,7 +649,7 @@ class _RowView extends StatelessWidget {
               decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
             ),
           );
-        case StepperRow(:final value, :final min, :final max, :final format):
+        case StepperRow(:final value, :final min, :final max, :final format, :final wraps):
           return editable(
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -657,9 +659,10 @@ class _RowView extends StatelessWidget {
                     key: ValueKey('${row.id}-previous'),
                     size: arrowSize,
                     icon: Icons.remove_rounded,
-                    enabled: value > min,
+                    enabled: wraps || value > min,
                     focused: focused,
                     onTap: () => onStep(-1),
+                    onRepeat: () => onStep(-1, repeat: true),
                   ),
                   SizedBox(width: 4 * scale),
                 ],
@@ -670,9 +673,10 @@ class _RowView extends StatelessWidget {
                     key: ValueKey('${row.id}-next'),
                     size: arrowSize,
                     icon: Icons.add_rounded,
-                    enabled: value < max,
+                    enabled: wraps || value < max,
                     focused: focused,
                     onTap: () => onStep(1),
+                    onRepeat: () => onStep(1, repeat: true),
                   ),
                 ],
               ],
@@ -955,13 +959,14 @@ class _ListeningState extends State<_Listening> with SingleTickerProviderStateMi
 }
 
 /// A row's ‹ › or − + : its own click target, dimmed at the end of the choices.
-class _StepArrow extends StatelessWidget {
+class _StepArrow extends StatefulWidget {
   const _StepArrow({
     super.key,
     required this.icon,
     required this.enabled,
     required this.focused,
     required this.onTap,
+    this.onRepeat,
     this.size = 32,
   });
 
@@ -972,26 +977,64 @@ class _StepArrow extends StatelessWidget {
   final bool focused;
   final VoidCallback onTap;
 
+  /// Held down: the step again on a held key's pace, speeding up (a stepper's − +).
+  final VoidCallback? onRepeat;
+
+  @override
+  State<_StepArrow> createState() => _StepArrowState();
+}
+
+class _StepArrowState extends State<_StepArrow> {
+  late final HoldRepeater<int> _hold = HoldRepeater<int>((_) {
+    _repeated = true;
+    widget.onRepeat?.call();
+  });
+
+  /// The hold has repeated: letting go is not one more click.
+  bool _repeated = false;
+
+  @override
+  void dispose() {
+    _hold.stop();
+    super.dispose();
+  }
+
+  void _down(PointerDownEvent event) {
+    _repeated = false;
+    if (widget.onRepeat == null || !widget.enabled || event.buttons != kPrimaryMouseButton) return;
+    _hold.holdQuietly(0);
+  }
+
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
-    final ink = focused ? LookScope.focusedInk(context) : Colors.white;
-    return Pressable(
-      onTap: enabled ? onTap : null,
-      pressScale: 0.88,
-      builder: (context, hovering) => AnimatedContainer(
-        duration: Motion.focus,
-        curve: Motion.settle,
-        width: size * scale,
-        height: size * scale,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: ink.withValues(alpha: hovering ? 0.14 : 0),
-        ),
-        child: Icon(
-          icon,
-          size: 20 * scale,
-          color: ink.withValues(alpha: enabled ? (hovering ? 1 : 0.6) : 0.2),
+    final ink = widget.focused ? LookScope.focusedInk(context) : Colors.white;
+    return Listener(
+      onPointerDown: _down,
+      onPointerUp: (_) => _hold.stop(),
+      onPointerCancel: (_) => _hold.stop(),
+      child: Pressable(
+        onTap: widget.enabled
+            ? () {
+                if (!_repeated) widget.onTap();
+                _repeated = false;
+              }
+            : null,
+        pressScale: 0.88,
+        builder: (context, hovering) => AnimatedContainer(
+          duration: Motion.focus,
+          curve: Motion.settle,
+          width: widget.size * scale,
+          height: widget.size * scale,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: ink.withValues(alpha: hovering ? 0.14 : 0),
+          ),
+          child: Icon(
+            widget.icon,
+            size: 20 * scale,
+            color: ink.withValues(alpha: widget.enabled ? (hovering ? 1 : 0.6) : 0.2),
+          ),
         ),
       ),
     );

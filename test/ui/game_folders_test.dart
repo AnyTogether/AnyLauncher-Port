@@ -13,7 +13,7 @@ import '../support/ui_support.dart';
 import 'desktop_features_test.dart' show FakePads;
 
 /// Several games folders (a library over more than one drive): the preferences, the library made
-/// of them all, a folder whose drive is unplugged, and Settings › Game Library's rows.
+/// of them all, a folder whose drive is unplugged, and Settings › Game library's rows.
 void main() {
   late Fixture fixture;
   late AppModel model;
@@ -164,8 +164,8 @@ void main() {
     });
   });
 
-  group('Settings › Game Library', () {
-    test('a row per folder with its games, then Add Folder', () {
+  group('Settings › Game library', () {
+    test('a row per folder with its games, then Add folder', () {
       final second = addSecond();
       final rows = libraryRows();
       expect(rowIds(), ['folder-0', 'folder-1', 'addFolder', 'rescan', 'prepareNewGames']);
@@ -176,10 +176,10 @@ void main() {
       expect(rows.take(3).every((row) => row.focusable), isTrue);
       T.language = Language.byCode('tr');
       expect(libraryRows()[1].detail, '2 oyun · Kütüphaneden kaldır');
-      expect(T.text('addFolder'), 'Klasör Ekle');
+      expect(T.text('addFolder'), 'Klasör ekle');
     });
 
-    test('with the keys: down to a folder, Enter takes it out, Enter on Add Folder adds one', () {
+    test('with the keys: down to a folder, Enter takes it out, Enter on Add folder adds one', () {
       final second = addSecond();
       openLibrarySettings();
       model.command(Command.down);
@@ -192,7 +192,7 @@ void main() {
       expect(rowIds()[model.panelRow], 'addFolder', reason: 'the focus stays where the row was');
     });
 
-    test('Add Folder appends the picked folder; one already there is said, not added twice', () async {
+    test('Add folder appends the picked folder; one already there is said, not added twice', () async {
       final second = folder('Drive2');
       makeDump(second, 'own', titleId: 'PPSA05005', names: {'en-US': 'Second Drive Game'});
       openLibrarySettings();

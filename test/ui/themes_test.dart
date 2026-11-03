@@ -12,7 +12,7 @@ import '../support/fake_audio.dart';
 import '../support/ui_support.dart';
 
 /// Settings › Appearance with themes: installing a `.anyps5theme` (as the Hub and a double-click
-/// do), the Theme Studio changing the theme in use live, Save as a File, and the user's own
+/// do), the Theme studio changing the theme in use live, Save as a File, and the user's own
 /// background and menu music.
 void main() {
   late Fixture fixture;
@@ -83,6 +83,39 @@ void main() {
     expect(has('accent'), isTrue);
   });
 
+  test('a hue goes round the circle; a held arrow speeds up, a press stays one step', () {
+    const circle = StepperRow(value: 355, min: 0, max: 355, step: 5, format: _same, set: _ignore, wraps: true);
+    expect(circle.moved(1), 0);
+    expect(circle.moved(-1), 350);
+    expect(const StepperRow(value: 0, min: 0, max: 355, step: 5, format: _same, set: _ignore, wraps: true).moved(-1), 355);
+    const line = StepperRow(value: 85, min: -90, max: 90, step: 5, format: _same, set: _ignore);
+    expect(line.moved(3), 90, reason: 'a line stops at its end');
+    expect([for (final repeats in [0, 7, 8, 19, 20, 40]) StepperRow.stride(repeats)], [1, 1, 3, 3, 6, 6]);
+
+    openAppearance();
+    (row('studio').kind as ActionRow).run();
+    model.panelRow = rows().indexWhere((row) => row.id == 'hue');
+    int hue() => (row('hue').kind as StepperRow).value;
+    final start = hue();
+    model.command(Command.right);
+    expect(hue(), (start + 5) % 360, reason: 'one press, one step');
+    // Held: seven repeats at one step, then three at a time.
+    for (var repeat = 0; repeat < 12; repeat++) {
+      model.command(Command.right, repeat: true);
+    }
+    expect(hue(), (start + 5 + 7 * 5 + 5 * 15) % 360);
+    // A new press starts slow again.
+    final before = hue();
+    model.command(Command.left);
+    expect(hue(), (before - 5) % 360);
+    // The mouse holding − does the same through stepRow.
+    final index = rows().indexWhere((row) => row.id == 'hue');
+    for (var repeat = 0; repeat < 9; repeat++) {
+      model.stepRow(index, -1, repeat: true);
+    }
+    expect(hue(), (before - 5 - 7 * 5 - 2 * 15) % 360);
+  });
+
   test('something that is no theme says so and changes nothing', () async {
     final bad = File(p.join(fixture.temp.path, 'bad.anyps5theme'))..writeAsStringSync('nope');
     expect(await model.installTheme(bad.path), isNull);
@@ -90,7 +123,7 @@ void main() {
     expect(model.preferences.customTheme, isNull);
   });
 
-  test('the Theme Studio copies the look in use and changes it live', () async {
+  test('the Theme studio copies the look in use and changes it live', () async {
     openAppearance();
     (row('studio').kind as ActionRow).run();
     expect(model.overlay, Layer.themeStudio);
@@ -211,3 +244,6 @@ void main() {
     expect(Preferences.fromJson({'backdrop': 'hologram'}).backdrop, 'theme');
   });
 }
+
+String _same(int value) => '$value';
+void _ignore(int value) {}

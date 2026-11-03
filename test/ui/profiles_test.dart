@@ -127,7 +127,7 @@ void main() {
 
   group('switching', () {
     test(
-      'Options/Start on Home opens the menu with Switch Profile and online or offline; Triangle stays the game\'s',
+      'Options/Start on Home opens the menu with Switch profile and online or offline; Triangle stays the game\'s',
       () {
         fixture = makeFixture();
         final model = fixture.model;
@@ -145,7 +145,7 @@ void main() {
       },
     );
 
-    test('Switch Profile in the PS menu opens the picker; not while a game starts', () async {
+    test('Switch profile in the PS menu opens the picker; not while a game starts', () async {
       fixture = makeFixture();
       final model = fixture.model;
       model.profiles.add(name: 'Selin', mode: ProfileMode.offline);
@@ -433,7 +433,7 @@ void main() {
       await expectLater(shell, matchesGoldenFile('goldens/profiles_settings.png'));
     });
 
-    testWidgets('Add Profile', (tester) async {
+    testWidgets('Add profile', (tester) async {
       fixture = makeFixture();
       final model = fixture.model;
       model.openAddProfile();

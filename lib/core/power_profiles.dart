@@ -6,8 +6,8 @@ import 'package:ffi/ffi.dart';
 import 'package:path/path.dart' as p;
 
 // Battery and heat profiles (Settings › Battery & Heat): what a laptop on battery, or a computer
-// running hot, does to the game playing. On battery the game can be held to 30, 40 or 45 fps, its
-// frame generation paused and the launcher's heavy effects dimmed; running hot the same, with a
+// running hot, does to the game playing. On battery the game can be held to 30 fps or more, up to
+// the display's refresh rate, its frame generation paused and the launcher's heavy effects dimmed; running hot the same, with a
 // note that can be undone from the quick menu. Plugged in and cool nothing changes. The macOS
 // launcher's PowerProfiles.swift, rule for rule and with its settings keys; the readings come
 // from GetSystemPowerStatus on Windows and /sys on Linux. Where the heat cannot be read (Windows
@@ -80,8 +80,20 @@ class PowerProfile {
     required this.dimEffects,
   });
 
-  /// The frame caps offered; 0 is none.
+  /// The frame caps offered on any display; 0 is none.
   static const frameCaps = [0, 30, 40, 45];
+
+  /// The higher caps, offered up to the display's own refresh rate.
+  static const higherCaps = [60, 90, 120, 144, 165, 240, 360];
+
+  /// The caps offered for a display of [hertz] (60 when unknown): the low ones, the higher ones
+  /// up to it, its own rate, and [kept] (a cap saved on another display) so it is not lost.
+  static List<int> frameCapsFor(int? hertz, {int? kept}) {
+    final rate = hertz == null || hertz < 30 ? 60 : hertz;
+    final caps = {...frameCaps, for (final cap in higherCaps) if (cap <= rate) cap, rate};
+    if (kept != null && kept > 0) caps.add(kept);
+    return caps.toList()..sort();
+  }
 
   static const battery = PowerProfile(
     on: true,

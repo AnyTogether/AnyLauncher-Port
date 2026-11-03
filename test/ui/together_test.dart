@@ -261,7 +261,15 @@ void main() {
       model.together.friendHandle = '@deniz';
       await model.together.askFriend();
       expect(model.toast, 'Request sent to deniz');
-      expect(rowIds().last, 'waiting-u-deniz');
+      expect(rowIds().reversed.take(2), ['unsend-u-deniz', 'waiting-u-deniz']);
+      // Taken back, as on the website.
+      final unsend = model.panelCategories().single.rows.firstWhere((row) => row.id == 'unsend-u-deniz');
+      expect(unsend.title, 'Cancel request to Deniz');
+      (unsend.kind as ActionRow).run();
+      await until(() => model.together.hub.friends.outgoing.isEmpty);
+      expect(server.outgoing, isEmpty);
+      expect(model.toast, 'Request to Deniz withdrawn');
+      expect(rowIds(), isNot(contains('waiting-u-deniz')));
       model.together.friendHandle = 'nobody';
       await model.together.askFriend();
       expect(model.toast, 'No one is called nobody');
@@ -568,6 +576,15 @@ void main() {
       expect(model.overlay, Layer.party, reason: 'Back answers the question, the panel stays');
       expect(rowIds(), contains('party-kick-u-ana'));
       expect(rowIds()[model.panelRow], 'party-kick-u-ana');
+      // Handing the party over asks first too, then Ana leads and the leader's rows go.
+      run('party-lead-u-ana');
+      expect(row('party-lead-u-ana-ask').title, 'Make Ana the party leader? Only they can give it back.');
+      run('party-lead-u-ana-yes');
+      await until(() => model.together.hub.parties.party?.leaderId == 'u-ana');
+      expect(server.callsTo('parties/$partyId/leader').single.body, {'userId': 'u-ana'});
+      expect(rowIds(), isNot(contains('party-kick-u-ana')));
+      server.party!['leaderId'] = 'u-me';
+      await model.together.hub.parties.refresh();
       run('party-kick-u-ana');
       run('party-kick-u-ana-yes');
       await until(() => server.callsTo('parties/$partyId/kick').isNotEmpty);
@@ -599,7 +616,7 @@ void main() {
       expect(T.format('askKick', ['Ana']), 'Ana partiden çıkarılsın mı? Geri gelmek için yeni bir davet gerekir.');
     });
 
-    test('AnyTogether retiring this version opens Update Required once, with the update', () async {
+    test('AnyTogether retiring this version opens Update required once, with the update', () async {
       server.answers['me/friends'] = (
         426,
         {
@@ -614,7 +631,7 @@ void main() {
       );
       await model.together.hub.friends.refresh().catchError((Object _) {});
       await until(() => model.overlay == Layer.updateRequired);
-      expect(model.panelCategories().single.title, 'Update Required');
+      expect(model.panelCategories().single.title, 'Update required');
       expect(rowIds().first, 'required-why');
       expect(row('required-why').title, contains('0.1.7'));
       expect(rowIds(), contains('required-later'));
@@ -1412,7 +1429,7 @@ void main() {
       expect(model.toast, 'This game is full');
     });
 
-    test('Play Together: the host starts the selected game for the party with online play on for it only', () async {
+    test('Play together: the host starts the selected game for the party with online play on for it only', () async {
       server.inParty([ana]);
       await model.together.hub.parties.refresh();
       final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
@@ -1423,7 +1440,7 @@ void main() {
       expect(model.preferences.onlinePlay, isFalse);
       model.open(Layer.party);
       final start = model.panelCategories().single.rows.firstWhere((row) => row.id == 'together-start');
-      expect(start.title, 'Play Together: Orbit Runner');
+      expect(start.title, 'Play together: Orbit Runner');
       (start.kind as ActionRow).run();
       await until(() => model.together.hub.games.session != null);
       final session = model.together.hub.games.session!;
@@ -1454,7 +1471,7 @@ void main() {
       expect(model.together.togetherSession, isNull);
     });
 
-    test("Play Together: the party hears it start, and Join starts the same game in the host's session", () async {
+    test("Play together: the party hears it start, and Join starts the same game in the host's session", () async {
       server.inParty([ana], leader: 'u-ana');
       await model.together.hub.parties.refresh();
       final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
@@ -1486,7 +1503,7 @@ void main() {
     });
 
     test(
-      'Play Together: Try Anyway joins with another game version, never another engine; who tried is shown',
+      'Play together: Try anyway joins with another game version, never another engine; who tried is shown',
       () async {
         server.inParty([ana], leader: 'u-ana');
         server.hostSession('gs-v', ana, kind: 'lan', gameVersion: '01.001.000');
@@ -1496,7 +1513,7 @@ void main() {
         List<String> ids() => model.panelCategories().single.rows.map((row) => row.id).toList();
         PanelRow row(String id) => model.panelCategories().single.rows.firstWhere((row) => row.id == id);
         expect(ids(), containsAllInOrder(['together-join', 'together-try-anyway']));
-        expect(row('together-try-anyway').title, 'Try Anyway');
+        expect(row('together-try-anyway').title, 'Try anyway');
         expect(row('together-player-u-ana').detail, contains('Tried anyway'));
         (row('together-try-anyway').kind as ActionRow).run();
         await until(() => server.callsTo('game-sessions/gs-v/join').isNotEmpty);
@@ -1514,7 +1531,7 @@ void main() {
       },
     );
 
-    test('Play Together: a different version or engine is named, a locked copy is unlocked first', () async {
+    test('Play together: a different version or engine is named, a locked copy is unlocked first', () async {
       server.inParty([ana], leader: 'u-ana');
       server.hostSession('gs-v', ana, kind: 'lan', gameVersion: '01.001.000');
       await model.together.hub.parties.refresh();
@@ -1533,7 +1550,7 @@ void main() {
       await model.together.hub.parties.refresh();
       model.open(Layer.party);
       final unlock = model.panelCategories().single.rows.firstWhere((row) => row.id == 'together-join');
-      expect(unlock.title, 'Unlock and Play');
+      expect(unlock.title, 'Unlock and play');
 
       server.gameSessions.remove('gs-neon');
       server.hostSession('gs-e', ana, kind: 'lan', engineBuild: '0.2.13-a1b2c3d4e5f6');
@@ -1576,7 +1593,7 @@ void main() {
       expect(model.toast, 'Ana invites you to Orbit Runner');
       expect(model.together.hub.badge, 1);
       model.open(Layer.friends);
-      // After My Profile, Find Players, Activity and Leaderboard.
+      // After My Profile, Find players, Activity and Leaderboard.
       expect(rowIds().skip(4).take(2), ['game-accept-gs-ana', 'game-decline-gs-ana']);
       (model.panelCategories().single.rows[5].kind as ActionRow).run();
       await until(() => server.callsTo('game-sessions/gs-ana/decline').isNotEmpty);

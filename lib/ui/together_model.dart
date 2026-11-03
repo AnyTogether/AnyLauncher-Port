@@ -217,7 +217,7 @@ class TogetherModel {
   Person? profileCard;
   bool profileFailed = false;
   int profileIndex = 0;
-  Layer? profileReturn;
+  PanelSpot? profileReturn;
 
   /// Comparing trophies: with whom, their games (once read), the game the keys are on; one
   /// game's trophies side by side once one is opened, and the trophy the keys are on; the layer
@@ -228,7 +228,7 @@ class TogetherModel {
   String? compareTitleId;
   Section<TrophyComparison>? comparison;
   int comparisonIndex = 0;
-  Layer? compareReturn;
+  PanelSpot? compareReturn;
 
   /// A game session being opened for the game that just started.
   bool openingSession = false;
@@ -694,6 +694,16 @@ class TogetherModel {
     }
   }
 
+  /// A request the user sent, taken back before they answered.
+  Future<void> withdrawRequest(Person person) async {
+    try {
+      await hub.friends.withdraw(person.id);
+      app.show(T.format('friendsRequestCancelled', [person.displayName]));
+    } on Object catch (error) {
+      app.show(message(error));
+    }
+  }
+
   /// Opens the settings at the AnyTogether rows.
   void openSettings() {
     app.open(Layer.settings);
@@ -833,7 +843,7 @@ class TogetherModel {
           level: friend.level,
           kind: ActionRow(() => openFriend(friend)),
         ),
-      for (final person in friends.outgoing)
+      for (final person in friends.outgoing) ...[
         PanelRow(
           id: 'waiting-${person.id}',
           title: person.displayName,
@@ -841,6 +851,13 @@ class TogetherModel {
           person: card(person),
           kind: const InfoRow(''),
         ),
+        // Taken back as on the website; a new request can always be sent again.
+        PanelRow(
+          id: 'unsend-${person.id}',
+          title: T.format('friendsCancelRequest', [person.displayName]),
+          kind: ActionRow(() => unawaited(withdrawRequest(person)), destructive: true),
+        ),
+      ],
     ];
   }
 

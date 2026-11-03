@@ -8,7 +8,7 @@ class SocialScreens {
   int feedIndex = 0;
   int feedReaction = 0;
   bool feedFailed = false;
-  Layer? feedReturn;
+  PanelSpot? feedReturn;
 
   /// A leaderboard: the game's (null for overall trophy points), by what, among whom, what came
   /// back, the line the keys are on, and whether reading failed or the game has none.
@@ -21,7 +21,7 @@ class SocialScreens {
   bool boardFailed = false;
   bool boardMissing = false;
   bool boardLoading = false;
-  Layer? boardReturn;
+  PanelSpot? boardReturn;
 
   /// Each read of a board counts up, so an answer to an older one is dropped.
   int boardReads = 0;
@@ -128,7 +128,7 @@ extension TogetherSocial on TogetherModel {
   void openFeed() {
     if (!signedIn) return;
     final from = app.overlay;
-    if (from != null && from != Layer.feed && from != Layer.profile) screens.feedReturn = from;
+    if (from != null && from != Layer.feed && from != Layer.profile) screens.feedReturn = app.spot;
     screens
       ..feedIndex = 0
       ..feedReaction = _reactionIndex(social.feed.items.firstOrNull);
@@ -152,8 +152,7 @@ extension TogetherSocial on TogetherModel {
   void closeFeed() {
     final back = screens.feedReturn;
     screens.feedReturn = null;
-    if (back == null) return app.closeOverlay();
-    app.open(back, cue: Cue.back);
+    app.returnTo(back);
   }
 
   static int _reactionIndex(Activity? item) => item?.reactions.mine?.index ?? 0;
@@ -261,7 +260,7 @@ extension TogetherSocial on TogetherModel {
   void openLeaderboard(Game? game) {
     if (!signedIn) return;
     final from = app.overlay;
-    if (from != null && from != Layer.leaderboard && from != Layer.profile) screens.boardReturn = from;
+    if (from != null && from != Layer.leaderboard && from != Layer.profile) screens.boardReturn = app.spot;
     if (screens.boardTitleId != game?.titleId) {
       screens
         ..boardKind = GameBoard.points
@@ -314,8 +313,7 @@ extension TogetherSocial on TogetherModel {
     screens.boardReads++;
     final back = screens.boardReturn;
     screens.boardReturn = null;
-    if (back == null) return app.closeOverlay();
-    app.open(back, cue: Cue.back);
+    app.returnTo(back);
   }
 
   List<BoardLine> get boardLines => screens.board?.lines(user?.id ?? '') ?? const [];
@@ -404,9 +402,12 @@ extension TogetherSocial on TogetherModel {
     app.refresh();
   }
 
+  /// The count of unread ones, or "Nothing new" over notifications all read. An empty list says
+  /// it once, in its own row, so the heading stays quiet.
   String get notificationsSubtitle {
-    final unread = social.notices.unread;
-    return unread > 0 ? T.format('socialNotifUnread', [unread]) : T.text('socialNotifEmpty');
+    final center = social.notices;
+    if (center.unread > 0) return T.format('socialNotifUnread', [center.unread]);
+    return center.loaded && center.items.isNotEmpty ? T.text('socialNotifEmpty') : '';
   }
 
   List<PanelRow> notificationRows() {

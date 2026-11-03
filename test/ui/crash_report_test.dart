@@ -131,7 +131,7 @@ void main() {
       expect(model.toast, 'Report copied');
     }, skip: Platform.isWindows ? 'the fake game is a shell script' : false);
 
-    test('Open an Issue shows what is shared, then opens the engine\'s pre-filled form', () async {
+    test('Open an issue shows what is shared, then opens the engine\'s pre-filled form', () async {
       gameScript(crashScript);
       await model.play(orbit());
       await model.crash.pending;
@@ -149,7 +149,7 @@ void main() {
         ..handle(Command.down)
         ..handle(Command.select);
       expect(fixture.opened.last.path, '/AnyTogether/AnyPS5-Desktop/issues/new');
-      // Back steps out of the shared text onto Open an Issue; Back again closes.
+      // Back steps out of the shared text onto Open an issue; Back again closes.
       model.handle(Command.back);
       expect(model.crash.current!.sharing, isFalse);
       expect(rowIds()[model.panelRow], 'issue');
@@ -214,7 +214,7 @@ void main() {
     test('the last session\'s report opens for the last start', () async {
       gameScript('echo hello\nexit 0');
       await model.play(orbit());
-      expect(row('report').title, 'Last Session\'s Report');
+      expect(row('report').title, 'Last session\'s report');
       choose('report');
       expect(model.overlay, Layer.crashReport);
       await model.crash.pending;
@@ -234,7 +234,7 @@ void main() {
       expect(RegExp(r'^--- \S+ \S+ trace$', multiLine: true).hasMatch(log()), isTrue);
     }, skip: Platform.isWindows ? 'the fake game is a shell script' : false);
 
-    test('Play with Detailed Logging traces one start, the setting left as it is', () async {
+    test('Play with detailed logging traces one start, the setting left as it is', () async {
       gameScript('env | grep ^APS5_LOG_SYNC');
       row('playTraced');
       choose('playTraced');
@@ -304,10 +304,10 @@ void main() {
       model.crash.show(orbit(), sample(settings: const GameSettings(trace: true)), afterCrash: true, sharing: true);
       await pumpLauncher(tester, model);
       expect(find.text('Paylaşılacaklar'), findsOneWidget);
-      expect(find.text('GitHub\'da Aç'), findsOneWidget);
+      expect(find.text('GitHub\'da aç'), findsOneWidget);
       await press(tester, LogicalKeyboardKey.escape);
       expect(model.crash.current!.sharing, isFalse);
-      expect(find.text('crash_log.txt Olarak Kaydet'), findsOneWidget);
+      expect(find.text('crash_log.txt olarak kaydet'), findsOneWidget);
     });
   });
 }

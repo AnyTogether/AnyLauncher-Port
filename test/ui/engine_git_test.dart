@@ -12,7 +12,7 @@ import 'package:path/path.dart' as p;
 import '../support/fake_commands.dart';
 import '../support/ui_support.dart';
 
-/// Settings › AnyPS5 Engine › Update from Git, for an engine folder that is a git checkout.
+/// Settings › AnyPS5 engine › Update from Git, for an engine folder that is a git checkout.
 void main() {
   late FakeCommands commands;
   late Fixture fixture;
@@ -89,7 +89,7 @@ void main() {
     expect(row('engineGitBeforePlay'), isNull);
   });
 
-  test('success: the fingerprint changes, installed games offer Update and Play, Relink All', () async {
+  test('success: the fingerprint changes, installed games offer Update and play, Relink All', () async {
     installedWithCurrentBuild();
     final before = model.toolkitVersion;
     expect(orbitState(), isA<Installed>().having((state) => state.outdated, 'outdated', isFalse));
@@ -104,7 +104,7 @@ void main() {
     expect(model.preferences.engineGitBuilt[checkout], 'bbbbbbbb22');
     model.select(model.games.indexOf(orbit()));
     model.primaryAction(orbit());
-    expect(model.overlay, Layer.updateChoice, reason: 'Play offers Update and Play');
+    expect(model.overlay, Layer.updateChoice, reason: 'Play offers Update and play');
     model.closeOverlay();
     expect(row('engineGitRelinkAll')?.detail, T.format('engineGitRelinkAllDetail', [1]));
     choose('engineGitRelinkAll');
@@ -244,7 +244,7 @@ void main() {
 
   test('Turkish texts', () {
     T.language = Language.byCode('tr');
-    expect(row('engineGitUpdate')?.title, "Git'ten Güncelle");
+    expect(row('engineGitUpdate')?.title, "Git'ten güncelle");
     expect(row('engineGitBeforePlay')?.title, "Oynamadan önce Git'ten güncelle");
   });
 }

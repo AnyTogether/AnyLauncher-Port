@@ -17,8 +17,8 @@ import 'package:path/path.dart' as p;
 import '../support/fake_process.dart';
 import '../support/ui_support.dart';
 
-/// Game Settings' Frame Generation, Export and Import Settings and Copy Link, anyps5:// links
-/// opening the launcher, and Settings › Captures › Screenshots Folder.
+/// Game settings' Frame generation, Export and Import settings and Copy link, anyps5:// links
+/// opening the launcher, and Settings › Captures › Screenshots folder.
 void main() {
   late Fixture fixture;
   late AppModel model;
@@ -59,10 +59,10 @@ void main() {
   }
 
   group('frame generation', () {
-    test('a switch in Game Settings, said to need AnyPS5-ARM\'s engine on upstream\'s', () {
+    test('a switch in Game settings, said to need AnyPS5-ARM\'s engine on upstream\'s', () {
       openGame(orbit());
       final frames = row('frameGeneration');
-      expect(frames.title, 'Frame Generation');
+      expect(frames.title, 'Frame generation');
       expect(frames.detail, T.text('frameGenerationUpstream'));
       expect((frames.kind as ToggleRow).value, isFalse);
       (frames.kind as ToggleRow).set(true);
@@ -86,7 +86,7 @@ void main() {
       savedTo = folder.path;
       model.saveSettings(orbit(), const GameSettings(frameGeneration: true, overlay: OverlayCorner.topLeft));
       openGame(orbit());
-      expect(row('export').title, 'Export Settings');
+      expect(row('export').title, 'Export settings');
       await model.exportSettings(orbit());
       final file = File(p.join(folder.path, 'Orbit Runner - AnyPS5.json'));
       final json = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
@@ -146,10 +146,10 @@ void main() {
   });
 
   group('links', () {
-    test('Copy Link puts the game\'s anyps5:// link on the clipboard', () {
+    test('Copy link puts the game\'s anyps5:// link on the clipboard', () {
       openGame(orbit());
       final link = row('link');
-      expect(link.title, 'Copy Link');
+      expect(link.title, 'Copy link');
       expect(link.detail, 'anyps5://game/PPSA01001');
       (link.kind as ActionRow).run();
       expect(fixture.copied.last, 'anyps5://game/PPSA01001');

@@ -102,7 +102,7 @@ void main() {
         expect(window.system, isNotNull, reason: 'the model listens to the window');
         window.system!(true);
         expect(model.windowFullscreen, isTrue, reason: 'the window buttons wait at the top edge');
-        expect(model.launcherFullscreen, isTrue, reason: 'Settings › Full Screen reads on');
+        expect(model.launcherFullscreen, isTrue, reason: 'Settings › Full screen reads on');
         expect(Preferences.fromJson(model.preferences.toJson()).launcherFullscreen, isTrue, reason: 'and stays so');
         expect(window.asked, [false], reason: 'nothing asked back of the window: it is full screen already');
         model.open(Layer.settings);
@@ -138,7 +138,7 @@ void main() {
       final appearance = model.panelCategories().first.rows.map((row) => row.id);
       expect(appearance, contains('fullscreen'));
       await settle(tester);
-      expect(find.text('Full Screen'), findsWidgets);
+      expect(find.text('Full screen'), findsWidgets);
     });
   });
 
@@ -194,7 +194,7 @@ void main() {
       expect(window.minimized, 1, reason: 'hidden, they take no clicks');
     });
 
-    testWidgets('Leave Full Screen makes a window with the system\'s title bar, and they are gone; Quit quits', (
+    testWidgets('Leave full screen makes a window with the system\'s title bar, and they are gone; Quit quits', (
       tester,
     ) async {
       await start(tester);
@@ -427,13 +427,13 @@ void main() {
       pads.release(PadButton.guide);
     }
 
-    test('held in the launcher: the home menu, Switch Profile, Quit AnyPS5', () async {
+    test('held in the launcher: the home menu, Switch profile, Quit AnyPS5', () async {
       desktop.focused = true;
       await holdGuide();
       expect(model.overlay, Layer.homeMenu);
       final rows = model.panelCategories().single.rows;
       expect(rows.map((row) => row.id), ['switchProfile', 'quit']);
-      expect(rows.first.focusable, isTrue, reason: 'Switch Profile opens "Who\'s playing?"');
+      expect(rows.first.focusable, isTrue, reason: 'Switch profile opens "Who\'s playing?"');
       pads.press(PadButton.south);
       expect(model.overlay, Layer.profilePicker);
       pads.press(PadButton.east);
@@ -467,7 +467,7 @@ void main() {
       await playing;
     }, skip: Platform.isWindows ? 'the fake game is a shell script' : false);
 
-    test('Pause Game When Opening the Menu off: no key; Circle resumes; Close Game closes', () async {
+    test('Pause game when opening the menu off: no key; Circle resumes; Close game closes', () async {
       model.preferences.pauseOnMenu = false;
       final playing = (await startOrbit()).done;
       desktop.focused = false;
@@ -485,7 +485,7 @@ void main() {
       pads.press(PadButton.dpadDown);
       pads.press(PadButton.dpadDown);
       pads.press(PadButton.south);
-      expect(model.overlay, Layer.closeGame, reason: 'Close Game asks first');
+      expect(model.overlay, Layer.closeGame, reason: 'Close game asks first');
       pads.press(PadButton.south);
       await playing;
       expect(model.running, isNull);
@@ -546,7 +546,7 @@ void main() {
       await playing;
     }, skip: Platform.isWindows ? 'the fake game is a shell script' : false);
 
-    test('held in a game: Close Game? straight away; Cancel goes back to the game', () async {
+    test('held in a game: Close game? straight away; Cancel goes back to the game', () async {
       final playing = (await startOrbit()).done;
       desktop.focused = false;
       await holdGuide();
@@ -734,7 +734,7 @@ void main() {
       model.activateRow(rowOf(LauncherAction.screenshot));
       await press(tester, LogicalKeyboardKey.f11);
       expect(model.preferences.shortcuts[LauncherAction.screenshot].key, isNull);
-      expect(model.toast, 'Already used by Full Screen');
+      expect(model.toast, 'Already used by Full screen');
       model.activateRow(rowOf(LauncherAction.screenshot));
       await press(tester, LogicalKeyboardKey.enter);
       expect(model.toast, contains('AnyPS5 moves with'));
@@ -789,7 +789,7 @@ void main() {
       pads.press(PadButton.south);
       pads.press(PadButton.misc);
       expect(model.preferences.shortcuts[LauncherAction.quickMenu].pad, isNull);
-      expect(model.toast, 'Already used by Save Clip');
+      expect(model.toast, 'Already used by Save clip');
       model.panelRow = rowOf(LauncherAction.nextSection);
       pads.press(PadButton.north);
       expect(
@@ -855,7 +855,7 @@ void main() {
       }
     }
     T.language = Language.byCode('tr');
-    expect(T.text('quickResume'), 'Devam Et');
+    expect(T.text('quickResume'), 'Devam et');
     expect(AppModel.padLabel(PadChord.of(PadButton.misc, hold: true)), 'Share (basılı)');
   });
 }

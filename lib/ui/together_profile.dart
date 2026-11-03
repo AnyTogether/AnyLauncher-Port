@@ -28,7 +28,9 @@ extension TogetherProfiles on TogetherModel {
 
   /// Someone's profile, read in full; the layer shows it as it comes.
   Future<void> openProfile(String handle, {Person? card}) async {
-    profileReturn = app.overlay == Layer.profile ? profileReturn : app.overlay;
+    // Back goes where the profile was opened: Settings › AnyTogether on its row, not Settings'
+    // first section.
+    profileReturn = app.overlay == Layer.profile ? profileReturn : app.spot;
     profile = null;
     profileCard = card;
     profileFailed = false;
@@ -47,11 +49,7 @@ extension TogetherProfiles on TogetherModel {
   void closeProfile() {
     final back = profileReturn;
     profile = null;
-    if (back == null) {
-      app.closeOverlay();
-    } else {
-      app.open(back, cue: Cue.back);
-    }
+    app.returnTo(back);
   }
 
   /// Someone else's profile, read: their trophies can be compared with the user's.
@@ -102,7 +100,7 @@ extension TogetherProfiles on TogetherModel {
   /// The games [person] and the user have trophies in, both-play first; the layer shows them as
   /// they come.
   Future<void> openCompare(Person person) async {
-    compareReturn = app.overlay == Layer.compare ? compareReturn : app.overlay;
+    compareReturn = app.overlay == Layer.compare ? compareReturn : app.spot;
     compareWith = person;
     compareGames = null;
     compareIndex = 0;
@@ -147,9 +145,9 @@ extension TogetherProfiles on TogetherModel {
     } else {
       // Back on the profile it came from, as it was.
       final index = profileIndex;
-      app.open(back, cue: Cue.back);
+      app.returnTo(back);
       profileIndex = index;
-      if (back == Layer.friendOptions) {
+      if (back.layer == Layer.friendOptions) {
         app.panelRow = app.panelCategories().firstOrNull?.rows.indexWhere((row) => row.id == 'friend-compare') ?? 0;
       }
       app.refresh();

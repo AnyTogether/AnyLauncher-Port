@@ -102,11 +102,11 @@ void main() {
     expect(set.trophies.where(model.isSecret).map((trophy) => trophy.name), ['Ghost Signal']);
   });
 
-  test('Always Show Hidden Trophies shows them all, and is kept with the preferences', () {
+  test('Always show hidden trophies shows them all, and is kept with the preferences', () {
     model.open(Layer.settings);
     final general = model.panelCategories().firstWhere((category) => category.id == 'general');
     final row = general.rows.firstWhere((row) => row.id == 'hiddenTrophies');
-    expect(row.title, 'Always Show Hidden Trophies');
+    expect(row.title, 'Always show hidden trophies');
     expect(row.detail, 'Hidden trophies show their name and description before you earn them.');
     (row.kind as ToggleRow).set(true);
     expect(model.preferences.showHiddenTrophies, isTrue);
@@ -124,7 +124,7 @@ void main() {
     model.open(Layer.settings);
     final general = model.panelCategories().firstWhere((category) => category.id == 'general');
     final row = general.rows.firstWhere((row) => row.id == 'hiddenTrophies');
-    expect(row.title, 'Gizli Kupaları Her Zaman Göster');
+    expect(row.title, 'Gizli kupaları her zaman göster');
     expect(row.detail, 'Gizli kupaların adı ve açıklaması kazanmadan önce de görünür.');
   });
 
@@ -132,7 +132,7 @@ void main() {
     model.open(Layer.trophies);
     await pumpLauncher(tester, model);
     expect(find.text('Ghost Signal'), findsNothing);
-    expect(find.text('Hidden Trophy'), findsOneWidget);
+    expect(find.text('Hidden trophy'), findsOneWidget);
     // The focus is not on it: its chip shows, the hint does not.
     expect(find.byKey(const ValueKey('trophy-reveal-4')), findsOneWidget);
     expect(find.text('Show'), findsOneWidget);

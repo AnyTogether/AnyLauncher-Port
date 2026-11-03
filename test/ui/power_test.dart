@@ -13,7 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../support/fake_process.dart';
 import '../support/ui_support.dart';
 
-/// Settings › Battery & Heat: the readings, the profiles, what a game starts with and hears while
+/// Settings › Battery & heat: the readings, the profiles, what a game starts with and hears while
 /// it runs, the note over a hot game and Undo in the quick menu.
 void main() {
   late Fixture fixture;
@@ -25,6 +25,7 @@ void main() {
     model = fixture.model;
     clock = DateTime.utc(2026, 11, 1, 12);
     model.powerWatch.now = () => clock;
+    model.powerWatch.displayHertz = () => 60;
   });
 
   tearDown(() {
@@ -56,16 +57,43 @@ void main() {
   test('a laptop plugged in: the profiles shown, nothing in force', () {
     model.powerWatch.take(laptop);
     powerRows();
-    expect(model.panelCategories()[model.panelCategory].title, 'Battery & Heat');
+    expect(model.panelCategories()[model.panelCategory].title, 'Battery & heat');
     expect(row('powerStatus').title, 'Plugged in');
     expect(row('powerStatus').detail, 'Games run as you set them\nTemperature: normal');
     expect(row('powerStatus').detail, startsWith('Games run as you set them'));
     expect(hasRow('powerUndo'), isFalse);
     expect((row('batteryOn').kind as ToggleRow).value, isTrue);
-    expect((row('batteryCap').kind as ChoiceRow).options, ['Off', '30 FPS', '40 FPS', '45 FPS']);
+    expect((row('batteryCap').kind as ChoiceRow).options, ['Off', '30 FPS', '40 FPS', '45 FPS', '60 FPS (display)']);
     expect((row('batteryCap').kind as ChoiceRow).selected, 2);
     expect(hasRow('hotOn'), isTrue);
     expect(hasRow('powerUpstream'), isTrue, reason: 'the fixture runs upstream\'s engine');
+  });
+
+  test('a fast display offers caps up to its own rate; a cap saved on another stays', () {
+    model.powerWatch.displayHertz = () => 165;
+    model.powerWatch.take(onBattery);
+    final cap = row('batteryCap').kind as ChoiceRow;
+    expect(cap.options, [
+      'Off',
+      '30 FPS',
+      '40 FPS',
+      '45 FPS',
+      '60 FPS',
+      '90 FPS',
+      '120 FPS',
+      '144 FPS',
+      '165 FPS (display)',
+    ]);
+    cap.set(cap.options.length - 1);
+    expect(model.powerWatch.adjustment.frameCap, 165);
+    // Moved to a 60 Hz screen: 165 is still there to pick, nothing changes on its own.
+    model.powerWatch.displayHertz = () => 60;
+    final again = row('batteryCap').kind as ChoiceRow;
+    expect(again.options.last, '165 FPS');
+    expect(again.selected, again.options.length - 1);
+    // An unknown display gets the caps up to 60.
+    expect(PowerProfile.frameCapsFor(null), [0, 30, 40, 45, 60]);
+    expect(PowerProfile.frameCapsFor(75), [0, 30, 40, 45, 60, 75]);
   });
 
   test('on battery the battery profile holds: the line, Undo, the dimmed launcher', () {
@@ -75,7 +103,7 @@ void main() {
     expect(model.powerWatch.dimmed, isTrue);
     expect(model.solidGlass, isTrue);
     expect(Motion.reduced, isTrue);
-    expect(row('powerUndo').title, 'Undo Battery Profile');
+    expect(row('powerUndo').title, 'Undo battery profile');
     (row('powerUndo').kind as ActionRow).run();
     expect(model.toast, T.text('powerUndone'));
     expect(hasRow('powerUndo'), isFalse);
@@ -155,7 +183,7 @@ void main() {
     final quick = model.panelCategories().single.rows;
     expect(quick.map((row) => row.id), contains('powerUndo'));
     final undo = quick.firstWhere((row) => row.id == 'powerUndo');
-    expect(undo.title, 'Undo Heat Profile');
+    expect(undo.title, 'Undo heat profile');
     (undo.kind as ActionRow).run();
     expect(model.powerWatch.mode, PowerMode.battery, reason: 'the battery profile still holds');
     process.quit();
@@ -169,7 +197,7 @@ void main() {
     expect(File(file).readAsStringSync(), 'fps_cap=0\nframe_gen=1\n');
   });
 
-  testWidgets('golden: Settings › Battery & Heat on battery, the heat unknown', (tester) async {
+  testWidgets('golden: Settings › Battery & heat on battery, the heat unknown', (tester) async {
     model.powerWatch.take(
       const PowerReading(hasBattery: true, onBattery: true, batteryPercent: 64, minutesToEmpty: 125),
     );
@@ -184,7 +212,7 @@ void main() {
     addTearDown(() => T.language = Language.english);
     model.powerWatch.take(onBattery);
     expect(row('powerStatus').title, 'Pilde, %64, yaklaşık 2 sa 5 dk kaldı');
-    expect(model.panelCategories()[model.panelCategory].title, 'Pil ve Isı');
+    expect(model.panelCategories()[model.panelCategory].title, 'Pil ve ısı');
   });
 }
 

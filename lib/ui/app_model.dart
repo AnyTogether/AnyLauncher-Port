@@ -651,6 +651,11 @@ class HomeFocus {
   int get hashCode => Object.hash(area, index);
 }
 
+/// Where a screen was left: the layer, and on a panel its section and row, by their ids, so a
+/// list that changed meanwhile still lands on the same row. Back from a screen opened over it
+/// (a profile, the feed, a leaderboard) comes here.
+typedef PanelSpot = ({Layer layer, String? category, String? row});
+
 enum Layer {
   library,
   settings,
@@ -807,6 +812,7 @@ class StepperRow extends RowKind {
     required this.step,
     required this.format,
     required this.set,
+    this.wraps = false,
   });
   final int value;
   final int min;
@@ -814,6 +820,21 @@ class StepperRow extends RowKind {
   final int step;
   final String Function(int) format;
   final void Function(int) set;
+
+  /// A circle (a hue in degrees): past [max] comes [min] again, and the other way.
+  final bool wraps;
+
+  /// [value] moved [steps] steps: kept between [min] and [max], or round the circle.
+  int moved(int steps) {
+    final next = value + steps * step;
+    if (!wraps) return next.clamp(min, max);
+    final span = max - min + step;
+    return min + (next - min) % span;
+  }
+
+  /// How many steps one move of a hold takes after [repeats] repeats: one at first, then more,
+  /// so a held arrow crosses a long range in a second or two and a press stays exact.
+  static int stride(int repeats) => repeats < 8 ? 1 : (repeats < 20 ? 3 : 6);
 }
 
 class ActionRow extends RowKind {
@@ -1193,6 +1214,12 @@ class AppModel extends ChangeNotifier {
   /// What Forward opens again: the layer, where Back left the user, and the game selected then.
   (Layer, Layer?, int)? _forward;
 
+  /// Whether the command being handled is a held direction's repeat.
+  bool _repeatingNow = false;
+
+  /// The stepper row a held arrow is moving, which way, and how many repeats so far.
+  ({String row, int delta, int repeats})? _stepHold;
+
   /// The layers Forward may open again: plain screens, never a question or a running step.
   static const _forwardLayers = {
     Layer.library,
@@ -1234,7 +1261,12 @@ class AppModel extends ChangeNotifier {
     }
     final mark = _focusMark();
     final asked = sounds.requests;
-    handle(command);
+    _repeatingNow = repeat;
+    try {
+      handle(command);
+    } finally {
+      _repeatingNow = false;
+    }
     final direction =
         command == Command.left || command == Command.right || command == Command.up || command == Command.down;
     if (_edge.handled(
@@ -3580,6 +3612,31 @@ class AppModel extends ChangeNotifier {
     _changed();
   }
 
+  /// Where the user is now, for [returnTo]; null on Home.
+  PanelSpot? get spot {
+    final layer = overlay;
+    if (layer == null) return null;
+    final categories = panelCategories();
+    final category = categories.isEmpty ? null : categories[panelCategory.clamp(0, categories.length - 1)];
+    final rows = category?.rows ?? const <PanelRow>[];
+    return (layer: layer, category: category?.id, row: panelRow < rows.length ? rows[panelRow].id : null);
+  }
+
+  /// Back where [spot] was taken: its layer, section and row, with the back sound. Home when
+  /// there is no spot. A section or row gone since falls back to the first.
+  void returnTo(PanelSpot? spot) {
+    if (spot == null) return closeOverlay();
+    open(spot.layer, cue: Cue.back);
+    final categories = panelCategories();
+    final index = categories.indexWhere((category) => category.id == spot.category);
+    if (index < 0) return;
+    panelCategory = index;
+    final row = categories[index].rows.indexWhere((row) => row.id == spot.row);
+    panelRow = row < 0 ? 0 : row;
+    _skipToFocusable();
+    _changed();
+  }
+
   /// Settings, on the section [id].
   void openSettingsCategory(String id) {
     open(Layer.settings);
@@ -4789,7 +4846,6 @@ class AppModel extends ChangeNotifier {
         ],
       ),
       PanelCategory(id: 'engine', title: T.text('engine'), rows: engine.settingsRows()),
-      PanelCategory(id: 'fonts', title: T.text('fonts'), rows: fonts.settingsRows()),
       PanelCategory(id: 'profiles', title: T.text('profilesCategory'), rows: profileRows()),
       PanelCategory(id: 'together', title: 'AnyTogether', rows: together.settingsRows()),
       PanelCategory(
@@ -4927,6 +4983,8 @@ class AppModel extends ChangeNotifier {
       PanelCategory(id: 'captures', title: T.text('captures'), rows: _captureRows()),
       PanelCategory(id: 'broadcast', title: T.text('broadcastTitle'), rows: media.settingsRows()),
       PanelCategory(id: 'shortcuts', title: T.text('shortcuts'), rows: _shortcutRows()),
+      // Fonts are rarely changed: near the end, before About.
+      PanelCategory(id: 'fonts', title: T.text('fonts'), rows: fonts.settingsRows()),
       PanelCategory(
         id: 'about',
         title: T.text('about'),
@@ -5682,8 +5740,16 @@ class AppModel extends ChangeNotifier {
               set(next);
               sounds.play(Cue.move);
             }
-          case StepperRow(:final value, :final min, :final max, :final step, :final set):
-            final next = (value + delta * step).clamp(min, max);
+          case final StepperRow stepper:
+            final StepperRow(:value, :set) = stepper;
+            // A held arrow (a key, the pad or the mouse on − +) speeds up on this row.
+            final id = row!.id;
+            final hold = _stepHold;
+            final repeats = _repeatingNow && hold != null && hold.row == id && hold.delta == delta
+                ? hold.repeats + 1
+                : 0;
+            _stepHold = (row: id, delta: delta, repeats: repeats);
+            final next = stepper.moved(delta * StepperRow.stride(repeats));
             if (next != value) {
               set(next);
               sounds.play(Cue.move);
@@ -5805,8 +5871,9 @@ class AppModel extends ChangeNotifier {
     handle(Command.select);
   }
 
-  /// A click on a row's ‹ › or − + : one step back or on, the focus going to the row.
-  void stepRow(int index, int delta) {
+  /// A click on a row's ‹ › or − + : one step back or on, the focus going to the row. Held, the
+  /// arrow repeats ([repeat]) and speeds up as a held key does.
+  void stepRow(int index, int delta, {bool repeat = false}) {
     final rows = _currentRows;
     if (index < 0 || index >= rows.length || !rows[index].focusable) return;
     pointerFocus = true;
@@ -5814,7 +5881,12 @@ class AppModel extends ChangeNotifier {
       panelRow = index;
       _changed();
     }
-    handle(delta < 0 ? Command.left : Command.right);
+    _repeatingNow = repeat;
+    try {
+      handle(delta < 0 ? Command.left : Command.right);
+    } finally {
+      _repeatingNow = false;
+    }
   }
 
   /// The pointer moved over a row: the focus follows it, quietly, and the list stays put.

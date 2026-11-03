@@ -264,7 +264,7 @@ void main() {
   });
 
   group('appearing offline', () {
-    test('the setting: Online, Idle, Do Not Disturb or Invisible, sent to the server, shown on my name', () async {
+    test('the setting: Online, Idle, Do not disturb or Invisible, sent to the server, shown on my name', () async {
       model.together.openSettings();
       final ids = rows().map((row) => row.id).toList();
       expect(ids.indexOf('together-presence'), ids.indexOf('together-online') + 1);
@@ -272,7 +272,7 @@ void main() {
       expect(presence.title, 'Show me as');
       expect(presence.detail, 'Friends see you online and what you play.');
       final choice = presence.kind as ChoiceRow;
-      expect(choice.options, ['Online', 'Idle', 'Do Not Disturb', 'Invisible']);
+      expect(choice.options, ['Online', 'Idle', 'Do not disturb', 'Invisible']);
       expect(choice.selected, 0);
       choice.set(3);
       await until(() => server.callsTo('me/presence', method: 'PATCH').isNotEmpty);
@@ -291,7 +291,7 @@ void main() {
       expect(row('friends-me').detail, contains('Appearing offline'));
     });
 
-    test('Do Not Disturb and Idle on a server that has them: a red dot and a moon on my name', () async {
+    test('Do not disturb and Idle on a server that has them: a red dot and a moon on my name', () async {
       server.presenceStatuses = true;
       model.together.openSettings();
       (row('together-presence').kind as ChoiceRow).set(2);
@@ -299,7 +299,7 @@ void main() {
       expect(server.callsTo('me/presence', method: 'PATCH').single.body, {'appearOffline': false, 'status': 'dnd'});
       expect((row('together-presence').kind as ChoiceRow).selected, 2);
       expect(row('together-presence').detail, 'Friends see that you do not want to be disturbed.');
-      expect(row('together-user').detail, 'Utku · Do Not Disturb');
+      expect(row('together-user').detail, 'Utku · Do not disturb');
       expect(row('together-user').person?.status, PersonStatus.dnd);
       (row('together-presence').kind as ChoiceRow).set(1);
       await until(() => server.me['status'] == 'idle');
@@ -310,7 +310,7 @@ void main() {
     test('Idle on a server before statuses: back to Online, with a short note', () async {
       model.together.openSettings();
       (row('together-presence').kind as ChoiceRow).set(1);
-      await until(() => model.toast == 'Idle and Do Not Disturb are not available on this server yet');
+      await until(() => model.toast == 'Idle and do not disturb are not available on this server yet');
       expect(model.together.myStatus, PresenceStatus.online);
       expect((row('together-presence').kind as ChoiceRow).selected, 0);
     });
@@ -327,7 +327,7 @@ void main() {
       expect(TogetherModel.status(Presence.fromJson({'state': 'online'})), PersonStatus.online);
       expect(TogetherModel.status(Presence.fromJson({'state': 'away'})), PersonStatus.away);
       expect(together.presenceText(Presence.fromJson({'state': 'online', 'status': 'idle'})), 'Idle');
-      expect(together.presenceText(Presence.fromJson({'state': 'online', 'status': 'dnd'})), 'Do Not Disturb');
+      expect(together.presenceText(Presence.fromJson({'state': 'online', 'status': 'dnd'})), 'Do not disturb');
       expect(together.presenceText(Presence.fromJson({'state': 'online', 'status': 'invisible'})), 'Offline');
       expect(together.presenceText(Presence.fromJson({'state': 'online'})), 'Online');
     });
@@ -352,6 +352,29 @@ void main() {
       await until(() => model.toast == 'Appearing offline is not available on this server yet');
       expect(model.together.hub.self.appearOffline, isFalse);
       expect((row('together-presence').kind as ChoiceRow).selected, 0);
+    });
+  });
+
+  group('back from a profile', () {
+    test('Settings › AnyTogether › My Profile: Back lands on AnyTogether, on the row', () async {
+      model.together.openSettings();
+      model.panelRow = rows().indexWhere((row) => row.id == 'together-profile');
+      (row('together-profile').kind as ActionRow).run();
+      expect(model.overlay, Layer.profile);
+      await until(() => model.together.profile != null || model.together.profileFailed);
+      model.mouseBack();
+      expect(model.overlay, Layer.settings);
+      expect(model.panelCategories()[model.panelCategory].id, 'together');
+      expect(rows()[model.panelRow].id, 'together-profile');
+    });
+
+    test('the feed and a leaderboard go back to the section they were opened from', () async {
+      model.together.openSettings();
+      model.together.openFeed();
+      expect(model.overlay, Layer.feed);
+      model.handle(launcher.Command.back);
+      expect(model.overlay, Layer.settings);
+      expect(model.panelCategories()[model.panelCategory].id, 'together');
     });
   });
 }

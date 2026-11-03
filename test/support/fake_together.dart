@@ -827,6 +827,9 @@ class FakeTogether {
         case ('POST', '/leave'):
           party = null;
           return (204, null);
+        case ('POST', '/leader'):
+          party!['leaderId'] = call.body['userId'];
+          return (200, party);
         case ('POST', '/kick'):
           (party!['members'] as List<Map<String, dynamic>>).removeWhere(
             (member) => member['userId'] == call.body['userId'],
@@ -902,6 +905,8 @@ class FakeTogether {
     final unfriend = RegExp(r'^me/friends/([^/]+)$').firstMatch(call.path);
     if (call.method == 'DELETE' && unfriend != null) {
       friends.removeWhere((friend) => friend['userId'] == unfriend.group(1));
+      // A request sent and not answered yet is taken back the same way.
+      outgoing.removeWhere((person) => person['userId'] == unfriend.group(1));
       return (204, null);
     }
     return problem(404, 'not_found', 'No route for ${call.method} ${call.path}');

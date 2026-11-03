@@ -91,7 +91,7 @@ void main() {
       expect(model.builtInAccent, Accent.blue);
     });
 
-    test('choosing Glass in the settings resets the accent to Ice; Reduce Transparency shows only there', () {
+    test('choosing Glass in the settings resets the accent to Ice; Reduce transparency shows only there', () {
       final fixture = makeFixture();
       addTearDown(fixture.dispose);
       final model = fixture.model;
@@ -356,11 +356,11 @@ void main() {
       model.select(indexOf(model, 'PPSA02002'));
       model.handle(Command.down);
       await pumpLauncher(tester, model);
-      expect(find.text('Kilidi Aç'), findsOneWidget);
+      expect(find.text('Kilidi aç'), findsOneWidget);
       await shoot(tester, 'glass_home_tr');
     });
 
-    testWidgets('home, the settings button focused, with Reduce Transparency', (tester) async {
+    testWidgets('home, the settings button focused, with Reduce transparency', (tester) async {
       fixture = makeFixture(theme: 3);
       final model = fixture.model;
       keyArt(model);
@@ -401,7 +401,7 @@ void main() {
       await pumpLauncher(tester, model);
       expect(find.text('Glass'), findsOneWidget);
       expect(find.text('Ice'), findsOneWidget);
-      expect(find.text('Reduce Transparency'), findsOneWidget);
+      expect(find.text('Reduce transparency'), findsOneWidget);
       await shoot(tester, 'glass_settings');
     });
 
@@ -412,7 +412,7 @@ void main() {
       model.handle(Command.down);
       await pumpLauncher(tester, model);
       expect(find.text('Cam'), findsOneWidget);
-      expect(find.text('Şeffaflığı Azalt'), findsOneWidget);
+      expect(find.text('Şeffaflığı azalt'), findsOneWidget);
       await shoot(tester, 'glass_settings_tr');
     });
 
@@ -433,7 +433,7 @@ void main() {
       model.open(Layer.friends);
       model.open(Layer.profile);
       model.together
-        ..profileReturn = Layer.friends
+        ..profileReturn = (layer: Layer.friends, category: null, row: null)
         ..profileIndex = 2
         ..profile = ProfilePage(
           profile: const TogetherProfile(
@@ -721,7 +721,7 @@ void main() {
       expect(Preferences.fromJson({'glassTransparency': 250}).glassTransparency, 100);
     });
 
-    test('the window follows the look: see-through in Glass, opaque again for another look or Reduce Transparency', () {
+    test('the window follows the look: see-through in Glass, opaque again for another look or Reduce transparency', () {
       final backdrop = _FakeBackdrop(BackdropKind.acrylic);
       final fixture = makeFixture(theme: 3, backdrop: backdrop);
       addTearDown(fixture.dispose);
@@ -899,8 +899,8 @@ void main() {
         model.open(Layer.settings);
         model.panelRow = model.panelCategories().first.rows.indexWhere((row) => row.id == 'glassTransparency');
         await pumpLauncher(tester, model, wrap: desktop);
-        expect(find.text('Glass Transparency'), findsOneWidget);
-        expect(find.text('Show Game Art Behind'), findsOneWidget);
+        expect(find.text('Glass transparency'), findsOneWidget);
+        expect(find.text('Show game art behind'), findsOneWidget);
         await shoot(tester, 'glass_window_settings');
       });
     });

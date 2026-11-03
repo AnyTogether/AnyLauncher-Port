@@ -150,6 +150,18 @@ extension TogetherParty on TogetherModel {
               ),
               T.format('askKick', [TogetherModel.shown(member).name]),
             ),
+      // Handing the party over asks first: only the new leader can give it back.
+      if (leader)
+        for (final member in party.members)
+          if (member.id != me.id)
+            ...askingFirst(
+              PanelRow(
+                id: 'party-lead-${member.id}',
+                title: T.format('partyMakeLeader', [TogetherModel.shown(member).name]),
+                kind: ActionRow(() => unawaited(makeLeader(member))),
+              ),
+              T.format('askMakeLeader', [TogetherModel.shown(member).name]),
+            ),
       if (leader)
         PanelRow(
           id: 'party-privacy',
@@ -377,6 +389,8 @@ extension TogetherParty on TogetherModel {
   Future<void> setPartyOpen(bool open) => _partyCall(() => hub.parties.setOpen(open));
 
   Future<void> kick(Person person) => _partyCall(() => hub.parties.kick(person.id));
+
+  Future<void> makeLeader(Person person) => _partyCall(() => hub.parties.makeLeader(person.id));
 
   Future<void> inviteToParty(Person person) => _partyCall(() async {
     if (hub.parties.party == null) await hub.parties.create(open: partyStartsOpen);

@@ -85,7 +85,7 @@ void main() {
       await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_friends.png'));
     });
 
-    testWidgets('golden: friends idle and on Do Not Disturb, and me on Do Not Disturb', (tester) async {
+    testWidgets('golden: friends idle and on Do not disturb, and me on Do not disturb', (tester) async {
       fixture = makeFixture();
       model = fixture.model;
       signedInPreview(model);
@@ -103,7 +103,7 @@ void main() {
       ];
       model.together.hub.self.status = PresenceStatus.dnd;
       model.open(Layer.friends);
-      // Down to the friends: Ece on Do Not Disturb, Deniz idle, Ana online above them.
+      // Down to the friends: Ece on Do not disturb, Deniz idle, Ana online above them.
       await pumpLauncher(tester, model);
       final ece = model.panelCategories().single.rows.indexWhere((row) => row.id == 'friend-u-ece');
       expect(ece, greaterThan(0));
@@ -112,7 +112,7 @@ void main() {
       }
       await settle(tester);
       expect(find.text('@deniz · Idle'), findsOneWidget);
-      expect(find.text('@ece · Do Not Disturb'), findsOneWidget);
+      expect(find.text('@ece · Do not disturb'), findsOneWidget);
       await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_friends_statuses.png'));
     });
 
@@ -343,7 +343,7 @@ void main() {
       model.open(Layer.friends);
       model.open(Layer.profile);
       model.together
-        ..profileReturn = Layer.friends
+        ..profileReturn = (layer: Layer.friends, category: null, row: null)
         // Compare trophies first, then the games: the second game.
         ..profileIndex = 2
         ..profile = ProfilePage(

@@ -40,17 +40,17 @@ void main() {
       (const Installed(outdated: true), 'Play', ActionTone.normal),
       (const Queued(), 'Cancel', ActionTone.normal),
       (const Installing(InstallStep.copy, 0.5), 'Cancel', ActionTone.normal),
-      (const Installing(InstallStep.copy, 0.5, preparing: true), 'Play When Ready', ActionTone.normal),
-      (const Queued(updating: true), 'Waiting to Update', ActionTone.busy),
-      (const Queued(updating: true, waitingForEngine: true), 'Waiting for Engine', ActionTone.busy),
+      (const Installing(InstallStep.copy, 0.5, preparing: true), 'Play when ready', ActionTone.normal),
+      (const Queued(updating: true), 'Waiting to update', ActionTone.busy),
+      (const Queued(updating: true, waitingForEngine: true), 'Waiting for engine', ActionTone.busy),
       (const Installing(InstallStep.copy, 0.5, updating: true), 'Updating… 75%', ActionTone.busy),
       (const Installing(InstallStep.unwrap, 0.5, playsAfter: true), 'Unlocking… 6%', ActionTone.busy),
-      (const WaitingForEngine(job, forThisGame: true), 'Updating Engine…', ActionTone.busy),
-      (const WaitingForEngine(job), 'Waiting for Engine', ActionTone.busy),
+      (const WaitingForEngine(job, forThisGame: true), 'Updating engine…', ActionTone.busy),
+      (const WaitingForEngine(job), 'Waiting for engine', ActionTone.busy),
       (const Starting(), 'Starting…', ActionTone.busy),
       (const Running(4242), 'Stop', ActionTone.danger),
       (const Stopping(4242), 'Stopping…', ActionTone.danger),
-      (const Failed('relinker failed'), 'Try Again', ActionTone.normal),
+      (const Failed('relinker failed'), 'Try again', ActionTone.normal),
     ];
     for (final (state, title, tone) in cases) {
       test('${state.runtimeType}: $title', () {
@@ -73,7 +73,7 @@ void main() {
       T.language = Language.byCode('tr');
       expect(GameAction.of(const Running(1)).title, 'Durdur');
       expect(GameAction.of(const Installing(InstallStep.copy, 0.5, updating: true)).title, 'Güncelleniyor… %75');
-      expect(GameAction.of(const WaitingForEngine(job)).title, 'Motor Bekleniyor');
+      expect(GameAction.of(const WaitingForEngine(job)).title, 'Motor bekleniyor');
     });
   });
 
@@ -129,7 +129,7 @@ void main() {
       expect(model.stateOf(orbit), isA<Installed>());
     });
 
-    test('the game quit in game: ready again, and Close Game in the quick menu closes it the same way', () async {
+    test('the game quit in game: ready again, and Close game in the quick menu closes it the same way', () async {
       model.primaryAction(orbit);
       await until(() => model.running != null);
       starts.last.quit();
@@ -193,7 +193,7 @@ void main() {
       await until(() => model.engine.git.step == GitStep.building);
       final waiting = model.stateOf(orbit);
       expect(waiting, isA<WaitingForEngine>().having((state) => state.forThisGame, 'for this game', isTrue));
-      expect(GameAction.of(waiting).title, 'Updating Engine…');
+      expect(GameAction.of(waiting).title, 'Updating engine…');
       expect(model.engine.git.job?.step, GitStep.building);
       // Another game stays usable: its unlock waits for the build instead of being refused.
       model.primaryAction(neon);
@@ -268,7 +268,7 @@ void main() {
       model.progress.clear();
     });
 
-    testWidgets('its settings open mid-update: Cancel Update first, what cannot change says why', (tester) async {
+    testWidgets('its settings open mid-update: Cancel update first, what cannot change says why', (tester) async {
       model.progress[orbit.id] = (InstallStep.relink, 0.3);
       await pumpLauncher(tester, model);
       await tester.tap(find.byIcon(Icons.more_horiz_rounded));
@@ -276,8 +276,8 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(model.overlay, Layer.gameSettings);
       expect(settingsRows().first.id, 'cancelJob');
-      expect(settingsRows().first.title, 'Cancel Update');
-      expect(find.text('Cancel Update'), findsOneWidget);
+      expect(settingsRows().first.title, 'Cancel update');
+      expect(find.text('Cancel update'), findsOneWidget);
       for (final id in ['reinstall', 'uninstall']) {
         expect(row(id).kind, isA<InfoRow>().having((kind) => kind.text, 'why', T.text('gameBusyUpdating')));
       }
@@ -303,12 +303,12 @@ void main() {
         ..lines.add('[41/90] Building CXX object relinker.cpp.o');
       await pumpLauncher(tester, model);
       expect(find.text('Engine build · Building the relinker and libraries'), findsOneWidget);
-      expect(find.text('Updating Engine…'), findsOneWidget);
+      expect(find.text('Updating engine…'), findsOneWidget);
       expect(find.text('[41/90] Building CXX object relinker.cpp.o'), findsOneWidget);
       model.handle(Command.options);
       await settle(tester);
       expect(tester.takeException(), isNull);
-      expect(settingsRows().first.title, 'Stop Engine Build');
+      expect(settingsRows().first.title, 'Stop engine build');
       expect(row('reinstall').kind, isA<InfoRow>().having((kind) => kind.text, 'why', T.text('gameBusyEngine')));
       model.engine.git
         ..step = null

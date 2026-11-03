@@ -189,7 +189,7 @@ void main() {
       expect(info('fontThai'), 'Noto Sans Thai · Built in');
       expect(info('fontArabic'), 'Noto Sans Arabic · Built in');
       expect(info('fontCjk'), 'Downloads the first time a game needs it (100 MB)');
-      expect(row('cjkDownload').title, 'Download Japanese, Chinese and Korean Now');
+      expect(row('cjkDownload').title, 'Download Japanese, Chinese and Korean now');
       expect(row('fontsFolder').detail, startsWith('None'));
       expect(info('fontsOrder'), contains('SIL Open Font License 1.1'));
       expect(row('cjkDownload').focusable, isTrue);
@@ -200,7 +200,7 @@ void main() {
       expect(row('cjkDownload').title, 'Downloading… 0%');
       await download;
       expect(info('fontCjk'), 'Noto Sans CJK · Downloaded');
-      expect(row('cjkRemove').title, 'Remove Japanese, Chinese and Korean Fonts');
+      expect(row('cjkRemove').title, 'Remove Japanese, Chinese and Korean fonts');
       expect(model.toast, 'Japanese, Chinese and Korean fonts are ready');
 
       await model.fonts.removeCjk();

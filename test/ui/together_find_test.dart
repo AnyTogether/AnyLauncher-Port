@@ -11,7 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../support/fake_together.dart';
 import '../support/ui_support.dart';
 
-/// Find Players as the macOS launcher has it: the looking-for-group board with its filters, the
+/// Find players as the macOS launcher has it: the looking-for-group board with its filters, the
 /// user's posts with who wants in, public parties, people to meet, the post form and a game's
 /// hub. Goldens rendered headless, each in one language.
 void main() {
@@ -161,7 +161,7 @@ void main() {
   });
 
   group('behaviour', () {
-    test('Friends offers Find Players; a game\'s settings post for it; a parent\'s settings can keep it off', () {
+    test('Friends offers Find players; a game\'s settings post for it; a parent\'s settings can keep it off', () {
       fixture = makeFixture();
       model = fixture.model;
       signedIn();
@@ -233,7 +233,7 @@ void main() {
       await until(() => together.signedIn);
     }
 
-    test('posting goes to My Posts; I\'m in tells the poster', () async {
+    test('posting goes to My posts; I\'m in tells the poster', () async {
       fixture = makeFixture(together: server.base);
       model = fixture.model;
       await signInForReal();
@@ -275,7 +275,7 @@ void main() {
       await until(() => model.overlay == Layer.findPlayers && model.panelCategory == 1);
       expect(model.toast, T.format('discoverPosted', ['Neon Alley']));
       expect(server.callsTo('lfg', method: 'POST').single.body['titleId'], 'PPSA02002');
-      // The board and the lists are listened to while Find Players is open.
+      // The board and the lists are listened to while Find players is open.
       await until(() => server.frames.any((frame) => frame['op'] == 'watch'));
 
       server.answers['POST lfg/p7/requests'] = (

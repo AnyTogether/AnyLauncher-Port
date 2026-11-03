@@ -13,7 +13,7 @@ import 'package:path/path.dart' as p;
 import '../support/fixtures.dart';
 import '../support/ui_support.dart';
 
-/// Settings › Game Presets and a game's dumped update and add-ons, from the settings rows to the
+/// Settings › Game presets and a game's dumped update and add-ons, from the settings rows to the
 /// environment the game starts with.
 void main() {
   late Fixture fixture;
@@ -54,9 +54,9 @@ void main() {
     return model.panelCategories().firstWhere((category) => category.id == 'presets');
   }
 
-  test('Settings has Game Presets with every setting, all at the game default at first', () {
+  test('Settings has Game presets with every setting, all at the game default at first', () {
     final category = presetsCategory();
-    expect(category.title, 'Game Presets');
+    expect(category.title, 'Game presets');
     expect(category.rows.map((row) => row.id), [
       'presetsIntro',
       'presetDifficulty',
@@ -69,9 +69,9 @@ void main() {
       'presetAudioLanguage',
     ]);
     final difficulty = category.rows[1].kind as ChoiceRow;
-    expect(difficulty.options, ['Game Default', 'Easiest', 'Easy', 'Normal', 'Hard', 'Hardest']);
+    expect(difficulty.options, ['Game default', 'Easiest', 'Easy', 'Normal', 'Hard', 'Hardest']);
     expect(difficulty.selected, 0);
-    expect((category.rows[8].kind as ChoiceRow).options.first, 'Game Default');
+    expect((category.rows[8].kind as ChoiceRow).options.first, 'Game default');
   });
 
   test('choosing presets changes them, offers a reset, and the game starts with them', () async {
@@ -142,7 +142,7 @@ void main() {
   group('golden', () {
     final shell = find.byType(LauncherShell);
 
-    testWidgets('Settings › Game Presets with a few set', (tester) async {
+    testWidgets('Settings › Game presets with a few set', (tester) async {
       model.setGamePresets(const GamePresets(
         difficulty: PresetDifficulty.hard,
         priority: PresetPriority.performance,

@@ -71,8 +71,8 @@ void main() {
       expect(toolkit.root, p.join(model.paths.toolkits, '0.1.3'));
       expect(model.preferences.toolkitFolder, toolkit.root);
       expect(model.onboardingChoice, 2, reason: 'next comes Start');
-      // Orbit Runner was unlocked with the fixture's toolkit: Play will offer Update and Play.
-      expect(model.toast, 'AnyPS5 engine v0.1.3 is ready · Update and Play offered for installed games: 1');
+      // Orbit Runner was unlocked with the fixture's toolkit: Play will offer Update and play.
+      expect(model.toast, 'AnyPS5 engine v0.1.3 is ready · Update and play offered for installed games: 1');
       model.onboardingConfirm();
       expect(model.onboardingStep, 4, reason: 'then offline or online');
       model.onboardingConfirm();
@@ -120,7 +120,7 @@ void main() {
       expect(row('engine-0.1.2').detail, 'Downloaded · select to use');
       choose('engine-0.1.2');
       expect(model.toolkit!.version, 'upstream-v0.1.2');
-      expect(model.toast, 'Now using the AnyPS5 engine v0.1.2 · Update and Play offered for installed games: 1');
+      expect(model.toast, 'Now using the AnyPS5 engine v0.1.2 · Update and play offered for installed games: 1');
       expect(row('engineDeleteOld').detail, 'Downloaded versions not in use: 1');
       choose('engineDeleteOld');
       expect(model.engine.downloaded.map((kit) => p.basename(kit.root)), ['0.1.2']);
@@ -134,7 +134,7 @@ void main() {
       expect(model.toast, 'The AnyPS5 engine is up to date (v0.1.2)');
     });
 
-    test('a newer engine marks installed games; Update and Play downloads it, then unlocks again', () async {
+    test('a newer engine marks installed games; Update and play downloads it, then unlocks again', () async {
       github.releases.add(upstreamRelease('0.1.2'));
       await model.engine.download();
       final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
@@ -150,7 +150,7 @@ void main() {
       github.releases.insert(0, upstreamRelease('0.1.3'));
       await model.engine.startupCheck();
       expect(model.engine.updateAvailable, isTrue);
-      expect(model.toast, 'AnyPS5 engine v0.1.3 is out: Settings › AnyPS5 Engine');
+      expect(model.toast, 'AnyPS5 engine v0.1.3 is out: Settings › AnyPS5 engine');
       expect(model.stateOf(orbit), isA<Installed>().having((state) => state.outdated, 'outdated', isTrue));
       model.select(model.games.indexOf(orbit));
       model.primaryAction(orbit);
@@ -212,7 +212,7 @@ void main() {
       model.rescan();
     }
 
-    test('a folder of the user\'s own built again in place: its games offer Update and Play', () {
+    test('a folder of the user\'s own built again in place: its games offer Update and play', () {
       final own = makeFakeToolkit(p.join(fixture.temp.path, 'own'));
       File(p.join(own, 'version.txt')).deleteSync();
       model.preferences.toolkitFolder = own;
@@ -229,7 +229,7 @@ void main() {
       expect(model.overlay, Layer.updateChoice);
     });
 
-    test('choosing another engine says the installed games will offer Update and Play', () async {
+    test('choosing another engine says the installed games will offer Update and play', () async {
       installedWith(model.toolkitVersion!);
       final other = makeFakeToolkit(p.join(fixture.temp.path, 'other'), version: 'toolkit-2');
       model.preferences.toolkitFolder = null;

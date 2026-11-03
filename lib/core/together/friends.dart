@@ -76,6 +76,14 @@ class Friends with Notifier {
     notifyListeners();
   }
 
+  /// Takes back a request the user sent and they have not answered (the website's Cancel
+  /// request): the same call as removing a friend.
+  Future<void> withdraw(String userId) async {
+    await account.call('DELETE', 'me/friends/$userId');
+    outgoing = outgoing.where((person) => person.id != userId).toList();
+    notifyListeners();
+  }
+
   /// The friend with this id, if they are one.
   Friend? byId(String userId) => friends.where((friend) => friend.person.id == userId).firstOrNull;
 

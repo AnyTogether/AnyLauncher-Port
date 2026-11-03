@@ -364,6 +364,13 @@ class Parties with Notifier {
     await account.call('POST', 'parties/${current.id}/kick', {'userId': userId});
   }
 
+  /// Leader only: someone else in the party leads it from now on (the website's Make leader).
+  Future<void> makeLeader(String userId) async {
+    final current = party;
+    if (current == null) return;
+    _keep(await account.call('POST', 'parties/${current.id}/leader', {'userId': userId}));
+  }
+
   /// Leader only: a new join code, replacing the one before.
   Future<void> newCode() async {
     final current = party;

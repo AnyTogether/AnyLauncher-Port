@@ -38,7 +38,7 @@ void main() {
   }
 
   for (final language in T.languages) {
-    testWidgets('the notice beside the top bar, Restart Now focused (${language.code})', (tester) async {
+    testWidgets('the notice beside the top bar, Restart now focused (${language.code})', (tester) async {
       final model = ready(language);
       expect(model.updates.showsNotice, isTrue);
       model.handle(Command.up);

@@ -66,15 +66,15 @@ void main() {
       expect(Preferences.load(file).prepareNewGames, isFalse);
     });
 
-    test('Settings › Game Library has the switch', () {
+    test('Settings › Game library has the switch', () {
       model.open(Layer.settings);
       final library = model.panelCategories().firstWhere((category) => category.id == 'library');
       final toggle = library.rows.firstWhere((row) => row.id == 'prepareNewGames');
-      expect(toggle.title, 'Prepare New Games Automatically');
+      expect(toggle.title, 'Prepare new games automatically');
       (toggle.kind as ToggleRow).set(true);
       expect(model.preferences.prepareNewGames, isTrue);
       T.language = Language.byCode('tr');
-      expect(T.text('prepareNewGames'), 'Yeni Oyunları Otomatik Hazırla');
+      expect(T.text('prepareNewGames'), 'Yeni oyunları otomatik hazırla');
     });
   });
 
@@ -93,21 +93,21 @@ void main() {
       expect(rowIds(), ['space', 'otherDrive', 'retry', 'cancel'], reason: 'linked files: no copy rows');
       expect(row('space').title, contains('1.0 MB free'));
       expect(model.copyWarning!.shortage!.free, 1 << 20);
-      // Room made, Try Again unlocks.
+      // Room made, Try again unlocks.
       free = 1 << 50;
       model.activateRow(rowIds().indexOf('retry'));
       expect(model.overlay, isNull);
       await until(() => model.stateOf(neon) is Installed);
     });
 
-    test('too little room for a copy: the copy panel says both, without Copy Anyway', () {
+    test('too little room for a copy: the copy panel says both, without Copy anyway', () {
       fixture = makeFixture(freeSpace: (_) => 1 << 20);
       model = fixture.model;
       FileLinks.calls = LinkCalls(hardLink: (_, _) => false, symbolicLink: (_, _) => false);
       final neon = named('PPSA02002');
       model.sizes[neon.id] = 31400000000;
       model.unlock(neon, copy: true);
-      expect(model.overlay, Layer.copyWarning, reason: 'Copy Anyway does not get past a full drive');
+      expect(model.overlay, Layer.copyWarning, reason: 'Copy anyway does not get past a full drive');
       expect(rowIds(), ['space', 'why', 'sameDrive', 'retry', 'cancel']);
       expect((row('space').kind as InfoRow).text, contains('31.4 GB'));
       expect(model.copyWarning!.shortage!.copying, isTrue);
@@ -125,7 +125,7 @@ void main() {
       expect((row('why').kind as InfoRow).text, contains('200 GB free'));
     });
 
-    test('Update and Play is checked the same way', () {
+    test('Update and play is checked the same way', () {
       fixture = makeFixture(freeSpace: (_) => 1 << 20);
       model = fixture.model;
       final orbit = named('PPSA01001');
@@ -202,7 +202,7 @@ void main() {
       await until(() => !model.prepare.paused);
     }, skip: Platform.isWindows ? 'the fake relinker is a shell script' : false);
 
-    test('Play on a game being prepared makes it the user\'s own; Cancel Unlock gives it up', () async {
+    test('Play on a game being prepared makes it the user\'s own; Cancel unlock gives it up', () async {
       fixture = makeFixture(prepareNewGames: true);
       model = fixture.model;
       makeFakeToolkit(fixture.toolkit, mode: 'slow');
@@ -298,7 +298,7 @@ void main() {
       model.prepare.add([named('PPSA03003').id]);
       model.show(AppModel.newGameText([neon.name], preparing: true), icon: neon.icon);
       await pumpLauncher(tester, model);
-      expect(find.text('Play When Ready'), findsOneWidget);
+      expect(find.text('Play when ready'), findsOneWidget);
       await expectLater(shell, matchesGoldenFile('goldens/prepare_home_en.png'));
       await tester.pump(const Duration(seconds: 5));
     });

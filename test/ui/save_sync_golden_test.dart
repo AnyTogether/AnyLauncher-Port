@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../support/ui_support.dart';
 
-/// The question Save Sync asks over the launcher when both sides changed (in a file of its own:
+/// The question Save sync asks over the launcher when both sides changed (in a file of its own:
 /// a widget test's binding answers every HTTP request with a 400, which the cloud tests need).
 void main() {
   testWidgets('golden: the question when saves changed here and in the cloud', (tester) async {

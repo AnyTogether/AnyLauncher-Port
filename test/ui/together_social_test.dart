@@ -271,7 +271,7 @@ void main() {
       model.open(Layer.friends);
       final together = model.together;
       together.hub.social.feed.load(feed(), null);
-      together.screens.feedReturn = Layer.friends;
+      together.screens.feedReturn = (layer: Layer.friends, category: null, row: null);
       model.overlay = Layer.feed;
       model.handle(Command.down);
       expect(together.screens.feedIndex, 1);
@@ -377,6 +377,13 @@ void main() {
       await together.loadNotifications();
       (model.panelCategories().single.rows.first.kind as ActionRow).run();
       expect(together.hub.social.notices.unread, 0);
+      // All read: the heading says so once, and no row repeats it.
+      expect(model.panelCategories().single.title, 'Nothing new');
+      expect(model.panelCategories().single.rows.map((row) => row.id), isNot(contains('notes-none')));
+      // None at all: the row says it, the heading stays quiet.
+      together.hub.social.notices.load(const [], unread: 0, more: false);
+      expect(model.panelCategories().single.title, '');
+      expect(model.panelCategories().single.rows.single.title, 'Nothing new');
     });
 
     test('How did it run? asks once per game and version, and the report goes with the system', () async {

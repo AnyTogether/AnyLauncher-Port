@@ -490,8 +490,9 @@ class TopBar extends StatelessWidget {
           PadStatusPill(pad: pad),
           SizedBox(width: 12 * scale),
         ],
-        PhoneIndicator(model: model),
-        SizedBox(width: 22 * scale),
+        // The phone controller's pill only while a phone is connected or connecting: a launcher
+        // used without one keeps the bar clear.
+        if (PhoneIndicator.shows(model)) ...[PhoneIndicator(model: model), SizedBox(width: 22 * scale)],
         Stack(
           clipBehavior: Clip.none,
           children: [
@@ -553,11 +554,16 @@ class TopBar extends StatelessWidget {
   }
 }
 
-/// The phone controller's light: green with a phone, orange while one connects, a ring with none.
+/// The phone controller's light: green with a phone, orange while one connects. Hidden with none
+/// (Settings › Phones says how to connect one).
 class PhoneIndicator extends StatelessWidget {
   const PhoneIndicator({super.key, required this.model});
 
   final AppModel model;
+
+  /// Whether the top bar shows it: a phone connected or one connecting.
+  static bool shows(AppModel model) =>
+      (model.remote?.connectedDevices.isNotEmpty ?? false) || model.phoneConnecting != null;
 
   @override
   Widget build(BuildContext context) {
@@ -593,7 +599,7 @@ class PhoneIndicator extends StatelessWidget {
       ),
       SizedBox(width: 8 * scale),
       Text(
-        phones.length > 1 ? '${phones.length} × mController' : 'mController',
+        phones.length > 1 ? T.format('phoneControllers', [phones.length]) : T.text('phoneServer'),
         style: AppText.display(
           14 * scale,
           weight: FontWeight.w600,

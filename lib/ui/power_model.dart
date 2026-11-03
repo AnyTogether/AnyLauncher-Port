@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:path/path.dart' as p;
 
@@ -23,6 +24,19 @@ class PowerModel {
   // What tests replace.
 
   late PowerReading Function() read = PowerReader.current;
+
+  /// The fastest display's refresh rate in hertz, null when the system does not say.
+  late int? Function() displayHertz = _displayHertz;
+
+  static int? _displayHertz() {
+    try {
+      final rates = [for (final display in PlatformDispatcher.instance.displays) display.refreshRate.round()];
+      final best = rates.where((rate) => rate > 0).fold<int>(0, (best, rate) => rate > best ? rate : best);
+      return best > 0 ? best : null;
+    } on Object {
+      return null;
+    }
+  }
   late DateTime Function() now = DateTime.now;
 
   PowerReading reading = const PowerReading(hasBattery: false, onBattery: false);
@@ -256,7 +270,12 @@ class PowerModel {
     required String detail,
     required void Function(PowerProfile) set,
   }) {
-    const caps = PowerProfile.frameCaps;
+    // Up to the display's own rate: a fast laptop on battery is the user's call.
+    final hertz = displayHertz();
+    final caps = PowerProfile.frameCapsFor(hertz, kept: profile.frameCap);
+    String label(int cap) => cap == 0
+        ? T.text('off')
+        : (cap == hertz ? T.format('powerFpsDisplay', [cap]) : T.format('powerFps', [cap]));
     return [
       PanelRow(
         id: '${id}On',
@@ -271,7 +290,7 @@ class PowerModel {
           detail: T.text('powerFrameCapDetail'),
           kind: ChoiceRow(
             [
-              for (final cap in caps) cap == 0 ? T.text('off') : T.format('powerFps', [cap]),
+              for (final cap in caps) label(cap),
             ],
             caps.contains(profile.frameCap) ? caps.indexOf(profile.frameCap) : 0,
             (index) => set(profile.copyWith(frameCap: caps[index])),

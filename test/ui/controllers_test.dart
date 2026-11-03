@@ -147,7 +147,7 @@ void main() {
       );
       model.openControllerTest();
       await pumpLauncher(tester, model);
-      expect(find.text('Controller Test'), findsOneWidget);
+      expect(find.text('Controller test'), findsOneWidget);
       await expectLater(shell, matchesGoldenFile('goldens/controller_test_en.png'));
     });
 
@@ -160,7 +160,7 @@ void main() {
       );
       model.openControllerTest();
       await pumpLauncher(tester, model);
-      expect(find.text('Kumanda Testi'), findsOneWidget);
+      expect(find.text('Kumanda testi'), findsOneWidget);
       await expectLater(shell, matchesGoldenFile('goldens/controller_test_xbox_tr.png'));
     });
 

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:anyps5_desktop/core/remote/remote_protocol.dart' as server;
 import 'package:anyps5_desktop/ui/app_model.dart' hide Command, GameState;
 import 'package:anyps5_desktop/ui/app_model.dart' as launcher show Command;
+import 'package:anyps5_desktop/ui/home.dart' show PhoneIndicator;
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -68,6 +69,21 @@ void main() {
     expect(base64.decode(art.icon!).sublist(1, 4), 'PNG'.codeUnits);
     expect(model.remote!.connectedDevices, ['Pixel']);
     await phone.close();
+  });
+
+  test('the top bar shows the phone controller only while one is connected or connecting', () async {
+    expect(PhoneIndicator.shows(model), isFalse, reason: 'no phone: the bar stays clear');
+    final connected = await FakePhone.connect(model.remote!.port!);
+    connected.hello('phone-1', 'Pixel');
+    await until(() => model.pairing != null);
+    expect(PhoneIndicator.shows(model), isTrue, reason: 'connecting');
+    model.handle(launcher.Command.select);
+    await connected.next<Welcome>();
+    await until(() => model.remote!.connectedDevices.isNotEmpty);
+    expect(PhoneIndicator.shows(model), isTrue);
+    await connected.close();
+    await until(() => model.remote!.connectedDevices.isEmpty);
+    await until(() => !PhoneIndicator.shows(model));
   });
 
   test('the phone moves the launcher, selects a game and keeps its pad layout per game', () async {

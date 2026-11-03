@@ -102,7 +102,7 @@ void main() {
     expect(categories[behaviour].title, 'Behaviour');
     model.selectCategory(behaviour);
     PanelRow row(String id) => model.panelCategories()[behaviour].rows.firstWhere((row) => row.id == id);
-    expect(row('sounds').title, 'Interface Sounds');
+    expect(row('sounds').title, 'Interface sounds');
     expect((row('sounds').kind as StepperRow).format(100), '100%');
     expect((row('music').kind as StepperRow).value, 50);
     expect(row('music').detail, T.text('gameMusicDetail'));
@@ -140,8 +140,8 @@ void main() {
     final behaviour = model.panelCategories().firstWhere((category) => category.id == 'general');
     expect(behaviour.title, 'Davranış');
     final rows = {for (final row in behaviour.rows) row.id: row};
-    expect(rows['sounds']!.title, 'Arayüz Sesleri');
-    expect(rows['music']!.title, 'Oyun Müziği');
+    expect(rows['sounds']!.title, 'Arayüz sesleri');
+    expect(rows['music']!.title, 'Oyun müziği');
     expect(rows['music']!.detail, 'Seçili oyunun kendi müziği, varsa.');
     expect((rows['music']!.kind as StepperRow).format(0), 'Kapalı');
   });

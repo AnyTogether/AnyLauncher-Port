@@ -47,7 +47,7 @@ void main() {
     model.open(Layer.friends);
     model.open(Layer.profile);
     model.together
-      ..profileReturn = Layer.friends
+      ..profileReturn = (layer: Layer.friends, category: null, row: null)
       ..profile = ProfilePage(
         profile: TogetherProfile(
           userId: 'u-me',
@@ -81,7 +81,7 @@ void main() {
     model.open(Layer.friends);
     model.open(Layer.profile);
     model.together
-      ..profileReturn = Layer.friends
+      ..profileReturn = (layer: Layer.friends, category: null, row: null)
       ..profile = ProfilePage(
         profile: TogetherProfile(
           userId: 'u-bora',
@@ -129,7 +129,7 @@ void main() {
   golden('compare_games', Language.byCode('tr'), (tester) async {
     model.open(Layer.compare);
     model.together
-      ..compareReturn = Layer.profile
+      ..compareReturn = (layer: Layer.profile, category: null, row: null)
       ..compareWith = bora
       ..compareIndex = 0
       ..compareGames = const SectionShown(compared);
@@ -140,7 +140,7 @@ void main() {
   golden('compare_trophies', Language.english, (tester) async {
     model.open(Layer.compare);
     model.together
-      ..compareReturn = Layer.profile
+      ..compareReturn = (layer: Layer.profile, category: null, row: null)
       ..compareWith = bora
       ..compareGames = const SectionShown(compared)
       ..compareTitleId = 'PPSA02002'

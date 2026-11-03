@@ -15,7 +15,7 @@ import '../support/signing.dart';
 import '../support/ui_support.dart';
 
 /// The launcher's own update as the player meets it: found and downloaded quietly, the notice
-/// with Restart Now and Later, Later for the next launch, About's states. (The screens are in
+/// with Restart now and Later, Later for the next launch, About's states. (The screens are in
 /// update_notice_screens_test.dart: a file with widget tests gets no real HTTP.)
 void main() {
   // Always newer than the launcher, whatever version it is (and the same in the goldens).
@@ -59,7 +59,7 @@ void main() {
   }
 
   group('model', () {
-    test('a newer release is downloaded quietly, then the notice offers Restart Now', () async {
+    test('a newer release is downloaded quietly, then the notice offers Restart now', () async {
       final model = launcher();
       await model.updates.startupCheck();
       expect(model.updates.state, const UpdateReady(newer));
@@ -93,7 +93,7 @@ void main() {
       expect(started, isEmpty);
     });
 
-    test('Restart Now with a game starting waits for it', () async {
+    test('Restart now with a game starting waits for it', () async {
       final model = launcher();
       await model.updates.startupCheck();
       model.starting = model.games.first;
@@ -106,7 +106,7 @@ void main() {
       model.starting = null;
     });
 
-    test('an AppImage is swapped for the new one: now for Restart Now, kept for the next start on Later', () async {
+    test('an AppImage is swapped for the new one: now for Restart now, kept for the next start on Later', () async {
       final temp = temporaryFolder('appimage');
       addTearDown(() => temp.deleteSync(recursive: true));
       final appImage = p.join(temp.path, 'AnyPS5-Desktop.AppImage');
@@ -119,7 +119,7 @@ void main() {
       expect(started, isEmpty, reason: 'Later starts nothing');
     }, skip: Platform.isWindows ? 'chmod' : false);
 
-    test('an archive is the user\'s to put in place: Show File', () async {
+    test('an archive is the user\'s to put in place: Show file', () async {
       final model = launcher(system: HostSystem.linux);
       await model.updates.startupCheck();
       expect(model.updates.apply, SelfApply.manual);
@@ -148,7 +148,7 @@ void main() {
       ]);
       await model.updates.startupCheck();
       final rows = model.updates.aboutRows();
-      expect(rows.first.title, 'AnyPS5 Desktop $newer is ready · Restart Now');
+      expect(rows.first.title, 'AnyPS5 Desktop $newer is ready · Restart now');
       expect(rows.first.detail, 'Restart now, or it goes in at the next launch.');
     });
   });

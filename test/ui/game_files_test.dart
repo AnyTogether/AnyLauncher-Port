@@ -13,7 +13,7 @@ import '../support/fixtures.dart';
 import '../support/ui_support.dart';
 
 /// A game dropped into the games folder as a zip is offered for unpacking and shows as a game;
-/// an update (a zip, or a folder chosen in Game Settings) goes beside its game.
+/// an update (a zip, or a folder chosen in Game settings) goes beside its game.
 void main() {
   late Fixture fixture;
   late AppModel model;
@@ -73,7 +73,7 @@ void main() {
       launcher.files.asked = UnpackAsk(archive, GameArchives.plan(archive.path), into: archive.folder);
       launcher.open(Layer.gameFiles);
       await pumpLauncher(tester, launcher);
-      expect(find.text('Unpack Game'), findsOneWidget);
+      expect(find.text('Unpack game'), findsOneWidget);
       await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/unpack_game_en.png'));
     });
 
@@ -99,7 +99,7 @@ void main() {
     zipFolder(made, p.join(root, 'Packed Hero.zip'), inside: 'PPSA09009-app');
     model.rescan();
     await until(() => model.overlay == Layer.gameFiles);
-    expect(model.panelCategories().single.title, 'Unpack Game');
+    expect(model.panelCategories().single.title, 'Unpack game');
     expect(rowIds(), ['files-about', 'files-go', 'files-later']);
     expect(
       (row('files-about').kind as InfoRow).text,
@@ -116,7 +116,7 @@ void main() {
     expect(model.overlay, isNull);
   });
 
-  test('Not Now closes it for this run; a zip without a game is never offered', () async {
+  test('Not now closes it for this run; a zip without a game is never offered', () async {
     File(p.join(root, 'notes.zip'))
         .writeAsBytesSync(ZipEncoder().encodeBytes(Archive()..addFile(ArchiveFile.bytes('readme.txt', [1, 2, 3]))));
     final made = makeDump(fixture.temp.path, 'made', titleId: 'PPSA09009');
@@ -161,7 +161,7 @@ void main() {
     expect(File(p.join(orbit.folder, 'sce_sys', 'param.json')).readAsStringSync(), contains('01.000.000'));
   });
 
-  test('Add Update takes a folder of the game\'s update and puts it beside the game', () async {
+  test('Add update takes a folder of the game\'s update and puts it beside the game', () async {
     final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
     final elsewhere = p.join(fixture.temp.path, 'Downloads');
     var picked = makeDump(elsewhere, 'wrong', titleId: 'PPSA02002', version: '01.002.000');
@@ -180,7 +180,7 @@ void main() {
     picked = makeDump(elsewhere, 'patch', titleId: 'PPSA01001', version: '01.010.000');
     await launcher.files.addUpdate(game);
     expect(launcher.overlay, Layer.gameFiles);
-    expect(launcher.panelCategories().single.title, 'Add Update to Orbit Runner');
+    expect(launcher.panelCategories().single.title, 'Add update to Orbit Runner');
     expect(launcher.panelCategories().single.rows.first.title, 'Update 01.010');
     (launcher.panelCategories().single.rows.firstWhere((row) => row.id == 'files-go').kind as ActionRow).run();
     await until(() => launcher.files.working == null && launcher.overlay == null);

@@ -87,7 +87,7 @@ void main() {
       model.select(indexOf(model, 'PPSA02002'));
       model.handle(Command.down);
       await pumpLauncher(tester, model);
-      expect(find.text('Kilidi Aç'), findsOneWidget);
+      expect(find.text('Kilidi aç'), findsOneWidget);
       await expectLater(shell, matchesGoldenFile('goldens/home_aurora_tr.png'));
     });
 
@@ -243,7 +243,7 @@ void main() {
       model.selectCategory(model.panelCategories().indexWhere((category) => category.id == 'fonts'));
       await pumpLauncher(tester, model);
       expect(find.text('Noto Sans · Built in'), findsOneWidget);
-      expect(find.text('Download Japanese, Chinese and Korean Now'), findsOneWidget);
+      expect(find.text('Download Japanese, Chinese and Korean now'), findsOneWidget);
       await expectLater(shell, matchesGoldenFile('goldens/settings_fonts.png'));
     });
 
@@ -282,7 +282,7 @@ void main() {
         'relinker.exe failed (2): FAIL: Code analysis: branch into skipped range tail (offset 0x4a10)\n'
         'Input: sce_module/libSceNpCppWebApi.prx';
 
-    testWidgets('home shows the reason and the file; Copy Error copies all the relinker printed', (tester) async {
+    testWidgets('home shows the reason and the file; Copy error copies all the relinker printed', (tester) async {
       fixture = makeFixture();
       final model = fixture.model;
       final game = model.games[indexOf(model, 'PPSA02002')];
@@ -294,7 +294,7 @@ void main() {
       await pumpLauncher(tester, model);
       expect(find.textContaining('branch into skipped range tail'), findsOneWidget);
       expect(find.textContaining('libSceNpCppWebApi.prx'), findsOneWidget);
-      await tester.tap(find.text('Copy Error'));
+      await tester.tap(find.text('Copy error'));
       await tester.pump();
       expect(fixture.copied.single, startsWith(failure));
       expect(fixture.copied.single, contains('PRX conversion | libSceNpCppWebApi.prx | 100% (1/2)'));
@@ -461,9 +461,8 @@ void main() {
       expect(model.look, LookStyle.aurora);
       await press(tester, LogicalKeyboardKey.keyE);
       expect(model.panelCategory, 1);
-      // Library, the AnyPS5 engine, the fonts, Profiles, AnyTogether and the phones, then the
-      // language.
-      await press(tester, LogicalKeyboardKey.keyE);
+      // Library, the AnyPS5 engine, Profiles, AnyTogether and the phones, then the language (the
+      // fonts are near the end now).
       await press(tester, LogicalKeyboardKey.keyE);
       await press(tester, LogicalKeyboardKey.keyE);
       await press(tester, LogicalKeyboardKey.keyE);
@@ -484,7 +483,7 @@ void main() {
       await pumpLauncher(tester, model);
       await press(tester, LogicalKeyboardKey.keyO);
       expect(model.overlay, Layer.gameSettings);
-      // Default, Window, Full Screen.
+      // Default, Window, Full screen.
       await press(tester, LogicalKeyboardKey.arrowRight);
       await press(tester, LogicalKeyboardKey.arrowRight);
       expect(model.currentSettings(game).fullscreen, isTrue);
@@ -496,7 +495,7 @@ void main() {
       await press(tester, LogicalKeyboardKey.arrowRight);
       expect(model.currentSettings(game).upscaler, Upscaler.fsr1);
       expect(model.currentSettings(game).environment(launcherLanguage: 1)['ANYPS5_UPSCALER'], 'fsr1');
-      // FSR Sharpness shows with FSR 1: 0.2, one tenth up.
+      // FSR sharpness shows with FSR 1: 0.2, one tenth up.
       await press(tester, LogicalKeyboardKey.arrowDown);
       await press(tester, LogicalKeyboardKey.arrowRight);
       expect(model.currentSettings(game).environment(launcherLanguage: 1)['ANYPS5_FSR_SHARPNESS'], '0.3');
@@ -608,7 +607,7 @@ void main() {
       await press(tester, LogicalKeyboardKey.arrowRight);
       await press(tester, LogicalKeyboardKey.enter);
       expect(model.onboardingStep, 4, reason: 'offline or online last');
-      expect(find.text('Çevrimdışı Oyna'), findsOneWidget);
+      expect(find.text('Çevrimdışı oyna'), findsOneWidget);
       await press(tester, LogicalKeyboardKey.enter);
       expect(model.preferences.onboarded, isTrue);
       expect(model.profiles.book.profiles.single.mode.name, 'offline');

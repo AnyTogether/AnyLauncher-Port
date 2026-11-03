@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../support/ui_support.dart';
 
-/// The Theme Studio over the live home screen, and the Themes panel, as goldens.
+/// The Theme studio over the live home screen, and the Themes panel, as goldens.
 void main() {
   late Fixture fixture;
 
@@ -33,7 +33,7 @@ void main() {
     model.panelRow = 3;
   }
 
-  testWidgets('the Theme Studio over the home screen it changes', (tester) async {
+  testWidgets('the Theme studio over the home screen it changes', (tester) async {
     fixture = makeFixture();
     final model = fixture.model;
     studio(model);
@@ -41,7 +41,7 @@ void main() {
     await expectLater(shell, matchesGoldenFile('goldens/theme_studio.png'));
   });
 
-  testWidgets('the Theme Studio in Turkish, in a smaller window', (tester) async {
+  testWidgets('the Theme studio in Turkish, in a smaller window', (tester) async {
     fixture = makeFixture(language: Language.byCode('tr'));
     final model = fixture.model;
     studio(model);

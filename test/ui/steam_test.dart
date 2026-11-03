@@ -164,7 +164,7 @@ void main() {
     choose('steamAdd');
     await until(() => model.steam.waiting != null);
     expect(rowIds(), containsAllInOrder(['steamRunning', 'steamClose', 'steamCancel']));
-    expect(row('steamClose').title, 'Close Steam and Add');
+    expect(row('steamClose').title, 'Close Steam and add');
     expect(shortcuts().ours(), isEmpty, reason: 'nothing is written while Steam runs');
     choose('steamCancel');
     expect(model.steam.waiting, isNull);
@@ -212,8 +212,8 @@ void main() {
   test('Turkish', () async {
     T.language = Language.byCode('tr');
     await openSteam();
-    expect(row('steamAdd').title, "Steam'e Ekle");
-    expect(row('steamGames').title, 'Oyunlarımı da Ekle');
+    expect(row('steamAdd').title, "Steam'e ekle");
+    expect(row('steamGames').title, 'Oyunlarımı da ekle');
   });
 
   group('a game\'s shortcut', () {

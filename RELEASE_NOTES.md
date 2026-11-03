@@ -7,6 +7,32 @@ release when it is made.
 
 Nothing yet.
 
+## 0.1.19
+
+- **Fourteen more languages, by VK:** Amharic, Czech, Danish, Filipino, Hungarian, Khmer,
+  Korean, Lao, Malay, Norwegian, Romanian, Swedish, and Simplified and Traditional Chinese.
+  Each is about three quarters translated, and the rest shows in English.
+- **The first start speaks your language.** Without saved settings, the launcher starts in the
+  first of the computer's languages it has.
+- **The first step fits.** The language cards now take seven columns and share the space, so all
+  of them fit at 1600 by 900. A long name is drawn smaller and never cut off.
+- **Back goes where you came from.** From My profile, the feed, leaderboards or comparisons,
+  Back returns to the row you left.
+- **Faster theme steppers.** Colour and Accent go round the circle the short way, and a held
+  arrow speeds up.
+- **Cancel a friend request you sent**, and **hand the party over** to someone else as leader.
+  The launcher asks first.
+- **Battery caps up to the display's rate**: 60, 90, 120, 144, 165, 240 or 360 FPS, with the
+  display's own rate marked.
+- **The phone controller pill** shows only while a phone is connected or connecting, and it
+  reads "Phone controller".
+- **Clearer settings.** Setting titles are in sentence case in English and Turkish. "Key
+  location" and "Detailed logging" read more plainly, and Fonts moved near the end. Notifications
+  say "Nothing new" once.
+- **The repository is now AnyTogether/AnyPS5-Desktop.** Updates, crash reports and links use
+  the new name. GitHub redirects the old one, so older launchers keep finding updates.
+- **The .deb recommends the Noto fonts** for Khmer, Lao, Amharic and Chinese, Japanese and Korean.
+
 ## 0.1.18
 
 - **Save Sync** in **Settings › Behaviour**: each game's saves and trophies stay the same on

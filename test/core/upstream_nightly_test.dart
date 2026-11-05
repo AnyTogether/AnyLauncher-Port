@@ -12,7 +12,7 @@ import '../support/fixtures.dart';
 import '../support/signing.dart';
 
 /// Upstream nightlies: upstream's main built unmodified by AnyPS5-ARM's CI, published as
-/// AnyPS5-ARM pre-releases tagged upstream-nightly.<YYYYMMDD>.<commit>.
+/// AnyPS5-ARM pre-releases tagged `upstream-nightly.<YYYYMMDD>.<commit>`.
 void main() {
   final key = TestReleaseKey('release');
   late FakeGitHub github;

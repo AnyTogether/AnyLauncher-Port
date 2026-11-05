@@ -112,7 +112,7 @@ void main() {
   });
 
   test('download names an upstream nightly by its commit', () {
-    final release = UpstreamRelease(tag: 'v0.1.4', assets: const []);
+    const release = UpstreamRelease(tag: 'v0.1.4', assets: []);
     final asset = ReleaseAsset(name: 'relinker-v0.1.4', size: 1, url: Uri.parse('https://example.invalid/r'));
     expect(EngineModel.packageName(ToolkitPackage(release: release, relinker: asset, libraries: asset)), 'v0.1.4');
     expect(

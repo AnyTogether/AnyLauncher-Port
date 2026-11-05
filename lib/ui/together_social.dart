@@ -460,7 +460,9 @@ extension TogetherSocial on TogetherModel {
       case NoticeKind.levelUp:
         unawaited(openMyProfile());
       case NoticeKind.message:
-        unawaited(openMessages());
+        // The conversation it is about, not the first in the list.
+        final conversation = note.data['conversationId'];
+        unawaited(conversation is String ? openConversation(conversation) : openMessages());
       case NoticeKind.warning || NoticeKind.other:
         app.refresh();
     }

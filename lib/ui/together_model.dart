@@ -93,6 +93,9 @@ class TogetherModel {
       // A yes is an invite, which says so itself.
       if (!accepted) app.show(T.text('partyRequestDeclined'));
     };
+    // Before the redraw: the list may have moved under the conversation chosen.
+    hub.messages.addListener(followMessagesSelection);
+    hub.friends.addListener(followMessagesSelection);
     hub.addListener(app.refresh);
     hub.social
       ..onNotice = noticeArrived
@@ -193,6 +196,10 @@ class TogetherModel {
   /// which quick reply (or the field, the last) is focused there, and what is typed.
   int messagesIndex = 0;
   bool messagesInThread = false;
+
+  /// Which target [messagesIndex] means (TogetherMessages.targetKey): the list moves when a
+  /// message comes in, and the keys stay on the conversation they were on.
+  String? messagesSelectedKey;
   int messageFocus = 0;
   String draft = '';
 
@@ -323,6 +330,7 @@ class TogetherModel {
       codePreview = null;
       discordDraft = null;
       messagesIndex = 0;
+      messagesSelectedKey = null;
       messagesInThread = false;
       messageCursor = null;
       messageMenu = null;

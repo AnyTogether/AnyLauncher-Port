@@ -65,8 +65,30 @@ extension TogetherMessages on TogetherModel {
     return targets.isEmpty ? null : targets[messagesIndex.clamp(0, targets.length - 1)];
   }
 
+  /// What a target is known by while the list moves: the conversation's ID, or the friend's.
+  static String targetKey(MessageTarget target) => switch (target) {
+    ConversationTarget(:final conversation) => conversation.id,
+    FriendTarget(:final friend) => 'friend:${friend.person.id}',
+  };
+
+  /// The keys onto the target at [index], remembered by what it is, not where it is.
+  void _selectTarget(int index) {
+    final targets = messageTargets;
+    messagesIndex = targets.isEmpty ? 0 : index.clamp(0, targets.length - 1);
+    messagesSelectedKey = targets.isEmpty ? null : targetKey(targets[messagesIndex]);
+  }
+
+  /// A message came in, a conversation was pinned, a friend added: the list moved, and the keys
+  /// stay on the conversation they were on (the one the thread shows), not on its old place.
+  void followMessagesSelection() {
+    final key = messagesSelectedKey;
+    if (key == null) return;
+    final at = messageTargets.indexWhere((target) => targetKey(target) == key);
+    if (at >= 0) messagesIndex = at;
+  }
+
   Future<void> openMessages() async {
-    messagesIndex = 0;
+    _selectTarget(0);
     messagesInThread = false;
     _resetThread();
     messageFocus = composer;
@@ -74,6 +96,7 @@ extension TogetherMessages on TogetherModel {
     if (!signedIn) return;
     try {
       if (!hub.messages.loaded) await hub.messages.refresh();
+      _selectTarget(messagesIndex);
       await _showSelected();
     } on Object {
       // The list shows what it has; the socket brings the rest.
@@ -91,11 +114,49 @@ extension TogetherMessages on TogetherModel {
       final at = messageTargets.indexWhere(
         (target) => target is ConversationTarget && target.conversation.id == hub.messages.openId,
       );
-      if (at >= 0) messagesIndex = at;
+      if (at >= 0) _selectTarget(at);
       app.refresh();
     } on Object catch (error) {
       app.show(message(error));
     }
+  }
+
+  /// One conversation, opened with the keys in its field: a message notification clicked. The
+  /// list is read again first when the conversation is new to it.
+  Future<void> openConversation(String id) async {
+    if (app.overlay != Layer.messages) app.open(Layer.messages);
+    _resetThread();
+    messageFocus = composer;
+    if (!signedIn) return;
+    try {
+      if (hub.messages.byId(id) == null) await hub.messages.refresh();
+      final at = messageTargets.indexWhere((target) => target is ConversationTarget && target.conversation.id == id);
+      if (at < 0) {
+        // Gone (left, removed): the list as it is.
+        _selectTarget(0);
+        messagesInThread = false;
+        app.refresh();
+        await _showSelected();
+        return;
+      }
+      _selectTarget(at);
+      messagesInThread = true;
+      app.refresh();
+      if (hub.messages.openId != id) await hub.messages.show(id);
+    } on Object {
+      // The list shows what it has; the socket brings the rest.
+    }
+  }
+
+  /// A row of the list clicked: that conversation shown, the keys in its field (a friend's
+  /// first conversation is made now).
+  Future<void> pickMessageTarget(MessageTarget target) async {
+    final key = targetKey(target);
+    final at = messageTargets.indexWhere((t) => targetKey(t) == key);
+    if (at < 0) return;
+    if (key != messagesSelectedKey) _resetThread();
+    _selectTarget(at);
+    await _enterThread();
   }
 
   Future<void> _showSelected() async {
@@ -110,7 +171,8 @@ extension TogetherMessages on TogetherModel {
     }
   }
 
-  /// Into the thread: a friend's first conversation is made now.
+  /// Into the thread: the conversation chosen is the one shown (and answered), and a friend's
+  /// first conversation is made now.
   Future<void> _enterThread() async {
     final target = selectedTarget;
     if (target == null) return;
@@ -118,7 +180,11 @@ extension TogetherMessages on TogetherModel {
     messageFocus = composer;
     app.sounds.play(Cue.select);
     app.refresh();
-    if (target is FriendTarget) await messageFriend(target.friend.person);
+    if (target is FriendTarget) {
+      await messageFriend(target.friend.person);
+    } else {
+      await _showSelected();
+    }
   }
 
   /// Sends [text] to the conversation shown, as the answer to the message being replied to.
@@ -146,7 +212,7 @@ extension TogetherMessages on TogetherModel {
             targets.isEmpty ? 0 : targets.length - 1,
           );
           if (next == messagesIndex) return;
-          messagesIndex = next;
+          _selectTarget(next);
           _resetThread();
           app.sounds.play(Cue.move);
           app.refresh();
@@ -553,7 +619,7 @@ extension TogetherMessages on TogetherModel {
       final at = messageTargets.indexWhere(
         (target) => target is ConversationTarget && target.conversation.id == selected.conversation.id,
       );
-      if (at >= 0) messagesIndex = at;
+      if (at >= 0) _selectTarget(at);
     }
     app.refresh();
   }

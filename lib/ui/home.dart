@@ -608,17 +608,35 @@ class PhoneIndicator extends StatelessWidget {
       ),
       if (phones.isNotEmpty && model.phoneLatency != null) ...[
         SizedBox(width: 8 * scale),
-        Text(
-          '${model.phoneLatency!.round()} ms',
-          style: AppText.display(
-            14 * scale,
-            weight: FontWeight.w600,
-            color: Colors.white.withValues(alpha: glass ? 0.9 : 0.6),
-          ),
-        ),
+        latency(model.phoneLatency!, scale, glass),
       ],
     ],
   );
+
+  /// The round trip in ms, in figures of one width and as wide as 999 ms always: the pill does
+  /// not jump as the number goes from one digit to three.
+  static Widget latency(double milliseconds, double scale, bool glass) {
+    final style = AppText.display(
+      14 * scale,
+      weight: FontWeight.w600,
+      color: Colors.white.withValues(alpha: glass ? 0.9 : 0.6),
+    ).copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
+    final shown = milliseconds.round().clamp(0, 999);
+    return Stack(
+      alignment: Alignment.centerRight,
+      children: [
+        // The widest it gets, unseen: it sets the width.
+        Visibility(
+          visible: false,
+          maintainSize: true,
+          maintainAnimation: true,
+          maintainState: true,
+          child: Text('999 ms', style: style),
+        ),
+        Text('$shown ms', key: const ValueKey('phone-latency'), style: style),
+      ],
+    );
+  }
 }
 
 /// The row of game tiles: the selected one is larger, sits at the row's start and carries the

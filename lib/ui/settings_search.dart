@@ -138,7 +138,7 @@ extension SettingsSearch on AppModel {
     _changed();
   }
 
-  /// Lower case, the dotted and dotless i one letter (Turkish İ and ı, English I and i), so a
-  /// word typed either way matches.
-  static String _fold(String text) => text.toLowerCase().replaceAll('̇', '').replaceAll('ı', 'i');
+  /// Lower case, with the dotted capital I's combining dot dropped and the dotless i read as i,
+  /// so a word typed with either i matches (Turkish has both).
+  static String _fold(String text) => text.toLowerCase().replaceAll('\u0307', '').replaceAll('\u0131', 'i');
 }

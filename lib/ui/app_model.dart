@@ -145,6 +145,7 @@ class Preferences {
     ..sounds = json['sounds'] as bool? ?? true
     ..soundVolume = (json['soundVolume'] as num?)?.toInt()
     ..musicVolume = (json['musicVolume'] as num?)?.toInt()
+    ..launcherVolume = (json['launcherVolume'] as num?)?.toInt()
     ..engineSource = json['engineSource'] as String? ?? 'upstream'
     ..updateChannel = json['updateChannel'] as String?
     ..engineGitBeforePlay = json['engineGitBeforePlay'] == true
@@ -275,6 +276,10 @@ class Preferences {
   bool sounds = true;
   int? soundVolume;
   int? musicVolume;
+
+  /// Everything the launcher plays (its sounds and music) in percent, over the two above; 0 is
+  /// silent, null is 100. Games keep their own volume.
+  int? launcherVolume;
   Map<String, String> lastPlayed = {};
 
   /// Which engine the settings offer: 'upstream' (boykopovar/AnyPS5) or 'arm' (AnyPS5-ARM's,
@@ -402,6 +407,7 @@ class Preferences {
     'sounds': sounds,
     'soundVolume': soundVolume,
     'musicVolume': musicVolume,
+    if (launcherVolume != null) 'launcherVolume': launcherVolume,
     'lastPlayed': lastPlayed,
     'engineSource': engineSource,
     if (updateChannel != null) 'updateChannel': updateChannel,
@@ -814,6 +820,7 @@ class StepperRow extends RowKind {
     required this.format,
     required this.set,
     this.wraps = false,
+    this.slider = false,
   });
   final int value;
   final int min;
@@ -824,6 +831,16 @@ class StepperRow extends RowKind {
 
   /// A circle (a hue in degrees): past [max] comes [min] again, and the other way.
   final bool wraps;
+
+  /// Shown as a bar to drag or click along (a volume), with − + beside it.
+  final bool slider;
+
+  /// The value a place along the bar stands for, [fraction] 0 (the start) to 1 (the end), on a
+  /// step.
+  int valueAt(double fraction) {
+    final steps = ((max - min) / step).round();
+    return (min + (fraction.clamp(0.0, 1.0) * steps).round() * step).clamp(min, max);
+  }
 
   /// [value] moved [steps] steps: kept between [min] and [max], or round the circle.
   int moved(int steps) {
@@ -1334,11 +1351,17 @@ class AppModel extends ChangeNotifier {
 
   int get musicVolume => preferences.musicVolume ?? defaultMusicVolume;
 
+  /// The launcher's own volume, over its sounds and its music (Settings › Behaviour).
+  int get launcherVolume => (preferences.launcherVolume ?? 100).clamp(0, 100);
+
+  /// Every sound and song the launcher plays goes through [sounds] and [music]: the launcher's
+  /// volume is on top of each one's own.
   void _applySound() {
+    final master = launcherVolume / 100;
     sounds
-      ..enabled = preferences.sounds
-      ..volume = (preferences.soundVolume ?? 100) / 100;
-    music.volume = musicVolume / 100;
+      ..enabled = preferences.sounds && launcherVolume > 0
+      ..volume = master * (preferences.soundVolume ?? 100) / 100;
+    music.volume = master * musicVolume / 100;
   }
 
   void setActive(bool value) {
@@ -1367,7 +1390,13 @@ class AppModel extends ChangeNotifier {
   /// first start, a game starting or playing, the volume at 0); the interface sounds are quiet
   /// while a game is in front.
   void _updateMusic() {
-    final quiet = !preferences.onboarded || !active || running != null || starting != null || musicVolume == 0;
+    final quiet =
+        !preferences.onboarded ||
+        !active ||
+        running != null ||
+        starting != null ||
+        musicVolume == 0 ||
+        launcherVolume == 0;
     // The theme's (or the user's own) menu music when the selected game has no song.
     music.play(quiet ? null : selectedGame, fallback: quiet ? null : menuMusic);
     // With the game in front, the launcher says nothing.
@@ -4921,6 +4950,24 @@ class AppModel extends ChangeNotifier {
           ),
           PanelRow(id: 'profile', title: T.text('profileName'), kind: InfoRow(preferences.profileName)),
           PanelRow(
+            id: 'launcherVolume',
+            title: T.text('launcherVolume'),
+            detail: T.text('launcherVolumeDetail'),
+            kind: StepperRow(
+              value: launcherVolume,
+              min: 0,
+              max: 100,
+              step: 5,
+              format: _percent,
+              slider: true,
+              set: (value) {
+                preferences.launcherVolume = value;
+                _applySound();
+                savePreferences();
+              },
+            ),
+          ),
+          PanelRow(
             id: 'sounds',
             title: T.text('sounds'),
             kind: StepperRow(
@@ -4929,6 +4976,7 @@ class AppModel extends ChangeNotifier {
               max: 100,
               step: 10,
               format: _percent,
+              slider: true,
               set: (value) {
                 preferences.sounds = value > 0;
                 if (value > 0) preferences.soundVolume = value;
@@ -4947,6 +4995,7 @@ class AppModel extends ChangeNotifier {
               max: 100,
               step: 10,
               format: _percent,
+              slider: true,
               set: (value) {
                 preferences.musicVolume = value;
                 _applySound();
@@ -5900,6 +5949,22 @@ class AppModel extends ChangeNotifier {
     } finally {
       _repeatingNow = false;
     }
+  }
+
+  /// A slider's bar clicked or dragged: the row takes the focus and the value, with a tick.
+  void setRowValue(int index, int value) {
+    final rows = _currentRows;
+    if (index < 0 || index >= rows.length || !rows[index].focusable) return;
+    final kind = rows[index].kind;
+    if (kind is! StepperRow) return;
+    pointerFocus = true;
+    panelRow = index;
+    final next = value.clamp(kind.min, kind.max);
+    if (next != kind.value) {
+      kind.set(next);
+      sounds.play(Cue.move);
+    }
+    _changed();
   }
 
   /// The pointer moved over a row: the focus follows it, quietly, and the list stays put.

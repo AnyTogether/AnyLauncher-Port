@@ -539,6 +539,7 @@ class PanelRows extends StatelessWidget {
                 focused: index == model.panelRow && !model.panelSections,
                 onTap: () => model.activateRow(index),
                 onStep: (delta, {repeat = false}) => model.stepRow(index, delta, repeat: repeat),
+                onSet: (value) => model.setRowValue(index, value),
                 onHover: () => model.hoverRow(index),
               ),
             ),
@@ -556,6 +557,7 @@ class _RowView extends StatelessWidget {
     required this.focused,
     required this.onTap,
     required this.onStep,
+    required this.onSet,
     required this.onHover,
   });
 
@@ -566,6 +568,9 @@ class _RowView extends StatelessWidget {
 
   /// One step back (-1) or on (1), from a click on ‹ › or − +; [repeat] while − + is held.
   final void Function(int delta, {bool repeat}) onStep;
+
+  /// A slider's value from a click or a drag along its bar.
+  final void Function(int value) onSet;
   final VoidCallback onHover;
 
   @override
@@ -649,11 +654,23 @@ class _RowView extends StatelessWidget {
               decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
             ),
           );
-        case StepperRow(:final value, :final min, :final max, :final format, :final wraps):
+        case final StepperRow stepper:
+          final StepperRow(:value, :min, :max, :format, :wraps, :slider) = stepper;
           return editable(
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (slider) ...[
+                  _Slider(
+                    key: ValueKey('${row.id}-slider'),
+                    row: stepper,
+                    focused: focused,
+                    accent: accent,
+                    ink: titleColor,
+                    onSet: onSet,
+                  ),
+                  SizedBox(width: 10 * scale),
+                ],
                 if (arrows) ...[
                   _StepArrow(
                     key: ValueKey('${row.id}-previous'),
@@ -666,7 +683,18 @@ class _RowView extends StatelessWidget {
                   ),
                   SizedBox(width: 4 * scale),
                 ],
-                Text(format(value), style: style),
+                if (slider)
+                  // As wide as its widest value: the bar does not move as the number changes.
+                  ConstrainedBox(
+                    constraints: BoxConstraints(minWidth: 52 * scale),
+                    child: Text(
+                      format(value),
+                      textAlign: TextAlign.end,
+                      style: style.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+                    ),
+                  )
+                else
+                  Text(format(value), style: style),
                 if (arrows) ...[
                   SizedBox(width: 4 * scale),
                   _StepArrow(
@@ -959,6 +987,109 @@ class _ListeningState extends State<_Listening> with SingleTickerProviderStateMi
 }
 
 /// A row's ‹ › or − + : its own click target, dimmed at the end of the choices.
+/// A volume's bar: filled up to the value, a knob at its end; a click or a drag along it sets the
+/// value (on a step), the keys and the pad move it with ← → as a stepper.
+class _Slider extends StatefulWidget {
+  const _Slider({
+    super.key,
+    required this.row,
+    required this.focused,
+    required this.accent,
+    required this.ink,
+    required this.onSet,
+  });
+
+  final StepperRow row;
+  final bool focused;
+  final Color accent;
+  final Color ink;
+  final void Function(int value) onSet;
+
+  @override
+  State<_Slider> createState() => _SliderState();
+}
+
+class _SliderState extends State<_Slider> {
+  bool _dragging = false;
+
+  void _setAt(double dx, double width) {
+    if (width <= 0) return;
+    final value = widget.row.valueAt(dx / width);
+    if (value != widget.row.value) widget.onSet(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final row = widget.row;
+    final span = row.max - row.min;
+    final fraction = span <= 0 ? 0.0 : ((row.value - row.min) / span).clamp(0.0, 1.0);
+    final width = 200 * scale;
+    final knob = 16 * scale;
+    final track = 6 * scale;
+    // Focused, the row is light: the bar takes the row's ink; otherwise the accent.
+    final fill = widget.focused ? widget.ink : widget.accent;
+    final empty = widget.focused ? widget.ink.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.16);
+    final duration = _dragging ? Duration.zero : Motion.focus;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (details) => _setAt(details.localPosition.dx - knob / 2, width - knob),
+        onHorizontalDragStart: (details) {
+          setState(() => _dragging = true);
+          _setAt(details.localPosition.dx - knob / 2, width - knob);
+        },
+        onHorizontalDragUpdate: (details) => _setAt(details.localPosition.dx - knob / 2, width - knob),
+        onHorizontalDragEnd: (_) => setState(() => _dragging = false),
+        onHorizontalDragCancel: () => setState(() => _dragging = false),
+        child: SizedBox(
+          width: width,
+          height: 28 * scale,
+          child: Stack(
+            alignment: Alignment.centerLeft,
+            children: [
+              Positioned(
+                left: knob / 2,
+                right: knob / 2,
+                child: Container(
+                  height: track,
+                  decoration: BoxDecoration(color: empty, borderRadius: BorderRadius.circular(track)),
+                ),
+              ),
+              Positioned(
+                left: knob / 2,
+                child: AnimatedContainer(
+                  duration: duration,
+                  curve: Motion.settle,
+                  width: (width - knob) * fraction,
+                  height: track,
+                  decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(track)),
+                ),
+              ),
+              AnimatedPositioned(
+                duration: duration,
+                curve: Motion.settle,
+                left: (width - knob) * fraction,
+                child: Container(
+                  width: knob,
+                  height: knob,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                    border: Border.all(color: fill, width: 2 * scale),
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 4 * scale)],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _StepArrow extends StatefulWidget {
   const _StepArrow({
     super.key,

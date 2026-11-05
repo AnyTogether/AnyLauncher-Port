@@ -1253,6 +1253,8 @@
   "skip": "Skip",
   "sortName": "By name",
   "sounds": "Interface sounds",
+  "launcherVolume": "Launcher volume",
+  "launcherVolumeDetail": "Everything the launcher plays: its sounds and music. 0 % is silent; games keep their own volume.",
   "start": "Start",
   "startFailed": "The game could not start",
   "starting": "Starting…",

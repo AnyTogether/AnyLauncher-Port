@@ -1253,6 +1253,8 @@
   "skip": "Atla",
   "sortName": "Ada göre",
   "sounds": "Arayüz sesleri",
+  "launcherVolume": "Başlatıcı ses düzeyi",
+  "launcherVolumeDetail": "Başlatıcının çaldığı her şey: arayüz sesleri ve müzik. %0 sessizdir; oyunların sesi değişmez.",
   "start": "Başla",
   "startFailed": "Oyun başlatılamadı",
   "starting": "Başlatılıyor…",

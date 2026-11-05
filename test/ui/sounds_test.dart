@@ -134,6 +134,55 @@ void main() {
     expect([Preferences().sounds, Preferences().soundVolume, Preferences().musicVolume], [true, null, null]);
   });
 
+  test('the launcher\'s volume is over its sounds and its music; 0 silences both, games keep theirs', () async {
+    final orbit = model.games[indexOf('PPSA01001')];
+    File(p.join(orbit.folder, 'sce_sys', 'snd0.at9')).writeAsBytesSync([0]);
+    model.rescan();
+    model.select(indexOf('PPSA01001'));
+    await until(() => songs().isNotEmpty && songs().last.volume > 0.49);
+    final song = songs().single;
+
+    model.open(Layer.settings);
+    final behaviour = model.panelCategories().indexWhere((category) => category.id == 'general');
+    model.selectCategory(behaviour);
+    List<PanelRow> rows() => model.panelCategories()[behaviour].rows;
+    PanelRow row(String id) => rows().firstWhere((row) => row.id == id);
+    final volume = row('launcherVolume').kind as StepperRow;
+    expect(row('launcherVolume').title, 'Launcher volume');
+    expect(volume.value, 100);
+    expect(volume.slider, isTrue);
+    expect((row('sounds').kind as StepperRow).slider, isTrue);
+    expect((row('music').kind as StepperRow).slider, isTrue);
+    expect(rows().indexWhere((row) => row.id == 'launcherVolume') + 1, rows().indexWhere((row) => row.id == 'sounds'));
+
+    // A click halfway along the bar: 50 %, both at half their own level.
+    model.setRowValue(rows().indexWhere((row) => row.id == 'launcherVolume'), volume.valueAt(0.5));
+    expect(model.preferences.launcherVolume, 50);
+    expect(model.sounds.volume, closeTo(0.5, 1e-9));
+    expect(model.music.volume, closeTo(0.25, 1e-9));
+    // The song playing follows (its fade in, if still going, ends at the new level).
+    await until(() => (song.volume - 0.25).abs() < 1e-9);
+    // ← takes a step of 5.
+    model.handle(Command.left);
+    expect(model.preferences.launcherVolume, 45);
+    expect(model.sounds.volume, closeTo(0.45, 1e-9));
+
+    // 0: no tick, no song.
+    model.setRowValue(rows().indexWhere((row) => row.id == 'launcherVolume'), 0);
+    expect((row('launcherVolume').kind as StepperRow).format(0), T.text('off'));
+    await step();
+    out.voices.removeWhere((voice) => !voice.sound.name.startsWith('anyps5-song'));
+    model.handle(Command.down);
+    expect(out.cues, isEmpty, reason: 'the interface says nothing');
+    await until(() => song.stopped);
+    expect(model.preferences.soundVolume, isNull, reason: 'the sounds\' own volume is kept');
+
+    final saved = Preferences.fromJson(model.preferences.toJson());
+    expect(saved.launcherVolume, 0);
+    expect(Preferences().launcherVolume, isNull);
+    expect(LauncherProfiles.personalKeys, contains('launcherVolume'));
+  });
+
   test('Behaviour in Turkish', () {
     T.language = Language.byCode('tr');
     model.open(Layer.settings);

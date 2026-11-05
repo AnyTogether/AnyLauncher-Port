@@ -49,6 +49,7 @@ import '../core/remote/adb_tunnel.dart';
 import '../core/remote/assist.dart';
 import '../core/remote/mdns.dart';
 import '../core/remote/paired_devices.dart';
+import '../core/remote/phone_pad_events.dart';
 import '../core/remote/remote_protocol.dart';
 import '../core/remote/remote_server.dart';
 import '../core/replay_buffer.dart';
@@ -1511,12 +1512,7 @@ class AppModel extends ChangeNotifier {
     if (_pads != null) return;
     final source = services.pads?.call();
     if (source == null) return;
-    final navigator = PadNavigator(
-      padCommand,
-      shortcuts: preferences.shortcuts,
-      isPlayStation: (pad) => controllers.roster.pad(pad)?.kind.isPlayStation ?? false,
-    );
-    _navigator = navigator;
+    final navigator = _padNavigator;
     final gate = PadGate(_padEvent, inFront: () => launcherInFront, log: _padLog, passesInGame: navigator.passesInGame);
     _gate = gate;
     final deadzone = DeadzoneStage(gate.handle);
@@ -1538,6 +1534,60 @@ class AppModel extends ChangeNotifier {
   }
 
   Timer? _focusWatch;
+
+  /// The navigator the controllers and the phones' pads move the launcher through.
+  PadNavigator get _padNavigator {
+    final made = _navigator;
+    if (made != null) return made;
+    final navigator = PadNavigator(
+      padCommand,
+      shortcuts: preferences.shortcuts,
+      isPlayStation: (pad) => controllers.roster.pad(pad)?.kind.isPlayStation ?? false,
+    );
+    _navigator = navigator;
+    _applyPadPreferences();
+    return navigator;
+  }
+
+  /// The phones' pads (the Remote app's, browser pads) as controller events.
+  late final PhonePadEvents _phonePads = PhonePadEvents(_phonePadEvent);
+
+  /// The phone pads whose events reached the navigator since it last let go of them.
+  final Set<String> _phonePadsMoving = {};
+
+  /// Whether a phone's pad moves the launcher now: with no game starting or playing and the
+  /// launcher in front, as a controller does; otherwise its input is the game's alone.
+  bool get phonePadMovesLauncher => running == null && starting == null && launcherInFront;
+
+  void _phonePadEvent(PadEvent event) {
+    final navigator = _padNavigator;
+    if (event is PadGone) {
+      if (_phonePadsMoving.remove(event.pad)) navigator.handle(event);
+      return;
+    }
+    if (!phonePadMovesLauncher) {
+      // A game (or another window) is in front: what the launcher held from this pad lets go.
+      if (_phonePadsMoving.remove(event.pad)) navigator.handle(PadGone(event.pad));
+      return;
+    }
+    // Options (the pad's settings button): the launcher's Settings, and out of them again.
+    if (event is PadButtonEvent && event.button == PadButton.start) {
+      if (event.down) _phoneOptions();
+      return;
+    }
+    _phonePadsMoving.add(event.pad);
+    navigator.handle(event);
+  }
+
+  void _phoneOptions() {
+    if (pairing != null || editingRow != null || shortcutCapture != null || !preferences.onboarded) return;
+    _usedInput(InputMode.pad);
+    if (overlay == Layer.settings) {
+      closeOverlay();
+    } else {
+      open(Layer.settings);
+    }
+  }
 
   /// A controller's event past the gate: to the navigator, or to Settings › Shortcuts while it
   /// waits for buttons.
@@ -6235,6 +6285,8 @@ class AppModel extends ChangeNotifier {
           if (running case (final Game playing, _)) _checkPhoneReach(playing);
         },
         disconnected: _changed,
+        pad: _phonePads.packet,
+        padEnded: _phonePads.gone,
         latency: (milliseconds) {
           phoneLatency = milliseconds;
           notifyListeners();

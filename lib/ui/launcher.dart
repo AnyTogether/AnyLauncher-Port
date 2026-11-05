@@ -245,6 +245,15 @@ class _LauncherShellState extends State<LauncherShell> {
         return KeyEventResult.handled;
       }
     }
+    // Ctrl+F: Settings' search, from Settings or the home screen.
+    if (event is KeyDownEvent &&
+        key == LogicalKeyboardKey.keyF &&
+        HardwareKeyboard.instance.isControlPressed &&
+        (model.overlay == Layer.settings || model.overlay == null)) {
+      model.usedKeyboard();
+      model.startSettingsSearch();
+      return KeyEventResult.handled;
+    }
     Command? command;
     if (key == LogicalKeyboardKey.arrowLeft) command = Command.left;
     if (key == LogicalKeyboardKey.arrowRight) command = Command.right;

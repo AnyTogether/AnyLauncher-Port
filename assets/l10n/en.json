@@ -1239,6 +1239,8 @@
   "sectionShare": "Sharing",
   "sectionSticks": "Controller sticks",
   "settings": "Settings",
+  "settingsSearchPrompt": "Search settings",
+  "settingsSearchNone": "No setting matches “%@”",
   "settingsExported": "Settings exported",
   "settingsFileFailed": "This is not an AnyPS5 settings file",
   "settingsImported": "Settings imported",

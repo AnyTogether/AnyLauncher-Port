@@ -97,6 +97,7 @@ import 'update_model.dart';
 import 'trophy_card.dart';
 
 part 'profiles_model.dart';
+part 'settings_search.dart';
 part 'themes_model.dart';
 
 /// The launcher's own choices, kept as JSON in the config folder.
@@ -1272,6 +1273,7 @@ class AppModel extends ChangeNotifier {
     capturing,
     editingRow,
     panelSections,
+    settingsSearchFocused,
     editingValue,
     shortcutCapture,
   );
@@ -1615,7 +1617,14 @@ class AppModel extends ChangeNotifier {
     _usedInput(InputMode.pad);
     // The controller test takes the pads' buttons: only PS acts (a held Circle leaves it).
     if (overlay == Layer.controllerTest && mapped != Command.home) return;
-    if (editingRow != null) return;
+    if (editingRow != null) {
+      // Typing in Settings' search: ○ stops (the field keeps the focus), ↓ goes to what it found.
+      if (editingRow == SettingsSearch.searchRow && (mapped == Command.back || mapped == Command.down)) {
+        stopEditing();
+        if (mapped == Command.down) _searchCommand(Command.down);
+      }
+      return;
+    }
     if (capturing != null && mapped != Command.back) return;
     if (overlay == Layer.settings && (mapped == Command.previousGame || mapped == Command.nextGame)) {
       return moveCategory(mapped == Command.nextGame ? 1 : -1);
@@ -1884,6 +1893,8 @@ class AppModel extends ChangeNotifier {
 
   void startEditing(String id) {
     editingRow = id;
+    // A click in Settings' search field: the keys are there.
+    if (id == SettingsSearch.searchRow) settingsSearchFocused = true;
     notifyListeners();
   }
 
@@ -2035,6 +2046,12 @@ class AppModel extends ChangeNotifier {
   /// With a controller in the settings: the focus is on the sections' column (← from a row),
   /// where ↑ and ↓ change the section and → or ✕ go back into its rows.
   bool panelSections = false;
+
+  /// Settings' search (settings_search.dart): what is typed, whether the keys are on the field,
+  /// and the section to go back to when it is emptied.
+  String settingsQuery = '';
+  bool settingsSearchFocused = false;
+  int _categoryBeforeSearch = 0;
 
   /// With a controller: the choice or stepper row whose value ← and → change now (✕ on it);
   /// outside it they never change a value. Null while none is.
@@ -3618,6 +3635,11 @@ class AppModel extends ChangeNotifier {
     if (overlay != next) together.askingRow = null;
     overlay = next;
     panelRow = 0;
+    // Settings open with every section; a search is over.
+    if (next == Layer.settings) {
+      settingsQuery = '';
+      settingsSearchFocused = false;
+    }
     panelCategory = 0;
     panelSections = false;
     editingValue = null;
@@ -3717,6 +3739,8 @@ class AppModel extends ChangeNotifier {
   void closeOverlay() {
     overlay = null;
     panelSections = false;
+    settingsQuery = '';
+    settingsSearchFocused = false;
     editingValue = null;
     shortcutCapture = null;
     together.askingRow = null;
@@ -4422,7 +4446,7 @@ class AppModel extends ChangeNotifier {
     final game = selectedGame;
     switch (overlay) {
       case Layer.settings:
-        return _settingsCategories();
+        return _searchedSettings(_settingsCategories());
       case Layer.gameSettings when game != null:
         return [PanelCategory(id: 'game', title: game.name, rows: _gameRows(game))];
       case Layer.controls when game != null:
@@ -5774,6 +5798,7 @@ class AppModel extends ChangeNotifier {
     }
 
     final row = panelRow < rows.length ? rows[panelRow] : null;
+    if (_searchCommand(command)) return;
     if (_viaPad && _padPanelCommand(command, row, categories)) return;
     if (!_viaPad) {
       // The keys and the mouse have no sections' focus and no edit mode.
@@ -5788,6 +5813,10 @@ class AppModel extends ChangeNotifier {
     switch (command) {
       case Command.up || Command.down:
         final next = nextFocusable(panelRow, command == Command.down ? 1 : -1);
+        // ↑ on Settings' first row: onto the search field.
+        if (command == Command.up && overlay == Layer.settings && nextFocusable(panelRow, -1) == panelRow) {
+          return _toSearch();
+        }
         if (next != panelRow) sounds.play(Cue.move);
         panelRow = next;
         _changed();
@@ -5866,6 +5895,9 @@ class AppModel extends ChangeNotifier {
     final sections = overlay == Layer.settings && categories.length > 1;
     if (panelSections && sections) {
       switch (command) {
+        // ↑ on the first section: onto the search field.
+        case Command.up when panelCategory == 0:
+          _toSearch();
         case Command.up || Command.down:
           moveCategory(command == Command.down ? 1 : -1);
         case Command.right || Command.select:
@@ -5929,6 +5961,7 @@ class AppModel extends ChangeNotifier {
     panelRow = index;
     pointerFocus = true;
     panelSections = false;
+    settingsSearchFocused = false;
     editingValue = null;
     handle(Command.select);
   }
@@ -5939,6 +5972,7 @@ class AppModel extends ChangeNotifier {
     final rows = _currentRows;
     if (index < 0 || index >= rows.length || !rows[index].focusable) return;
     pointerFocus = true;
+    settingsSearchFocused = false;
     if (panelRow != index) {
       panelRow = index;
       _changed();
@@ -5958,6 +5992,7 @@ class AppModel extends ChangeNotifier {
     final kind = rows[index].kind;
     if (kind is! StepperRow) return;
     pointerFocus = true;
+    settingsSearchFocused = false;
     panelRow = index;
     final next = value.clamp(kind.min, kind.max);
     if (next != kind.value) {
@@ -5970,9 +6005,12 @@ class AppModel extends ChangeNotifier {
   /// The pointer moved over a row: the focus follows it, quietly, and the list stays put.
   void hoverRow(int index) {
     final rows = _currentRows;
-    if (index == panelRow || index < 0 || index >= rows.length || !rows[index].focusable) return;
+    if ((index == panelRow && !settingsSearchFocused) || index < 0 || index >= rows.length || !rows[index].focusable) {
+      return;
+    }
     panelRow = index;
     pointerFocus = true;
+    settingsSearchFocused = false;
     _changed();
   }
 
@@ -5996,6 +6034,7 @@ class AppModel extends ChangeNotifier {
     if (index != panelCategory) sounds.play(Cue.move);
     panelCategory = index;
     panelSections = false;
+    settingsSearchFocused = false;
     editingValue = null;
     panelRow = 0;
     _skipToFocusable();

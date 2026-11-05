@@ -1239,6 +1239,8 @@
   "sectionShare": "Paylaşım",
   "sectionSticks": "Kumanda çubukları",
   "settings": "Ayarlar",
+  "settingsSearchPrompt": "Ayarlarda ara",
+  "settingsSearchNone": "“%@” ile eşleşen ayar yok",
   "settingsExported": "Ayarlar dışa aktarıldı",
   "settingsFileFailed": "Bu dosya bir AnyPS5 ayar dosyası değil",
   "settingsImported": "Ayarlar içe aktarıldı",

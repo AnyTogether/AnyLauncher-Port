@@ -324,6 +324,17 @@ class PanelView extends StatelessWidget {
                           ),
                         ),
                       ),
+                    ] else if (model.overlay == Layer.settings) ...[
+                      SizedBox(width: 24 * scale),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(maxWidth: 400 * scale),
+                            child: SettingsSearchField(model: model),
+                          ),
+                        ),
+                      ),
                     ] else if (!psMenu)
                       const Spacer(),
                     SizedBox(width: 14 * scale),
@@ -1605,13 +1616,63 @@ class _RevealChip extends StatelessWidget {
 
 /// A text row's field: the cursor goes in when the row is chosen (or clicked), Enter sends it,
 /// Esc gives the keys back to the launcher.
+/// Settings' search: a field in the heading's line, its ring while the keys or the pad are on
+/// it, a × to empty it.
+class SettingsSearchField extends StatelessWidget {
+  const SettingsSearchField({super.key, required this.model});
+
+  final AppModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final row = model.settingsSearchField;
+    final typing = model.editingRow == SettingsSearch.searchRow;
+    final color = Colors.white.withValues(alpha: typing || model.searchingSettings ? 0.9 : 0.55);
+    return FocusRing(
+      key: const ValueKey('settings-search'),
+      focused: model.settingsSearchFocused && !typing,
+      radius: 12 * scale,
+      child: RowTextField(
+        model: model,
+        row: row,
+        kind: row.kind as TextRow,
+        focused: false,
+        leading: Icon(Icons.search_rounded, size: 20 * scale, color: color),
+        trailing: model.searchingSettings
+            ? MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  key: const ValueKey('settings-search-clear'),
+                  onTap: model.clearSettingsSearch,
+                  child: Icon(Icons.close_rounded, size: 18 * scale, color: color),
+                ),
+              )
+            : null,
+      ),
+    );
+  }
+}
+
 class RowTextField extends StatefulWidget {
-  const RowTextField({super.key, required this.model, required this.row, required this.kind, required this.focused});
+  const RowTextField({
+    super.key,
+    required this.model,
+    required this.row,
+    required this.kind,
+    required this.focused,
+    this.leading,
+    this.trailing,
+  });
 
   final AppModel model;
   final PanelRow row;
   final TextRow kind;
   final bool focused;
+
+  /// Drawn inside the field before and after the text (a search's magnifier and its ×).
+  final Widget? leading;
+  final Widget? trailing;
 
   @override
   State<RowTextField> createState() => _RowTextFieldState();
@@ -1680,22 +1741,36 @@ class _RowTextFieldState extends State<RowTextField> {
           width: 1.5 * scale,
         ),
       ),
-      child: TextField(
-        controller: _controller,
-        focusNode: _node,
-        obscureText: widget.kind.obscure,
-        onChanged: widget.kind.set,
-        onSubmitted: (_) {
-          widget.kind.submit?.call();
-          widget.model.stopEditing();
-        },
-        cursorColor: widget.focused ? LookScope.focusedInk(context) : widget.model.accentChoice.color,
-        style: AppText.display(16 * scale, weight: FontWeight.w500, color: color),
-        decoration: InputDecoration.collapsed(
-          hintText: widget.kind.hint,
-          hintStyle: AppText.display(16 * scale, color: color.withValues(alpha: 0.35)),
+      child: _framed(
+        scale,
+        TextField(
+          controller: _controller,
+          focusNode: _node,
+          obscureText: widget.kind.obscure,
+          onChanged: widget.kind.set,
+          onSubmitted: (_) {
+            widget.kind.submit?.call();
+            widget.model.stopEditing();
+          },
+          cursorColor: widget.focused ? LookScope.focusedInk(context) : widget.model.accentChoice.color,
+          style: AppText.display(16 * scale, weight: FontWeight.w500, color: color),
+          decoration: InputDecoration.collapsed(
+            hintText: widget.kind.hint,
+            hintStyle: AppText.display(16 * scale, color: color.withValues(alpha: 0.35)),
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _framed(double scale, Widget field) {
+    if (widget.leading == null && widget.trailing == null) return field;
+    return Row(
+      children: [
+        if (widget.leading != null) ...[widget.leading!, SizedBox(width: 10 * scale)],
+        Expanded(child: field),
+        if (widget.trailing != null) ...[SizedBox(width: 8 * scale), widget.trailing!],
+      ],
     );
   }
 }

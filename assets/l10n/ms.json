@@ -119,6 +119,8 @@
   "engineArmNone": "AnyPS5-ARM belum mempunyai enjin untuk sistem ini.",
   "engineArmUpToDate": "Enjin AnyPS5-ARM sudah dikemas kini.",
   "engineArmSource": "Daripada GitHub · AnyTogether/AnyPS5-ARM",
+  "engineUpstreamMain": "Upstream main · %@ (belum diuji)",
+  "engineUpstreamMainDetail": "Cabang main AnyPS5 *upstream* tanpa diubah, dibina setiap hari dan ditandatangani oleh AnyPS5-ARM. Belum diuji: permainan mungkin tidak bermula.",
   "togetherIntro": "Log masuk ke AnyTogether",
   "togetherIntroDetail": "Profil, trofi, dan rakan anda, dalam talian. Tiada kata laluan: kod melalui e-mel atau daripada laman web.",
   "togetherEmail": "E-mel",

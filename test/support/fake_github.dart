@@ -275,3 +275,29 @@ FakeRelease armRelease(String tag, String commit, {bool windows = true, bool lin
       }),
   });
 }
+
+/// An upstream nightly as AnyPS5-ARM's Engine nightly workflow publishes it: upstream's main built
+/// unmodified, tagged `upstream-nightly.<YYYYMMDD>.<commit>`, with upstream's own release files
+/// named after its git describe ([describe]); [unpatched] adds the unpatched libraries upstream's
+/// packaging also makes.
+FakeRelease upstreamNightlyRelease(
+  String tag,
+  String describe, {
+  bool windows = true,
+  bool linux = true,
+  bool unpatched = false,
+}) {
+  final libs = {'libs/libkernel.prx': filler('kernel$describe'), 'libs/libSceVideoOut.prx': filler('video$describe')};
+  return FakeRelease(tag, {
+    if (windows) ...{
+      'relinker-$describe.exe': [0x4D, 0x5A, ...filler('exe$describe', 500)],
+      'prx-windows-$describe.zip': zipOf({...libs, 'libs/libwinpthread-1.dll': filler('pthread$describe')}),
+      if (unpatched) 'prx-windows-unpatched-$describe.zip': zipOf({'libs/libkernel.prx': filler('raw$describe')}),
+    },
+    if (linux) ...{
+      'relinker-$describe': utf8.encode('#!/bin/sh\necho relinker $describe\n'),
+      'prx-linux-$describe.tar.gz': tarGzOf(libs),
+      if (unpatched) 'prx-linux-unpatched-$describe.tar.gz': tarGzOf({'libs/libkernel.prx': filler('raw$describe')}),
+    },
+  }, prerelease: true);
+}

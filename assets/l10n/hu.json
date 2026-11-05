@@ -116,6 +116,8 @@
   "engineArmNone": "Az AnyPS5-ARM rendszerhez még nincs elérhető motor",
   "engineArmUpToDate": "Az AnyPS5-ARM motor naprakész",
   "engineArmSource": "A GitHub · AnyTogether/AnyPS5-ARM verziótól",
+  "engineUpstreamMain": "Upstream main · %@ (nem tesztelt)",
+  "engineUpstreamMainDetail": "A hivatalos (upstream) AnyPS5 main ága változatlanul, amelyet az AnyPS5-ARM naponta lefordít és aláír. Nem tesztelt: a játékok talán nem indulnak el.",
   "togetherIntro": "Bejelentkezés az AnyTogether-be",
   "togetherIntroDetail": "Profilja, trófeái és barátai – online. Jelszó nem szükséges: e-mailben vagy a weboldalon keresztül kapott kóddal léphet be.",
   "togetherEmail": "E-mail",

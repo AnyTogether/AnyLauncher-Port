@@ -119,6 +119,8 @@
   "engineArmNone": "ለዚህ ሲስተም AnyPS5-ARM እስካሁን ምንም ሞተር የለውም",
   "engineArmUpToDate": "የAnyPS5-ARM ሞተሩ ወቅታዊ (up to date) ነው",
   "engineArmSource": "ከ GitHub · AnyTogether/AnyPS5-ARM",
+  "engineUpstreamMain": "Upstream main · %@ (ያልተሞከረ)",
+  "engineUpstreamMainDetail": "የዋናው ምንጭ (upstream) AnyPS5 main ቅርንጫፍ ሳይቀየር፣ AnyPS5-ARM በየቀኑ የሚገነባውና የሚፈርመው። ያልተሞከረ፦ ጨዋታዎች ላይጀምሩ ይችላሉ።",
   "togetherIntro": "ወደ AnyTogether ይግቡ",
   "togetherIntroDetail": "መገለጫዎ፣ ዋንጫዎችዎ እና ጓደኞችዎ በመስመር ላይ። የይለፍ ቃል አያስፈልግም፤ በኢሜይል ወይም በድረ-ገጹ በኩል የሚላክ ኮድ ብቻ ይጠቀሙ።",
   "togetherEmail": "ኢሜይል",

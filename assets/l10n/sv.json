@@ -117,6 +117,8 @@
   "engineArmNone": "För AnyPS5–ARM finns ännu ingen motor för detta system",
   "engineArmUpToDate": "Motorn för AnyPS5–ARM är uppdaterad",
   "engineArmSource": "Från GitHub · AnyTogether/AnyPS5–ARM",
+  "engineUpstreamMain": "Upstream main · %@ (otestad)",
+  "engineUpstreamMainDetail": "Main-grenen av uppströms AnyPS5 oförändrad, byggd varje dag och signerad av AnyPS5–ARM. Otestad: spel kanske inte startar.",
   "togetherIntro": "Logga in på AnyTogether",
   "togetherIntroDetail": "Din profil, dina troféer och vänner – online. Inget lösenord krävs: du får en kod via e-post eller från webbplatsen.",
   "togetherEmail": "E-post",

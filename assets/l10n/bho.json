@@ -120,6 +120,8 @@
   "engineArmNone": "AnyPS5-ARM के पास एह सिस्टम खातिर अबहीं ले कोई इंजन नइखे",
   "engineArmUpToDate": "AnyPS5-ARM इंजन अपडेट बा",
   "engineArmSource": "GitHub से · AnyTogether/AnyPS5-ARM",
+  "engineUpstreamMain": "Upstream main · %@ (जाँच ना भइल)",
+  "engineUpstreamMainDetail": "अपस्ट्रीम AnyPS5 के main शाखा बिना बदलाव के, जेके AnyPS5-ARM रोज बनावेला आ हस्ताक्षर करेला। जाँच ना भइल: गेम शुरू ना हो सकेला।",
   "togetherIntro": "AnyTogether में साइन ई करीं",
   "togetherIntroDetail": "रउरा प्रोफ़ाइल, ट्रॉफी आ मित्र, ऑनलाइन। कोई पासवर्ड ना: ईमेल भा वेबसाइट से एक कोड।",
   "togetherEmail": "ईमेल",

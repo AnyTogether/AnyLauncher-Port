@@ -119,6 +119,8 @@
   "engineArmNone": "AnyPS5-ARM 尚無適用於此系統的引擎",
   "engineArmUpToDate": "AnyPS5-ARM 引擎已是最新版本",
   "engineArmSource": "來自 GitHub · AnyTogether/AnyPS5-ARM",
+  "engineUpstreamMain": "Upstream main · %@（未經測試）",
+  "engineUpstreamMainDetail": "上游 AnyPS5 的 main 分支，未經修改，由 AnyPS5-ARM 每日建置並簽署。未經測試：遊戲可能無法啟動。",
   "togetherIntro": "登入 AnyTogether",
   "togetherIntroDetail": "線上使用您的個人檔案、獎盃和好友。無需密碼：透過電子郵件或網站取得驗證碼。",
   "togetherEmail": "電子郵件",

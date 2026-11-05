@@ -119,6 +119,8 @@
   "engineArmNone": "Wala pang engine ang AnyPS5-ARM para sa sistemang ito",
   "engineArmUpToDate": "Na-update ang AnyPS5-ARM engine",
   "engineArmSource": "Mula sa GitHub · AnyTogether/AnyPS5-ARM",
+  "engineUpstreamMain": "Upstream main · %@ (hindi pa nasubukan)",
+  "engineUpstreamMainDetail": "Ang main branch ng upstream AnyPS5 nang walang binago, binubuo araw-araw at nilalagdaan ng AnyPS5-ARM. Hindi pa nasubukan: maaaring hindi magsimula ang mga laro.",
   "togetherIntro": "Mag-sign in sa AnyTogether",
   "togetherIntroDetail": "Ang iyong profile, mga tropeo at mga kaibigan, online. Walang password: isang code sa pamamagitan ng email o mula sa website.",
   "togetherEmail": "Email",

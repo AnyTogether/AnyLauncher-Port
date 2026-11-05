@@ -119,6 +119,8 @@
   "engineArmNone": "AnyPS5-ARM ຍັງບໍ່ມີໂປຣແກຣມຫຼັກສຳລັບລະບົບນີ້ເທື່ອ.",
   "engineArmUpToDate": "ໂປຣແກຣມຫຼັກ AnyPS5-ARM ເປັນເວີຊັນລ່າສຸດແລ້ວ.",
   "engineArmSource": "ຈາກ GitHub · AnyTogether/AnyPS5-ARM",
+  "engineUpstreamMain": "Upstream main · %@ (ຍັງບໍ່ໄດ້ທົດສອບ)",
+  "engineUpstreamMainDetail": "ສາຂາ main ຂອງ AnyPS5 ຕົ້ນທາງ (Upstream) ໂດຍບໍ່ມີການດັດແປງ, AnyPS5-ARM ສ້າງ ແລະ ລົງລາຍເຊັນທຸກມື້. ຍັງບໍ່ໄດ້ທົດສອບ: ເກມອາດຈະບໍ່ເລີ່ມ.",
   "togetherIntro": "ເຂົ້າສູ່ລະບົບ AnyTogether",
   "togetherIntroDetail": "ໂປຣໄຟລ໌, ຖ້ວຍລາງວັນ ແລະ ເພື່ອນຂອງທ່ານໃນລະບົບອອນລາຍ. ບໍ່ຕ້ອງໃຊ້ລະຫັດຜ່ານ: ໃຊ້ລະຫັດທີ່ສົ່ງຜ່ານທາງອີເມວ ຫຼື ຈາກເວັບໄຊ.",
   "togetherEmail": "ອີເມວ",

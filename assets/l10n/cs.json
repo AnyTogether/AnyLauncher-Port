@@ -119,6 +119,8 @@
   "engineArmNone": "Pro AnyPS5–ARM zatím není pro tento systém k dispozici žádný engine",
   "engineArmUpToDate": "Engine AnyPS5–ARM je aktuální",
   "engineArmSource": "Od GitHub · AnyTogether / AnyPS5–ARM",
+  "engineUpstreamMain": "Upstream main · %@ (netestováno)",
+  "engineUpstreamMainDetail": "Větev main původního (upstream) AnyPS5 beze změn, kterou AnyPS5–ARM každý den sestaví a podepíše. Netestováno: hry se nemusí spustit.",
   "togetherIntro": "Přihlaste se k AnyTogether",
   "togetherIntroDetail": "Váš profil, trofeje a přátelé – online. Bez hesla: kód obdržíte e-mailem nebo na webových stránkách.",
   "togetherEmail": "E-mail",

@@ -7,6 +7,7 @@ import 'package:anyps5_desktop/core/installer.dart';
 import 'package:anyps5_desktop/core/remote/remote_protocol.dart';
 import 'package:anyps5_desktop/ui/app_model.dart' hide Command, GameState;
 import 'package:anyps5_desktop/ui/app_model.dart' as launcher show Command;
+import 'package:anyps5_desktop/ui/components.dart' show InputMode;
 import 'package:anyps5_desktop/ui/engine_model.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,6 +16,7 @@ import 'package:path/path.dart' as p;
 import '../support/fake_toolkit.dart';
 import '../support/phone/fake_phone.dart';
 import '../support/phone/messages.dart';
+import '../support/phone/packets.dart' show PadButton;
 import '../support/ui_support.dart';
 import 'desktop_features_test.dart' show FakeDesktop;
 
@@ -163,6 +165,53 @@ void main() {
     final playing = (await play()).done;
     expect(model.toast, isNot(T.text('phoneNoAnswer')), reason: 'the game gets its time to open its window');
     await until(() => model.toast == T.text('phoneNoAnswer'));
+    await stop(playing);
+    await phone.close();
+  }, skip: Platform.isWindows ? 'the stand-in game is a shell script' : false);
+
+  test("the phone's pad moves the launcher while no game plays; Options opens Settings; a game keeps it", () async {
+    unlockedWith('arm-5ca076a87');
+    final phone = await FakePhone.connect(model.remote!.port!);
+    phone.hello('phone-1', 'Pixel');
+    await phone.next<Pairing>();
+    await until(() => model.pairing != null);
+    model.handle(launcher.Command.select);
+    final welcome = await phone.next<Welcome>();
+    await until(() => model.remote!.connectedDevices.isNotEmpty);
+    final udp = await phone.openUdp();
+    var sequence = 0;
+    void send(int buttons) => udp.send(
+      phone.input(welcome.session, sequence: ++sequence, buttons: buttons),
+      InternetAddress.loopbackIPv4,
+      welcome.udpPort,
+    );
+    Future<void> press(int button) async {
+      send(button);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      send(0);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+    }
+
+    expect(model.phonePadMovesLauncher, isTrue);
+    // Options, the pad's settings button: Settings.
+    await press(PadButton.options);
+    await until(() => model.overlay == Layer.settings);
+    expect(model.inputMode, InputMode.pad, reason: 'the hints are a controller\'s');
+    // The D-pad moves through the rows as a controller's does.
+    final row = model.panelRow;
+    await press(PadButton.down);
+    await until(() => model.panelRow != row);
+    // Circle goes back, Options again leaves Settings too.
+    await press(PadButton.options);
+    await until(() => model.overlay == null);
+
+    // A game playing (even with the launcher in front): the pad is the game's alone.
+    final playing = (await play()).done;
+    expect(model.phonePadMovesLauncher, isFalse);
+    await press(PadButton.options);
+    await press(PadButton.cross);
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(model.overlay, isNull);
     await stop(playing);
     await phone.close();
   }, skip: Platform.isWindows ? 'the stand-in game is a shell script' : false);

@@ -122,13 +122,8 @@ class _TargetRow extends StatelessWidget {
     final color = focused ? Colors.black : Colors.white;
     final muted = conversation?.muted == true;
     return GestureDetector(
-      onTap: () {
-        final index = together.messageTargets.indexOf(target);
-        if (index < 0) return;
-        together.messagesIndex = index;
-        together.messagesInThread = false;
-        model.handle(Command.select);
-      },
+      // Clicked: this conversation shown, the cursor in its field to answer.
+      onTap: () => unawaited(together.pickMessageTarget(target).catchError((Object _) {})),
       // Right-click: pin it, mute it.
       onSecondaryTap: conversation == null ? null : () => together.openConversationMenu(conversation),
       child: AnimatedContainer(

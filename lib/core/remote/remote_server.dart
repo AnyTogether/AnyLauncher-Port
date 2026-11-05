@@ -28,6 +28,8 @@ class RemoteEvents {
     this.players,
     this.streamWishes,
     this.textPrompt,
+    this.pad,
+    this.padEnded,
   });
 
   final void Function(PairingRequest request)? pairing;
@@ -50,6 +52,13 @@ class RemoteEvents {
 
   /// The game began or stopped asking for text ([RemoteServer.textPrompt]).
   final void Function()? textPrompt;
+
+  /// Each input packet a welcomed phone (or browser pad) sends, by its device ID, as it comes:
+  /// the launcher moves with it while no game is in front. It still goes to the game.
+  final void Function(String deviceId, List<int> packet)? pad;
+
+  /// A welcomed phone left: what its pad held is let go.
+  final void Function(String deviceId)? padEnded;
 }
 
 /// The phone on the control channel, from its hello to the end of its socket.
@@ -424,6 +433,7 @@ class RemoteServer implements SharePadBridges {
     } else if (_phones.remove(client)) {
       final slot = client.slot;
       if (slot != null && slot < _gamePlayers.length) _gamePlayers[slot] = null;
+      if (client.deviceId case final String device) events.padEnded?.call(device);
       events.disconnected?.call();
       if (client.streamSize != null) events.streamWishes?.call();
     }
@@ -493,6 +503,7 @@ class RemoteServer implements SharePadBridges {
       client.address = (datagram.address, datagram.port, socket);
       final game = _gameAddresses[slot];
       if (game != null) _bridges[slot].send(_assisted(datagram.data, client), game.$1, game.$2);
+      if (client.deviceId case final String device) events.pad?.call(device, datagram.data);
     }
   }
 
@@ -531,6 +542,7 @@ class RemoteServer implements SharePadBridges {
     client.padOnChannel = true;
     final game = _gameAddresses[slot];
     if (game != null) _bridges[slot].send(_assisted(data, client), game.$1, game.$2);
+    if (client.deviceId case final String device) events.pad?.call(device, data);
   }
 
   /// A hello names the game to send to on that bridge; its answers go back to the slot's phone.

@@ -11,11 +11,12 @@ import 'package:anyps5_desktop/core/replay_buffer.dart';
 import 'package:anyps5_desktop/core/screenshots.dart';
 import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/components.dart';
+import 'package:anyps5_desktop/ui/home.dart' show PhoneIndicator;
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:anyps5_desktop/ui/theme.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart' show IgnorePointer, Offset, ValueKey;
+import 'package:flutter/widgets.dart' show Center, Directionality, IgnorePointer, Offset, Stack, TextDirection, ValueKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
@@ -857,5 +858,21 @@ void main() {
     T.language = Language.byCode('tr');
     expect(T.text('quickResume'), 'Devam et');
     expect(AppModel.padLabel(PadChord.of(PadButton.misc, hold: true)), 'Share (basılı)');
+  });
+
+  testWidgets('the phone pill\'s latency keeps one width from 1 ms to 999 ms', (tester) async {
+    await tester.runAsync(loadFonts);
+    final widths = <double>[];
+    for (final ms in [3.0, 23.0, 230.0, 999.0, 4000.0]) {
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Center(child: PhoneIndicator.latency(ms, 1, false)),
+        ),
+      );
+      widths.add(tester.getSize(find.byType(Stack).first).width);
+    }
+    expect(widths.toSet(), hasLength(1), reason: '$widths');
+    expect(find.text('999 ms'), findsWidgets, reason: 'more than 999 shows as 999');
   });
 }

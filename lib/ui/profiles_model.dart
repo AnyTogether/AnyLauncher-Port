@@ -55,6 +55,7 @@ extension LauncherProfiles on AppModel {
     'sounds',
     'soundVolume',
     'musicVolume',
+    'launcherVolume',
     'friendsJoin',
     'discordPresence',
     'discordJoin',
@@ -152,14 +153,13 @@ extension LauncherProfiles on AppModel {
 
   // Switching.
 
-  ProfileRefusal? switchRefusal(String id) =>
-      ProfileSwitch.check(
-        id,
-        profiles.book,
-        running: running?.$1.name,
-        starting: starting?.name,
-        syncing: saveSync.syncing != null,
-      );
+  ProfileRefusal? switchRefusal(String id) => ProfileSwitch.check(
+    id,
+    profiles.book,
+    running: running?.$1.name,
+    starting: starting?.name,
+    syncing: saveSync.syncing != null,
+  );
 
   ProfileRefusal? _modeChangeRefusal() =>
       ProfileSwitch.checkModeChange(running: running?.$1.name, starting: starting?.name);

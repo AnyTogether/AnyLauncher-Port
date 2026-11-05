@@ -324,6 +324,17 @@ class PanelView extends StatelessWidget {
                           ),
                         ),
                       ),
+                    ] else if (model.overlay == Layer.settings) ...[
+                      SizedBox(width: 24 * scale),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(maxWidth: 400 * scale),
+                            child: SettingsSearchField(model: model),
+                          ),
+                        ),
+                      ),
                     ] else if (!psMenu)
                       const Spacer(),
                     SizedBox(width: 14 * scale),
@@ -539,6 +550,7 @@ class PanelRows extends StatelessWidget {
                 focused: index == model.panelRow && !model.panelSections,
                 onTap: () => model.activateRow(index),
                 onStep: (delta, {repeat = false}) => model.stepRow(index, delta, repeat: repeat),
+                onSet: (value) => model.setRowValue(index, value),
                 onHover: () => model.hoverRow(index),
               ),
             ),
@@ -556,6 +568,7 @@ class _RowView extends StatelessWidget {
     required this.focused,
     required this.onTap,
     required this.onStep,
+    required this.onSet,
     required this.onHover,
   });
 
@@ -566,6 +579,9 @@ class _RowView extends StatelessWidget {
 
   /// One step back (-1) or on (1), from a click on ‹ › or − +; [repeat] while − + is held.
   final void Function(int delta, {bool repeat}) onStep;
+
+  /// A slider's value from a click or a drag along its bar.
+  final void Function(int value) onSet;
   final VoidCallback onHover;
 
   @override
@@ -649,11 +665,23 @@ class _RowView extends StatelessWidget {
               decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
             ),
           );
-        case StepperRow(:final value, :final min, :final max, :final format, :final wraps):
+        case final StepperRow stepper:
+          final StepperRow(:value, :min, :max, :format, :wraps, :slider) = stepper;
           return editable(
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (slider) ...[
+                  _Slider(
+                    key: ValueKey('${row.id}-slider'),
+                    row: stepper,
+                    focused: focused,
+                    accent: accent,
+                    ink: titleColor,
+                    onSet: onSet,
+                  ),
+                  SizedBox(width: 10 * scale),
+                ],
                 if (arrows) ...[
                   _StepArrow(
                     key: ValueKey('${row.id}-previous'),
@@ -666,7 +694,18 @@ class _RowView extends StatelessWidget {
                   ),
                   SizedBox(width: 4 * scale),
                 ],
-                Text(format(value), style: style),
+                if (slider)
+                  // As wide as its widest value: the bar does not move as the number changes.
+                  ConstrainedBox(
+                    constraints: BoxConstraints(minWidth: 52 * scale),
+                    child: Text(
+                      format(value),
+                      textAlign: TextAlign.end,
+                      style: style.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+                    ),
+                  )
+                else
+                  Text(format(value), style: style),
                 if (arrows) ...[
                   SizedBox(width: 4 * scale),
                   _StepArrow(
@@ -959,6 +998,109 @@ class _ListeningState extends State<_Listening> with SingleTickerProviderStateMi
 }
 
 /// A row's ‹ › or − + : its own click target, dimmed at the end of the choices.
+/// A volume's bar: filled up to the value, a knob at its end; a click or a drag along it sets the
+/// value (on a step), the keys and the pad move it with ← → as a stepper.
+class _Slider extends StatefulWidget {
+  const _Slider({
+    super.key,
+    required this.row,
+    required this.focused,
+    required this.accent,
+    required this.ink,
+    required this.onSet,
+  });
+
+  final StepperRow row;
+  final bool focused;
+  final Color accent;
+  final Color ink;
+  final void Function(int value) onSet;
+
+  @override
+  State<_Slider> createState() => _SliderState();
+}
+
+class _SliderState extends State<_Slider> {
+  bool _dragging = false;
+
+  void _setAt(double dx, double width) {
+    if (width <= 0) return;
+    final value = widget.row.valueAt(dx / width);
+    if (value != widget.row.value) widget.onSet(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final row = widget.row;
+    final span = row.max - row.min;
+    final fraction = span <= 0 ? 0.0 : ((row.value - row.min) / span).clamp(0.0, 1.0);
+    final width = 200 * scale;
+    final knob = 16 * scale;
+    final track = 6 * scale;
+    // Focused, the row is light: the bar takes the row's ink; otherwise the accent.
+    final fill = widget.focused ? widget.ink : widget.accent;
+    final empty = widget.focused ? widget.ink.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.16);
+    final duration = _dragging ? Duration.zero : Motion.focus;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (details) => _setAt(details.localPosition.dx - knob / 2, width - knob),
+        onHorizontalDragStart: (details) {
+          setState(() => _dragging = true);
+          _setAt(details.localPosition.dx - knob / 2, width - knob);
+        },
+        onHorizontalDragUpdate: (details) => _setAt(details.localPosition.dx - knob / 2, width - knob),
+        onHorizontalDragEnd: (_) => setState(() => _dragging = false),
+        onHorizontalDragCancel: () => setState(() => _dragging = false),
+        child: SizedBox(
+          width: width,
+          height: 28 * scale,
+          child: Stack(
+            alignment: Alignment.centerLeft,
+            children: [
+              Positioned(
+                left: knob / 2,
+                right: knob / 2,
+                child: Container(
+                  height: track,
+                  decoration: BoxDecoration(color: empty, borderRadius: BorderRadius.circular(track)),
+                ),
+              ),
+              Positioned(
+                left: knob / 2,
+                child: AnimatedContainer(
+                  duration: duration,
+                  curve: Motion.settle,
+                  width: (width - knob) * fraction,
+                  height: track,
+                  decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(track)),
+                ),
+              ),
+              AnimatedPositioned(
+                duration: duration,
+                curve: Motion.settle,
+                left: (width - knob) * fraction,
+                child: Container(
+                  width: knob,
+                  height: knob,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                    border: Border.all(color: fill, width: 2 * scale),
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 4 * scale)],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _StepArrow extends StatefulWidget {
   const _StepArrow({
     super.key,
@@ -1474,13 +1616,63 @@ class _RevealChip extends StatelessWidget {
 
 /// A text row's field: the cursor goes in when the row is chosen (or clicked), Enter sends it,
 /// Esc gives the keys back to the launcher.
+/// Settings' search: a field in the heading's line, its ring while the keys or the pad are on
+/// it, a × to empty it.
+class SettingsSearchField extends StatelessWidget {
+  const SettingsSearchField({super.key, required this.model});
+
+  final AppModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final row = model.settingsSearchField;
+    final typing = model.editingRow == SettingsSearch.searchRow;
+    final color = Colors.white.withValues(alpha: typing || model.searchingSettings ? 0.9 : 0.55);
+    return FocusRing(
+      key: const ValueKey('settings-search'),
+      focused: model.settingsSearchFocused && !typing,
+      radius: 12 * scale,
+      child: RowTextField(
+        model: model,
+        row: row,
+        kind: row.kind as TextRow,
+        focused: false,
+        leading: Icon(Icons.search_rounded, size: 20 * scale, color: color),
+        trailing: model.searchingSettings
+            ? MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  key: const ValueKey('settings-search-clear'),
+                  onTap: model.clearSettingsSearch,
+                  child: Icon(Icons.close_rounded, size: 18 * scale, color: color),
+                ),
+              )
+            : null,
+      ),
+    );
+  }
+}
+
 class RowTextField extends StatefulWidget {
-  const RowTextField({super.key, required this.model, required this.row, required this.kind, required this.focused});
+  const RowTextField({
+    super.key,
+    required this.model,
+    required this.row,
+    required this.kind,
+    required this.focused,
+    this.leading,
+    this.trailing,
+  });
 
   final AppModel model;
   final PanelRow row;
   final TextRow kind;
   final bool focused;
+
+  /// Drawn inside the field before and after the text (a search's magnifier and its ×).
+  final Widget? leading;
+  final Widget? trailing;
 
   @override
   State<RowTextField> createState() => _RowTextFieldState();
@@ -1549,22 +1741,36 @@ class _RowTextFieldState extends State<RowTextField> {
           width: 1.5 * scale,
         ),
       ),
-      child: TextField(
-        controller: _controller,
-        focusNode: _node,
-        obscureText: widget.kind.obscure,
-        onChanged: widget.kind.set,
-        onSubmitted: (_) {
-          widget.kind.submit?.call();
-          widget.model.stopEditing();
-        },
-        cursorColor: widget.focused ? LookScope.focusedInk(context) : widget.model.accentChoice.color,
-        style: AppText.display(16 * scale, weight: FontWeight.w500, color: color),
-        decoration: InputDecoration.collapsed(
-          hintText: widget.kind.hint,
-          hintStyle: AppText.display(16 * scale, color: color.withValues(alpha: 0.35)),
+      child: _framed(
+        scale,
+        TextField(
+          controller: _controller,
+          focusNode: _node,
+          obscureText: widget.kind.obscure,
+          onChanged: widget.kind.set,
+          onSubmitted: (_) {
+            widget.kind.submit?.call();
+            widget.model.stopEditing();
+          },
+          cursorColor: widget.focused ? LookScope.focusedInk(context) : widget.model.accentChoice.color,
+          style: AppText.display(16 * scale, weight: FontWeight.w500, color: color),
+          decoration: InputDecoration.collapsed(
+            hintText: widget.kind.hint,
+            hintStyle: AppText.display(16 * scale, color: color.withValues(alpha: 0.35)),
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _framed(double scale, Widget field) {
+    if (widget.leading == null && widget.trailing == null) return field;
+    return Row(
+      children: [
+        if (widget.leading != null) ...[widget.leading!, SizedBox(width: 10 * scale)],
+        Expanded(child: field),
+        if (widget.trailing != null) ...[SizedBox(width: 8 * scale), widget.trailing!],
+      ],
     );
   }
 }

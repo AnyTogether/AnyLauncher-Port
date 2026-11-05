@@ -32,14 +32,18 @@ class ThemeMusic {
 
   double _volume = 0.5;
 
-  /// 0 to 1.
+  /// 0 to 1. The song playing takes it at once; one still fading in ends its fade there.
   double get volume => _volume;
   set volume(double value) {
+    if (value == _volume) return;
     _volume = value;
     final voice = _voice;
-    if (_fade == null && _current != null && voice != null) {
+    if (_current == null || voice == null) return;
+    if (_fade == null) {
       _level = value;
       _out.setVolume(voice, value);
+    } else {
+      _ramp(value, fadeIn);
     }
   }
 

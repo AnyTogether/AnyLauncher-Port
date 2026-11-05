@@ -8,6 +8,7 @@ import 'package:anyps5_desktop/core/together/account.dart';
 import 'package:anyps5_desktop/core/together/messages.dart';
 import 'package:anyps5_desktop/core/together/people.dart';
 import 'package:anyps5_desktop/core/together/profiles.dart';
+import 'package:anyps5_desktop/core/together/social.dart';
 import 'package:anyps5_desktop/core/together/token_store.dart';
 import 'package:anyps5_desktop/ui/app_model.dart' hide Command, GameState;
 import 'package:anyps5_desktop/ui/app_model.dart' as launcher show Command;
@@ -1170,6 +1171,75 @@ void main() {
       expect(model.toast, isNull);
       server.receive('c-ana', 'u-ana', 'Loud one');
       await until(() => model.toast == 'Ana: Loud one');
+    });
+
+    test('a conversation clicked in the list is the one shown and answered', () async {
+      final together = model.together;
+      final messages = together.hub.messages;
+      await together.openMessages();
+      await until(() => messages.openId == 'c-ana' && messages.thread.length == 3);
+      final bora = together.messageTargets.firstWhere((t) => TogetherMessages.targetKey(t) == 'c-bora');
+      await together.pickMessageTarget(bora);
+      expect(messages.openId, 'c-bora');
+      expect(together.messagesInThread, isTrue);
+      expect(together.messageFocus, TogetherMessages.composer);
+      expect(TogetherMessages.targetKey(together.selectedTarget!), 'c-bora');
+      await together.sendMessage('Hi Bora');
+      await until(() => server.threads['c-bora']!.isNotEmpty);
+      expect(server.threads['c-bora']!.last['text'], 'Hi Bora');
+      expect(server.threads['c-ana']!.length, 3, reason: 'not to the conversation shown before');
+    });
+
+    test('a message in another conversation moves the list, not the conversation chosen', () async {
+      final together = model.together;
+      final messages = together.hub.messages;
+      await together.openMessages();
+      await until(() => messages.openId == 'c-ana');
+      model.handle(launcher.Command.down);
+      await until(() => messages.openId == 'c-group' && messages.thread.length == 2);
+      model.handle(launcher.Command.right);
+      expect(together.messagesInThread, isTrue);
+      // Bora writes: his conversation goes to the top, above the one chosen.
+      server.receive('c-bora', 'u-bora', 'Up for a game?');
+      await until(() => messages.conversations.first.id == 'c-bora');
+      expect(TogetherMessages.targetKey(together.selectedTarget!), 'c-group');
+      expect(messages.openId, 'c-group');
+      await together.sendMessage('Count me in');
+      await until(() => server.threads['c-group']!.length == 3);
+      expect(server.threads['c-bora']!.length, 1);
+    });
+
+    test('a message notification opens its conversation, with the keys in the field', () async {
+      final together = model.together;
+      final messages = together.hub.messages;
+      together.openNotice(
+        Notice(
+          id: 'n-1',
+          kind: NoticeKind.message,
+          kindName: 'message',
+          data: const {'conversationId': 'c-group', 'count': 1, 'text': 'Me'},
+          createdAt: DateTime.now(),
+        ),
+      );
+      await until(() => messages.openId == 'c-group' && messages.thread.length == 2);
+      expect(model.overlay, Layer.messages);
+      expect(TogetherMessages.targetKey(together.selectedTarget!), 'c-group');
+      expect(together.messagesInThread, isTrue);
+      expect(together.messageFocus, TogetherMessages.composer);
+    });
+
+    test('the toast of a message that came takes a click to its conversation', () async {
+      final together = model.together;
+      server.receive('c-bora', 'u-bora', 'You there?');
+      await until(() => model.toast == 'Bora: You there?');
+      expect(model.toastTap, isNotNull);
+      model.toastTap!();
+      await until(() => together.hub.messages.openId == 'c-bora');
+      expect(model.overlay, Layer.messages);
+      expect(TogetherMessages.targetKey(together.selectedTarget!), 'c-bora');
+      expect(together.messagesInThread, isTrue);
+      model.show('Something else');
+      expect(model.toastTap, isNull, reason: 'other toasts go nowhere');
     });
 
     test('read receipts: the setting from the server, changed here and on another device', () async {

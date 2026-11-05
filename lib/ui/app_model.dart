@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart' show Color;
@@ -48,6 +49,7 @@ import '../core/remote/adb_tunnel.dart';
 import '../core/remote/assist.dart';
 import '../core/remote/mdns.dart';
 import '../core/remote/paired_devices.dart';
+import '../core/remote/phone_pad_events.dart';
 import '../core/remote/remote_protocol.dart';
 import '../core/remote/remote_server.dart';
 import '../core/replay_buffer.dart';
@@ -96,6 +98,7 @@ import 'update_model.dart';
 import 'trophy_card.dart';
 
 part 'profiles_model.dart';
+part 'settings_search.dart';
 part 'themes_model.dart';
 
 /// The launcher's own choices, kept as JSON in the config folder.
@@ -144,6 +147,7 @@ class Preferences {
     ..sounds = json['sounds'] as bool? ?? true
     ..soundVolume = (json['soundVolume'] as num?)?.toInt()
     ..musicVolume = (json['musicVolume'] as num?)?.toInt()
+    ..launcherVolume = (json['launcherVolume'] as num?)?.toInt()
     ..engineSource = json['engineSource'] as String? ?? 'upstream'
     ..updateChannel = json['updateChannel'] as String?
     ..engineGitBeforePlay = json['engineGitBeforePlay'] == true
@@ -274,6 +278,10 @@ class Preferences {
   bool sounds = true;
   int? soundVolume;
   int? musicVolume;
+
+  /// Everything the launcher plays (its sounds and music) in percent, over the two above; 0 is
+  /// silent, null is 100. Games keep their own volume.
+  int? launcherVolume;
   Map<String, String> lastPlayed = {};
 
   /// Which engine the settings offer: 'upstream' (boykopovar/AnyPS5) or 'arm' (AnyPS5-ARM's,
@@ -401,6 +409,7 @@ class Preferences {
     'sounds': sounds,
     'soundVolume': soundVolume,
     'musicVolume': musicVolume,
+    if (launcherVolume != null) 'launcherVolume': launcherVolume,
     'lastPlayed': lastPlayed,
     'engineSource': engineSource,
     if (updateChannel != null) 'updateChannel': updateChannel,
@@ -813,6 +822,7 @@ class StepperRow extends RowKind {
     required this.format,
     required this.set,
     this.wraps = false,
+    this.slider = false,
   });
   final int value;
   final int min;
@@ -823,6 +833,16 @@ class StepperRow extends RowKind {
 
   /// A circle (a hue in degrees): past [max] comes [min] again, and the other way.
   final bool wraps;
+
+  /// Shown as a bar to drag or click along (a volume), with − + beside it.
+  final bool slider;
+
+  /// The value a place along the bar stands for, [fraction] 0 (the start) to 1 (the end), on a
+  /// step.
+  int valueAt(double fraction) {
+    final steps = ((max - min) / step).round();
+    return (min + (fraction.clamp(0.0, 1.0) * steps).round() * step).clamp(min, max);
+  }
 
   /// [value] moved [steps] steps: kept between [min] and [max], or round the circle.
   int moved(int steps) {
@@ -835,6 +855,13 @@ class StepperRow extends RowKind {
   /// How many steps one move of a hold takes after [repeats] repeats: one at first, then more,
   /// so a held arrow crosses a long range in a second or two and a press stays exact.
   static int stride(int repeats) => repeats < 8 ? 1 : (repeats < 20 ? 3 : 6);
+
+  /// [stride] for this row: a short range (a dozen presses or so end to end) speeds up less, so
+  /// a hold does not jump past what it was held for.
+  int strideFor(int repeats) {
+    final steps = ((max - min) / step).ceil();
+    return math.min(stride(repeats), math.max(1, steps ~/ 8));
+  }
 }
 
 class ActionRow extends RowKind {
@@ -1247,6 +1274,7 @@ class AppModel extends ChangeNotifier {
     capturing,
     editingRow,
     panelSections,
+    settingsSearchFocused,
     editingValue,
     shortcutCapture,
   );
@@ -1311,6 +1339,11 @@ class AppModel extends ChangeNotifier {
   late final ThemeLibrary themes = ThemeLibrary(p.join(paths.config, 'Themes'));
   late List<ThemeDesign> designs = themes.all;
 
+  /// The Theme studio's knobs as last turned, with the colours they made: read back from the
+  /// colours (8 bits each) a hue can come out a degree off, so while the colours are still the
+  /// ones the knobs made, the knobs are these (themes_model.dart).
+  ({String id, ThemeKnobs knobs, String colours})? _studioKnobs;
+
   /// Whether the launcher's window is in front: the theme song plays only then.
   bool active = true;
 
@@ -1321,11 +1354,17 @@ class AppModel extends ChangeNotifier {
 
   int get musicVolume => preferences.musicVolume ?? defaultMusicVolume;
 
+  /// The launcher's own volume, over its sounds and its music (Settings › Behaviour).
+  int get launcherVolume => (preferences.launcherVolume ?? 100).clamp(0, 100);
+
+  /// Every sound and song the launcher plays goes through [sounds] and [music]: the launcher's
+  /// volume is on top of each one's own.
   void _applySound() {
+    final master = launcherVolume / 100;
     sounds
-      ..enabled = preferences.sounds
-      ..volume = (preferences.soundVolume ?? 100) / 100;
-    music.volume = musicVolume / 100;
+      ..enabled = preferences.sounds && launcherVolume > 0
+      ..volume = master * (preferences.soundVolume ?? 100) / 100;
+    music.volume = master * musicVolume / 100;
   }
 
   void setActive(bool value) {
@@ -1354,7 +1393,13 @@ class AppModel extends ChangeNotifier {
   /// first start, a game starting or playing, the volume at 0); the interface sounds are quiet
   /// while a game is in front.
   void _updateMusic() {
-    final quiet = !preferences.onboarded || !active || running != null || starting != null || musicVolume == 0;
+    final quiet =
+        !preferences.onboarded ||
+        !active ||
+        running != null ||
+        starting != null ||
+        musicVolume == 0 ||
+        launcherVolume == 0;
     // The theme's (or the user's own) menu music when the selected game has no song.
     music.play(quiet ? null : selectedGame, fallback: quiet ? null : menuMusic);
     // With the game in front, the launcher says nothing.
@@ -1467,12 +1512,7 @@ class AppModel extends ChangeNotifier {
     if (_pads != null) return;
     final source = services.pads?.call();
     if (source == null) return;
-    final navigator = PadNavigator(
-      padCommand,
-      shortcuts: preferences.shortcuts,
-      isPlayStation: (pad) => controllers.roster.pad(pad)?.kind.isPlayStation ?? false,
-    );
-    _navigator = navigator;
+    final navigator = _padNavigator;
     final gate = PadGate(_padEvent, inFront: () => launcherInFront, log: _padLog, passesInGame: navigator.passesInGame);
     _gate = gate;
     final deadzone = DeadzoneStage(gate.handle);
@@ -1494,6 +1534,60 @@ class AppModel extends ChangeNotifier {
   }
 
   Timer? _focusWatch;
+
+  /// The navigator the controllers and the phones' pads move the launcher through.
+  PadNavigator get _padNavigator {
+    final made = _navigator;
+    if (made != null) return made;
+    final navigator = PadNavigator(
+      padCommand,
+      shortcuts: preferences.shortcuts,
+      isPlayStation: (pad) => controllers.roster.pad(pad)?.kind.isPlayStation ?? false,
+    );
+    _navigator = navigator;
+    _applyPadPreferences();
+    return navigator;
+  }
+
+  /// The phones' pads (the Remote app's, browser pads) as controller events.
+  late final PhonePadEvents _phonePads = PhonePadEvents(_phonePadEvent);
+
+  /// The phone pads whose events reached the navigator since it last let go of them.
+  final Set<String> _phonePadsMoving = {};
+
+  /// Whether a phone's pad moves the launcher now: with no game starting or playing and the
+  /// launcher in front, as a controller does; otherwise its input is the game's alone.
+  bool get phonePadMovesLauncher => running == null && starting == null && launcherInFront;
+
+  void _phonePadEvent(PadEvent event) {
+    final navigator = _padNavigator;
+    if (event is PadGone) {
+      if (_phonePadsMoving.remove(event.pad)) navigator.handle(event);
+      return;
+    }
+    if (!phonePadMovesLauncher) {
+      // A game (or another window) is in front: what the launcher held from this pad lets go.
+      if (_phonePadsMoving.remove(event.pad)) navigator.handle(PadGone(event.pad));
+      return;
+    }
+    // Options (the pad's settings button): the launcher's Settings, and out of them again.
+    if (event is PadButtonEvent && event.button == PadButton.start) {
+      if (event.down) _phoneOptions();
+      return;
+    }
+    _phonePadsMoving.add(event.pad);
+    navigator.handle(event);
+  }
+
+  void _phoneOptions() {
+    if (pairing != null || editingRow != null || shortcutCapture != null || !preferences.onboarded) return;
+    _usedInput(InputMode.pad);
+    if (overlay == Layer.settings) {
+      closeOverlay();
+    } else {
+      open(Layer.settings);
+    }
+  }
 
   /// A controller's event past the gate: to the navigator, or to Settings › Shortcuts while it
   /// waits for buttons.
@@ -1573,7 +1667,14 @@ class AppModel extends ChangeNotifier {
     _usedInput(InputMode.pad);
     // The controller test takes the pads' buttons: only PS acts (a held Circle leaves it).
     if (overlay == Layer.controllerTest && mapped != Command.home) return;
-    if (editingRow != null) return;
+    if (editingRow != null) {
+      // Typing in Settings' search: ○ stops (the field keeps the focus), ↓ goes to what it found.
+      if (editingRow == SettingsSearch.searchRow && (mapped == Command.back || mapped == Command.down)) {
+        stopEditing();
+        if (mapped == Command.down) _searchCommand(Command.down);
+      }
+      return;
+    }
     if (capturing != null && mapped != Command.back) return;
     if (overlay == Layer.settings && (mapped == Command.previousGame || mapped == Command.nextGame)) {
       return moveCategory(mapped == Command.nextGame ? 1 : -1);
@@ -1842,6 +1943,8 @@ class AppModel extends ChangeNotifier {
 
   void startEditing(String id) {
     editingRow = id;
+    // A click in Settings' search field: the keys are there.
+    if (id == SettingsSearch.searchRow) settingsSearchFocused = true;
     notifyListeners();
   }
 
@@ -1993,6 +2096,12 @@ class AppModel extends ChangeNotifier {
   /// With a controller in the settings: the focus is on the sections' column (← from a row),
   /// where ↑ and ↓ change the section and → or ✕ go back into its rows.
   bool panelSections = false;
+
+  /// Settings' search (settings_search.dart): what is typed, whether the keys are on the field,
+  /// and the section to go back to when it is emptied.
+  String settingsQuery = '';
+  bool settingsSearchFocused = false;
+  int _categoryBeforeSearch = 0;
 
   /// With a controller: the choice or stepper row whose value ← and → change now (✕ on it);
   /// outside it they never change a value. Null while none is.
@@ -2160,6 +2269,9 @@ class AppModel extends ChangeNotifier {
 
   /// A game's icon before the words (a new game).
   String? toastIcon;
+
+  /// What a click on the toast does (a message's: open its conversation); null for most.
+  void Function()? toastTap;
 
   /// A notice on the desktop while the launcher is behind other windows.
   void Function(String title, String body) desktopNotify = (title, body) =>
@@ -3553,16 +3665,18 @@ class AppModel extends ChangeNotifier {
 
   // Messages.
 
-  void show(String message, {LevelBadge? level, String? icon}) {
+  void show(String message, {LevelBadge? level, String? icon, void Function()? onTap}) {
     toast = message;
     toastLevel = level;
     toastIcon = icon;
+    toastTap = onTap;
     _toastTimer?.cancel();
     _backdropRetry?.cancel();
     _toastTimer = Timer(Duration(seconds: level == null ? 4 : 5), () {
       toast = null;
       toastLevel = null;
       toastIcon = null;
+      toastTap = null;
       notifyListeners();
     });
     notifyListeners();
@@ -3576,6 +3690,11 @@ class AppModel extends ChangeNotifier {
     if (overlay != next) together.askingRow = null;
     overlay = next;
     panelRow = 0;
+    // Settings open with every section; a search is over.
+    if (next == Layer.settings) {
+      settingsQuery = '';
+      settingsSearchFocused = false;
+    }
     panelCategory = 0;
     panelSections = false;
     editingValue = null;
@@ -3675,6 +3794,8 @@ class AppModel extends ChangeNotifier {
   void closeOverlay() {
     overlay = null;
     panelSections = false;
+    settingsQuery = '';
+    settingsSearchFocused = false;
     editingValue = null;
     shortcutCapture = null;
     together.askingRow = null;
@@ -4380,7 +4501,7 @@ class AppModel extends ChangeNotifier {
     final game = selectedGame;
     switch (overlay) {
       case Layer.settings:
-        return _settingsCategories();
+        return _searchedSettings(_settingsCategories());
       case Layer.gameSettings when game != null:
         return [PanelCategory(id: 'game', title: game.name, rows: _gameRows(game))];
       case Layer.controls when game != null:
@@ -4908,6 +5029,24 @@ class AppModel extends ChangeNotifier {
           ),
           PanelRow(id: 'profile', title: T.text('profileName'), kind: InfoRow(preferences.profileName)),
           PanelRow(
+            id: 'launcherVolume',
+            title: T.text('launcherVolume'),
+            detail: T.text('launcherVolumeDetail'),
+            kind: StepperRow(
+              value: launcherVolume,
+              min: 0,
+              max: 100,
+              step: 5,
+              format: _percent,
+              slider: true,
+              set: (value) {
+                preferences.launcherVolume = value;
+                _applySound();
+                savePreferences();
+              },
+            ),
+          ),
+          PanelRow(
             id: 'sounds',
             title: T.text('sounds'),
             kind: StepperRow(
@@ -4916,6 +5055,7 @@ class AppModel extends ChangeNotifier {
               max: 100,
               step: 10,
               format: _percent,
+              slider: true,
               set: (value) {
                 preferences.sounds = value > 0;
                 if (value > 0) preferences.soundVolume = value;
@@ -4934,6 +5074,7 @@ class AppModel extends ChangeNotifier {
               max: 100,
               step: 10,
               format: _percent,
+              slider: true,
               set: (value) {
                 preferences.musicVolume = value;
                 _applySound();
@@ -5712,6 +5853,7 @@ class AppModel extends ChangeNotifier {
     }
 
     final row = panelRow < rows.length ? rows[panelRow] : null;
+    if (_searchCommand(command)) return;
     if (_viaPad && _padPanelCommand(command, row, categories)) return;
     if (!_viaPad) {
       // The keys and the mouse have no sections' focus and no edit mode.
@@ -5726,6 +5868,10 @@ class AppModel extends ChangeNotifier {
     switch (command) {
       case Command.up || Command.down:
         final next = nextFocusable(panelRow, command == Command.down ? 1 : -1);
+        // ↑ on Settings' first row: onto the search field.
+        if (command == Command.up && overlay == Layer.settings && nextFocusable(panelRow, -1) == panelRow) {
+          return _toSearch();
+        }
         if (next != panelRow) sounds.play(Cue.move);
         panelRow = next;
         _changed();
@@ -5749,7 +5895,7 @@ class AppModel extends ChangeNotifier {
                 ? hold.repeats + 1
                 : 0;
             _stepHold = (row: id, delta: delta, repeats: repeats);
-            final next = stepper.moved(delta * StepperRow.stride(repeats));
+            final next = stepper.moved(delta * stepper.strideFor(repeats));
             if (next != value) {
               set(next);
               sounds.play(Cue.move);
@@ -5804,6 +5950,9 @@ class AppModel extends ChangeNotifier {
     final sections = overlay == Layer.settings && categories.length > 1;
     if (panelSections && sections) {
       switch (command) {
+        // ↑ on the first section: onto the search field.
+        case Command.up when panelCategory == 0:
+          _toSearch();
         case Command.up || Command.down:
           moveCategory(command == Command.down ? 1 : -1);
         case Command.right || Command.select:
@@ -5867,6 +6016,7 @@ class AppModel extends ChangeNotifier {
     panelRow = index;
     pointerFocus = true;
     panelSections = false;
+    settingsSearchFocused = false;
     editingValue = null;
     handle(Command.select);
   }
@@ -5877,6 +6027,7 @@ class AppModel extends ChangeNotifier {
     final rows = _currentRows;
     if (index < 0 || index >= rows.length || !rows[index].focusable) return;
     pointerFocus = true;
+    settingsSearchFocused = false;
     if (panelRow != index) {
       panelRow = index;
       _changed();
@@ -5889,12 +6040,32 @@ class AppModel extends ChangeNotifier {
     }
   }
 
+  /// A slider's bar clicked or dragged: the row takes the focus and the value, with a tick.
+  void setRowValue(int index, int value) {
+    final rows = _currentRows;
+    if (index < 0 || index >= rows.length || !rows[index].focusable) return;
+    final kind = rows[index].kind;
+    if (kind is! StepperRow) return;
+    pointerFocus = true;
+    settingsSearchFocused = false;
+    panelRow = index;
+    final next = value.clamp(kind.min, kind.max);
+    if (next != kind.value) {
+      kind.set(next);
+      sounds.play(Cue.move);
+    }
+    _changed();
+  }
+
   /// The pointer moved over a row: the focus follows it, quietly, and the list stays put.
   void hoverRow(int index) {
     final rows = _currentRows;
-    if (index == panelRow || index < 0 || index >= rows.length || !rows[index].focusable) return;
+    if ((index == panelRow && !settingsSearchFocused) || index < 0 || index >= rows.length || !rows[index].focusable) {
+      return;
+    }
     panelRow = index;
     pointerFocus = true;
+    settingsSearchFocused = false;
     _changed();
   }
 
@@ -5918,6 +6089,7 @@ class AppModel extends ChangeNotifier {
     if (index != panelCategory) sounds.play(Cue.move);
     panelCategory = index;
     panelSections = false;
+    settingsSearchFocused = false;
     editingValue = null;
     panelRow = 0;
     _skipToFocusable();
@@ -6118,6 +6290,8 @@ class AppModel extends ChangeNotifier {
           if (running case (final Game playing, _)) _checkPhoneReach(playing);
         },
         disconnected: _changed,
+        pad: _phonePads.packet,
+        padEnded: _phonePads.gone,
         latency: (milliseconds) {
           phoneLatency = milliseconds;
           notifyListeners();

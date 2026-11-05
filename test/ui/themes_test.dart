@@ -83,37 +83,55 @@ void main() {
     expect(has('accent'), isTrue);
   });
 
-  test('a hue goes round the circle; a held arrow speeds up, a press stays one step', () {
-    const circle = StepperRow(value: 355, min: 0, max: 355, step: 5, format: _same, set: _ignore, wraps: true);
+  test('a hue goes round the circle in steps that show; a held arrow speeds up, a press stays one step', () {
+    const circle = StepperRow(value: 340, min: 0, max: 340, step: 20, format: _same, set: _ignore, wraps: true);
     expect(circle.moved(1), 0);
-    expect(circle.moved(-1), 350);
-    expect(const StepperRow(value: 0, min: 0, max: 355, step: 5, format: _same, set: _ignore, wraps: true).moved(-1), 355);
-    const line = StepperRow(value: 85, min: -90, max: 90, step: 5, format: _same, set: _ignore);
+    expect(circle.moved(-1), 320);
+    expect(
+      const StepperRow(value: 0, min: 0, max: 340, step: 20, format: _same, set: _ignore, wraps: true).moved(-1),
+      340,
+    );
+    const line = StepperRow(value: 85, min: -90, max: 90, step: 15, format: _same, set: _ignore);
     expect(line.moved(3), 90, reason: 'a line stops at its end');
-    expect([for (final repeats in [0, 7, 8, 19, 20, 40]) StepperRow.stride(repeats)], [1, 1, 3, 3, 6, 6]);
+    expect(
+      [
+        for (final repeats in [0, 7, 8, 19, 20, 40]) StepperRow.stride(repeats),
+      ],
+      [1, 1, 3, 3, 6, 6],
+    );
+    // A long range speeds up all the way; a short one hardly, so a hold stops where it is let go.
+    const long = StepperRow(value: 1, min: 1, max: 100, step: 1, format: _same, set: _ignore);
+    expect(long.strideFor(40), 6);
+    expect(circle.strideFor(40), 2);
+    expect(const StepperRow(value: 0, min: 0, max: 100, step: 10, format: _same, set: _ignore).strideFor(40), 1);
 
     openAppearance();
     (row('studio').kind as ActionRow).run();
+    // Every knob goes end to end in 20 presses or fewer.
+    for (final id in ['hue', 'highlight', 'depth', 'accent']) {
+      final knob = row(id).kind as StepperRow;
+      expect((knob.max - knob.min) / knob.step, lessThanOrEqualTo(20), reason: id);
+    }
     model.panelRow = rows().indexWhere((row) => row.id == 'hue');
     int hue() => (row('hue').kind as StepperRow).value;
     final start = hue();
     model.command(Command.right);
-    expect(hue(), (start + 5) % 360, reason: 'one press, one step');
-    // Held: seven repeats at one step, then three at a time.
-    for (var repeat = 0; repeat < 12; repeat++) {
+    expect(hue(), (start + 20) % 360, reason: 'one press, one step');
+    // Held: seven repeats at one step, then two at a time.
+    for (var repeat = 0; repeat < 10; repeat++) {
       model.command(Command.right, repeat: true);
     }
-    expect(hue(), (start + 5 + 7 * 5 + 5 * 15) % 360);
+    expect(hue(), (start + 20 + 7 * 20 + 3 * 40) % 360);
     // A new press starts slow again.
     final before = hue();
     model.command(Command.left);
-    expect(hue(), (before - 5) % 360);
+    expect(hue(), (before - 20) % 360);
     // The mouse holding − does the same through stepRow.
     final index = rows().indexWhere((row) => row.id == 'hue');
     for (var repeat = 0; repeat < 9; repeat++) {
       model.stepRow(index, -1, repeat: true);
     }
-    expect(hue(), (before - 5 - 7 * 5 - 2 * 15) % 360);
+    expect(hue(), (before - 20 - 7 * 20 - 2 * 40) % 360);
   });
 
   test('something that is no theme says so and changes nothing', () async {

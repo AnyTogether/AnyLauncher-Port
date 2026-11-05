@@ -62,7 +62,11 @@ void main() {
       }
       await press(tester, LogicalKeyboardKey.enter);
       expect(model.editingRow, 'together-email');
-      await tester.enterText(find.byType(TextField).first, 'utku@example.com');
+      // The row's own field (Settings' search field is in the heading).
+      await tester.enterText(
+        find.descendant(of: find.byKey(const ValueKey('row-together-email')), matching: find.byType(TextField)),
+        'utku@example.com',
+      );
       await settle(tester);
       expect(model.together.email, 'utku@example.com');
       // Backspace and space are the field's while typing, not Back and Select.
@@ -196,6 +200,60 @@ void main() {
       expect(find.text('Who brings snacks?'), findsNothing);
       expect(find.text('Cem Yılmaz: Who brings snacks?'), findsOneWidget);
       await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_messages.png'));
+    });
+
+    testWidgets('a conversation clicked in the list opens, with the cursor in its field', (tester) async {
+      fixture = makeFixture();
+      model = fixture.model;
+      signedInPreview(model);
+      const ana = Person(id: 'u-ana', handle: 'ana', displayName: 'Ana');
+      const me = Person(id: 'u-me', handle: 'utku', displayName: 'Utku Halis');
+      ChatMessage message(String conversation, int seq, String author, String text) => ChatMessage(
+        id: '$conversation-$seq',
+        conversationId: conversation,
+        seq: seq,
+        authorId: author,
+        text: text,
+        createdAt: DateTime.utc(2026, 10, 24, 20, seq),
+      );
+      model.together.hub.messages
+        ..conversations = [
+          Conversation(
+            id: 'c-ana',
+            group: false,
+            title: null,
+            members: const [me, ana],
+            lastSeq: 1,
+            readSeq: 1,
+            lastMessage: message('c-ana', 1, 'u-ana', 'Hi!'),
+            updatedAt: DateTime.utc(2026, 10, 24),
+          ),
+          Conversation(
+            id: 'c-group',
+            group: true,
+            title: 'Friday night',
+            members: const [me, ana],
+            lastSeq: 1,
+            readSeq: 1,
+            lastMessage: message('c-group', 1, 'u-ana', 'Who brings snacks?'),
+            updatedAt: DateTime.utc(2026, 10, 23),
+          ),
+        ]
+        ..loaded = true
+        ..openId = 'c-ana'
+        ..thread = [message('c-ana', 1, 'u-ana', 'Hi!')];
+      model.open(Layer.messages);
+      await pumpLauncher(tester, model);
+      expect(model.together.messagesInThread, isFalse);
+
+      await tester.tap(find.text('Friday night').first);
+      await tester.pump();
+      // The one clicked is the one shown (and the one a reply goes to), not the one before.
+      expect(model.together.hub.messages.openId, 'c-group');
+      expect(TogetherMessages.targetKey(model.together.selectedTarget!), 'c-group');
+      expect(model.together.messagesInThread, isTrue);
+      expect(model.together.messageFocus, TogetherMessages.composer);
+      await settle(tester);
     });
 
     testWidgets('golden: messages with reactions, a reply, the receipt, pinned and muted; then a message\'s menu', (

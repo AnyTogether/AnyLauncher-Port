@@ -60,6 +60,7 @@ void main() {
   final pairings = <PairingRequest>[];
   final requests = <(server.RemoteMessage, String)>[];
   final log = <String>[];
+  final pads = <String>[];
   var playerChanges = 0;
   var wishes = 0;
 
@@ -69,6 +70,7 @@ void main() {
     pairings.clear();
     requests.clear();
     log.clear();
+    pads.clear();
     playerChanges = 0;
     wishes = 0;
     remote = RemoteServer(
@@ -83,6 +85,9 @@ void main() {
         connecting: (name) => log.add('connecting $name'),
         players: () => playerChanges++,
         streamWishes: () => wishes++,
+        pad: (device, packet) =>
+            pads.add('$device ${ByteData.sublistView(Uint8List.fromList(packet)).getUint32(8, Endian.little)}'),
+        padEnded: (device) => pads.add('$device ended'),
       ),
     );
     await remote.start();
@@ -282,6 +287,25 @@ void main() {
     game.answer(3);
     expect(decodeOutput(await back)!.sequence, 3);
     await phone.close();
+  });
+
+  test('the launcher hears each pad packet, by UDP or on the channel, game or none, and a phone leaving', () async {
+    final (phone, welcome) = await paired('phone-1', 'Phone');
+    final udp = await phone.openUdp();
+    // No game: the packets still reach the launcher, which moves with them.
+    udp.send(phone.input(welcome.session, sequence: 4), InternetAddress.loopbackIPv4, welcome.udpPort);
+    phone.socket.add(phone.input(welcome.session, sequence: 5));
+    // Another session's is no one's.
+    udp.send(phone.input(welcome.session + BigInt.one, sequence: 6), InternetAddress.loopbackIPv4, welcome.udpPort);
+    for (var tries = 0; tries < 100 && pads.length < 2; tries++) {
+      await settle();
+    }
+    expect(pads, unorderedEquals(['phone-1 4', 'phone-1 5']));
+    await phone.close();
+    for (var tries = 0; tries < 100 && pads.length < 3; tries++) {
+      await settle();
+    }
+    expect(pads.last, 'phone-1 ended');
   });
 
   test('a second phone uses the second bridge', () async {

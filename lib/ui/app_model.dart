@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart' show Color;
@@ -835,6 +836,13 @@ class StepperRow extends RowKind {
   /// How many steps one move of a hold takes after [repeats] repeats: one at first, then more,
   /// so a held arrow crosses a long range in a second or two and a press stays exact.
   static int stride(int repeats) => repeats < 8 ? 1 : (repeats < 20 ? 3 : 6);
+
+  /// [stride] for this row: a short range (a dozen presses or so end to end) speeds up less, so
+  /// a hold does not jump past what it was held for.
+  int strideFor(int repeats) {
+    final steps = ((max - min) / step).ceil();
+    return math.min(stride(repeats), math.max(1, steps ~/ 8));
+  }
 }
 
 class ActionRow extends RowKind {
@@ -1310,6 +1318,11 @@ class AppModel extends ChangeNotifier {
   /// The themes made in the Theme Studio or installed from files (themes_model.dart).
   late final ThemeLibrary themes = ThemeLibrary(p.join(paths.config, 'Themes'));
   late List<ThemeDesign> designs = themes.all;
+
+  /// The Theme studio's knobs as last turned, with the colours they made: read back from the
+  /// colours (8 bits each) a hue can come out a degree off, so while the colours are still the
+  /// ones the knobs made, the knobs are these (themes_model.dart).
+  ({String id, ThemeKnobs knobs, String colours})? _studioKnobs;
 
   /// Whether the launcher's window is in front: the theme song plays only then.
   bool active = true;
@@ -5749,7 +5762,7 @@ class AppModel extends ChangeNotifier {
                 ? hold.repeats + 1
                 : 0;
             _stepHold = (row: id, delta: delta, repeats: repeats);
-            final next = stepper.moved(delta * StepperRow.stride(repeats));
+            final next = stepper.moved(delta * stepper.strideFor(repeats));
             if (next != value) {
               set(next);
               sounds.play(Cue.move);

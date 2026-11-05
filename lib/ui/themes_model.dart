@@ -5,6 +5,10 @@ part of 'app_model.dart';
 /// the user's own background and menu music. The macOS launcher's ThemesPanel.swift and
 /// ThemeLibrary.swift.
 extension LauncherThemes on AppModel {
+  /// The Theme studio's hue and accent turn this many degrees a press: a change the eye sees,
+  /// round the circle in 18 presses.
+  static const hueStep = 20;
+
   /// The custom theme in use; null for a built-in look.
   ThemeDesign? get activeDesign {
     final id = preferences.customTheme;
@@ -150,7 +154,7 @@ extension LauncherThemes on AppModel {
   List<PanelRow> studioRows() {
     final design = activeDesign;
     if (design == null) return const [];
-    final knobs = ThemeKnobs.of(design);
+    final knobs = _knobsOf(design);
     String degrees(int value) => '$value°';
     return [
       PanelRow(
@@ -175,11 +179,12 @@ extension LauncherThemes on AppModel {
       PanelRow(
         id: 'hue',
         title: T.text('themeHue'),
+        // Steps of a size that shows: round the circle in 18 presses.
         kind: StepperRow(
           value: knobs.hue.round(),
           min: 0,
-          max: 355,
-          step: 5,
+          max: 360 - LauncherThemes.hueStep,
+          step: LauncherThemes.hueStep,
           format: degrees,
           wraps: true,
           set: (value) => _turn((knobs) => knobs.copyWith(hue: value.toDouble())),
@@ -192,7 +197,8 @@ extension LauncherThemes on AppModel {
           value: knobs.highlight.round(),
           min: -90,
           max: 90,
-          step: 5,
+          // End to end in 12 presses.
+          step: 15,
           format: degrees,
           set: (value) => _turn((knobs) => knobs.copyWith(highlight: value.toDouble())),
         ),
@@ -215,8 +221,8 @@ extension LauncherThemes on AppModel {
         kind: StepperRow(
           value: knobs.accentHue.round(),
           min: 0,
-          max: 355,
-          step: 5,
+          max: 360 - LauncherThemes.hueStep,
+          step: LauncherThemes.hueStep,
           format: degrees,
           wraps: true,
           set: (value) => _turn((knobs) => knobs.copyWith(accentHue: value.toDouble())),
@@ -324,9 +330,21 @@ extension LauncherThemes on AppModel {
   void _turn(ThemeKnobs Function(ThemeKnobs knobs) change) {
     final design = activeDesign;
     if (design == null) return;
-    final knobs = change(ThemeKnobs.of(design));
+    final knobs = change(_knobsOf(design));
     editTheme(knobs.applyTo);
+    final made = activeDesign;
+    if (made != null) _studioKnobs = (id: made.id, knobs: knobs, colours: _colours(made));
   }
+
+  /// The knobs for [design]: the ones last turned while its colours are what they made, else
+  /// read from the colours.
+  ThemeKnobs _knobsOf(ThemeDesign design) {
+    final kept = _studioKnobs;
+    if (kept != null && kept.id == design.id && kept.colours == _colours(design)) return kept.knobs;
+    return ThemeKnobs.of(design);
+  }
+
+  static String _colours(ThemeDesign design) => '${design.deep} ${design.middle} ${design.bright} ${design.accent}';
 
   /// A picture or video for the theme in use, or its menu music, from a file the user picks.
   Future<void> chooseThemeMedia({required bool music}) async {

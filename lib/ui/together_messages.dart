@@ -670,7 +670,11 @@ extension TogetherMessages on TogetherModel {
         '';
     app.sounds.play(Cue.move);
     _noticeSound();
-    app.show(T.format('messagesFrom', [name, text.length > 80 ? '${text.substring(0, 80)}…' : text]));
+    // A click on it opens the conversation.
+    app.show(
+      T.format('messagesFrom', [name, text.length > 80 ? '${text.substring(0, 80)}…' : text]),
+      onTap: conversation == null ? null : () => unawaited(openConversation(conversation)),
+    );
   }
 
   void sendFailed(Object error) {

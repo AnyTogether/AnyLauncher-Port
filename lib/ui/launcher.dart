@@ -491,7 +491,12 @@ class _LauncherShellState extends State<LauncherShell> {
                                       ),
                                       if (model.starting != null) _StartingCard(model: model),
                                       if (model.pairing != null) PairingCard(model: model),
-                                      _Toast(message: model.toast, level: model.toastLevel, icon: model.toastIcon),
+                                      _Toast(
+                                        message: model.toast,
+                                        level: model.toastLevel,
+                                        icon: model.toastIcon,
+                                        onTap: model.toastTap,
+                                      ),
                                       if (model.showsWindowButtons)
                                         WindowButtons(
                                           accent: model.accentChoice.color,
@@ -582,9 +587,13 @@ class _StartingCard extends StatelessWidget {
 }
 
 class _Toast extends StatelessWidget {
-  const _Toast({required this.message, this.level, this.icon});
+  const _Toast({required this.message, this.level, this.icon, this.onTap});
 
   final String? message;
+
+  /// A toast that goes somewhere (a message: its conversation) takes a click; others let the
+  /// pointer through.
+  final VoidCallback? onTap;
 
   /// A game's icon before the words (a new game).
   final String? icon;
@@ -600,82 +609,94 @@ class _Toast extends StatelessWidget {
       right: 0,
       bottom: 92 * scale,
       child: IgnorePointer(
+        ignoring: onTap == null,
         child: Center(
-          child: AnimatedSwitcher(
-            layoutBuilder: uniqueSwitcherLayout(),
-            duration: Motion.overlay,
-            switchInCurve: Motion.settle,
-            transitionBuilder: (child, animation) => FadeTransition(
-              opacity: animation,
-              child: SlideTransition(
-                position: Tween(begin: const Offset(0, 0.3), end: Offset.zero).animate(animation),
-                child: child,
+          child: _tappable(
+            AnimatedSwitcher(
+              layoutBuilder: uniqueSwitcherLayout(),
+              duration: Motion.overlay,
+              switchInCurve: Motion.settle,
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween(begin: const Offset(0, 0.3), end: Offset.zero).animate(animation),
+                  child: child,
+                ),
               ),
-            ),
-            child: message == null
-                ? const SizedBox.shrink()
-                : level != null
-                ? Glass(
-                    key: ValueKey(message),
-                    radius: 34 * scale,
-                    opacity: 0.66,
-                    padding: EdgeInsets.fromLTRB(12 * scale, 10 * scale, 28 * scale, 10 * scale),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        LevelBadgeView(level: level!, size: 44 * scale),
-                        SizedBox(width: 14 * scale),
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              T.upper(LevelColors.tierName(level!.tier)),
-                              style: AppText.display(
-                                11 * scale,
-                                weight: FontWeight.w700,
-                                color: LevelColors.bright(level!.tier),
-                              ).copyWith(letterSpacing: 1.1 * scale),
-                            ),
-                            SizedBox(height: 2 * scale),
-                            Text(message!, style: AppText.display(18 * scale, weight: FontWeight.w600)),
-                          ],
-                        ),
-                      ],
-                    ),
-                  )
-                : icon != null
-                ? Glass(
-                    key: ValueKey(message),
-                    radius: 30 * scale,
-                    opacity: 0.6,
-                    padding: EdgeInsets.fromLTRB(10 * scale, 10 * scale, 26 * scale, 10 * scale),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(9 * scale),
-                          child: SizedBox(
-                            width: 36 * scale,
-                            height: 36 * scale,
-                            child: ArtworkImage(path: icon!, cacheWidth: 96),
+              child: message == null
+                  ? const SizedBox.shrink()
+                  : level != null
+                  ? Glass(
+                      key: ValueKey(message),
+                      radius: 34 * scale,
+                      opacity: 0.66,
+                      padding: EdgeInsets.fromLTRB(12 * scale, 10 * scale, 28 * scale, 10 * scale),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          LevelBadgeView(level: level!, size: 44 * scale),
+                          SizedBox(width: 14 * scale),
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                T.upper(LevelColors.tierName(level!.tier)),
+                                style: AppText.display(
+                                  11 * scale,
+                                  weight: FontWeight.w700,
+                                  color: LevelColors.bright(level!.tier),
+                                ).copyWith(letterSpacing: 1.1 * scale),
+                              ),
+                              SizedBox(height: 2 * scale),
+                              Text(message!, style: AppText.display(18 * scale, weight: FontWeight.w600)),
+                            ],
                           ),
-                        ),
-                        SizedBox(width: 14 * scale),
-                        Text(message!, style: AppText.display(16 * scale, weight: FontWeight.w500)),
-                      ],
+                        ],
+                      ),
+                    )
+                  : icon != null
+                  ? Glass(
+                      key: ValueKey(message),
+                      radius: 30 * scale,
+                      opacity: 0.6,
+                      padding: EdgeInsets.fromLTRB(10 * scale, 10 * scale, 26 * scale, 10 * scale),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(9 * scale),
+                            child: SizedBox(
+                              width: 36 * scale,
+                              height: 36 * scale,
+                              child: ArtworkImage(path: icon!, cacheWidth: 96),
+                            ),
+                          ),
+                          SizedBox(width: 14 * scale),
+                          Text(message!, style: AppText.display(16 * scale, weight: FontWeight.w500)),
+                        ],
+                      ),
+                    )
+                  : Glass(
+                      key: ValueKey(message),
+                      radius: 30 * scale,
+                      opacity: 0.6,
+                      padding: EdgeInsets.symmetric(horizontal: 26 * scale, vertical: 14 * scale),
+                      child: Text(message!, style: AppText.display(16 * scale, weight: FontWeight.w500)),
                     ),
-                  )
-                : Glass(
-                    key: ValueKey(message),
-                    radius: 30 * scale,
-                    opacity: 0.6,
-                    padding: EdgeInsets.symmetric(horizontal: 26 * scale, vertical: 14 * scale),
-                    child: Text(message!, style: AppText.display(16 * scale, weight: FontWeight.w500)),
-                  ),
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _tappable(Widget child) {
+    final tap = onTap;
+    if (tap == null) return child;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(key: const ValueKey('toast-tap'), onTap: tap, child: child),
     );
   }
 }

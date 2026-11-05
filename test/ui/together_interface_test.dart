@@ -62,7 +62,11 @@ void main() {
       }
       await press(tester, LogicalKeyboardKey.enter);
       expect(model.editingRow, 'together-email');
-      await tester.enterText(find.byType(TextField).first, 'utku@example.com');
+      // The row's own field (Settings' search field is in the heading).
+      await tester.enterText(
+        find.descendant(of: find.byKey(const ValueKey('row-together-email')), matching: find.byType(TextField)),
+        'utku@example.com',
+      );
       await settle(tester);
       expect(model.together.email, 'utku@example.com');
       // Backspace and space are the field's while typing, not Back and Select.

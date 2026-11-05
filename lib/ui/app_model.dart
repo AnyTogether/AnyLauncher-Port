@@ -2270,6 +2270,9 @@ class AppModel extends ChangeNotifier {
   /// A game's icon before the words (a new game).
   String? toastIcon;
 
+  /// What a click on the toast does (a message's: open its conversation); null for most.
+  void Function()? toastTap;
+
   /// A notice on the desktop while the launcher is behind other windows.
   void Function(String title, String body) desktopNotify = (title, body) =>
       DesktopNotice.show(title, body, urgent: false);
@@ -3662,16 +3665,18 @@ class AppModel extends ChangeNotifier {
 
   // Messages.
 
-  void show(String message, {LevelBadge? level, String? icon}) {
+  void show(String message, {LevelBadge? level, String? icon, void Function()? onTap}) {
     toast = message;
     toastLevel = level;
     toastIcon = icon;
+    toastTap = onTap;
     _toastTimer?.cancel();
     _backdropRetry?.cancel();
     _toastTimer = Timer(Duration(seconds: level == null ? 4 : 5), () {
       toast = null;
       toastLevel = null;
       toastIcon = null;
+      toastTap = null;
       notifyListeners();
     });
     notifyListeners();

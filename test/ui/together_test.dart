@@ -1228,6 +1228,20 @@ void main() {
       expect(together.messageFocus, TogetherMessages.composer);
     });
 
+    test('the toast of a message that came takes a click to its conversation', () async {
+      final together = model.together;
+      server.receive('c-bora', 'u-bora', 'You there?');
+      await until(() => model.toast == 'Bora: You there?');
+      expect(model.toastTap, isNotNull);
+      model.toastTap!();
+      await until(() => together.hub.messages.openId == 'c-bora');
+      expect(model.overlay, Layer.messages);
+      expect(TogetherMessages.targetKey(together.selectedTarget!), 'c-bora');
+      expect(together.messagesInThread, isTrue);
+      model.show('Something else');
+      expect(model.toastTap, isNull, reason: 'other toasts go nowhere');
+    });
+
     test('read receipts: the setting from the server, changed here and on another device', () async {
       final together = model.together;
       server.me['readReceipts'] = false;

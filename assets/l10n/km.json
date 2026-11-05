@@ -115,6 +115,8 @@
   "engineArmNone": "AnyPS5-ARM នៅមិនទាន់មានម៉ាស៊ីនសម្រាប់ប្រព័ន្ធនេះនៅឡើយទេ។",
   "engineArmUpToDate": "ម៉ាស៊ីន AnyPS5-ARM គឺជាកំណែចុងក្រោយបំផុត។",
   "engineArmSource": "ពី GitHub · AnyTogether/AnyPS5-ARM",
+  "engineUpstreamMain": "Upstream main · %@ (មិនទាន់សាកល្បង)",
+  "engineUpstreamMainDetail": "សាខា main របស់ AnyPS5 ប្រភពដើម (upstream) ដោយគ្មានការកែប្រែ ដែល AnyPS5-ARM បង្កើត និងចុះហត្ថលេខារៀងរាល់ថ្ងៃ។ មិនទាន់សាកល្បង៖ ហ្គេមប្រហែលជាមិនចាប់ផ្តើមទេ។",
   "togetherIntro": "ចូលទៅក្នុង AnyTogether",
   "togetherIntroDetail": "ប្រវត្តិរូប ពានរង្វាន់ និងមិត្តភក្តិរបស់អ្នក នៅលើប្រព័ន្ធអនឡាញ។ មិនចាំបាច់ប្រើពាក្យសម្ងាត់ទេ៖ គ្រាន់តែប្រើលេខកូដដែលផ្ញើតាមអ៊ីមែល ឬយកពីគេហទំព័រ។",
   "togetherEmail": "អ៊ីមែល",

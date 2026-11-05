@@ -120,6 +120,8 @@
   "engineArmNone": "AnyPS5-ARM'ın bu sistem için henüz motoru yok",
   "engineArmUpToDate": "AnyPS5-ARM motoru güncel",
   "engineArmSource": "GitHub'dan · AnyTogether/AnyPS5-ARM",
+  "engineUpstreamMain": "Upstream main · %@ (test edilmedi)",
+  "engineUpstreamMainDetail": "Upstream AnyPS5'in main dalı olduğu gibi; AnyPS5-ARM her gün derler ve imzalar. Test edilmedi: oyunlar açılmayabilir.",
   "togetherIntro": "AnyTogether'a giriş yap",
   "togetherIntroDetail": "Profilin, kupaların ve arkadaşların online. Şifre yok: e-postayla ya da web sitesinden bir kod.",
   "togetherEmail": "E-posta",

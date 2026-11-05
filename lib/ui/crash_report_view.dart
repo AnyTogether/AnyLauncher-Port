@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/crash_report.dart';
-import '../core/toolkit_download.dart' show ToolkitStore;
+import '../core/toolkit_download.dart' show ToolkitStore, UpstreamNightlyPackage;
 import 'app_model.dart';
 import 'components.dart';
 import 'glass.dart';
@@ -164,6 +164,7 @@ class _Facts extends StatelessWidget {
   static String _engine(String? version) {
     if (version == null) return '—';
     if (version.startsWith('arm-')) return 'AnyPS5-ARM ${version.substring(4)}';
+    if (UpstreamNightlyPackage.commitOf(version) case final String commit) return 'Upstream main $commit';
     final upstream = ToolkitStore.upstreamVersion(version);
     return upstream == null ? version : 'v$upstream';
   }

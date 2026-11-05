@@ -120,6 +120,8 @@
   "engineArmNone": "AnyPS5-ARM ne propose pas encore de moteur pour ce système",
   "engineArmUpToDate": "Le moteur AnyPS5-ARM est à jour",
   "engineArmSource": "Depuis GitHub · AnyTogether/AnyPS5-ARM",
+  "engineUpstreamMain": "Upstream main · %@ (non testé)",
+  "engineUpstreamMainDetail": "La branche main d’AnyPS5 Upstream telle quelle, compilée chaque jour et signée par AnyPS5-ARM. Non testé : les jeux peuvent ne pas démarrer.",
   "togetherIntro": "Connectez-vous à AnyTogether",
   "togetherIntroDetail": "Votre profil, vos trophées et vos amis en ligne. Sans mot de passe : recevez un code par e-mail ou depuis le site Web.",
   "togetherEmail": "E-mail",

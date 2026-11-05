@@ -119,6 +119,8 @@
   "engineArmNone": "AnyPS5-ARM nu are încă un motor pentru acest sistem",
   "engineArmUpToDate": "Motorul AnyPS5-ARM este la zi",
   "engineArmSource": "De la GitHub · AnyTogether/AnyPS5-ARM",
+  "engineUpstreamMain": "Upstream main · %@ (netestat)",
+  "engineUpstreamMainDetail": "Ramura main a AnyPS5 original (upstream), nemodificată, compilată zilnic și semnată de AnyPS5-ARM. Netestat: este posibil ca jocurile să nu pornească.",
   "togetherIntro": "Conectează-te la AnyTogether",
   "togetherIntroDetail": "Profilul tău, trofeele și prietenii, online. Fără parolă: un cod primit prin e-mail sau de pe site.",
   "togetherEmail": "E-mail",

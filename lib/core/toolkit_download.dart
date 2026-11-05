@@ -219,6 +219,105 @@ class ArmToolkitPackage extends ToolkitPackage {
   }
 }
 
+/// Upstream AnyPS5's main as it was on one day, built unmodified by AnyPS5-ARM's CI (its Engine
+/// nightly workflow) and published as an AnyPS5-ARM pre-release tagged
+/// `upstream-nightly.<YYYYMMDD>.<commit>`, signed as AnyPS5-ARM's nightlies are. Its files are
+/// upstream's own release files, named after upstream's git describe instead of a release:
+/// `relinker-v0.1.4-1523-gbf80054e7.exe` and `prx-windows-v0.1.4-1523-gbf80054e7.zip` on Windows,
+/// `relinker-v0.1.4-1523-gbf80054e7` and `prx-linux-v0.1.4-1523-gbf80054e7.tar.gz` on Linux. They
+/// are laid out as upstream's releases are; the toolkit folder and version.txt are
+/// `upstream-main-<commit>`. It has none of AnyPS5-ARM's changes, and nobody tried it with a game:
+/// only the Nightly update channel offers it.
+class UpstreamNightlyPackage extends ToolkitPackage {
+  const UpstreamNightlyPackage({
+    required super.release,
+    required super.relinker,
+    required super.libraries,
+    required this.commit,
+    required this.day,
+    required this.describe,
+  });
+
+  static final _tag = RegExp(r'^upstream-nightly\.(\d{4})(\d{2})(\d{2})\.([0-9a-f]{7,40})$');
+
+  /// What its version.txt (and toolkit folder) starts with.
+  static const prefix = 'upstream-main-';
+
+  /// Upstream's commit, as the tag gives it (9 digits).
+  final String commit;
+
+  /// The day (UTC) it was built.
+  final DateTime day;
+
+  /// Upstream's git describe the files are named after: v0.1.4-1523-gbf80054e7.
+  final String describe;
+
+  @override
+  String get version => '$prefix$commit';
+
+  @override
+  String get toolkitVersion => version;
+
+  /// The day it was built, 2026-11-06.
+  String get date =>
+      '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+
+  /// Whether a toolkit's version.txt names an upstream nightly.
+  static bool isVersion(String? toolkitVersion) => toolkitVersion != null && toolkitVersion.startsWith(prefix);
+
+  /// The upstream commit in an upstream nightly's version.txt, null for any other toolkit.
+  static String? commitOf(String? toolkitVersion) =>
+      isVersion(toolkitVersion) ? toolkitVersion!.substring(prefix.length) : null;
+
+  /// [release]'s files for [system] when it is an upstream nightly that has them, else null.
+  static UpstreamNightlyPackage? of(UpstreamRelease release, HostSystem system) {
+    final tag = _tag.firstMatch(release.tag);
+    if (tag == null) return null;
+    final (year, month, date) = (int.parse(tag.group(1)!), int.parse(tag.group(2)!), int.parse(tag.group(3)!));
+    final day = DateTime.utc(year, month, date);
+    if (day.year != year || day.month != month || day.day != date) return null;
+    final windows = system == HostSystem.windows;
+    final libraries = RegExp('^prx-${windows ? 'windows' : 'linux'}-(v[0-9A-Za-z][0-9A-Za-z._-]*)\\.(zip|tar\\.gz)\$');
+    // The zip first on Windows, the .tar.gz first on Linux, as for upstream's releases.
+    for (final format in windows ? ['zip', 'tar.gz'] : ['tar.gz', 'zip']) {
+      for (final asset in release.assets) {
+        final match = libraries.firstMatch(asset.name);
+        if (match == null || match.group(2) != format) continue;
+        final describe = match.group(1)!;
+        final relinker = release.named(windows ? 'relinker-$describe.exe' : 'relinker-$describe');
+        if (relinker == null) continue;
+        return UpstreamNightlyPackage(
+          release: release,
+          relinker: relinker,
+          libraries: asset,
+          commit: tag.group(4)!,
+          day: day,
+          describe: describe,
+        );
+      }
+    }
+    return null;
+  }
+
+  /// The newest upstream nightly in [releases] that has the files for [system]: the latest day,
+  /// then the one published last.
+  static UpstreamNightlyPackage? newest(Iterable<UpstreamRelease> releases, HostSystem system) {
+    final epoch = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+    UpstreamNightlyPackage? best;
+    for (final release in releases) {
+      final package = of(release, system);
+      if (package == null) continue;
+      final order = best == null
+          ? 1
+          : package.day != best.day
+          ? package.day.compareTo(best.day)
+          : (release.published ?? epoch).compareTo(best.release.published ?? epoch);
+      if (order > 0) best = package;
+    }
+    return best;
+  }
+}
+
 /// Orders upstream versions: 0.1.10 after 0.1.9, a release after its own pre-release.
 int compareVersions(String a, String b) {
   List<int> numbers(String version) {
@@ -281,9 +380,11 @@ class GitHubReleases {
     return UpstreamRelease.fromJson(json, signingKeys: signingKeys);
   }
 
-  /// Every recent release, newest first, without drafts.
+  /// Every recent release, newest first, without drafts. As many as GitHub gives at once (100):
+  /// AnyPS5-ARM publishes nightlies and upstream nightlies beside its releases, and the newest
+  /// release has to stay in the list.
   Future<List<UpstreamRelease>> all() async {
-    final json = await _get('repos/$repository/releases?per_page=30');
+    final json = await _get('repos/$repository/releases?per_page=100');
     if (json is! List<dynamic>) throw ToolkitFailure(ToolkitFailureKind.network, 'GitHub sent no releases');
     final releases = [
       for (final entry in json)
@@ -732,7 +833,7 @@ class ToolkitStore {
       if (package is ArmToolkitPackage) {
         layOutWhole(raw, staging, version: package.toolkitVersion);
       } else {
-        layOut(raw, staging, relinker: relinkerFile, version: version);
+        layOut(raw, staging, relinker: relinkerFile, version: version, stamp: package.toolkitVersion);
       }
       final toolkit = Toolkit(staging, system: system);
       final problem = toolkit.problem;
@@ -756,8 +857,9 @@ class ToolkitStore {
   /// Turns the unpacked archive in [raw] and the downloaded [relinker] into the toolkit layout
   /// in [folder]: the folder that holds the .prx files becomes libs/ (older releases put them
   /// at the archive's top, newer ones in libs/), what sits beside a libs/ folder (patches/)
-  /// is kept, the relinker gets its toolkit name and on POSIX its executable bit.
-  void layOut(String raw, String folder, {required String relinker, required String version}) {
+  /// is kept, the relinker gets its toolkit name and on POSIX its executable bit. version.txt says
+  /// [stamp], by default `upstream-v<version>`.
+  void layOut(String raw, String folder, {required String relinker, required String version, String? stamp}) {
     final prx = Directory(raw)
         .listSync(recursive: true, followLinks: false)
         .whereType<File>()
@@ -785,7 +887,7 @@ class ToolkitStore {
     final relinkerPath = p.join(folder, system.relinkerName);
     File(relinker).copySync(relinkerPath);
     if (!Platform.isWindows) Process.runSync('chmod', ['755', relinkerPath]);
-    File(p.join(folder, 'version.txt')).writeAsStringSync('${versionText(version)}\n');
+    File(p.join(folder, 'version.txt')).writeAsStringSync('${stamp ?? versionText(version)}\n');
     if (Directory(raw).existsSync()) Directory(raw).deleteSync(recursive: true);
   }
 

@@ -120,6 +120,8 @@
   "engineArmNone": "AnyPS5-ARM belum memiliki mesin untuk sistem ini",
   "engineArmUpToDate": "Mesin AnyPS5-ARM sudah diperbarui",
   "engineArmSource": "Dari GitHub · AnyTogether/AnyPS5-ARM",
+  "engineUpstreamMain": "Upstream main · %@ (belum diuji)",
+  "engineUpstreamMainDetail": "Cabang main AnyPS5 hulu apa adanya, dibangun setiap hari dan ditandatangani oleh AnyPS5-ARM. Belum diuji: game mungkin tidak berjalan.",
   "togetherIntro": "Masuk ke AnyTogether",
   "togetherIntroDetail": "Profil, piala, dan teman Anda, online. Tanpa kata sandi: kode melalui email atau dari situs web.",
   "togetherEmail": "Surel",

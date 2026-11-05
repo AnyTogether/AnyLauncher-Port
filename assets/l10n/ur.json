@@ -120,6 +120,8 @@
   "engineArmNone": "AnyPS5-ARM اس سسٹم کے لیے ابھی تک کوئی انجن نہیں ہے۔",
   "engineArmUpToDate": "AnyPS5-ARM انجن اپ ٹو ڈیٹ ہے۔",
   "engineArmSource": "GitHub سے · AnyTogether/AnyPS5-ARM",
+  "engineUpstreamMain": "Upstream main · %@ (جانچا نہیں گیا)",
+  "engineUpstreamMainDetail": "اپ اسٹریم AnyPS5 کی main شاخ جوں کی توں، جسے AnyPS5-ARM ہر روز بناتا اور دستخط کرتا ہے۔ جانچا نہیں گیا: ہو سکتا ہے گیمز شروع نہ ہوں۔",
   "togetherIntro": "AnyTogether میں سائن ان کریں۔",
   "togetherIntroDetail": "آپ کا پروفائل، ٹرافیاں اور دوست، آن لائن۔کوئی پاس ورڈ نہیں: ای میل یا ویب سائٹ سے کوڈ۔",
   "togetherEmail": "ای میل",

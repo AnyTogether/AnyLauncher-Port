@@ -74,6 +74,12 @@ class EngineModel {
   /// with the current one are offered to be unlocked again with it.
   bool get updateAvailable {
     final version = app.toolkitVersion;
+    if (isUpstreamNightly(version)) {
+      final newest = upstreamNightly;
+      return newest != null &&
+          newest.version != version &&
+          !downloaded.any((kit) => p.basename(kit.root) == newest.version);
+    }
     if (isArm(version)) {
       final newest = armPackage;
       return newest != null &&
@@ -92,6 +98,7 @@ class EngineModel {
   /// A toolkit's name for people: v0.1.3 for a downloaded one, its version.txt otherwise.
   static String label(Toolkit kit) {
     if (isArm(kit.version)) return 'AnyPS5-ARM ${kit.version.substring(4)}';
+    if (UpstreamNightlyPackage.commitOf(kit.version) case final String commit) return 'Upstream main $commit';
     final upstream = ToolkitStore.upstreamVersion(kit.version);
     return upstream == null ? kit.version : 'v$upstream';
   }
@@ -112,6 +119,16 @@ class EngineModel {
 
   /// AnyPS5-ARM's releases, signed with the release keys built into the launcher.
   GitHubReleases? get _armSource => app.services.armEngineReleases;
+
+  // Upstream nightlies: upstream's main built unmodified by AnyPS5-ARM's CI, from AnyPS5-ARM's
+  // signed pre-releases.
+
+  /// The newest signed upstream nightly for this system, on the Nightly update channel only; null
+  /// on Stable and until AnyPS5-ARM's releases are listed.
+  UpstreamNightlyPackage? upstreamNightly;
+
+  /// Whether a toolkit's version.txt names an upstream nightly (`upstream-main-<commit>`).
+  static bool isUpstreamNightly(String? version) => UpstreamNightlyPackage.isVersion(version);
 
   /// Asks AnyPS5-ARM's releases for its newest engine.
   Future<void> checkArm({bool quiet = false}) async {
@@ -150,13 +167,21 @@ class EngineModel {
         if (!release.prerelease || release.trust != ReleaseTrust.unsignedRefused) release,
     ];
     armPackage = ArmToolkitPackage.find(ChannelReleases.offered(ready, app.updateChannel), app.system);
+    // An upstream nightly is no version the channels order (ChannelReleases leaves it out): only
+    // Nightly offers it, once signed.
+    upstreamNightly = app.updateChannel == UpdateChannel.nightly
+        ? UpstreamNightlyPackage.newest([
+            for (final release in armReleases)
+              if (release.trust == ReleaseTrust.signed) release,
+          ], app.system)
+        : null;
   }
 
   /// The update channel changed: the engine it offers, from the releases already listed (and
   /// asked again when there are none yet).
   void channelChanged() {
     _offerArm();
-    if (armSelected && !armChecked) unawaited(checkArm(quiet: true));
+    if ((armSelected || app.updateChannel == UpdateChannel.nightly) && !armChecked) unawaited(checkArm(quiet: true));
   }
 
   /// The AnyPS5-ARM engine in use came from a newer release than the one offered (a nightly, on
@@ -204,10 +229,7 @@ class EngineModel {
       if (pending != null)
         PanelRow(
           id: 'engineDownload',
-          title: T.format('engineDownloading', [
-            pending is ArmToolkitPackage ? pending.commit : 'v${pending.version}',
-            ((progress?.fraction ?? 0) * 100).floor(),
-          ]),
+          title: T.format('engineDownloading', [packageName(pending), ((progress?.fraction ?? 0) * 100).floor()]),
           detail: '${progressText()} · ${T.text('engineStop')}',
           kind: ActionRow(cancel),
         )
@@ -265,7 +287,7 @@ class EngineModel {
   static bool? readsPhone(String? version) {
     if (version == null) return null;
     if (isArm(version)) return true;
-    if (ToolkitStore.upstreamVersion(version) != null) return false;
+    if (ToolkitStore.upstreamVersion(version) != null || isUpstreamNightly(version)) return false;
     return null;
   }
 
@@ -296,6 +318,8 @@ class EngineModel {
   Future<void> check({bool quiet = false}) async {
     final source = _source;
     if (source == null || checking) return;
+    // On Nightly the upstream nightlies come from AnyPS5-ARM's releases.
+    if (app.updateChannel == UpdateChannel.nightly) unawaited(checkArm(quiet: true));
     checking = true;
     checkError = null;
     app.refresh();
@@ -326,6 +350,12 @@ class EngineModel {
   /// At start: a quiet look for a newer engine, said once when there is one.
   Future<void> startupCheck() async {
     if (!online || !app.preferences.onboarded) return;
+    if (isUpstreamNightly(app.toolkitVersion)) {
+      if (app.updateChannel != UpdateChannel.nightly) return;
+      await checkArm(quiet: true);
+      if (updateAvailable) app.show(T.format('engineUpdateToast', ['Upstream main ${upstreamNightly!.commit}']));
+      return;
+    }
     if (isArm(app.toolkitVersion)) {
       await checkArm(quiet: true);
       if (updateAvailable) app.show(T.format('engineUpdateToast', [armPackage!.commit]));
@@ -340,6 +370,8 @@ class EngineModel {
   /// versions nothing needs any more. True when it is in place.
   Future<bool> download([ToolkitPackage? package, bool allowUnverified = false, bool allowUnsigned = false]) async {
     if (downloading != null) return false;
+    // Update and Play with an upstream nightly in use: the newer upstream nightly.
+    if (package == null && !armSelected && isUpstreamNightly(app.toolkitVersion)) package = upstreamNightly;
     if (package == null && (armSelected || isArm(app.toolkitVersion))) {
       if (!armChecked) await checkArm(quiet: true);
       package = armPackage;
@@ -501,7 +533,7 @@ class EngineModel {
       if (package != null)
         PanelRow(
           id: 'engineDownload',
-          title: T.format('engineDownloading', ['v${package.version}', ((progress?.fraction ?? 0) * 100).floor()]),
+          title: T.format('engineDownloading', [packageName(package), ((progress?.fraction ?? 0) * 100).floor()]),
           detail: '${progressText()} · ${T.text('engineStop')}',
           kind: ActionRow(cancel),
         )
@@ -519,7 +551,8 @@ class EngineModel {
           detail: T.format('engineUnsignedDetail', ['v${pending.version}']),
           kind: ActionRow(() => unawaited(download(pending, false, true)), destructive: true),
         )
-      else if (latestPackage case final ToolkitPackage newest when updateAvailable || current == null)
+      else if (latestPackage case final ToolkitPackage newest
+          when (updateAvailable && !isUpstreamNightly(app.toolkitVersion)) || current == null)
         PanelRow(
           id: 'engineDownload',
           title: T.format(current == null ? 'engineDownloadVersion' : 'engineUpdate', ['v${newest.version}']),
@@ -539,12 +572,15 @@ class EngineModel {
       // Upstream does not sign its releases; ours are checked against their signatures.
       if (_source != null && _source!.signingKeys == null)
         PanelRow(id: 'engineSigning', title: T.text('engineUpstreamUnsigned'), kind: const InfoRow('')),
+      ?_upstreamNightlyRow(current),
     ];
     // Every version GitHub lists and every one on disk, newest first.
     final versions = <String>{
       for (final release in releases)
         if (release.packageFor(app.system) != null) release.version,
-      for (final kit in downloaded) p.basename(kit.root),
+      // An upstream nightly has a row of its own, and only on Nightly.
+      for (final kit in downloaded)
+        if (!isUpstreamNightly(kit.version)) p.basename(kit.root),
     }.toList()..sort((a, b) => compareVersions(b, a));
     for (final version in versions.take(8)) {
       final kit = downloaded.where((kit) => p.basename(kit.root) == version).firstOrNull;
@@ -587,6 +623,44 @@ class EngineModel {
     }
     return rows;
   }
+
+  /// The newest upstream nightly, on Nightly: "Upstream main · bf80054e7 · 2026-11-06 (untested)",
+  /// to download, to use once downloaded, or in use; null when there is none to offer.
+  PanelRow? _upstreamNightlyRow(Toolkit? current) {
+    final nightly = upstreamNightly;
+    if (nightly == null) return null;
+    final kit = downloaded.where((kit) => p.basename(kit.root) == nightly.version).firstOrNull;
+    final title = T.format('engineUpstreamMain', ['${nightly.commit} · ${nightly.date}']);
+    if (kit != null && current != null && p.equals(kit.root, current.root)) {
+      return PanelRow(
+        id: 'engineUpstreamMain',
+        title: title,
+        detail: T.text('engineUpstreamMainDetail'),
+        kind: InfoRow(T.text('engineInUse')),
+      );
+    }
+    if (kit != null) {
+      return PanelRow(
+        id: 'engineUpstreamMain',
+        title: title,
+        detail: T.text('engineDownloaded'),
+        kind: ActionRow(() => use(kit)),
+      );
+    }
+    return PanelRow(
+      id: 'engineUpstreamMain',
+      title: title,
+      detail: '${byteText(nightly.size)} · ${T.text('engineUpstreamMainDetail')}',
+      kind: ActionRow(() => unawaited(download(nightly))),
+    );
+  }
+
+  /// A package's name in the download rows: v0.1.4, AnyPS5-ARM's commit, `Upstream main <commit>`.
+  static String packageName(ToolkitPackage package) => switch (package) {
+    ArmToolkitPackage(:final commit) => commit,
+    UpstreamNightlyPackage(:final commit) => 'Upstream main $commit',
+    _ => 'v${package.version}',
+  };
 
   /// Use My Own Folder: what the folder in use is, a git checkout the launcher can update or a
   /// folder used as it is.

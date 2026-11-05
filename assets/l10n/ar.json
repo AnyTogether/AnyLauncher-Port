@@ -120,6 +120,8 @@
   "engineArmNone": "AnyPS5-ARM لا يوجد لديه محرك لهذا النظام حتى الآن",
   "engineArmUpToDate": "محرك AnyPS5-ARM محدث",
   "engineArmSource": "من GitHub · AnyTogether/AnyPS5-ARM",
+  "engineUpstreamMain": "Upstream main · %@ (لم يُختبر)",
+  "engineUpstreamMainDetail": "فرع main من AnyPS5 المنبع كما هو، يبنيه AnyPS5-ARM ويوقّعه كل يوم. لم يُختبر: قد لا تبدأ الألعاب.",
   "togetherIntro": "قم بتسجيل الدخول إلى AnyTogether",
   "togetherIntroDetail": "ملفك الشخصي وجوائزك وأصدقائك عبر الإنترنت. لا توجد كلمة مرور: رمز عن طريق البريد الإلكتروني أو من الموقع.",
   "togetherEmail": "البريد الإلكتروني",

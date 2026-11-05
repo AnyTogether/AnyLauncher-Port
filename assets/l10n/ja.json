@@ -120,6 +120,8 @@
   "engineArmNone": "AnyPS5-ARM にはこのシステム用のエンジンがまだありません",
   "engineArmUpToDate": "AnyPS5-ARM エンジンは最新です",
   "engineArmSource": "GitHub · AnyTogether/AnyPS5-ARM から",
+  "engineUpstreamMain": "Upstream main · %@ (未テスト)",
+  "engineUpstreamMainDetail": "上流 AnyPS5 の main ブランチをそのまま、AnyPS5-ARM が毎日ビルドして署名したものです。未テストのため、ゲームが起動しないことがあります。",
   "togetherIntro": "AnyTogether にサインインしてください",
   "togetherIntroDetail": "あなたのプロフィール、トロフィー、友達とオンラインでつながります。パスワードは不要です。メールまたはウェブサイトでコードを受け取ります.",
   "togetherEmail": "電子メール",

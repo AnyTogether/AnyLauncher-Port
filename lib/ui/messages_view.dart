@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../core/together/e2ee.dart' show safetyGroups;
+import '../core/together/e2ee_client.dart';
 import '../core/together/messages.dart';
 import 'app_model.dart';
 import 'components.dart';
@@ -201,7 +204,7 @@ class _TargetRow extends StatelessWidget {
     final last = conversation.lastMessage;
     if (last == null) return T.text('messagesSayHello');
     if (last.deleted) return T.text('messagesDeleted');
-    final text = last.text ?? '';
+    final text = TogetherMessages.previewText(last);
     if (last.authorId == me) return T.format('messagesYou', [text]);
     if (conversation.group) {
       return T.format('messagesFrom', [conversation.author(last.authorId)?.displayName ?? '', text]);
@@ -242,6 +245,7 @@ class _Thread extends StatelessWidget {
     final receiptOn = showing ? together.receiptFor(conversation) : null;
     final note = showing ? together.composerNote : null;
     final menu = together.messageMenu;
+    final lock = showing ? messages.lockOf(conversation.id) : null;
     return Stack(
       children: [
         Column(
@@ -262,6 +266,24 @@ class _Thread extends StatelessWidget {
                   Hint(keys: 'O', glyph: PadGlyph.triangle, label: T.text('hintOptions'), action: HintAction.options),
               ],
             ),
+            if (lock != null) ...[
+              SizedBox(height: 6 * scale),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _LockLine(lock: lock, accent: accent, onTap: together.openLockSheet),
+              ),
+            ],
+            if (lock?.notice != null) ...[
+              SizedBox(height: 12 * scale),
+              _DevicesNotice(
+                text: lock!.notice == DevicesChange.mine
+                    ? T.text('e2eeMyDevicesChanged')
+                    : T.format('e2eeDevicesChanged', [together.partnerName]),
+                accent: accent,
+                onCompare: together.openLockSheet,
+                onDismiss: together.dismissLockNotice,
+              ),
+            ],
             SizedBox(height: 14 * scale),
             Expanded(
               child: thread.isEmpty
@@ -280,6 +302,7 @@ class _Thread extends StatelessWidget {
                           KeepVisible(
                             active: focused?.id == message.id,
                             child: _Bubble(
+                              model: model,
                               message: message,
                               mine: message.authorId == me,
                               me: me,
@@ -316,36 +339,55 @@ class _Thread extends StatelessWidget {
             ),
             if (note != null)
               _ComposerNote(title: note.$1, text: note.$2, accent: accent, onCancel: together.cancelComposerNote),
-            Row(
-              children: [
-                for (var index = 0; index < TogetherMessages.quickReplies.length; index++) ...[
-                  _Chip(
-                    label: TogetherMessages.quickReplies[index],
-                    focused: inThread && focused == null && together.messageFocus == index,
-                    onTap: () => together.sendMessage(TogetherMessages.quickReplies[index]),
-                  ),
-                  SizedBox(width: 10 * scale),
-                ],
-                Expanded(
-                  child: FocusRing(
-                    focused:
-                        inThread &&
-                        focused == null &&
-                        together.messageFocus == TogetherMessages.composer &&
-                        model.editingRow == null,
-                    radius: 12 * scale,
-                    child: RowTextField(
-                      model: model,
-                      row: together.draftField,
-                      kind: together.draftField.kind as TextRow,
-                      focused: false,
+            if (lock?.state == EncryptionState.noDevice)
+              _NoDeviceNote(text: T.format('e2eeNoDevice', [together.partnerName]))
+            else
+              Row(
+                children: [
+                  for (var index = 0; index < TogetherMessages.quickReplies.length; index++) ...[
+                    _Chip(
+                      label: TogetherMessages.quickReplies[index],
+                      focused: inThread && focused == null && together.messageFocus == index,
+                      onTap: () => together.sendMessage(TogetherMessages.quickReplies[index]),
+                    ),
+                    SizedBox(width: 10 * scale),
+                  ],
+                  Expanded(
+                    child: FocusRing(
+                      focused:
+                          inThread &&
+                          focused == null &&
+                          together.messageFocus == TogetherMessages.composer &&
+                          model.editingRow == null,
+                      radius: 12 * scale,
+                      child: RowTextField(
+                        model: model,
+                        row: together.draftField,
+                        kind: together.draftField.kind as TextRow,
+                        focused: false,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
           ],
         ),
+        if (together.lockSheet && lock != null)
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: together.closeLockSheet,
+              child: ColoredBox(
+                color: Colors.black.withValues(alpha: 0.35),
+                child: Center(
+                  child: GestureDetector(
+                    onTap: () {},
+                    child: _LockSheet(model: model, lock: lock),
+                  ),
+                ),
+              ),
+            ),
+          ),
         if (menu != null)
           Positioned.fill(
             child: GestureDetector(
@@ -470,8 +512,12 @@ class _MenuCard extends StatelessWidget {
     final me = together.user?.id;
     final heading = menu.confirming
         ? T.text('messagesUnsendConfirm')
+        : menu.reporting
+        ? [T.text('messagesReportWhy'), if (message?.encrypted == true) T.text('e2eeReportNote')].join('\n')
         : message != null
-        ? (message.words ?? '')
+        ? (message.encrypted && message.seal != SealState.opened
+              ? TogetherMessages.shownText(message)
+              : (message.words ?? ''))
         : conversation?.name(me) ?? '';
     return ConstrainedBox(
       constraints: BoxConstraints(maxWidth: 420 * scale),
@@ -488,12 +534,12 @@ class _MenuCard extends StatelessWidget {
               padding: EdgeInsets.fromLTRB(6 * scale, 0, 6 * scale, 12 * scale),
               child: Text(
                 heading,
-                maxLines: menu.confirming ? 4 : 2,
+                maxLines: menu.confirming || menu.reporting ? 4 : 2,
                 overflow: TextOverflow.ellipsis,
                 style: AppText.display(
                   menu.confirming ? 16 * scale : 14 * scale,
-                  weight: menu.confirming ? FontWeight.w600 : FontWeight.w400,
-                  color: Colors.white.withValues(alpha: menu.confirming ? 0.95 : 0.6),
+                  weight: menu.confirming || menu.reporting ? FontWeight.w600 : FontWeight.w400,
+                  color: Colors.white.withValues(alpha: menu.confirming || menu.reporting ? 0.95 : 0.6),
                   height: 1.3,
                 ),
               ),
@@ -641,6 +687,7 @@ class _MenuRow extends StatelessWidget {
 
 class _Bubble extends StatelessWidget {
   const _Bubble({
+    required this.model,
     required this.message,
     required this.mine,
     required this.me,
@@ -654,6 +701,7 @@ class _Bubble extends StatelessWidget {
     this.maxWidth = 560,
   });
 
+  final AppModel model;
   final ChatMessage message;
   final bool mine;
   final String? me;
@@ -678,7 +726,10 @@ class _Bubble extends StatelessWidget {
     final mineInk = LookScope.inkOnAccent(context, accent, Colors.black);
     final scale = LayoutScale.of(context);
     final ink = mine ? mineInk : Colors.white;
-    final text = message.deleted ? T.text('messagesDeleted') : (message.text ?? '');
+    final text = TogetherMessages.shownText(message);
+    // Removed, or a sealed one this device cannot read: said quietly, in italics.
+    final unread = message.deleted || message.seal == SealState.beforeDevice || message.seal == SealState.undecryptable;
+    final attachment = message.deleted || message.seal != SealState.opened ? null : message.attachment;
     final foot = [
       if (message.failed) T.text('messagesRetry'),
       if (message.edited && !message.deleted) T.text('messagesEdited'),
@@ -759,18 +810,24 @@ class _Bubble extends StatelessWidget {
                             ],
                           ),
                         ),
-                      Text(
-                        text,
-                        style: AppText.display(
-                          16 * scale,
-                          color: message.deleted
-                              ? Colors.white.withValues(alpha: 0.5)
-                              : mine
-                              ? mineInk
-                              : Colors.white.withValues(alpha: 0.95),
-                          height: 1.3,
-                        ).copyWith(fontStyle: message.deleted ? FontStyle.italic : null),
-                      ),
+                      if (attachment != null)
+                        Padding(
+                          padding: EdgeInsets.only(bottom: text.isEmpty ? 0 : 8 * scale, top: 4 * scale),
+                          child: _SealedAttachmentView(model: model, message: message, ink: ink),
+                        ),
+                      if (text.isNotEmpty || attachment == null)
+                        Text(
+                          text,
+                          style: AppText.display(
+                            16 * scale,
+                            color: unread
+                                ? (mine ? mineInk.withValues(alpha: 0.7) : Colors.white.withValues(alpha: 0.5))
+                                : mine
+                                ? mineInk
+                                : Colors.white.withValues(alpha: 0.95),
+                            height: 1.3,
+                          ).copyWith(fontStyle: unread ? FontStyle.italic : null),
+                        ),
                       if (foot.isNotEmpty)
                         Padding(
                           padding: EdgeInsets.only(top: 4 * scale),
@@ -885,6 +942,503 @@ class _Chip extends StatelessWidget {
         child: Text(
           label,
           style: AppText.display(15 * scale, weight: FontWeight.w600, color: focused ? Colors.black : Colors.white),
+        ),
+      ),
+    );
+  }
+}
+
+/// Under the conversation's name: end-to-end encrypted (a lock in the accent) or not (an open
+/// lock, quietly); clicked, the sheet with what it means.
+class _LockLine extends StatelessWidget {
+  const _LockLine({required this.lock, required this.accent, required this.onTap});
+
+  final ConversationLock lock;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final on = lock.state != EncryptionState.off;
+    final ink = on ? accent : Colors.white.withValues(alpha: 0.55);
+    final label = T.text(on ? 'e2eeOn' : 'e2eeOff');
+    return Semantics(
+      button: true,
+      label: label,
+      child: Pressable(
+        onTap: onTap,
+        builder: (context, hovering) => AnimatedContainer(
+          duration: Motion.focus,
+          curve: Motion.settle,
+          padding: EdgeInsets.fromLTRB(9 * scale, 4 * scale, 11 * scale, 4 * scale),
+          decoration: BoxDecoration(
+            color: (on ? accent : Colors.white).withValues(alpha: hovering ? 0.18 : 0.08),
+            borderRadius: BorderRadius.circular(12 * scale),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(on ? Icons.lock_rounded : Icons.lock_open_rounded, size: 14 * scale, color: ink),
+              SizedBox(width: 6 * scale),
+              Text(
+                label,
+                style: AppText.display(12.5 * scale, weight: FontWeight.w600, color: ink),
+              ),
+              if (lock.compared) ...[
+                SizedBox(width: 6 * scale),
+                Icon(Icons.verified_rounded, size: 14 * scale, color: ink),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Someone's devices changed: said in the thread until it is dismissed, with the way to the
+/// safety number.
+class _DevicesNotice extends StatelessWidget {
+  const _DevicesNotice({required this.text, required this.accent, required this.onCompare, required this.onDismiss});
+
+  final String text;
+  final Color accent;
+  final VoidCallback onCompare;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    return Container(
+      padding: EdgeInsets.fromLTRB(14 * scale, 10 * scale, 10 * scale, 10 * scale),
+      decoration: BoxDecoration(
+        color: Palette.warning.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(14 * scale),
+        border: Border.all(color: Palette.warning.withValues(alpha: 0.35), width: 1 * scale),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.devices_other_rounded, size: 18 * scale, color: Palette.warning),
+          SizedBox(width: 10 * scale),
+          Expanded(
+            child: Text(
+              text,
+              style: AppText.display(13.5 * scale, color: Colors.white.withValues(alpha: 0.9), height: 1.3),
+            ),
+          ),
+          SizedBox(width: 10 * scale),
+          _PillButton(label: T.text('e2eeCompare'), strong: true, onTap: onCompare),
+          SizedBox(width: 6 * scale),
+          _PillButton(label: T.text('e2eeDismiss'), onTap: onDismiss),
+        ],
+      ),
+    );
+  }
+}
+
+/// A small pill for the notice: white when [strong] (or focused), glass otherwise.
+class _PillButton extends StatelessWidget {
+  const _PillButton({required this.label, required this.onTap, this.strong = false, this.focused = false});
+
+  final String label;
+  final VoidCallback onTap;
+  final bool strong;
+  final bool focused;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    return Semantics(
+      button: true,
+      label: label,
+      child: Pressable(
+        onTap: onTap,
+        builder: (context, hovering) {
+          final lit = strong || focused;
+          return AnimatedContainer(
+            duration: Motion.focus,
+            curve: Motion.settle,
+            padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 7 * scale),
+            decoration: BoxDecoration(
+              color: lit
+                  ? Colors.white.withValues(alpha: hovering ? 0.9 : 1)
+                  : Colors.white.withValues(alpha: hovering ? 0.16 : 0.08),
+              borderRadius: BorderRadius.circular(16 * scale),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: focused ? 0.3 : 0),
+                  blurRadius: 12 * scale,
+                ),
+              ],
+            ),
+            child: Text(
+              label,
+              style: AppText.display(13 * scale, weight: FontWeight.w600, color: lit ? Colors.black : Colors.white),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// In place of the composer when the conversation is encrypted and nobody on the other side
+/// can read it now.
+class _NoDeviceNote extends StatelessWidget {
+  const _NoDeviceNote({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 13 * scale),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12 * scale),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.lock_clock_rounded, size: 18 * scale, color: Colors.white.withValues(alpha: 0.6)),
+          SizedBox(width: 10 * scale),
+          Expanded(
+            child: Text(
+              text,
+              style: AppText.display(14 * scale, color: Colors.white.withValues(alpha: 0.75), height: 1.3),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What the lock means: end-to-end encrypted, the safety number in twelve groups of five to
+/// compare with the other person, "We compared them", and both people's devices.
+class _LockSheet extends StatelessWidget {
+  const _LockSheet({required this.model, required this.lock});
+
+  final AppModel model;
+  final ConversationLock lock;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final together = model.together;
+    final name = together.partnerName;
+    final accent = model.accentChoice.color;
+    final rows = together.lockSheetRows;
+    final row = together.lockSheetRow.clamp(0, rows.length - 1);
+    final on = lock.state != EncryptionState.off;
+    final number = lock.safetyNumber;
+    final detail = switch (lock.state) {
+      EncryptionState.on => T.format('e2eeOnDetail', [name]),
+      EncryptionState.off => T.format('e2eeOffDetail', [name]),
+      EncryptionState.noDevice => T.format('e2eeNoDevice', [name]),
+    };
+    final faint = Colors.white.withValues(alpha: 0.6);
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: 560 * scale),
+      child: Glass(
+        floating: true,
+        radius: 24 * scale,
+        opacity: 0.86,
+        padding: EdgeInsets.fromLTRB(26 * scale, 24 * scale, 26 * scale, 20 * scale),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 34 * scale,
+                  height: 34 * scale,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: (on ? accent : Colors.white).withValues(alpha: 0.16),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    on ? Icons.lock_rounded : Icons.lock_open_rounded,
+                    size: 18 * scale,
+                    color: on ? accent : faint,
+                  ),
+                ),
+                SizedBox(width: 12 * scale),
+                Expanded(
+                  child: Text(
+                    T.text(on ? 'e2eeOn' : 'e2eeOff'),
+                    style: AppText.display(22 * scale, weight: FontWeight.w600, height: 1.1),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 10 * scale),
+            Text(detail, style: AppText.display(14 * scale, color: Colors.white.withValues(alpha: 0.78), height: 1.35)),
+            if (number != null) ...[
+              SizedBox(height: 18 * scale),
+              Row(
+                children: [
+                  Text(
+                    T.text('e2eeSafetyNumber'),
+                    style: AppText.display(12.5 * scale, weight: FontWeight.w700, color: faint),
+                  ),
+                  const Spacer(),
+                  if (lock.compared)
+                    Row(
+                      children: [
+                        Icon(Icons.verified_rounded, size: 14 * scale, color: Palette.success),
+                        SizedBox(width: 4 * scale),
+                        Text(
+                          T.text('e2eeCompared'),
+                          style: AppText.display(12 * scale, weight: FontWeight.w600, color: Palette.success),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+              SizedBox(height: 8 * scale),
+              _SafetyGrid(digits: number, accent: accent, compared: lock.compared),
+              SizedBox(height: 10 * scale),
+              Text(T.format('e2eeSafetyHow', [name]), style: AppText.display(13 * scale, color: faint, height: 1.35)),
+            ],
+            if (lock.notice != null) ...[
+              SizedBox(height: 12 * scale),
+              Text(
+                lock.notice == DevicesChange.mine
+                    ? T.text('e2eeMyDevicesChanged')
+                    : T.format('e2eeDevicesChanged', [name]),
+                style: AppText.display(13 * scale, weight: FontWeight.w600, color: Palette.warning, height: 1.35),
+              ),
+            ],
+            if (on) ...[
+              SizedBox(height: 18 * scale),
+              Text(
+                T.text('e2eeDevices'),
+                style: AppText.display(12.5 * scale, weight: FontWeight.w700, color: faint),
+              ),
+              SizedBox(height: 8 * scale),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _DeviceList(title: T.text('e2eeYou'), devices: lock.mine),
+                  ),
+                  SizedBox(width: 16 * scale),
+                  Expanded(
+                    child: _DeviceList(title: name, devices: lock.theirs),
+                  ),
+                ],
+              ),
+              SizedBox(height: 10 * scale),
+              Text(
+                T.text('e2eeNewDeviceNote'),
+                style: AppText.display(12 * scale, color: Colors.white.withValues(alpha: 0.5), height: 1.35),
+              ),
+            ],
+            SizedBox(height: 18 * scale),
+            Wrap(
+              spacing: 8 * scale,
+              runSpacing: 8 * scale,
+              children: [
+                for (var index = 0; index < rows.length; index++)
+                  _PillButton(
+                    label: switch (rows[index]) {
+                      'compared' => T.text('e2eeMarkCompared'),
+                      'dismiss' => T.text('e2eeDismiss'),
+                      _ => T.text('back'),
+                    },
+                    focused: index == row,
+                    onTap: () {
+                      together.lockSheetRow = index;
+                      together.runLockSheetRow(rows[index]);
+                    },
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The 60 digits as twelve groups of five, four to a line, in figures of one width so the two
+/// people can read them out to each other group by group.
+class _SafetyGrid extends StatelessWidget {
+  const _SafetyGrid({required this.digits, required this.accent, required this.compared});
+
+  final String digits;
+  final Color accent;
+  final bool compared;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final groups = safetyGroups(digits);
+    final style = AppText.display(
+      19 * scale,
+      weight: FontWeight.w500,
+      color: Colors.white.withValues(alpha: 0.95),
+    ).copyWith(fontFeatures: const [FontFeature.tabularFigures()], letterSpacing: 1.6 * scale);
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 12 * scale),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(14 * scale),
+        border: Border.all(color: (compared ? Palette.success : accent).withValues(alpha: 0.35), width: 1 * scale),
+      ),
+      child: Column(
+        children: [
+          for (var line = 0; line < 3; line++)
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: 3 * scale),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  for (var at = line * 4; at < line * 4 + 4 && at < groups.length; at++) Text(groups[at], style: style),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeviceList extends StatelessWidget {
+  const _DeviceList({required this.title, required this.devices});
+
+  final String title;
+  final UserDevices devices;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppText.display(13 * scale, weight: FontWeight.w700),
+        ),
+        SizedBox(height: 4 * scale),
+        for (final device in devices.active)
+          Padding(
+            padding: EdgeInsets.only(top: 3 * scale),
+            child: Row(
+              children: [
+                Icon(Icons.devices_rounded, size: 13 * scale, color: Colors.white.withValues(alpha: 0.5)),
+                SizedBox(width: 6 * scale),
+                Expanded(
+                  child: Text(
+                    device.name.isEmpty ? device.id.substring(0, 8) : device.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.display(12.5 * scale, color: Colors.white.withValues(alpha: 0.75)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// A sealed attachment in a bubble: a photo opened in memory, a clip's poster with a play mark,
+/// a voice note's length; clicked, opened in the system's viewer or player.
+class _SealedAttachmentView extends StatelessWidget {
+  const _SealedAttachmentView({required this.model, required this.message, required this.ink});
+
+  final AppModel model;
+  final ChatMessage message;
+  final Color ink;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final attachment = message.attachment!;
+    final together = model.together;
+    void open() => unawaited(together.openAttachment(message));
+    final seconds = ((attachment.durationMs ?? 0) / 1000).round();
+    final length = '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+    if (attachment.kind == 'voice' || message.media?.gone == true) {
+      return Pressable(
+        onTap: message.media?.gone == true ? null : open,
+        builder: (context, hovering) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.graphic_eq_rounded,
+              size: 20 * scale,
+              color: ink.withValues(alpha: hovering ? 1 : 0.8),
+            ),
+            SizedBox(width: 8 * scale),
+            Text(
+              attachment.kind == 'voice' ? '${T.text('messagesVoice')} · $length' : T.text('messagesDeleted'),
+              style: AppText.display(14 * scale, weight: FontWeight.w600, color: ink),
+            ),
+          ],
+        ),
+      );
+    }
+    final width = (attachment.width ?? 16).toDouble();
+    final height = (attachment.height ?? 9).toDouble();
+    final aspect = (width / height).clamp(0.5, 2.4);
+    final picture = attachment.kind == 'image'
+        ? together.sealedFile(message)
+        : (attachment.poster == null ? null : together.sealedFile(message, poster: true));
+    return Pressable(
+      onTap: open,
+      builder: (context, hovering) => ClipRRect(
+        borderRadius: BorderRadius.circular(12 * scale),
+        child: SizedBox(
+          width: 320 * scale,
+          child: AspectRatio(
+            aspectRatio: aspect,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ColoredBox(color: Colors.black.withValues(alpha: 0.3)),
+                if (picture != null)
+                  FutureBuilder<Uint8List>(
+                    future: picture,
+                    builder: (context, snapshot) => snapshot.hasData
+                        ? Image.memory(snapshot.data!, fit: BoxFit.cover, gaplessPlayback: true)
+                        : Center(
+                            child: Icon(
+                              snapshot.hasError ? Icons.broken_image_rounded : Icons.lock_rounded,
+                              size: 22 * scale,
+                              color: Colors.white.withValues(alpha: 0.4),
+                            ),
+                          ),
+                  ),
+                if (attachment.kind == 'clip')
+                  Center(
+                    child: Container(
+                      width: 46 * scale,
+                      height: 46 * scale,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: hovering ? 0.65 : 0.5),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.play_arrow_rounded, size: 28 * scale, color: Colors.white),
+                    ),
+                  ),
+                if (attachment.kind == 'clip')
+                  Positioned(
+                    right: 8 * scale,
+                    bottom: 6 * scale,
+                    child: Text(length, style: AppText.display(12 * scale, weight: FontWeight.w700)),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );

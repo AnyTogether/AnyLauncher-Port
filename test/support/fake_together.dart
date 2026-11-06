@@ -5,12 +5,15 @@ import 'dart:math';
 
 /// A request the fake AnyTogether got.
 class FakeCall {
-  FakeCall(this.method, this.path, this.body, this.headers);
+  FakeCall(this.method, this.path, this.body, this.headers, {this.bytes = const []});
 
   final String method;
   final String path;
   final Map<String, dynamic> body;
   final HttpHeaders headers;
+
+  /// What came up when it was no JSON (a picture, a sealed file).
+  final List<int> bytes;
 
   @override
   String toString() => '$method $path ${jsonEncode(body)}';
@@ -54,6 +57,9 @@ class FakeTogether {
 
   /// Answers for paths the tests choose: a status and a JSON body.
   final Map<String, (int, Object?)> answers = {};
+
+  /// Files served as they are, by path (signed media links).
+  final Map<String, List<int>> files = {};
 
   /// The gateway's sockets and the frames they sent.
   final List<WebSocket> sockets = [];
@@ -386,6 +392,13 @@ class FakeTogether {
       return;
     }
     final bytes = await request.fold<List<int>>(<int>[], (all, chunk) => all..addAll(chunk));
+    final file = files[request.uri.path];
+    if (file != null && request.method == 'GET') {
+      request.response.headers.contentType = ContentType.binary;
+      request.response.add(file);
+      await request.response.close();
+      return;
+    }
     // A picture going up is no JSON: its size stands for it.
     final isJson = request.headers.contentType == null || request.headers.contentType?.mimeType == 'application/json';
     final text = isJson ? utf8.decode(bytes) : '';
@@ -398,7 +411,7 @@ class FakeTogether {
     final path = request.uri.path.startsWith(prefix)
         ? request.uri.path.substring(prefix.length) + (request.uri.hasQuery ? '?${request.uri.query}' : '')
         : request.uri.path;
-    final call = FakeCall(request.method, path, body, request.headers);
+    final call = FakeCall(request.method, path, body, request.headers, bytes: isJson ? const [] : bytes);
     calls.add(call);
     final (status, json) = await _route(call, request.headers.value(HttpHeaders.authorizationHeader));
     request.response.statusCode = status;

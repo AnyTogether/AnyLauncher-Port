@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'notifier.dart';
 import 'token_store.dart';
@@ -328,6 +329,37 @@ class TogetherAccount with Notifier {
       _accessExpiry = DateTime.fromMillisecondsSinceEpoch(0);
       return send();
     }
+  }
+
+  /// The bytes behind a signed file [link] (a sealed attachment): an absolute link, or one
+  /// under the server. No token goes with it: the link's signature is what lets it through.
+  /// Refused past [limit] bytes.
+  Future<Uint8List> fetchBytes(String link, {required int limit}) async {
+    final server = base.toString().replaceAll(RegExp(r'/+$'), '');
+    final url = Uri.parse(link).hasScheme
+        ? Uri.parse(link)
+        : Uri.parse('$server${link.startsWith('/') ? '' : '/'}$link');
+    final request = await _http.getUrl(url);
+    request.headers.set('AnyTogether-Client', clientName);
+    final response = await request.close().timeout(const Duration(seconds: 20));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      await response.drain<void>();
+      throw TogetherProblem(
+        response.statusCode,
+        response.statusCode == 403 ? 'link_expired' : 'internal',
+        'The file did not come',
+      );
+    }
+    if (response.contentLength > limit) {
+      await response.drain<void>();
+      throw const TogetherProblem(413, 'payload_too_large', 'The file is too big');
+    }
+    final bytes = BytesBuilder(copy: false);
+    await for (final chunk in response.timeout(const Duration(seconds: 60))) {
+      bytes.add(chunk);
+      if (bytes.length > limit) throw const TogetherProblem(413, 'payload_too_large', 'The file is too big');
+    }
+    return bytes.takeBytes();
   }
 
   /// The access token for the realtime gateway; [renew] refreshes it first, after the gateway

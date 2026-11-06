@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'account.dart';
+import 'e2ee.dart';
+import 'e2ee_client.dart';
 import 'notifier.dart';
 import 'people.dart';
 import 'socket.dart';
@@ -82,6 +85,43 @@ class MessageReceipt {
   final bool everyone;
 }
 
+/// Where an end-to-end encrypted message is on this device: still being opened, [opened] (its
+/// text and attachment are the payload's), sent before this device was added ([beforeDevice]),
+/// or not to be read ([undecryptable]: anything moved, changed or signed by someone else).
+enum SealState { opening, opened, beforeDevice, undecryptable }
+
+/// A message's media as the server lists it: a signed link to the file (and a clip's poster);
+/// sealed media serves the ciphertext. [gone] when it was removed or is blocked.
+class MediaLink {
+  const MediaLink({
+    required this.id,
+    required this.kind,
+    this.url,
+    this.poster,
+    this.sealed = false,
+    this.gone = false,
+  });
+
+  static MediaLink? fromJson(Object? json) {
+    if (json is! Map<String, dynamic> || json['id'] is! String) return null;
+    return MediaLink(
+      id: json['id'] as String,
+      kind: json['kind'] as String? ?? 'image',
+      url: json['url'] as String?,
+      poster: json['poster'] as String?,
+      sealed: json['sealed'] == true,
+      gone: json['removed'] == true || json['blocked'] == true,
+    );
+  }
+
+  final String id;
+  final String kind;
+  final String? url;
+  final String? poster;
+  final bool sealed;
+  final bool gone;
+}
+
 /// One message in a conversation; a deleted (unsent or removed) one keeps its place with no text
 /// and no reactions. [pending] while it is on its way, [failed] when it did not get there.
 class ChatMessage {
@@ -101,11 +141,37 @@ class ChatMessage {
     this.reactions = const [],
     this.kind = 'text',
     this.caption,
+    this.sealed,
+    this.seal,
+    this.attachment,
+    this.media,
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     final deleted = json['deletedAt'] != null;
     final edited = json['editedAt'] != null;
+    final sealed = deleted ? null : SealedMessage.fromJson(json['sealed']);
+    final attachments = json['attachments'];
+    final media = attachments is List<dynamic> && attachments.isNotEmpty ? MediaLink.fromJson(attachments.first) : null;
+    if (sealed != null) {
+      // Its text is the stand-in for older clients: nothing shows until it is opened here.
+      return ChatMessage(
+        id: json['id'] as String,
+        conversationId: json['conversationId'] as String,
+        seq: (json['seq'] as num).toInt(),
+        authorId: json['authorId'] as String?,
+        text: null,
+        createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+        edited: edited,
+        replyTo: (json['replyTo'] as num?)?.toInt(),
+        editCount: (json['editCount'] as num?)?.toInt() ?? (edited ? 1 : 0),
+        reactions: ReactionCount.list(json['reactions']),
+        kind: 'text',
+        sealed: sealed,
+        seal: SealState.opening,
+        media: media,
+      );
+    }
     return ChatMessage(
       id: json['id'] as String,
       conversationId: json['conversationId'] as String,
@@ -121,6 +187,7 @@ class ChatMessage {
       reactions: deleted ? const [] : ReactionCount.list(json['reactions']),
       kind: json['kind'] as String? ?? 'text',
       caption: json['caption'] as String?,
+      media: media,
     );
   }
 
@@ -147,6 +214,58 @@ class ChatMessage {
   /// text, or a piece of media whose [text] is a stand-in and [caption] the caption alone.
   final String kind;
   final String? caption;
+
+  /// End-to-end encrypted: the sealed form as the server keeps it, and where opening it got.
+  final SealedMessage? sealed;
+  final SealState? seal;
+
+  /// An opened sealed message's attachment: how to open its file.
+  final SealedAttachment? attachment;
+
+  /// The media the server lists for it.
+  final MediaLink? media;
+
+  bool get encrypted => sealed != null;
+
+  /// What it says when it was opened: its words and attachment from the payload.
+  ChatMessage opened(E2eePayload payload) => _with(
+    seal: SealState.opened,
+    text: payload.text,
+    kind: payload.attachment?.kind ?? 'text',
+    caption: payload.attachment == null ? null : payload.text,
+    attachment: payload.attachment,
+  );
+
+  /// It could not be opened here, and why.
+  ChatMessage unopened(SealState why) => _with(seal: why);
+
+  ChatMessage _with({
+    required SealState seal,
+    String? text,
+    String kind = 'text',
+    String? caption,
+    SealedAttachment? attachment,
+  }) => ChatMessage(
+    id: id,
+    conversationId: conversationId,
+    seq: seq,
+    authorId: authorId,
+    text: text,
+    createdAt: createdAt,
+    edited: edited,
+    deleted: deleted,
+    pending: pending,
+    failed: failed,
+    replyTo: replyTo,
+    editCount: editCount,
+    reactions: reactions,
+    kind: kind,
+    caption: caption,
+    sealed: sealed,
+    seal: seal,
+    attachment: attachment,
+    media: media,
+  );
 
   /// Whether [userId] added the reaction [name].
   bool reacted(String name, String? userId) =>
@@ -178,6 +297,10 @@ class ChatMessage {
     reactions: reactions ?? this.reactions,
     kind: kind,
     caption: caption,
+    sealed: sealed,
+    seal: seal,
+    attachment: attachment,
+    media: media,
   );
 
   /// Unsent: its place stays, nothing else.
@@ -211,6 +334,7 @@ class Conversation {
     this.pinned = false,
     this.muted = false,
     this.receipts,
+    this.encrypted = false,
     this.partyId,
   });
 
@@ -239,6 +363,7 @@ class Conversation {
                 if (receipt is Map<String, dynamic>) Receipt.fromJson(receipt),
             ]
           : null,
+      encrypted: json['encrypted'] == true,
       partyId: json['partyId'] as String?,
     );
   }
@@ -259,6 +384,9 @@ class Conversation {
 
   /// The other members' read and delivered marks; null from an older server.
   final List<Receipt>? receipts;
+
+  /// A direct conversation with an end-to-end encrypted message in it: no plain text from then on.
+  final bool encrypted;
 
   /// The party whose chat this is (it sits beside the party, never in the list); null for any
   /// other conversation, and from an older server.
@@ -297,16 +425,21 @@ class Conversation {
     pinned: pinned,
     muted: muted,
     receipts: receipts ?? this.receipts,
+    encrypted: encrypted || (lastMessage?.encrypted ?? false),
     partyId: partyId,
   );
+
+  /// The other person of a direct conversation.
+  String? partner(String? me) => group ? null : others(me).firstOrNull?.id;
 }
 
 /// Messages: the conversations (pinned first, then the newest) with what is unread, the one open
 /// with its thread, sending (kept once however often it is sent), replies, edits, unsending,
 /// reactions, read and delivered marks, pins and mutes, and everything live.
 class Messages with Notifier {
-  Messages({required this.account, required this.socket}) {
+  Messages({required this.account, required this.socket, this.e2ee}) {
     _events = socket.events.listen(_event);
+    e2ee?.addListener(notifyListeners);
   }
 
   /// How long the author may edit a message, how many times, and how many conversations can be
@@ -317,7 +450,17 @@ class Messages with Notifier {
 
   final TogetherAccount account;
   final TogetherSocket socket;
+
+  /// End-to-end encryption of direct conversations; null leaves every message plain.
+  final EndToEnd? e2ee;
   late final StreamSubscription<TogetherEvent> _events;
+
+  /// Events that wait for a sealed message before them to be opened, so they keep their order.
+  Future<void> _queue = Future.value();
+  int _queued = 0;
+
+  /// How often a sealed message is sealed again when the server says the devices changed.
+  static const sealTries = 3;
 
   List<Conversation> conversations = const [];
 
@@ -357,12 +500,13 @@ class Messages with Notifier {
 
   Future<void> refresh() async {
     final list = await account.call('GET', 'me/conversations');
-    conversations = ordered([
+    final fetched = [
       for (final json in (list['conversations'] as List<dynamic>? ?? const []))
         if (Conversation.fromJson(json as Map<String, dynamic>) case final c
             when c.partyId == null && !elsewhere.contains(c.id))
           c,
-    ]);
+    ];
+    conversations = ordered(await _openLast(fetched));
     _unlisted.removeAll(conversations.map((c) => c.id));
     loaded = true;
     await _countUnread();
@@ -384,9 +528,12 @@ class Messages with Notifier {
     loadingThread = true;
     notifyListeners();
     try {
+      final shown = byId(id);
+      if (shown != null) unawaited(checkLock(shown).then((_) {}, onError: (Object _) {}));
       final page = await account.call('GET', 'conversations/$id/messages?limit=50');
+      final opened = await openAll(_page(page));
       if (openId != id) return;
-      thread = _page(page);
+      thread = opened;
       more = page['more'] == true;
     } finally {
       if (openId == id) {
@@ -411,7 +558,7 @@ class Messages with Notifier {
     final json = await account.call('POST', 'conversations', {
       'members': [userId],
     });
-    final conversation = Conversation.fromJson(json);
+    final conversation = (await _openLast([Conversation.fromJson(json)])).single;
     if (byId(conversation.id) == null) {
       conversations = [conversation, ...conversations];
     }
@@ -429,9 +576,10 @@ class Messages with Notifier {
     } finally {
       _older = false;
     }
+    final opened = await openAll(_page(page));
     if (openId != id) return;
     final known = thread.map((m) => m.id).toSet();
-    thread = [..._page(page).where((m) => !known.contains(m.id)), ...thread];
+    thread = [...opened.where((m) => !known.contains(m.id)), ...thread];
     more = page['more'] == true;
     notifyListeners();
   }
@@ -463,18 +611,184 @@ class Messages with Notifier {
     await _deliver(message);
   }
 
-  Future<void> _deliver(ChatMessage message) async {
+  Future<void> _deliver(ChatMessage message, {SealedAttachment? attachment}) async {
     try {
-      final json = await account.call('POST', 'conversations/${message.conversationId}/messages', {
-        'clientId': message.id,
-        'text': message.text,
-        'replyTo': ?message.replyTo,
-      });
-      _arrived(ChatMessage.fromJson(json));
+      final json = await _post(message, attachment: attachment);
+      _arrived(await _openOne(ChatMessage.fromJson(json)));
     } on Object catch (error) {
       onSendFailed?.call(error);
       _replace(message.copyWith(seq: 0, pending: false, failed: true));
     }
+  }
+
+  /// A message out: sealed in an end-to-end encrypted direct conversation (again, with the
+  /// devices fetched again, when the server says they changed), plain otherwise. Plain text
+  /// never goes to a conversation this device saw encrypted: E2eeUnavailable instead.
+  Future<Map<String, dynamic>> _post(ChatMessage message, {SealedAttachment? attachment}) async {
+    final path = 'conversations/${message.conversationId}/messages';
+    final conversation = byId(message.conversationId);
+    var lock = conversation == null ? null : await checkLock(conversation);
+    for (var attempt = 0; ; attempt++) {
+      try {
+        switch (lock?.state) {
+          case EncryptionState.on:
+            final sealed = await e2ee!.sealFor(
+              conversationId: message.conversationId,
+              messageId: message.id,
+              other: conversation!.partner(_me)!,
+              payload: E2eePayload(text: message.text, attachment: attachment),
+            );
+            return await account.call('POST', path, {
+              'clientId': message.id,
+              'sealed': sealed.sealed.toJson(),
+              'replyTo': ?message.replyTo,
+              if (attachment != null)
+                'attachments': [
+                  {'mediaId': attachment.mediaId},
+                ],
+            });
+          case EncryptionState.noDevice:
+            throw const E2eeUnavailable();
+          case EncryptionState.off || null:
+            if (attachment != null) throw const E2eeUnavailable();
+            return await account.call('POST', path, {
+              'clientId': message.id,
+              'text': message.text,
+              'replyTo': ?message.replyTo,
+            });
+        }
+      } on TogetherProblem catch (problem) {
+        final again = problem.code == 'e2ee_devices' || problem.code == 'e2ee_required';
+        if (!again || conversation == null || e2ee == null || attempt + 1 >= sealTries) rethrow;
+        if (problem.code == 'e2ee_required') e2ee!.markEncrypted(conversation.id);
+        lock = await checkLock(conversation, fresh: true);
+      }
+    }
+  }
+
+  /// A direct conversation's lock, worked out again ([fresh]: with the devices fetched again);
+  /// null for a group or on a server without encryption.
+  Future<ConversationLock?> checkLock(Conversation conversation, {bool fresh = false}) async {
+    final other = conversation.partner(_me);
+    final e2ee = this.e2ee;
+    if (e2ee == null || other == null) return null;
+    return e2ee.check(conversationId: conversation.id, other: other, encrypted: conversation.encrypted, fresh: fresh);
+  }
+
+  /// The lock of [conversationId] as last worked out.
+  ConversationLock? lockOf(String? conversationId) => e2ee?.lockOf(conversationId);
+
+  /// A photo (re-encoded already, so it carries no location or camera data), sealed, uploaded
+  /// and sent with an optional [caption] to the open conversation, which must be end-to-end
+  /// encrypted.
+  Future<void> sendPhoto(
+    Uint8List photo, {
+    required String type,
+    required int width,
+    required int height,
+    String? caption,
+  }) async {
+    final id = openId;
+    final conversation = byId(id);
+    final e2ee = this.e2ee;
+    if (id == null || conversation == null || e2ee == null) return;
+    final message = ChatMessage(
+      id: uuidv7(),
+      conversationId: id,
+      seq: 0,
+      authorId: _me,
+      text: caption,
+      createdAt: DateTime.now(),
+      pending: true,
+      kind: 'image',
+      caption: caption,
+    );
+    thread = [...thread, message];
+    notifyListeners();
+    try {
+      if ((await checkLock(conversation))?.state != EncryptionState.on) throw const E2eeUnavailable();
+      final attachment = await e2ee.uploadSealed(file: photo, kind: 'image', type: type, width: width, height: height);
+      await _deliver(message, attachment: attachment);
+    } on Object catch (error) {
+      onSendFailed?.call(error);
+      _replace(message.copyWith(seq: 0, pending: false, failed: true));
+    }
+  }
+
+  /// A sealed attachment's file (or its poster), downloaded and opened in memory.
+  Future<Uint8List> attachmentBytes(ChatMessage message, {bool poster = false}) async {
+    final attachment = message.attachment;
+    final media = message.media;
+    final link = poster ? media?.poster : media?.url;
+    if (attachment == null || media == null || link == null || e2ee == null) throw const E2eeError('bad_message');
+    return e2ee!.download(link, attachment, poster: poster);
+  }
+
+  /// Reports someone's message for [reason]; a sealed one sends its content key, so the
+  /// moderators can read it (and only it).
+  Future<void> report(ChatMessage message, String reason) async {
+    final sealed = message.sealed;
+    final key = sealed == null ? null : e2ee?.contentKeyOf(message.id, sealed);
+    if (sealed != null && key == null) throw const E2eeError('bad_message');
+    await account.call('POST', 'reports', {
+      'targetKind': 'message',
+      'targetId': message.id,
+      'reason': reason,
+      if (key != null) 'contentKey': toBase64(key),
+    });
+  }
+
+  /// Opens the sealed messages among [messages] on this device; the plain ones stay as they are.
+  Future<List<ChatMessage>> openAll(List<ChatMessage> messages) async => [
+    for (final message in messages) await _openOne(message),
+  ];
+
+  Future<ChatMessage> _openOne(ChatMessage message) async {
+    final sealed = message.sealed;
+    final e2ee = this.e2ee;
+    if (sealed == null) return message;
+    final author = message.authorId;
+    if (e2ee == null || author == null) return message.unopened(SealState.undecryptable);
+    try {
+      final opened = await e2ee.openMessage(
+        sealed: sealed,
+        conversationId: message.conversationId,
+        messageId: message.id,
+        authorId: author,
+      );
+      // The payload's media must be the one the server lists for the message.
+      final attachment = opened.payload.attachment;
+      if (attachment != null && message.media?.id != attachment.mediaId) {
+        return message.unopened(SealState.undecryptable);
+      }
+      return message.opened(opened.payload);
+    } on E2eeError catch (error) {
+      return message.unopened(error.code == 'no_key' ? SealState.beforeDevice : SealState.undecryptable);
+    } on Object {
+      // No devices (offline): not read here now.
+      return message.unopened(SealState.undecryptable);
+    }
+  }
+
+  /// The list's last messages opened for their previews.
+  Future<List<Conversation>> _openLast(List<Conversation> list) async {
+    final e2ee = this.e2ee;
+    if (e2ee == null || !list.any((c) => c.lastMessage?.encrypted ?? false)) return list;
+    try {
+      await e2ee.fetch({
+        for (final c in list)
+          if (c.lastMessage case final ChatMessage last when last.encrypted && last.authorId != null) last.authorId!,
+      });
+    } on Object {
+      // Each one says it could not be opened.
+    }
+    return [
+      for (final c in list)
+        if (c.lastMessage case final ChatMessage last when last.encrypted)
+          c.copyWith(lastMessage: await _openOne(last))
+        else
+          c,
+    ];
   }
 
   /// A message of mine with new words; thrown when the server says no (403 after the edit
@@ -482,10 +796,34 @@ class Messages with Notifier {
   Future<void> edit(ChatMessage message, String text) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty || message.seq <= 0) return;
-    final json = await account.call('PATCH', 'conversations/${message.conversationId}/messages/${message.seq}', {
-      'text': trimmed,
-    });
-    _changed(ChatMessage.fromJson(json));
+    final path = 'conversations/${message.conversationId}/messages/${message.seq}';
+    if (!message.encrypted) {
+      _changed(ChatMessage.fromJson(await account.call('PATCH', path, {'text': trimmed})));
+      return;
+    }
+    // A sealed one: a new seal of the same message, its attachment kept.
+    final conversation = byId(message.conversationId);
+    final other = conversation?.partner(_me);
+    if (conversation == null || other == null || e2ee == null) throw const E2eeUnavailable();
+    var fresh = false;
+    for (var attempt = 0; ; attempt++) {
+      final lock = await checkLock(conversation, fresh: fresh);
+      if (lock?.state != EncryptionState.on) throw const E2eeUnavailable();
+      final sealed = await e2ee!.sealFor(
+        conversationId: message.conversationId,
+        messageId: message.id,
+        other: other,
+        payload: E2eePayload(text: trimmed, attachment: message.attachment),
+      );
+      try {
+        final json = await account.call('PATCH', path, {'sealed': sealed.sealed.toJson()});
+        _changed(await _openOne(ChatMessage.fromJson(json)));
+        return;
+      } on TogetherProblem catch (problem) {
+        if (problem.code != 'e2ee_devices' || attempt + 1 >= sealTries) rethrow;
+        fresh = true;
+      }
+    }
   }
 
   /// A message of mine unsent for everyone: its place stays.
@@ -771,15 +1109,47 @@ class Messages with Notifier {
     notifyListeners();
   }
 
+  /// A gateway event: handled at once, unless it carries a sealed message (opened first) or a
+  /// sealed one is still being opened before it, so they keep their order.
   void _event(TogetherEvent event) {
+    final sealed = event.type.startsWith('message.') && event.json['sealed'] != null && e2ee != null;
+    if (_queued == 0 && !sealed) return _handle(event, null);
+    _queued++;
+    _queue = _queue
+        .then((_) async {
+          final opened = sealed ? await _openOne(ChatMessage.fromJson(event.json)) : null;
+          _handle(event, opened);
+        })
+        .catchError((Object _) {})
+        .whenComplete(() => _queued--);
+  }
+
+  void _handle(TogetherEvent event, ChatMessage? opened) {
     final data = event.json;
     // A party's chat keeps its own messages (party_chat.dart).
     if (elsewhere.contains(data['conversationId'])) return;
     switch (event.type) {
       case 'live.ready':
         unawaited(refresh().then((_) => _catchUp()).catchError((Object _) {}));
+        final shown = open;
+        if (shown != null) unawaited(checkLock(shown, fresh: true).then((_) {}, onError: (Object _) {}));
+      case 'e2ee.devices':
+        // Someone's devices changed: the list again, and the open conversation's lock with it
+        // (a notice when they are this conversation's people).
+        final user = data['userId'];
+        if (user is String && e2ee != null) {
+          unawaited(
+            e2ee!
+                .devicesChanged(user)
+                .then((_) async {
+                  final shown = open;
+                  if (shown != null && (user == _me || shown.partner(_me) == user)) await checkLock(shown);
+                })
+                .catchError((Object _) {}),
+          );
+        }
       case 'message.created':
-        final message = ChatMessage.fromJson(data);
+        final message = opened ?? ChatMessage.fromJson(data);
         // A message ends its author's typing.
         _typing[message.conversationId]?.remove(message.authorId);
         _delivered(message);
@@ -789,9 +1159,9 @@ class Messages with Notifier {
         final user = data['userId'];
         if (conversation is String && user is String && user != _me) _someoneTyping(conversation, user);
       case 'message.updated':
-        _changed(ChatMessage.fromJson(data));
+        _changed(opened ?? ChatMessage.fromJson(data));
       case 'message.deleted':
-        _removed(ChatMessage.fromJson(data));
+        _removed(opened ?? ChatMessage.fromJson(data));
       case 'message.reactions':
         final id = data['conversationId'];
         final seq = data['seq'];
@@ -836,7 +1206,7 @@ class Messages with Notifier {
     final last = thread.where((m) => m.seq > 0).lastOrNull;
     if (id == null || last == null) return;
     final page = await account.call('GET', 'conversations/$id/messages?limit=100&after=${last.seq}');
-    _page(page).forEach(_arrived);
+    (await openAll(_page(page))).forEach(_arrived);
   }
 
   static List<ChatMessage> _page(Map<String, dynamic> page) => [
@@ -851,6 +1221,7 @@ class Messages with Notifier {
   }
 
   void dispose() {
+    e2ee?.removeListener(notifyListeners);
     _typingExpiry?.cancel();
     unawaited(_events.cancel());
   }

@@ -119,6 +119,23 @@ extension LauncherProfiles on AppModel {
     return TokenStore.forProfile(paths, system, id, legacy: false);
   }
 
+  /// Where a profile keeps this device's end-to-end encryption keys: beside its session, as
+  /// safely (in memory in tests and previews, which keep the session there too).
+  E2eeKeyStore e2eeKeysFor(String id) {
+    if (services.togetherStore != null || services.togetherStoreFor != null) {
+      return _memoryKeys.putIfAbsent(id, MemoryE2eeKeyStore.new);
+    }
+    return E2eeKeyStore.forProfile(paths, system, id, legacy: _isLegacy(id));
+  }
+
+  /// What the profile's device remembers of its encrypted conversations.
+  E2eeNotesStore e2eeNotesFor(String id) {
+    if (services.togetherStore != null || services.togetherStoreFor != null) {
+      return _memoryNotes.putIfAbsent(id, MemoryE2eeNotesStore.new);
+    }
+    return E2eeNotesStore.forProfile(paths, id, legacy: _isLegacy(id));
+  }
+
   /// Each profile's outbox: the first one keeps the file from before profiles.
   String outboxFile(String id) => _isLegacy(id)
       ? p.join(paths.config, 'Together', 'outbox.json')

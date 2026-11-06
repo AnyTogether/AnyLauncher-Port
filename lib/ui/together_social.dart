@@ -513,7 +513,8 @@ extension TogetherSocial on TogetherModel {
   String? noticeDetail(Notice note) {
     switch (note.kind) {
       case NoticeKind.message:
-        final words = note.text;
+        // A sealed message's notification carries no words ("Ana wrote to you" says it all).
+        final words = note.data['sealed'] == true ? null : note.text;
         final text = words == null ? null : (words.length > 80 ? '${words.substring(0, 80)}…' : words);
         final group = note.data['group'] == true && note.data['title'] is String ? note.data['title'] as String : null;
         final joined = [?group, ?text].join(': ');

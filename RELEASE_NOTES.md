@@ -5,6 +5,10 @@ release when it is made.
 
 ## Next release
 
+Nothing yet.
+
+## 0.1.20
+
 - **A profile shows the person's recent activity**, as on the Mac: the trophies, platinums,
   first plays, long sessions, new friends and milestones they shared, under their recent
   trophies, with the reactions each item got. It follows what they let you see, and an item
@@ -14,7 +18,7 @@ release when it is made.
   Players › Live now & parties** lists the share plays anyone can watch or ask to watch. The
   game fills the screen with who shares it, the round trip and the picture's size in a corner.
   Once the host lets you play, your controller is their player 2, 3 or 4, and a badge shows
-  which. PS leaves; while you only watch, Esc and ○ leave too. The sound comes as an Opus track,
+  which. PS leaves. While you only watch, Esc and ○ leave too. The sound comes as an Opus track,
   or as plain sound on the data channel from hosts that send only that.
 - **Share play sound reaches every viewer.** The host now sends the game's sound the way the
   Mac does: plain sound on the data channel to everyone (the phone app and older launchers play
@@ -23,6 +27,40 @@ release when it is made.
   needs (it links PulseAudio's client library, which PipeWire systems have too).
 - **Each viewer's line in the quick menu** says whether they play or watch, whether the link is
   direct or through the relay, its round trip, and the picture they get (720p60, 540p30).
+
+- **Party chat.** The party screen has a text chat beside the voice, with replies, reactions,
+  edits and typing. It stays out of the inbox, so it adds no unread count or toast.
+- **End-to-end encrypted direct messages.** A one-to-one conversation is sealed on this
+  computer, and only the two people's devices can open it. The lock under the name shows the
+  safety number to compare, and a notice says when someone's devices change. Groups, community
+  chats and calls are as before. Chats with apps that have no keys yet stay plain and say so.
+- **Challenges on the leaderboards.** A strip of challenges sits over the board. A challenge's
+  page shows its window, the standings and your place, with Join and Leave. Challenges are made
+  on the website.
+- **Profile themes and a showcase.** A profile wears its theme's colours and picture and shows
+  up to six pinned trophies and games. **Edit showcase** and **Profile theme** are on your own
+  profile, and a Hub theme can be worn on your profile from **Settings → Appearance → Themes**.
+- **The phone as a headset.** When the party's voice moves to your phone, this launcher goes
+  quiet without leaving, and **Take the voice back** brings it here again.
+- **Share play and voice for bigger groups.** The launcher can watch a share play and join party
+  voice through AnyTogether's media server. The media server is still being set up. Until it is
+  live, share play and party voice stay peer to peer as before, with up to four viewers and
+  eight voices.
+- **Settings search.** A field in Settings finds settings by name and description in any
+  section. Ctrl+F or up from the first row reaches it.
+- **Launcher volume** in **Settings → Behaviour**, from 0 to 100 percent, over the interface
+  sounds and the music.
+- **Messages open the right conversation.** A click or a message notification now opens that
+  conversation, ready to answer. Before, the thread could stay on the one open before.
+- **Theme Studio steps** are bigger: 20° for hue and accent, so a full turn takes 20 presses or
+  fewer.
+- **A phone drives the launcher.** The phone app and the browser pad move around the launcher
+  while no game runs, and Options opens Settings.
+- **The browser pad's menu** is a small round key between the sticks. A tap outside closes it,
+  "Disconnect" replaces "Leave", Reconnect works without a new scan, and the pairing code shows
+  in portrait.
+- **Upstream's nightly engine** on the **Nightly** update channel: **Settings → AnyPS5 Engine →
+  Upstream** offers upstream AnyPS5's newest main, built daily and signed. It is untested.
 
 ## 0.1.19
 

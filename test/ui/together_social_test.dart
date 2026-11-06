@@ -3,8 +3,10 @@ import 'dart:io';
 import 'package:anyps5_desktop/core/together/account.dart';
 import 'package:anyps5_desktop/core/together/compat.dart';
 import 'package:anyps5_desktop/core/together/levels.dart';
+import 'package:anyps5_desktop/core/together/profiles.dart';
 import 'package:anyps5_desktop/core/together/social.dart';
 import 'package:anyps5_desktop/ui/app_model.dart' hide GameState;
+import 'package:anyps5_desktop/ui/feed_view.dart';
 import 'package:anyps5_desktop/ui/home.dart';
 import 'package:anyps5_desktop/ui/launcher.dart';
 import 'package:anyps5_desktop/ui/leaderboard_view.dart';
@@ -212,6 +214,56 @@ void main() {
       expect(find.text(T.format('socialFeedAndMore', [3])), findsOneWidget);
       expect(find.text(T.format('socialAgoMinutes', [25])), findsOneWidget);
       await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/social_feed_en.png'));
+    });
+
+    testWidgets('golden: a friend\'s profile with their recent activity, one item focused (en)', (tester) async {
+      fixture = makeFixture();
+      model = fixture.model;
+      signedIn();
+      final mine = [for (final item in feed()) if (item.actor.id == 'u-ana') item];
+      model.open(Layer.profile);
+      model.together
+        ..profileIndex = 2
+        ..profile = ProfilePage(
+          profile: const TogetherProfile(userId: 'u-ana', handle: 'ana', displayName: 'Ana', friendship: 'friends'),
+          library: const SectionShown([]),
+          trophies: const SectionShown([]),
+          activity: SectionShown(mine),
+        );
+      await pumpLauncher(tester, model);
+      expect(find.text(T.text('profileRecentActivity')), findsOneWidget);
+      expect(find.byType(ProfileActivityRow), findsNWidgets(2));
+      await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/social_profile_activity_en.png'));
+    });
+
+    test('a profile takes an activity item the gateway updates; the keys reach its items', () {
+      fixture = makeFixture();
+      model = fixture.model;
+      signedIn();
+      final items = feed();
+      model.together.profile = ProfilePage(
+        profile: const TogetherProfile(userId: 'u-ana', handle: 'ana', displayName: 'Ana', friendship: 'friends'),
+        library: const SectionShown([]),
+        trophies: const SectionShown([]),
+        activity: SectionShown([items[1]]),
+      );
+      expect(model.together.profileItems, 2);
+      final changed = Activity.fromJson({
+        'id': '04',
+        'kind': 'trophy',
+        'createdAt': items[1].createdAt.toIso8601String(),
+        'actor': card('u-ana', 'Ana'),
+        'reactions': {
+          'counts': {'heart': 6},
+          'mine': null,
+        },
+      })!;
+      model.together.profileActivityChanged(changed);
+      expect(model.together.profile!.activity.value!.single.reactions.count(Reaction.heart), 6);
+      // An item the profile does not hold leaves it as it is.
+      final before = model.together.profile;
+      model.together.profileActivityChanged(items[0]);
+      expect(identical(model.together.profile, before), isTrue);
     });
 
     testWidgets('golden: a game\'s leaderboard with the gap and the user\'s place (tr)', (tester) async {

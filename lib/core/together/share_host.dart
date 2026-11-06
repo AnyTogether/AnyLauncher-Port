@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'share_audio.dart';
 import 'share_play.dart';
 
 /// One viewer's connection as the host needs it; the launcher's flutter_webrtc one makes real
@@ -29,9 +30,32 @@ abstract class ShareLink {
   /// The game's answer on the viewer's pad (vibration, light bar).
   void sendPad(Uint8List packet);
 
+  /// A text message on the "audio" channel: the viewer's hello ([ShareAudioHello]).
+  set onHello(void Function(String text) handler);
+
+  /// Adds the game's sound to this connection as an Opus track in a stream of its own; false
+  /// when the engine has none. The host offers again after.
+  Future<bool> addSound();
+
+  /// StreamPacket audio on the "audio" channel, when it is open and not backed up past [most]
+  /// bytes (a viewer behind skips sound rather than fall further behind).
+  bool sendSound(Uint8List packet, {int most});
+
+  /// How the connection is doing, from WebRTC's statistics; null when it cannot say.
+  Future<ShareLinkStats?> stats();
+
   /// What the viewer's stream may take.
   Future<void> setEncoding({required int maxBitrate, required int maxFramerate, required double scaleDown});
   Future<void> close();
+}
+
+/// A viewer's connection as the host's list shows it: the path, its round trip, the picture.
+class ShareLinkStats {
+  const ShareLinkStats({this.roundTripMs, this.relayed, this.framesPerSecond, this.frameHeight});
+  final double? roundTripMs;
+  final bool? relayed;
+  final double? framesPerSecond;
+  final int? frameHeight;
 }
 
 /// The game's picture and sound, captured once and sent on every viewer's connection.
@@ -39,7 +63,7 @@ abstract class ShareEngine {
   /// Captures the game's window, by its title; false when it cannot be found or read.
   Future<bool> start({required String windowTitle});
 
-  /// Whether the game's sound goes with the picture (an Opus track).
+  /// Whether the game's sound can go as an Opus track (to viewers who ask for it).
   bool get hasSound;
   Future<ShareLink> link(List<Map<String, dynamic>> iceServers);
   Future<void> stop();
@@ -51,6 +75,12 @@ class _Viewer {
   final String device;
   final ShareLink link;
   final queued = <Map<String, dynamic>>[];
+
+  /// How the game's sound reaches them: PCM on the "audio" channel until an answer takes the
+  /// Opus track they asked for.
+  var audio = ShareAudioCodec.pcm;
+  bool soundAdded = false;
+  ShareLinkStats? stats;
 }
 
 /// The host's side of a running share play, as the macOS launcher's SharePlayHost: each viewer
@@ -82,6 +112,15 @@ class ShareHostSession {
   /// Each viewer's connection state, by user ID.
   Map<String, String> get links => {for (final viewer in _viewers.values) viewer.userId: viewer.link.connectionState};
 
+  /// How the game's sound reaches each viewer, by user ID.
+  Map<String, ShareAudioCodec> get sound => {for (final viewer in _viewers.values) viewer.userId: viewer.audio};
+
+  /// Each connected viewer's last measured link, by user ID.
+  Map<String, ShareLinkStats> get stats => {
+    for (final viewer in _viewers.values)
+      if (viewer.stats != null && viewer.link.connectionState == 'connected') viewer.userId: viewer.stats!,
+  };
+
   /// The share play as the server has it now: newcomers are called, leavers hung up on, and the
   /// pads follow who holds them.
   Future<void> apply(SharePlay sharePlay) async {
@@ -111,6 +150,7 @@ class ShareHostSession {
     link.onCandidate = (candidate) => signal(userId, device, 'candidate', candidate);
     link.onState = changed;
     link.onPad = (packet) => router.receive(packet, userId);
+    link.onHello = (text) => unawaited(_hello(viewer, text));
     await _retune();
     await _offer(viewer);
     changed();
@@ -159,13 +199,19 @@ class ShareHostSession {
         }
         final encoding = ShareRoster.encoding(_viewers.length);
         final sdp = data['sdp'] as String? ?? '';
+        final video = ShareRoster.tuneVideo(sdp, startKbps: encoding.startKbps, maxKbps: encoding.maxBitrate ~/ 1000);
         try {
           await viewer.link.setRemote({
             'type': 'answer',
-            'sdp': ShareRoster.tuneVideo(sdp, startKbps: encoding.startKbps, maxKbps: encoding.maxBitrate ~/ 1000),
+            'sdp': ShareAudioSdp.stereoOpus(video, kbps: ShareAudioSdp.kbps, frameMs: ShareAudioSdp.frameMs),
           });
         } on Object {
           await viewer.link.setRemote({'type': 'answer', 'sdp': sdp});
+        }
+        // The Opus track taken: no more PCM for this viewer.
+        if (viewer.soundAdded && ShareAudioSdp.takesOpus(sdp) && viewer.audio != ShareAudioCodec.opus) {
+          viewer.audio = ShareAudioCodec.opus;
+          changed();
         }
         for (final candidate in List.of(viewer.queued)) {
           await viewer.link.addCandidate(candidate);
@@ -182,6 +228,40 @@ class ShareHostSession {
       case 'bye':
         if (viewer?.device == signal.device) await hangUp(signal.from, sayBye: false);
     }
+  }
+
+  /// A viewer's hello: the Opus track added to their connection and offered, if they take it
+  /// and the game's sound can go as one.
+  Future<void> _hello(_Viewer viewer, String text) async {
+    final hello = ShareAudioHello.parse(text);
+    if (hello == null || hello.chosen != ShareAudioCodec.opus || !engine.hasSound || viewer.soundAdded) return;
+    if (_viewers[viewer.userId] != viewer) return;
+    viewer.soundAdded = true;
+    if (!await viewer.link.addSound()) {
+      viewer.soundAdded = false;
+      return;
+    }
+    if (_viewers[viewer.userId] == viewer) await _offer(viewer);
+  }
+
+  /// The game's sound as StreamPacket audio: to every viewer it reaches as PCM.
+  void pushSound(Uint8List packet) {
+    for (final viewer in _viewers.values) {
+      if (viewer.audio == ShareAudioCodec.pcm) viewer.link.sendSound(packet, most: 64 * 1024);
+    }
+  }
+
+  /// Reads every connected viewer's link once (every two seconds while hosting).
+  Future<void> measure() async {
+    for (final viewer in _viewers.values.toList()) {
+      if (viewer.link.connectionState != 'connected') continue;
+      try {
+        viewer.stats = await viewer.link.stats() ?? viewer.stats;
+      } on Object {
+        // The connection went meanwhile.
+      }
+    }
+    changed();
   }
 
   /// The game's answer on a bridge goes back to the viewer whose pad it carries.

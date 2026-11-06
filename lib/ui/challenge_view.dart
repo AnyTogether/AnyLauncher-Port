@@ -629,7 +629,8 @@ class _WindowCard extends StatelessWidget {
       weight: FontWeight.w700,
       color: Colors.white.withValues(alpha: 0.7),
     ).copyWith(letterSpacing: 1.2 * scale);
-    final started = challenge.startsAt.isBefore(DateTime.now());
+    final now = TogetherChallenges.clock();
+    final started = challenge.startsAt.isBefore(now);
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(22 * scale),
@@ -676,8 +677,8 @@ class _WindowCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   started
-                      ? T.format('challengeStartedAgo', [TogetherSocial.ago(challenge.startsAt)])
-                      : T.format('challengeStartsIn', [TogetherChallenges.span(challenge.startsAt.difference(DateTime.now()))]),
+                      ? T.format('challengeStartedAgo', [TogetherSocial.ago(challenge.startsAt, now: now)])
+                      : T.format('challengeStartsIn', [TogetherChallenges.span(challenge.startsAt.difference(now))]),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppText.display(12 * scale, color: Colors.white.withValues(alpha: 0.55)),

@@ -6,6 +6,7 @@ import 'package:anyps5_desktop/core/together/levels.dart';
 import 'package:anyps5_desktop/core/together/people.dart';
 import 'package:anyps5_desktop/core/together/profiles.dart';
 import 'package:anyps5_desktop/core/together/self.dart';
+import 'package:anyps5_desktop/core/together/social.dart';
 import 'package:anyps5_desktop/core/together/socket.dart';
 import 'package:anyps5_desktop/core/together/token_store.dart';
 import 'package:test/test.dart';
@@ -270,6 +271,34 @@ void main() {
       expect(older.showcase, isA<SectionFailed<Showcase>>());
       server.privateParts['ana'] = {'showcase'};
       expect((await Profiles(account).page('ana')).showcase, isA<SectionPrivate<Showcase>>());
+    });
+
+    test('a profile page reads the person\'s recent activity, as the Mac\'s profile shows it', () async {
+      server.profiles['ana'] = {'userId': 'u-ana', 'handle': 'ana', 'displayName': 'Ana', 'friendship': 'friends'};
+      server.activities['ana'] = [
+        {
+          'id': 'a2',
+          'kind': 'first_play',
+          'createdAt': '2026-11-05T20:00:00Z',
+          'actor': {'userId': 'u-ana', 'handle': 'ana', 'displayName': 'Ana'},
+          'game': {
+            'titleId': 'PPSA02002',
+            'names': {'en': 'Neon Alley'},
+          },
+          'reactions': {
+            'counts': {'fire': 2},
+            'mine': null,
+          },
+        },
+      ];
+      final page = await Profiles(account).page('ana');
+      expect(page.activity.value!.single.id, 'a2');
+      expect(page.activity.value!.single.reactions.count(Reaction.fire), 2);
+      expect(server.callsTo('users/ana/activity?limit=20'), hasLength(1));
+
+      // An older server without it: the page still comes, without the section.
+      server.activities.remove('ana');
+      expect((await Profiles(account).page('ana')).activity, isA<SectionFailed<List<Activity>>>());
     });
 
     test('comparing: the games list, one game, and trophies kept private', () async {

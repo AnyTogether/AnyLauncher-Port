@@ -248,6 +248,9 @@ class FakeTogether {
   /// Showcases by handle, the compared games by handle and one game compared by
   /// "handle/titleId"; `showcase` and `compare` in [privateParts] keep them from the user.
   final Map<String, Map<String, dynamic>> showcases = {};
+
+  /// Recent activity by handle (`users/:handle/activity`); none answers 404, as an older server.
+  final Map<String, List<Map<String, dynamic>>> activities = {};
   final Map<String, List<Map<String, dynamic>>> compareLists = {};
   final Map<String, Map<String, dynamic>> compareViews = {};
 
@@ -635,6 +638,12 @@ class FakeTogether {
       if (titleId == null) return (200, {'games': compareLists[handle] ?? const []});
       final view = compareViews['$handle/$titleId'];
       return view == null ? problem(404, 'not_found', 'No such game') : (200, view);
+    }
+    final activity = RegExp(r'^users/([^/?]+)/activity(\?.*)?$').firstMatch(call.path);
+    if (call.method == 'GET' && activity != null) {
+      final handle = Uri.decodeComponent(activity.group(1)!);
+      final items = activities[handle];
+      return items == null ? problem(404, 'not_found') : (200, {'items': items, 'next': null});
     }
     final user = RegExp(r'^users/([^/?]+)(/library|/trophies|/showcase)?$').firstMatch(call.path);
     if (call.method == 'GET' && user != null) {

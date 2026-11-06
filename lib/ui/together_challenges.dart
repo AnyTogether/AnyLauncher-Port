@@ -9,6 +9,9 @@ enum ChallengeAction { join, leave, website }
 extension TogetherChallenges on TogetherModel {
   Challenges get challengeApi => Challenges(account);
 
+  /// What "now" is for the time left and the window's track; the goldens fix it.
+  static DateTime Function() clock = DateTime.now;
+
   // The strip over a board.
 
   /// The board's challenges, read again; none on a failure or a server without them, so no empty
@@ -280,7 +283,7 @@ extension TogetherChallenges on TogetherModel {
   /// "Ends in 2 days", "Starts in 5 h", "Over, final within the hour", "Ended 2 d ago",
   /// "Called off".
   static String when(Challenge challenge, {DateTime? now}) {
-    final at = now ?? DateTime.now();
+    final at = now ?? clock();
     return switch (challenge.state) {
       ChallengeState.upcoming => T.format('challengeStartsIn', [span(challenge.startsAt.difference(at))]),
       ChallengeState.active => T.format('challengeEndsIn', [span(challenge.endsAt.difference(at))]),
@@ -334,7 +337,7 @@ extension TogetherChallenges on TogetherModel {
   static double progress(Challenge challenge, {DateTime? now}) {
     final total = challenge.endsAt.difference(challenge.startsAt).inSeconds;
     if (total <= 0) return challenge.state == ChallengeState.upcoming ? 0 : 1;
-    final gone = (now ?? DateTime.now()).difference(challenge.startsAt).inSeconds;
+    final gone = (now ?? clock()).difference(challenge.startsAt).inSeconds;
     return (gone / total).clamp(0, 1).toDouble();
   }
 

@@ -5,7 +5,24 @@ release when it is made.
 
 ## Next release
 
-Nothing yet.
+- **A profile shows the person's recent activity**, as on the Mac: the trophies, platinums,
+  first plays, long sessions, new friends and milestones they shared, under their recent
+  trophies, with the reactions each item got. It follows what they let you see, and an item
+  that changes while the profile is open changes there too.
+- **Watch a friend's share play here**, as on the Mac. An invite shows in **Friends**, with
+  **Not now** beside it. A friend sharing who lets friends walk in shows there too, and **Find
+  Players › Live now & parties** lists the share plays anyone can watch or ask to watch. The
+  game fills the screen with who shares it, the round trip and the picture's size in a corner.
+  Once the host lets you play, your controller is their player 2, 3 or 4, and a badge shows
+  which. PS leaves; while you only watch, Esc and ○ leave too. The sound comes as an Opus track,
+  or as plain sound on the data channel from hosts that send only that.
+- **Share play sound reaches every viewer.** The host now sends the game's sound the way the
+  Mac does: plain sound on the data channel to everyone (the phone app and older launchers play
+  only that), and an Opus track to viewers who ask for it (the website, the Mac and this
+  launcher), with no doubled sound. The Linux build now has the loopback capture the Opus track
+  needs (it links PulseAudio's client library, which PipeWire systems have too).
+- **Each viewer's line in the quick menu** says whether they play or watch, whether the link is
+  direct or through the relay, its round trip, and the picture they get (720p60, 540p30).
 
 ## 0.1.19
 

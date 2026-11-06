@@ -22,8 +22,14 @@ void main() {
   late Fixture fixture;
   late AppModel model;
 
+  // One fixed now for the fixtures and the screens, so the time left and the tracks draw the same
+  // on every run.
+  final now = DateTime.now();
+  setUp(() => TogetherChallenges.clock = () => now);
+
   tearDown(() {
     T.language = Language.english;
+    TogetherChallenges.clock = DateTime.now;
     fixture.dispose();
   });
 
@@ -49,7 +55,7 @@ void main() {
     'avatar': null,
   };
 
-  String from(Duration time) => DateTime.now().add(time).toUtc().toIso8601String();
+  String from(Duration time) => now.add(time).toUtc().toIso8601String();
 
   Map<String, dynamic> view(
     String id, {
@@ -123,8 +129,9 @@ void main() {
       ...?extra,
     },
     'read': read,
-    'createdAt': from(const Duration(minutes: -30)),
-    'updatedAt': from(const Duration(minutes: -30)),
+    // The notifications' "30 min ago" reads the real clock.
+    'createdAt': DateTime.now().subtract(const Duration(minutes: 30)).toUtc().toIso8601String(),
+    'updatedAt': DateTime.now().subtract(const Duration(minutes: 30)).toUtc().toIso8601String(),
   };
 
   group('words', () {

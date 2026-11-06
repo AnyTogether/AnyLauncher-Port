@@ -583,6 +583,10 @@ class Social with Notifier {
   /// A notification of a family's (a parent answered or changed something).
   void Function(Notice notice)? onFamilyNotice;
 
+  /// An activity item came or changed on the gateway, whether or not the feed was read: a
+  /// profile showing it takes it.
+  void Function(Activity item)? onActivity;
+
   // The feed.
 
   /// Friends' activity, newest first; [before] an item's ID reads the page after it.
@@ -719,6 +723,7 @@ class Social with Notifier {
         unawaited(loadUnread().catchError((Object _) {}));
       case 'feed.item':
         final item = Activity.fromJson(data);
+        if (item != null) onActivity?.call(item);
         if (item == null || !feed.loaded) return;
         feed.upsert(item);
         notifyListeners();

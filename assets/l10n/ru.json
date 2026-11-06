@@ -1424,5 +1424,18 @@
   "gameUnlockingHint": "%@ разблокируется и запускается после завершения. Отмена разблокировки в настройках останавливает его.",
   "stateUpdatingShort": "Обновление",
   "stateEngineShort": "Обновление движка",
-  "stateWaitingEngineShort": "Ждем двигатель"
+  "stateWaitingEngineShort": "Ждем двигатель",
+  "partyChat": "Чат",
+  "partyChatWrite": "Написать группе",
+  "partyChatEmpty": "Это читает только группа. Новые участники видят прежние сообщения.",
+  "partyChatFormer": "Бывший участник",
+  "messagesReport": "Пожаловаться",
+  "messagesReportTitle": "Пожаловаться на сообщение",
+  "messagesReportDetail": "Его прочитает модератор. Автор не узнает, кто отправил жалобу.",
+  "messagesReported": "Спасибо. Модератор проверит.",
+  "reportReasonSpam": "Спам или реклама",
+  "reportReasonHarassment": "Оскорбления или травля",
+  "reportReasonHate": "Язык вражды",
+  "reportReasonSexual": "Сексуальный контент",
+  "reportReasonOther": "Другое"
 }

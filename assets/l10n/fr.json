@@ -1424,5 +1424,18 @@
   "gameUnlockingHint": "%@ est en cours de déverrouillage et démarrera une fois l’opération terminée. Annulez le déverrouillage dans ses réglages pour l’arrêter.",
   "stateUpdatingShort": "Mise à jour",
   "stateEngineShort": "Mise à jour du moteur",
-  "stateWaitingEngineShort": "En attente du moteur"
+  "stateWaitingEngineShort": "En attente du moteur",
+  "partyChat": "Discussion",
+  "partyChatWrite": "Écrire au groupe",
+  "partyChatEmpty": "Seul le groupe lit ceci. Quiconque rejoint voit les messages précédents.",
+  "partyChatFormer": "Ancien membre",
+  "messagesReport": "Signaler",
+  "messagesReportTitle": "Signaler ce message",
+  "messagesReportDetail": "Un modérateur le lit. Son auteur ne saura pas qui l'a signalé.",
+  "messagesReported": "Merci. Un modérateur va l'examiner.",
+  "reportReasonSpam": "Spam ou publicité",
+  "reportReasonHarassment": "Harcèlement ou intimidation",
+  "reportReasonHate": "Discours haineux",
+  "reportReasonSexual": "Contenu sexuel",
+  "reportReasonOther": "Autre chose"
 }

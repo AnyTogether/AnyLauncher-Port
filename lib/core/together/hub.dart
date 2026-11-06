@@ -7,6 +7,7 @@ import 'media.dart';
 import 'messages.dart';
 import 'notifier.dart';
 import 'parties.dart';
+import 'party_chat.dart';
 import 'profiles.dart';
 import 'self.dart';
 import 'social.dart';
@@ -15,7 +16,7 @@ import 'voice.dart';
 import 'voice_mesh.dart';
 
 /// AnyTogether's live side: the gateway socket, open while someone is signed in, and what it
-/// keeps up to date: the friends, the messages, the party and its voice. Signing in or out starts
+/// keeps up to date: the friends, the messages, the party with its chat and its voice. Signing in or out starts
 /// and clears everything.
 class TogetherHub with Notifier {
   TogetherHub({
@@ -31,6 +32,8 @@ class TogetherHub with Notifier {
     self = SelfProfile(account: account, socket: this.socket)..addListener(notifyListeners);
     messages = Messages(account: account, socket: this.socket)..addListener(notifyListeners);
     parties = Parties(account: account, socket: this.socket)..addListener(notifyListeners);
+    partyChat = PartyChat(account: account, socket: this.socket, parties: parties, messages: messages)
+      ..addListener(notifyListeners);
     games = GameSessions(account: account, socket: this.socket, bridgeFile: bridgeFile)..addListener(notifyListeners);
     social = Social(account: account, socket: this.socket)..addListener(notifyListeners);
     voice = Voice(account: account, socket: this.socket, parties: parties, engine: voiceEngine, sfuRoom: sfuRoom)
@@ -47,6 +50,9 @@ class TogetherHub with Notifier {
   late final SelfProfile self;
   late final Messages messages;
   late final Parties parties;
+
+  /// The party's text chat, beside its voice.
+  late final PartyChat partyChat;
   late final Voice voice;
   late final GameSessions games;
 
@@ -71,6 +77,7 @@ class TogetherHub with Notifier {
     self.clear();
     messages.clear();
     parties.clear();
+    partyChat.clear();
     games.clear();
     social.clear();
     if (user != null) socket.start();
@@ -83,6 +90,7 @@ class TogetherHub with Notifier {
     self.dispose();
     messages.dispose();
     voice.dispose();
+    partyChat.dispose();
     parties.dispose();
     games.dispose();
     social.dispose();

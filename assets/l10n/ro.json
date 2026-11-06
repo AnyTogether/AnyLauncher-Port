@@ -1407,5 +1407,18 @@
   "gameUnlockingHint": "%@ este în curs de deblocare și va porni odată ce procesul este finalizat. Opțiunea „Anulare deblocare” din setările sale oprește procesul.",
   "stateUpdatingShort": "Se actualizează",
   "stateEngineShort": "Se actualizează motorul",
-  "stateWaitingEngineShort": "Se așteaptă motorul"
+  "stateWaitingEngineShort": "Se așteaptă motorul",
+  "partyChat": "Chat",
+  "partyChatWrite": "Scrie grupului",
+  "partyChatEmpty": "Doar grupul citește asta. Oricine se alătură vede mesajele de până acum.",
+  "partyChatFormer": "Fost membru",
+  "messagesReport": "Raportează",
+  "messagesReportTitle": "Raportează acest mesaj",
+  "messagesReportDetail": "Îl citește un moderator. Autorul nu află cine l-a raportat.",
+  "messagesReported": "Mulțumim. Un moderator se va uita.",
+  "reportReasonSpam": "Spam sau reclame",
+  "reportReasonHarassment": "Hărțuire sau bullying",
+  "reportReasonHate": "Discurs instigator la ură",
+  "reportReasonSexual": "Conținut sexual",
+  "reportReasonOther": "Altceva"
 }

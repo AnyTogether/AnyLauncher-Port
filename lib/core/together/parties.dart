@@ -147,6 +147,7 @@ class Party {
     this.requests = const [],
     this.together,
     this.listing,
+    this.conversationId,
   });
 
   factory Party.fromJson(Map<String, dynamic> json) {
@@ -180,6 +181,9 @@ class Party {
       ],
       together: PartyTogether.fromJson(json['together']),
       listing: PartyListing.fromJson(json['public']),
+      conversationId: json['conversationId'] is String && (json['conversationId'] as String).isNotEmpty
+          ? json['conversationId'] as String
+          : null,
     );
   }
 
@@ -218,6 +222,10 @@ class Party {
 
   /// How the party is listed in public (Find Players); null while it is not.
   final PartyListing? listing;
+
+  /// The party's text chat, beside its voice: an ordinary group conversation that follows the
+  /// party. Only its members get it; an older server sends none.
+  final String? conversationId;
 
   /// User ids as a list of strings, or of peers with a userId.
   static Set<String> _ids(Object? list) => {
@@ -261,6 +269,7 @@ class Party {
     requests: requests ?? this.requests,
     together: together,
     listing: listing,
+    conversationId: conversationId,
   );
 }
 

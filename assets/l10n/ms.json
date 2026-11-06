@@ -1408,5 +1408,18 @@
   "gameUnlockingHint": "%@ sedang dibuka kuncinya dan akan bermula setelah proses ini selesai. Membatalkan 'Buka Kunci' (Unlock) dalam tetapannya akan menghentikannya.",
   "stateUpdatingShort": "Mengemas kini",
   "stateEngineShort": "Mengemas kini enjin",
-  "stateWaitingEngineShort": "Menunggu enjin"
+  "stateWaitingEngineShort": "Menunggu enjin",
+  "partyChat": "Sembang",
+  "partyChatWrite": "Hantar mesej kepada parti",
+  "partyChatEmpty": "Hanya parti yang membaca ini. Sesiapa yang menyertai dapat melihat mesej setakat ini.",
+  "partyChatFormer": "Bekas ahli",
+  "messagesReport": "Laporkan",
+  "messagesReportTitle": "Laporkan mesej ini",
+  "messagesReportDetail": "Seorang moderator akan membacanya. Penulisnya tidak diberitahu siapa yang melaporkannya.",
+  "messagesReported": "Terima kasih. Seorang moderator akan menelitinya.",
+  "reportReasonSpam": "Spam atau iklan",
+  "reportReasonHarassment": "Gangguan atau buli",
+  "reportReasonHate": "Ucapan kebencian",
+  "reportReasonSexual": "Kandungan seksual",
+  "reportReasonOther": "Lain-lain"
 }

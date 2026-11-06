@@ -27,6 +27,7 @@ import '../core/together/messages.dart';
 import '../core/together/private_identity.dart';
 import '../core/together/profiles.dart';
 import '../core/together/parties.dart';
+import '../core/together/party_chat.dart';
 import '../core/together/play_together.dart';
 import '../core/together/sync.dart';
 import '../core/together/talk_key.dart';
@@ -46,6 +47,7 @@ import 'voice_webrtc.dart';
 part 'together_messages.dart';
 part 'together_ask.dart';
 part 'together_party.dart';
+part 'together_party_chat.dart';
 part 'together_play.dart';
 part 'together_profile.dart';
 part 'together_find.dart';
@@ -137,6 +139,10 @@ class TogetherModel {
     hub.games.addListener(() => online.follow(hub.games.session?.id));
     _ready = hub.socket.events.listen(_event);
     hub.messages.onSendFailed = (error) => sendFailed(error);
+    // The party's chat is read while the party screen shows it.
+    hub.partyChat
+      ..shown = (() => app.overlay == Layer.party)
+      ..onSendFailed = partySendFailed;
     hub.voice
       ..pushToTalk = app.preferences.pushToTalk
       ..addListener(_voiceChanged);
@@ -193,6 +199,9 @@ class TogetherModel {
   String joinCodeDraft = '';
   JoinPreview? codePreview;
   String? discordDraft;
+
+  /// Party: its chat's keys and field (together_party_chat.dart).
+  final PartyChatKeys partyChatKeys = PartyChatKeys();
 
   /// Messages: the conversation or friend chosen on the left, whether the keys are in the thread,
   /// which quick reply (or the field, the last) is focused there, and what is typed.
@@ -338,6 +347,11 @@ class TogetherModel {
       messageMenu = null;
       replyingTo = null;
       editingMessage = null;
+      partyChatKeys
+        ..reset()
+        ..replyingTo = null
+        ..editing = null
+        ..draft = '';
       profile = null;
       compareWith = null;
       compareGames = null;
@@ -1225,7 +1239,8 @@ class TogetherModel {
       case 'family.updated':
         // A parent changed the limits or gave extra time.
         unawaited(family.refresh());
-      case 'message.created':
+      // A party's chat brings no word: it sits beside the party.
+      case 'message.created' when !hub.messages.elsewhere.contains(data['conversationId']):
         _messageArrived(data);
       case 'party.invite':
         final from = data['from'];

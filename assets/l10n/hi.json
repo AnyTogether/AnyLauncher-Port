@@ -1424,5 +1424,18 @@
   "gameUnlockingHint": "%@ को अनलॉक किया जा रहा है और यह पूरा होने पर प्रारंभ हो जाता है। इसकी सेटिंग्स में कैंसिल अनलॉक इसे रोकता है।?",
   "stateUpdatingShort": "अद्यतन करने",
   "stateEngineShort": "इंजन को अपडेट किया जा रहा है",
-  "stateWaitingEngineShort": "इंजन का इंतजार किया जा रहा है"
+  "stateWaitingEngineShort": "इंजन का इंतजार किया जा रहा है",
+  "partyChat": "चैट",
+  "partyChatWrite": "दल को संदेश भेजें",
+  "partyChatEmpty": "इसे सिर्फ़ दल पढ़ता है। जो भी जुड़ता है, उसे अब तक के संदेश दिखते हैं।",
+  "partyChatFormer": "पूर्व सदस्य",
+  "messagesReport": "रिपोर्ट करें",
+  "messagesReportTitle": "इस संदेश की रिपोर्ट करें",
+  "messagesReportDetail": "इसे एक मॉडरेटर पढ़ता है। लिखने वाले को नहीं बताया जाता कि रिपोर्ट किसने की।",
+  "messagesReported": "धन्यवाद। एक मॉडरेटर इसे देखेगा।",
+  "reportReasonSpam": "स्पैम या विज्ञापन",
+  "reportReasonHarassment": "उत्पीड़न या धमकाना",
+  "reportReasonHate": "नफ़रत भरी बातें",
+  "reportReasonSexual": "यौन सामग्री",
+  "reportReasonOther": "कुछ और"
 }

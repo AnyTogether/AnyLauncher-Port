@@ -1407,5 +1407,18 @@
   "gameUnlockingHint": "%@ ກຳລັງຢູ່ໃນຂັ້ນຕອນການປົດລັອກ ແລະ ຈະເລີ່ມເຮັດວຽກເມື່ອຂັ້ນຕອນດັ່ງກ່າວສຳເລັດ. ການຍົກເລີກ \"ການປົດລັອກ\" (Unlock) ໃນການຕັ້ງຄ່າຈະເປັນການຢຸດມັນໄວ້.",
   "stateUpdatingShort": "ກຳລັງອັບເດດ",
   "stateEngineShort": "ກຳລັງອັບເດດລະບົບຫຼັກ (Engine)",
-  "stateWaitingEngineShort": "ກຳລັງລໍຖ້າລະບົບຫຼັກ (Engine)"
+  "stateWaitingEngineShort": "ກຳລັງລໍຖ້າລະບົບຫຼັກ (Engine)",
+  "partyChat": "ແຊັດ",
+  "partyChatWrite": "ສົ່ງຂໍ້ຄວາມຫາກຸ່ມ",
+  "partyChatEmpty": "ມີແຕ່ກຸ່ມເທົ່ານັ້ນທີ່ອ່ານສິ່ງນີ້. ໃຜທີ່ເຂົ້າຮ່ວມຈະເຫັນຂໍ້ຄວາມທີ່ຜ່ານມາ.",
+  "partyChatFormer": "ອະດີດສະມາຊິກ",
+  "messagesReport": "ລາຍງານ",
+  "messagesReportTitle": "ລາຍງານຂໍ້ຄວາມນີ້",
+  "messagesReportDetail": "ຜູ້ກວດກາຈະອ່ານມັນ. ຜູ້ຂຽນຈະບໍ່ຮູ້ວ່າໃຜເປັນຄົນລາຍງານ.",
+  "messagesReported": "ຂອບໃຈ. ຜູ້ກວດກາຈະເບິ່ງມັນ.",
+  "reportReasonSpam": "ສະແປມ ຫຼື ໂຄສະນາ",
+  "reportReasonHarassment": "ການລົບກວນ ຫຼື ການຂົ່ມເຫັງ",
+  "reportReasonHate": "ຄຳເວົ້າທີ່ສ້າງຄວາມກຽດຊັງ",
+  "reportReasonSexual": "ເນື້ອຫາທາງເພດ",
+  "reportReasonOther": "ອື່ນໆ"
 }

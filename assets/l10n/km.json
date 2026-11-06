@@ -1403,5 +1403,18 @@
   "gameUnlockingHint": "%@ កំពុងស្ថិតក្នុងដំណើរការដោះសោ ហើយវានឹងចាប់ផ្តើមដំណើរការ នៅពេលដែលការដោះសោរួចរាល់។ ការលុបចោលមុខងារដោះសោ (Unlock) នៅក្នុងការកំណត់របស់វា នឹងបញ្ឈប់ដំណើរការនេះ។",
   "stateUpdatingShort": "កំពុងធ្វើបច្ចុប្បន្នភាព",
   "stateEngineShort": "កំពុងធ្វើបច្ចុប្បន្នភាពម៉ាស៊ីន (Engine)",
-  "stateWaitingEngineShort": "កំពុងរង់ចាំម៉ាស៊ីន (Engine)"
+  "stateWaitingEngineShort": "កំពុងរង់ចាំម៉ាស៊ីន (Engine)",
+  "partyChat": "ជជែក",
+  "partyChatWrite": "ផ្ញើសារទៅក្រុមលេង",
+  "partyChatEmpty": "មានតែក្រុមលេងទេដែលអានវា។ អ្នកដែលចូលរួមនឹងឃើញសារពីមុនៗ។",
+  "partyChatFormer": "អតីតសមាជិក",
+  "messagesReport": "រាយការណ៍",
+  "messagesReportTitle": "រាយការណ៍សារនេះ",
+  "messagesReportDetail": "អ្នកសម្របសម្រួលនឹងអានវា។ អ្នកសរសេរមិនត្រូវបានប្រាប់ថាអ្នកណារាយការណ៍ទេ។",
+  "messagesReported": "សូមអរគុណ។ អ្នកសម្របសម្រួលនឹងពិនិត្យមើល។",
+  "reportReasonSpam": "សារឥតបានការ ឬការផ្សាយពាណិជ្ជកម្ម",
+  "reportReasonHarassment": "ការយាយី ឬការសម្លុត",
+  "reportReasonHate": "ពាក្យសម្ដីស្អប់ខ្ពើម",
+  "reportReasonSexual": "ខ្លឹមសារផ្លូវភេទ",
+  "reportReasonOther": "ផ្សេងទៀត"
 }

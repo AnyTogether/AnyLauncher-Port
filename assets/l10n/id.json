@@ -1424,5 +1424,18 @@
   "gameUnlockingHint": "%@ sedang dibuka kuncinya dan dimulai setelah selesai. Batalkan Buka Kunci dalam pengaturannya akan menghentikannya.",
   "stateUpdatingShort": "Memperbarui",
   "stateEngineShort": "Memperbarui mesin",
-  "stateWaitingEngineShort": "Menunggu mesin"
+  "stateWaitingEngineShort": "Menunggu mesin",
+  "partyChat": "Obrolan",
+  "partyChatWrite": "Kirim pesan ke party",
+  "partyChatEmpty": "Hanya anggota party yang membaca ini. Siapa pun yang bergabung melihat pesan sebelumnya.",
+  "partyChatFormer": "Mantan anggota",
+  "messagesReport": "Laporkan",
+  "messagesReportTitle": "Laporkan pesan ini",
+  "messagesReportDetail": "Moderator akan membacanya. Penulisnya tidak diberi tahu siapa yang melapor.",
+  "messagesReported": "Terima kasih. Moderator akan memeriksanya.",
+  "reportReasonSpam": "Spam atau iklan",
+  "reportReasonHarassment": "Pelecehan atau perundungan",
+  "reportReasonHate": "Ujaran kebencian",
+  "reportReasonSexual": "Konten seksual",
+  "reportReasonOther": "Hal lain"
 }

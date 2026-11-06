@@ -1849,5 +1849,18 @@
   "socialHubTooLarge": "The theme is too big for the Hub, 50 MB at most",
   "socialHubBadTheme": "The Hub didn't take this theme file",
   "socialHubNoPreview": "The Hub needs a picture of the theme",
-  "socialHubNoTheme": "That theme isn't on the Hub"
+  "socialHubNoTheme": "That theme isn't on the Hub",
+  "partyChat": "Chat",
+  "partyChatWrite": "Message the party",
+  "partyChatEmpty": "Only the party reads this. Anyone who joins sees the messages so far.",
+  "partyChatFormer": "Former member",
+  "messagesReport": "Report",
+  "messagesReportTitle": "Report this message",
+  "messagesReportDetail": "A moderator reads it. Its author is not told who sent the report.",
+  "messagesReported": "Thanks. A moderator will look at it.",
+  "reportReasonSpam": "Spam or ads",
+  "reportReasonHarassment": "Harassment or bullying",
+  "reportReasonHate": "Hate speech",
+  "reportReasonSexual": "Sexual content",
+  "reportReasonOther": "Something else"
 }

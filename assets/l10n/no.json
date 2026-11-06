@@ -1407,5 +1407,18 @@
   "gameUnlockingHint": "%@ låses opp og starter når prosessen er ferdig. Du kan stoppe dette ved å velge «Avbryt opplåsing» i innstillingene.",
   "stateUpdatingShort": "Oppdaterer",
   "stateEngineShort": "Oppdaterer motoren",
-  "stateWaitingEngineShort": "Venter på motoren"
+  "stateWaitingEngineShort": "Venter på motoren",
+  "partyChat": "Chat",
+  "partyChatWrite": "Skriv til gruppen",
+  "partyChatEmpty": "Bare gruppen leser dette. Alle som blir med, ser meldingene så langt.",
+  "partyChatFormer": "Tidligere medlem",
+  "messagesReport": "Rapporter",
+  "messagesReportTitle": "Rapporter denne meldingen",
+  "messagesReportDetail": "En moderator leser den. Avsenderen får ikke vite hvem som rapporterte den.",
+  "messagesReported": "Takk. En moderator ser på det.",
+  "reportReasonSpam": "Spam eller reklame",
+  "reportReasonHarassment": "Trakassering eller mobbing",
+  "reportReasonHate": "Hatefulle ytringer",
+  "reportReasonSexual": "Seksuelt innhold",
+  "reportReasonOther": "Noe annet"
 }

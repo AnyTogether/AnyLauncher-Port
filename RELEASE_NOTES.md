@@ -5,6 +5,10 @@ release when it is made.
 
 ## Next release
 
+- **A profile shows the person's recent activity**, as on the Mac: the trophies, platinums,
+  first plays, long sessions, new friends and milestones they shared, under their recent
+  trophies, with the reactions each item got. It follows what they let you see, and an item
+  that changes while the profile is open changes there too.
 - **Watch a friend's share play here**, as on the Mac. An invite shows in **Friends**, with
   **Not now** beside it. A friend sharing who lets friends walk in shows there too, and **Find
   Players › Live now & parties** lists the share plays anyone can watch or ask to watch. The

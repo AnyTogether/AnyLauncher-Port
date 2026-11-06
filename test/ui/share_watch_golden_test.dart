@@ -1,7 +1,7 @@
 import 'package:anyps5_desktop/core/together/account.dart';
 import 'package:anyps5_desktop/core/together/people.dart';
 import 'package:anyps5_desktop/core/together/share_play.dart';
-import 'package:anyps5_desktop/core/together/share_watch.dart';
+import 'package:anyps5_desktop/core/together/share_viewer.dart';
 import 'package:anyps5_desktop/ui/app_model.dart' hide GameState;
 import 'package:anyps5_desktop/ui/launcher.dart';
 import 'package:anyps5_desktop/ui/strings.dart';

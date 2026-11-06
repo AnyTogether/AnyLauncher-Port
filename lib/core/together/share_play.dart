@@ -237,15 +237,6 @@ class SharePlayClient {
     );
   }
 
-  /// Watches a share play (again, from this device): the share play and the servers to reach the
-  /// host through. Full answers 409 `full`.
-  Future<SharePlayStart> join(String id) async =>
-      SharePlayStart.fromJson(await account.call('POST', 'share-plays/${Uri.encodeComponent(id)}/join', const {}));
-
-  Future<void> leave(String id) async {
-    await account.call('POST', 'share-plays/${Uri.encodeComponent(id)}/leave', const {});
-  }
-
   Future<void> decline(String id) async {
     await account.call('POST', 'share-plays/${Uri.encodeComponent(id)}/decline', const {});
   }

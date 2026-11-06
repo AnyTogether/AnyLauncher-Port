@@ -5,7 +5,7 @@ import 'package:anyps5_desktop/core/gamepad/pad_navigation.dart';
 import 'package:anyps5_desktop/core/remote/remote_protocol.dart';
 import 'package:anyps5_desktop/core/together/share_audio.dart';
 import 'package:anyps5_desktop/core/together/share_play.dart';
-import 'package:anyps5_desktop/core/together/share_watch.dart';
+import 'package:anyps5_desktop/core/together/share_viewer.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:test/test.dart';
 

@@ -3,7 +3,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../core/together/share_audio.dart';
 import '../core/together/share_host.dart';
-import '../core/together/share_watch.dart';
+import '../core/together/share_viewer.dart';
 
 /// Share play's picture and sound with flutter_webrtc on Windows and Linux: the game's window
 /// from its desktop capturer (picked by the window's title), and one RTCPeerConnection per

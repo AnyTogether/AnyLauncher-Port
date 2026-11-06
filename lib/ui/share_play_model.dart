@@ -14,7 +14,7 @@ import '../core/remote/remote_server.dart';
 import '../core/together/account.dart';
 import '../core/together/share_host.dart';
 import '../core/together/share_play.dart';
-import '../core/together/share_watch.dart';
+import '../core/together/share_viewer.dart';
 import '../core/together/socket.dart';
 import 'app_model.dart';
 import 'share_speaker.dart';

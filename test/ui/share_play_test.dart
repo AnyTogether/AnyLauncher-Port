@@ -15,7 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
 import '../core/share_play_test.dart' show FakeEngine;
-import '../core/share_watch_test.dart' show FakeWatchEngine;
+import '../core/share_viewer_test.dart' show FakeWatchEngine;
 import '../support/fake_together.dart';
 import '../support/ui_support.dart';
 import 'desktop_features_test.dart' show FakeDesktop;

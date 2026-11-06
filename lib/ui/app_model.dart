@@ -64,6 +64,7 @@ import '../core/profiles/profile_saves.dart';
 import '../core/profiles/profiles.dart';
 import '../core/together/account.dart' show ClientTooOld, TogetherAccount;
 import '../core/together/levels.dart';
+import '../core/together/media.dart' show SfuRoom;
 import '../core/together/talk_key.dart';
 import '../core/together/token_store.dart';
 import '../core/online/online_peer_mesh.dart';
@@ -725,6 +726,10 @@ enum Layer {
   /// PS in a game: the game paused under Resume, Game Settings and Close Game.
   quickMenu,
 
+  /// A friend's share play watched full screen (share_play_model.dart): the controller is the
+  /// game's, PS leaves.
+  shareWatch,
+
   /// PS held in a game: Close Game?
   closeGame,
 
@@ -961,6 +966,7 @@ class LauncherServices {
     this.togetherServer,
     this.togetherPollEvery,
     this.voiceEngine,
+    this.sfuRoom,
     this.gameLinks,
     this.talkKeys,
     this.engineReleases,
@@ -1094,6 +1100,9 @@ class LauncherServices {
 
   /// Party voice's microphone and connections; flutter_webrtc by default.
   final VoiceEngine Function()? voiceEngine;
+
+  /// Media server rooms, for share plays and party calls bigger than the mesh; LiveKit by default.
+  final SfuRoom Function()? sfuRoom;
 
   /// Online play's peer connections to the other players; flutter_webrtc by default.
   final GameLinks Function()? gameLinks;
@@ -1333,6 +1342,10 @@ class AppModel extends ChangeNotifier {
   bool pointerFocus = false;
 
   late final AudioOut _audio = services.audio?.call() ?? const SilentAudio();
+
+  /// The sound card opened (it may still be off with the launcher's sounds): a watched share
+  /// play's sound plays through it.
+  Future<bool> startSound() => _audio.start();
 
   /// The interface's soft sounds (moving, selecting, going back, something finished).
   late final InterfaceSounds sounds = InterfaceSounds(_audio);
@@ -1950,6 +1963,8 @@ class AppModel extends ChangeNotifier {
     editingRow = id;
     // A click in Settings' search field: the keys are there.
     if (id == SettingsSearch.searchRow) settingsSearchFocused = true;
+    // A click in the party chat's field: the keys are in the chat.
+    if (id == TogetherPartyChat.draftRow) together.partyChatKeys.focused = true;
     notifyListeners();
   }
 
@@ -3732,6 +3747,8 @@ class AppModel extends ChangeNotifier {
       galleryIndex = 0;
       galleryViewing = false;
     }
+    // The party's chat: its newest messages, read while it shows.
+    if (next == Layer.party) together.partyScreenOpened();
     _skipToFocusable();
     _changed();
   }
@@ -3863,6 +3880,8 @@ class AppModel extends ChangeNotifier {
       return;
     }
     if (!preferences.onboarded) return _onboardingCommand(command);
+    // Watching a share play: the controller is the game's.
+    if (overlay == Layer.shareWatch) return sharePlay.watchCommand(command);
     // At start a profile is picked first: PS waits.
     if (overlay == Layer.profilePicker && profileFlow.atLaunch && command == Command.home) return sounds.play(Cue.bump);
     if (command == Command.home) {
@@ -3977,6 +3996,9 @@ class AppModel extends ChangeNotifier {
       case Layer.messages:
         together.messagesCommand(command);
         return;
+      // The party's chat beside its rows: → into it, everything while the keys are there.
+      case Layer.party when together.partyChatCommand(command):
+        return;
       case Layer.profile:
         together.profileCommand(command);
         return;
@@ -3989,6 +4011,9 @@ class AppModel extends ChangeNotifier {
       case Layer.leaderboard:
         together.leaderboardCommand(command);
         return;
+      case Layer.shareWatch:
+        // Taken above; here only for the switch's sake.
+        return sharePlay.watchCommand(command);
       case Layer.quickMenu || Layer.closeGame when command == Command.back || command == Command.options:
         resumeGame();
         return;
@@ -6039,6 +6064,7 @@ class AppModel extends ChangeNotifier {
     panelSections = false;
     settingsSearchFocused = false;
     editingValue = null;
+    together.partyChatKeys.focused = false;
     handle(Command.select);
   }
 
@@ -6087,6 +6113,7 @@ class AppModel extends ChangeNotifier {
     panelRow = index;
     pointerFocus = true;
     settingsSearchFocused = false;
+    together.partyChatKeys.focused = false;
     _changed();
   }
 

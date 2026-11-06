@@ -13,6 +13,7 @@ import 'app_model.dart';
 import 'components.dart';
 import 'glass.dart';
 import 'level_badge.dart';
+import 'messages_view.dart';
 import 'profile_picture.dart';
 import 'home.dart';
 import 'strings.dart';
@@ -201,6 +202,8 @@ class PanelView extends StatelessWidget {
         : null;
     // The copy warning explains itself before its four choices.
     final tall = model.overlay == Layer.copyWarning;
+    // The party with its chat beside the rows: wider.
+    final partyChat = model.overlay == Layer.party && model.together.partyChatShown;
     final heading = switch (model.overlay) {
       Layer.settings => T.text('settings'),
       Layer.friends => T.text('friendsTitle'),
@@ -224,7 +227,7 @@ class PanelView extends StatelessWidget {
       onTapOutside: () => model.handle(Command.back),
       child: Center(
         child: SizedBox(
-          width: (compact ? 760 : 1180) * scale,
+          width: (compact ? 760 : (partyChat ? 1400 : 1180)) * scale,
           height:
               (psMenu
                   // The Options menu's rows say what each does: a line more each.
@@ -366,8 +369,16 @@ class PanelView extends StatelessWidget {
                         SizedBox(width: 22 * scale),
                       ],
                       Expanded(
-                        child: PanelRows(model: model, rows: category.rows),
+                        child: PanelRows(
+                          model: model,
+                          rows: category.rows,
+                          idle: partyChat && model.together.partyChatKeys.focused,
+                        ),
                       ),
+                      if (partyChat) ...[
+                        SizedBox(width: 28 * scale),
+                        SizedBox(width: 560 * scale, child: PartyChatPane(model: model)),
+                      ],
                     ],
                   ),
                 ),
@@ -530,10 +541,13 @@ class _CategoryTab extends StatelessWidget {
 
 /// A panel's rows, the focused one kept in view.
 class PanelRows extends StatelessWidget {
-  const PanelRows({super.key, required this.model, required this.rows});
+  const PanelRows({super.key, required this.model, required this.rows, this.idle = false});
 
   final AppModel model;
   final List<PanelRow> rows;
+
+  /// The keys are elsewhere on the screen (the party's chat): no row has the focus.
+  final bool idle;
 
   @override
   Widget build(BuildContext context) {
@@ -550,7 +564,7 @@ class PanelRows extends StatelessWidget {
                 model: model,
                 row: rows[index],
                 // While a controller is on the sections' column, no row has the focus.
-                focused: index == model.panelRow && !model.panelSections,
+                focused: index == model.panelRow && !model.panelSections && !idle,
                 onTap: () => model.activateRow(index),
                 onStep: (delta, {repeat = false}) => model.stepRow(index, delta, repeat: repeat),
                 onSet: (value) => model.setRowValue(index, value),

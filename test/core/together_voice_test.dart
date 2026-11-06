@@ -329,6 +329,35 @@ void main() {
       expect(server.callsTo('calls/${voice.callId}/mute'), hasLength(2), reason: 'holds do not mute on the server');
     });
 
+    test('joined on the phone: quiet here, still in the party, no goodbye and no leaving', () async {
+      String? told;
+      voice.onMoved = (client) => told = client;
+      await voice.join();
+      final id = voice.callId!;
+      await server.nextFrame('signal');
+      server.push('call.moved', {
+        'callId': id,
+        'partyId': parties.party!.id,
+        'userId': 'u-me',
+        'device': 'phone-session',
+        'client': 'phone',
+      });
+      await until(() => !voice.active);
+      expect(told, 'phone');
+      expect(voice.movedTo, 'phone');
+      expect(engine.stopped, isTrue);
+      expect(engine.links.single.closed, isTrue);
+      // The phone talks to everyone now: no bye from here, and the server is not told to leave.
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(server.frames.where((f) => f['op'] == 'signal' && f['kind'] == 'bye'), isEmpty);
+      expect(server.callsTo('calls/$id/leave'), isEmpty);
+      expect(parties.party, isNotNull);
+      // Joining here again takes it back.
+      await voice.join();
+      expect(voice.active, isTrue);
+      expect(voice.movedTo, isNull);
+    });
+
     test('call.updated marks who muted themselves in the party', () async {
       await voice.join();
       server.push('call.updated', {

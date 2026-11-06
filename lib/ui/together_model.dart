@@ -21,6 +21,7 @@ import '../core/together/hub.dart';
 import '../core/together/levels.dart';
 import '../core/together/people.dart';
 import '../core/together/self.dart';
+import '../core/together/share_play.dart';
 import '../core/together/server.dart';
 import '../core/together/social.dart';
 import '../core/together/socket.dart';
@@ -30,6 +31,7 @@ import '../core/together/private_identity.dart';
 import '../core/together/profile_look.dart';
 import '../core/together/profiles.dart';
 import '../core/together/parties.dart';
+import '../core/together/party_chat.dart';
 import '../core/together/play_together.dart';
 import '../core/together/sync.dart';
 import '../core/together/talk_key.dart';
@@ -41,6 +43,7 @@ import '../core/game_settings.dart';
 import 'app_model.dart';
 import 'compare_view.dart';
 import 'family_gate.dart';
+import 'livekit_room.dart';
 import 'online_webrtc.dart';
 import 'strings.dart';
 import 'voice_webrtc.dart';
@@ -48,6 +51,7 @@ import 'voice_webrtc.dart';
 part 'together_messages.dart';
 part 'together_ask.dart';
 part 'together_party.dart';
+part 'together_party_chat.dart';
 part 'together_play.dart';
 part 'together_profile.dart';
 part 'together_find.dart';
@@ -72,6 +76,7 @@ class TogetherModel {
     hub = TogetherHub(
       account: account,
       voiceEngine: app.services.voiceEngine ?? WebRtcVoice.new,
+      sfuRoom: app.services.sfuRoom ?? LiveKitRoom.new,
       bridgeFile: GameSessions.defaultBridgeFile(app.paths.config),
     );
     hub.games.onInvite = (invite) {
@@ -102,6 +107,7 @@ class TogetherModel {
     hub.addListener(app.refresh);
     hub.social
       ..onNotice = noticeArrived
+      ..onActivity = profileActivityChanged
       ..onFamilyNotice = (_) => unawaited(family.refresh());
     // The friends-only names and pictures the friends list brought, for every card shown.
     identities = hub.friends.identities;
@@ -138,8 +144,15 @@ class TogetherModel {
     hub.games.addListener(() => online.follow(hub.games.session?.id));
     _ready = hub.socket.events.listen(_event);
     hub.messages.onSendFailed = (error) => sendFailed(error);
+    // The party's chat is read while the party screen shows it.
+    hub.partyChat
+      ..shown = (() => app.overlay == Layer.party)
+      ..onSendFailed = partySendFailed;
     hub.voice
       ..pushToTalk = app.preferences.pushToTalk
+      ..onMoved = (client) {
+        app.show(T.text(client == 'phone' ? 'voiceMovedPhone' : 'voiceMovedAway'));
+      }
       ..addListener(_voiceChanged);
     final reader = app.services.talkKeys != null ? app.services.talkKeys!() : KeyStateReader.system();
     if (reader != null) {
@@ -194,6 +207,9 @@ class TogetherModel {
   String joinCodeDraft = '';
   JoinPreview? codePreview;
   String? discordDraft;
+
+  /// Party: its chat's keys and field (together_party_chat.dart).
+  final PartyChatKeys partyChatKeys = PartyChatKeys();
 
   /// Messages: the conversation or friend chosen on the left, whether the keys are in the thread,
   /// which quick reply (or the field, the last) is focused there, and what is typed.
@@ -351,6 +367,11 @@ class TogetherModel {
       messageMenu = null;
       replyingTo = null;
       editingMessage = null;
+      partyChatKeys
+        ..reset()
+        ..replyingTo = null
+        ..editing = null
+        ..draft = '';
       profile = null;
       showcasePins = null;
       _savedPins = null;
@@ -827,6 +848,7 @@ class TogetherModel {
           kind: ActionRow(openFindPlayers),
         ),
       ...socialRows(),
+      ...app.sharePlay.watchRows(),
       ...gameRows(),
       for (final person in friends.incoming) ...[
         PanelRow(
@@ -1225,6 +1247,7 @@ class TogetherModel {
         'handle_taken' => T.text('togetherHandleTaken'),
         'handle_reserved' => T.text('togetherHandleReserved'),
         'links_not_allowed' => T.text('togetherNoLinks'),
+        'media_server_off' => T.format('togetherMediaServerOff', [(error.extra['max'] as num?)?.toInt() ?? 4]),
         _ => error.title.isEmpty ? T.text('togetherUnreachable') : error.title,
       };
     }
@@ -1235,6 +1258,8 @@ class TogetherModel {
   void _event(TogetherEvent event) {
     // Online play follows the same game session: players joining, leaving, signalling.
     online.handle(event);
+    // Share play: the one hosted, the one watched, the invites.
+    if (event.type == 'live.ready' || event.type.startsWith('share_play.')) app.sharePlay.event(event);
     findEvent(event);
     final data = event.json;
     switch (event.type) {
@@ -1244,7 +1269,8 @@ class TogetherModel {
       case 'family.updated':
         // A parent changed the limits or gave extra time.
         unawaited(family.refresh());
-      case 'message.created':
+      // A party's chat brings no word: it sits beside the party.
+      case 'message.created' when !hub.messages.elsewhere.contains(data['conversationId']):
         _messageArrived(data);
       case 'party.invite':
         final from = data['from'];

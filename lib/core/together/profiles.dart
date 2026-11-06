@@ -2,6 +2,7 @@ import 'account.dart';
 import 'levels.dart';
 import 'people.dart';
 import 'profile_look.dart';
+import 'social.dart';
 
 /// The user's language, then English, then any.
 String? pickName(Map<String, String> names, String language) {
@@ -220,6 +221,7 @@ class ProfilePage {
     required this.library,
     required this.trophies,
     this.showcase = const SectionFailed(),
+    this.activity = const SectionFailed(),
     this.detailsPrivate = false,
   });
 
@@ -233,12 +235,32 @@ class ProfilePage {
   /// What they pinned: failed on a server without showcases, which shows nothing.
   final Section<Showcase> showcase;
 
+  /// Their recent activity, as their privacy lets this user see it (the Mac's profile column):
+  /// failed on a server without it, which shows nothing.
+  final Section<List<Activity>> activity;
+
+  /// The page with [item] in place of the activity item of the same ID (a reaction, an update
+  /// from the gateway); the same page when it does not hold it.
+  ProfilePage withActivity(Activity item) {
+    final items = activity.value;
+    if (items == null || !items.any((known) => known.id == item.id)) return this;
+    return ProfilePage(
+      profile: profile,
+      library: library,
+      trophies: trophies,
+      showcase: showcase,
+      detailsPrivate: detailsPrivate,
+      activity: SectionShown([for (final known in items) known.id == item.id ? item : known]),
+    );
+  }
+
   /// The same page with [profile] or [showcase] changed (the user's own, after an edit).
   ProfilePage copyWith({TogetherProfile? profile, Section<Showcase>? showcase}) => ProfilePage(
     profile: profile ?? this.profile,
     library: library,
     trophies: trophies,
     showcase: showcase ?? this.showcase,
+    activity: activity,
     detailsPrivate: detailsPrivate,
   );
 
@@ -264,6 +286,9 @@ class Profiles {
 
   /// A handle as a path component: without the @, escaped.
   static String path(String handle) => Uri.encodeComponent(handle.trim().replaceFirst(RegExp('^@'), ''));
+
+  /// How many of someone's recent activity items a profile shows.
+  static const activityLimit = 20;
 
   static bool isPrivate(TogetherProblem problem) =>
       problem.status == 403 || problem.code == 'private' || problem.code == 'forbidden';
@@ -291,6 +316,10 @@ class Profiles {
     final showcase = _section(
       () async => Showcase.fromJson(await account.call('GET', 'users/${path(handle)}/showcase')),
     );
+    final activity = _section(() async {
+      final json = await account.call('GET', 'users/${path(handle)}/activity?limit=$activityLimit');
+      return [for (final item in json['items'] as List<dynamic>? ?? const []) ?Activity.fromJson(item)];
+    });
     TogetherProfile profile;
     var detailsPrivate = false;
     try {
@@ -311,6 +340,7 @@ class Profiles {
       library: await library,
       trophies: await trophies,
       showcase: await showcase,
+      activity: await activity,
     );
   }
 

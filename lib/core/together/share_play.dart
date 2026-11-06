@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../remote/remote_protocol.dart';
 import 'account.dart';
+import 'media.dart';
 import 'people.dart';
 
 /// Share play: the game the user runs, streamed to friends who watch it live (WebRTC, one peer
@@ -19,6 +20,7 @@ class SharePlay {
     this.host,
     this.title,
     this.invited = const [],
+    this.media = MediaRoute.mesh,
   });
 
   factory SharePlay.fromJson(Map<String, dynamic> json) => SharePlay(
@@ -29,6 +31,7 @@ class SharePlay {
     title: json['title'] as String?,
     open: json['open'] == true,
     maxViewers: (json['maxViewers'] as num?)?.toInt() ?? 2,
+    media: MediaRoute.parse(json['media']),
     viewers: [
       for (final viewer in json['viewers'] as List? ?? const [])
         if (viewer is Map<String, dynamic>) ShareViewer.fromJson(viewer),
@@ -48,6 +51,10 @@ class SharePlay {
   final String? title;
   final bool open;
   final int maxViewers;
+
+  /// The mesh (the host streams to each viewer), or the media server: viewers without a pad
+  /// watch from there, viewers with one keep their direct connection to the host.
+  final MediaRoute media;
   final List<ShareViewer> viewers;
 
   /// Invited and not here yet; only the host is told.
@@ -72,12 +79,16 @@ class ShareViewer {
   final int? slot;
 }
 
-/// What starting gives: the share play and the servers to reach each other through.
+/// What starting and joining give: the share play, the servers to reach each other through, and
+/// its media server room while it is "sfu".
 class SharePlayStart {
-  const SharePlayStart(this.sharePlay, this.iceServers, this.expiresAt);
+  const SharePlayStart(this.sharePlay, this.iceServers, this.expiresAt, {this.sfu});
   final SharePlay sharePlay;
   final List<Map<String, dynamic>> iceServers;
   final DateTime? expiresAt;
+
+  /// The host may publish to it, a viewer only watch; null on the mesh.
+  final SfuAccess? sfu;
 
   factory SharePlayStart.fromJson(Map<String, dynamic> json) => SharePlayStart(
     SharePlay.fromJson(json['sharePlay'] as Map<String, dynamic>),
@@ -86,6 +97,7 @@ class SharePlayStart {
         if (server is Map<String, dynamic>) server,
     ],
     json['expiresAt'] is String ? DateTime.tryParse(json['expiresAt'] as String) : null,
+    sfu: SfuAccess.fromJson(json['sfu']),
   );
 }
 
@@ -115,6 +127,83 @@ class ShareSignal {
       {'op': 'signal', 'to': to, 'device': device, 'share': share, 'kind': kind, 'data': data};
 }
 
+/// A friend's invite to watch their share play (`share_play.invite`, and `me/share-play`).
+class ShareInvite {
+  const ShareInvite({required this.sharePlayId, required this.titleId, this.from, this.title});
+
+  static ShareInvite? fromJson(Object? json) {
+    if (json is! Map<String, dynamic> || json['sharePlayId'] is! String) return null;
+    return ShareInvite(
+      sharePlayId: json['sharePlayId'] as String,
+      from: json['from'] is Map<String, dynamic> ? Person.fromJson(json['from'] as Map<String, dynamic>) : null,
+      titleId: json['titleId'] as String? ?? '',
+      title: json['title'] as String?,
+    );
+  }
+
+  final String sharePlayId;
+  final Person? from;
+  final String titleId;
+  final String? title;
+}
+
+/// A share play listed in public, or under Live now (`share-plays/public`).
+class PublicShare {
+  const PublicShare({
+    required this.id,
+    required this.titleId,
+    required this.join,
+    required this.live,
+    required this.viewers,
+    required this.maxViewers,
+    required this.requested,
+    this.host,
+    this.title,
+    this.names = const {},
+    this.language,
+  });
+
+  static PublicShare? fromJson(Object? json) {
+    if (json is! Map<String, dynamic> || json['id'] is! String) return null;
+    final game = json['game'];
+    return PublicShare(
+      id: json['id'] as String,
+      host: json['host'] is Map<String, dynamic> ? Person.fromJson(json['host'] as Map<String, dynamic>) : null,
+      titleId: json['titleId'] as String? ?? '',
+      title: json['title'] as String?,
+      names: {
+        if (game is Map && game['names'] is Map)
+          for (final entry in (game['names'] as Map).entries)
+            if (entry.value is String) '${entry.key}': entry.value as String,
+      },
+      language: json['language'] as String?,
+      join: json['join'] as String? ?? 'request',
+      live: json['live'] == true,
+      viewers: (json['viewers'] as num? ?? 0).toInt(),
+      maxViewers: (json['maxViewers'] as num? ?? 2).toInt(),
+      requested: json['requested'] == true,
+    );
+  }
+
+  final String id;
+  final Person? host;
+  final String titleId;
+  final String? title;
+  final Map<String, String> names;
+  final String? language;
+
+  /// open (anyone may walk in) or request (the host lets them in).
+  final String join;
+  final bool live;
+  final int viewers;
+  final int maxViewers;
+
+  /// The user asked to watch and waits for the host.
+  final bool requested;
+
+  bool get open => join == 'open';
+}
+
 /// The server's share play calls.
 class SharePlayClient {
   SharePlayClient(this.account);
@@ -137,12 +226,46 @@ class SharePlayClient {
     return json['hosting'] is Map<String, dynamic> ? SharePlay.fromJson(json['hosting'] as Map<String, dynamic>) : null;
   }
 
+  /// What the user has: the share play they host or watch, and the invites waiting.
+  Future<({SharePlay? hosting, SharePlay? watching, List<ShareInvite> invites})> mine() async {
+    final json = await account.call('GET', 'me/share-play');
+    SharePlay? play(Object? value) => value is Map<String, dynamic> ? SharePlay.fromJson(value) : null;
+    return (
+      hosting: play(json['hosting']),
+      watching: play(json['watching']),
+      invites: [for (final invite in json['invites'] as List? ?? const []) ?ShareInvite.fromJson(invite)],
+    );
+  }
+
+  Future<void> decline(String id) async {
+    await account.call('POST', 'share-plays/${Uri.encodeComponent(id)}/decline', const {});
+  }
+
+  /// Share plays listed in public; [live] only those under Live now.
+  Future<List<PublicShare>> public({bool live = false}) async {
+    final json = await account.call('GET', 'share-plays/public${live ? '?live=1' : ''}');
+    return [for (final share in json['sharePlays'] as List? ?? const []) ?PublicShare.fromJson(share)];
+  }
+
+  /// Asks the host of a public share play to let the user watch.
+  Future<void> askToWatch(String id) async {
+    await account.call('POST', 'share-plays/${Uri.encodeComponent(id)}/requests', const {});
+  }
+
   Future<SharePlay> update(String id, {bool? open, int? maxViewers}) async => SharePlay.fromJson(
     await account.call('PATCH', 'share-plays/$id', {'open': ?open, 'maxViewers': ?maxViewers}),
   );
 
   Future<void> end(String id) async {
     await account.call('DELETE', 'share-plays/$id');
+  }
+
+  /// Watches a friend's share play: a seat, and its media server room while it is "sfu".
+  Future<SharePlayStart> join(String id) async => SharePlayStart.fromJson(await account.call('POST', 'share-plays/$id/join'));
+
+  /// Stops watching.
+  Future<void> leave(String id) async {
+    await account.call('POST', 'share-plays/$id/leave');
   }
 
   Future<void> invite(String id, List<String> userIds) async {

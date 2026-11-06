@@ -6,6 +6,7 @@ import '../core/together/profiles.dart';
 import '../core/trophies.dart';
 import 'app_model.dart';
 import 'components.dart';
+import 'feed_view.dart';
 import 'glass.dart';
 import 'level_badge.dart';
 import 'panels.dart';
@@ -377,6 +378,7 @@ class _Sections extends StatelessWidget {
     final language = T.language.code;
     final games = page.library.value ?? const <PlayedGame>[];
     final trophies = page.trophies.value ?? const <EarnedTrophy>[];
+    final activity = page.activity.value ?? const [];
     String closed(Section<Object?> section, String empty) => switch (section) {
       SectionPrivate() =>
         page.profile.friendship == 'friends'
@@ -481,6 +483,22 @@ class _Sections extends StatelessWidget {
                 focused: together.profileIndex == from + games.length + index,
               ),
             ),
+          // Their recent activity, as the Mac's profile has it: nothing on a server without it.
+          if (page.activity is! SectionFailed) ...[
+            SizedBox(height: 18 * scale),
+            heading(T.text('profileRecentActivity')),
+            if (activity.isEmpty) note(closed(page.activity, T.text('profileNoActivity'))),
+            for (var index = 0; index < activity.length; index++)
+              KeepVisible(
+                active: together.profileIndex == from + games.length + trophies.length + index,
+                child: ProfileActivityRow(
+                  key: ValueKey('profile-activity-${activity[index].id}'),
+                  model: model,
+                  item: activity[index],
+                  focused: together.profileIndex == from + games.length + trophies.length + index,
+                ),
+              ),
+          ],
         ],
       ),
     );

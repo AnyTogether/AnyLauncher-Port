@@ -91,9 +91,24 @@ extension TogetherProfiles on TogetherModel {
     return Color(0xFF000000 | int.parse(hex.substring(1), radix: 16));
   }
 
-  /// Items the keys move through: the actions, the games, then the trophies.
+  /// Items the keys move through: the actions, the games, the trophies, then the recent
+  /// activity.
   int get profileItems =>
-      profileGamesFrom + (profile?.library.value?.length ?? 0) + (profile?.trophies.value?.length ?? 0);
+      profileGamesFrom +
+      (profile?.library.value?.length ?? 0) +
+      (profile?.trophies.value?.length ?? 0) +
+      (profile?.activity.value?.length ?? 0);
+
+  /// An activity item changed (the gateway's `feed.item`, a reaction in the feed): the profile
+  /// shown takes it too.
+  void profileActivityChanged(Activity item) {
+    final page = profile;
+    if (page == null) return;
+    final next = page.withActivity(item);
+    if (identical(next, page)) return;
+    profile = next;
+    app.refresh();
+  }
 
   void runProfileAction(ProfileAction action) {
     switch (action) {

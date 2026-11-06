@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 /// A request the fake AnyTogether got.
 class FakeCall {
@@ -100,6 +101,12 @@ class FakeTogether {
   /// party's call (who is in it, by user, with their device).
   final Map<String, Map<String, dynamic>> conversations = {};
   final Map<String, List<Map<String, dynamic>>> threads = {};
+
+  /// Party chats by id: their messages are in [threads], but they are never listed or counted.
+  final Map<String, Map<String, dynamic>> partyChats = {};
+
+  /// The reports sent (POST /reports bodies).
+  final List<Map<String, dynamic>> reports = [];
   Map<String, dynamic>? party;
   final List<Map<String, dynamic>> partyInvites = [];
   final Map<String, String> callPeers = {};
@@ -186,9 +193,31 @@ class FakeTogether {
     final thread = threads[conversation]!;
     final message = _message(conversation, thread.length + 1, author, text);
     thread.add(message);
-    conversations[conversation]!['lastSeq'] = thread.length;
-    conversations[conversation]!['lastMessage'] = message;
+    final view = (conversations[conversation] ?? partyChats[conversation])!;
+    view['lastSeq'] = thread.length;
+    view['lastMessage'] = message;
     push('message.created', message);
+  }
+
+  /// The party the user is in gets its chat [id], with [texts] (author id, text) said so far.
+  Map<String, dynamic> partyChat(String id, {List<(String, String)> texts = const []}) {
+    final messages = threads[id] = [
+      for (var index = 0; index < texts.length; index++) _message(id, index + 1, texts[index].$1, texts[index].$2),
+    ];
+    party!['conversationId'] = id;
+    return partyChats[id] = {
+      'id': id,
+      'kind': 'group',
+      'title': null,
+      'members': party!['members'],
+      'lastSeq': messages.length,
+      'readSeq': 0,
+      'lastMessage': messages.isEmpty ? null : messages.last,
+      'updatedAt': '2026-10-24T20:00:00Z',
+      'pinned': false,
+      'muted': true,
+      'partyId': party!['id'],
+    };
   }
 
   Map<String, dynamic> _party(List<Map<String, dynamic>> members, {String? leader}) => party = {
@@ -219,6 +248,9 @@ class FakeTogether {
   /// Showcases by handle, the compared games by handle and one game compared by
   /// "handle/titleId"; `showcase` and `compare` in [privateParts] keep them from the user.
   final Map<String, Map<String, dynamic>> showcases = {};
+
+  /// Recent activity by handle (`users/:handle/activity`); none answers 404, as an older server.
+  final Map<String, List<Map<String, dynamic>>> activities = {};
   final Map<String, List<Map<String, dynamic>>> compareLists = {};
   final Map<String, Map<String, dynamic>> compareViews = {};
 
@@ -672,6 +704,12 @@ class FakeTogether {
       final view = compareViews['$handle/$titleId'];
       return view == null ? problem(404, 'not_found', 'No such game') : (200, view);
     }
+    final activity = RegExp(r'^users/([^/?]+)/activity(\?.*)?$').firstMatch(call.path);
+    if (call.method == 'GET' && activity != null) {
+      final handle = Uri.decodeComponent(activity.group(1)!);
+      final items = activities[handle];
+      return items == null ? problem(404, 'not_found') : (200, {'items': items, 'next': null});
+    }
     final user = RegExp(r'^users/([^/?]+)(/library|/trophies|/showcase)?$').firstMatch(call.path);
     if (call.method == 'GET' && user != null) {
       final handle = Uri.decodeComponent(user.group(1)!);
@@ -795,7 +833,27 @@ class FakeTogether {
       final id = thread.group(1)!;
       final messages = threads[id];
       if (messages == null) return problem(404, 'not_found');
-      if (call.method == 'GET') return (200, {'messages': messages, 'more': false});
+      if (call.method == 'GET') {
+        // The newest [limit] before `before`, or the oldest after `after`; oldest first.
+        final query = Uri.splitQueryString(thread.group(2)?.substring(1) ?? '');
+        final limit = int.tryParse(query['limit'] ?? '') ?? 50;
+        final before = int.tryParse(query['before'] ?? '');
+        final after = int.tryParse(query['after'] ?? '');
+        final matching = [
+          for (final message in messages)
+            if ((before == null || (message['seq'] as int) < before) &&
+                (after == null || (message['seq'] as int) > after))
+              message,
+        ];
+        final page = after != null
+            ? matching.take(limit).toList()
+            : matching.skip(max(0, matching.length - limit)).toList();
+        return (200, {'messages': page, 'more': matching.length > page.length});
+      }
+      // A party's chat takes text only.
+      if (partyChats.containsKey(id) && (call.body['attachments'] as List<dynamic>? ?? const []).isNotEmpty) {
+        return problem(400, 'bad_request', "A party's chat takes text only");
+      }
       final text = call.body['text'] as String;
       if (text.contains('blocked.example')) return problem(400, 'link_blocked', 'That link is blocked');
       final message = _message(
@@ -807,7 +865,7 @@ class FakeTogether {
         replyTo: call.body['replyTo'] as int?,
       );
       messages.add(message);
-      conversations[id]!
+      (conversations[id] ?? partyChats[id])!
         ..['lastSeq'] = messages.length
         ..['readSeq'] = messages.length
         ..['lastMessage'] = message;
@@ -864,8 +922,12 @@ class FakeTogether {
     }
     final read = RegExp(r'^conversations/([^/]+)/read$').firstMatch(call.path);
     if (call.method == 'POST' && read != null) {
-      conversations[read.group(1)]?['readSeq'] = call.body['upToSeq'];
+      (conversations[read.group(1)] ?? partyChats[read.group(1)])?['readSeq'] = call.body['upToSeq'];
       return (204, null);
+    }
+    if (call.method == 'POST' && call.path == 'reports') {
+      reports.add(call.body);
+      return (201, {'id': 'report-${reports.length}'});
     }
     final partyCall = RegExp(r'^parties/([^/]+)(/[a-z]+)?$').firstMatch(call.path);
     if (partyCall != null) {

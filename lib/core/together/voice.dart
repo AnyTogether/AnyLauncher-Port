@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'account.dart';
+import 'media.dart';
 import 'notifier.dart';
 import 'parties.dart';
 import 'socket.dart';
@@ -12,12 +13,16 @@ enum VoiceProblem { microphone, failed }
 /// (renewed from /ice-servers before they run out), the offers and candidates through the
 /// gateway, a mesh of peer connections. The microphone sends while it is on, or, with
 /// push-to-talk, while the talk key is held; turning it off tells the others (call.updated).
+/// A party call with more voices than the mesh holds goes through the server's media server
+/// instead ("sfu", from the join answer, call.media or the party): the mesh closes and everyone
+/// talks in one room there.
 class Voice with Notifier {
   Voice({
     required this.account,
     required this.socket,
     required this.parties,
     required this.engine,
+    this.sfuRoom,
     this.measureEvery = const Duration(milliseconds: 250),
   }) {
     _events = socket.events.listen(_event);
@@ -30,10 +35,20 @@ class Voice with Notifier {
 
   /// Makes the microphone and the connections (flutter_webrtc in the launcher, fakes in tests).
   final VoiceEngine Function() engine;
+
+  /// Makes a media server room (LiveKit in the launcher); none, and a call on the media server
+  /// cannot be joined.
+  final SfuRoom Function()? sfuRoom;
   final Duration measureEvery;
   late final StreamSubscription<TogetherEvent> _events;
 
   VoiceMesh? _mesh;
+
+  /// The media server room while the call goes through it.
+  SfuRoom? _room;
+
+  /// Between the mesh closing and the room taking over.
+  bool _moving = false;
   Timer? _levels;
   Timer? _renew;
   String? callId;
@@ -48,15 +63,35 @@ class Voice with Notifier {
   bool held = false;
   VoiceProblem? problem;
 
-  bool get active => _mesh != null;
+  /// The voice moved to another of the user's devices (the phone, while it is the controller):
+  /// the client there ("phone", "web", a launcher). Joining here again takes it back.
+  String? movedTo;
+
+  /// Told when the voice moves away, with [movedTo].
+  void Function(String client)? onMoved;
+
+  bool get active => _mesh != null || _room != null || _moving;
+
+  /// The call goes through the media server.
+  bool get viaServer => _room != null || _moving;
+
+  bool get _wantsMic => !muted && (!pushToTalk || held);
 
   /// Whether the microphone goes to the others now.
-  bool get sending => active && !muted && (!pushToTalk || held);
+  bool get sending => active && _wantsMic;
 
   /// This launcher's microphone is heard right now.
-  bool get speaking => sending && (_mesh?.speaking ?? false);
+  bool get speaking {
+    final room = _room;
+    if (room != null) return sending && room.speaking.contains(account.user?.id);
+    return sending && (_mesh?.speaking ?? false);
+  }
 
-  List<PeerVoice> get peers => _mesh?.peers ?? const [];
+  List<PeerVoice> get peers {
+    final room = _room;
+    if (room == null) return _mesh?.peers ?? const [];
+    return [for (final userId in room.participants) PeerVoice(userId, 'connected', room.speaking.contains(userId))];
+  }
 
   bool speakingOf(String userId) => peers.any((peer) => peer.userId == userId && peer.speaking);
 
@@ -67,6 +102,7 @@ class Voice with Notifier {
     if (party == null || me == null || joining || active) return;
     joining = true;
     problem = null;
+    movedTo = null;
     notifyListeners();
     final engine = this.engine();
     try {
@@ -81,6 +117,20 @@ class Voice with Notifier {
       final joined = await account.call('POST', 'calls', {'partyId': party.id});
       final call = joined['call'] as Map<String, dynamic>;
       final id = call['id'] as String;
+      if (MediaRoute.parse(call['media']) == MediaRoute.sfu) {
+        // The media server's SDK takes the microphone itself.
+        await engine.stop();
+        callId = id;
+        _partyId = party.id;
+        try {
+          await _enterRoom(id, SfuAccess.fromJson(joined['sfu']));
+        } on Object {
+          await leave();
+          rethrow;
+        }
+        if (muted) unawaited(_tellMuted());
+        return;
+      }
       final mesh = VoiceMesh(
         me: me,
         engine: engine,
@@ -109,6 +159,53 @@ class Voice with Notifier {
       joining = false;
       notifyListeners();
     }
+  }
+
+  /// Joins the call's media server room ([given] while its token is fresh, else a fresh one)
+  /// with the microphone published, muted or not.
+  Future<void> _enterRoom(String id, SfuAccess? given) async {
+    final make = sfuRoom;
+    if (make == null) throw StateError('No media server client');
+    final access = given != null && given.fresh() ? given : await MediaServerClient(account).call(id);
+    final room = make();
+    try {
+      await room.connect(access);
+      await room.publishMicrophone(enabled: _wantsMic);
+    } on Object {
+      await room.leave().catchError((Object _) {});
+      rethrow;
+    }
+    if (callId != id) {
+      await room.leave().catchError((Object _) {});
+      return;
+    }
+    room.onChange = notifyListeners;
+    _room = room;
+    notifyListeners();
+  }
+
+  /// The call moved to the media server: every mesh connection closes (and its signals go
+  /// unanswered from now on), and the room takes over.
+  Future<void> _moveToServer() async {
+    final mesh = _mesh;
+    final id = callId;
+    if (mesh == null || id == null || _moving) return;
+    _moving = true;
+    _mesh = null;
+    _levels?.cancel();
+    _renew?.cancel();
+    notifyListeners();
+    await mesh.close().catchError((Object _) {});
+    try {
+      await _enterRoom(id, null);
+    } on Object {
+      problem = VoiceProblem.failed;
+      _moving = false;
+      await leave();
+      return;
+    }
+    _moving = false;
+    notifyListeners();
   }
 
   static List<Map<String, dynamic>> _servers(Object? list) => [
@@ -182,43 +279,62 @@ class Voice with Notifier {
 
   void _apply() {
     _mesh?.talking = sending;
+    final room = _room;
+    if (room != null) unawaited(room.setMicrophone(sending).catchError((Object _) {}));
     notifyListeners();
   }
 
-  Future<void> _stop() async {
+  Future<void> _stop({bool sayBye = true}) async {
     final mesh = _mesh;
+    final room = _room;
     _mesh = null;
+    _room = null;
+    room?.onChange = null;
     callId = null;
     _partyId = null;
     held = false;
     _levels?.cancel();
     _renew?.cancel();
     notifyListeners();
-    await mesh?.close();
+    await mesh?.close(sayBye: sayBye);
+    await room?.leave().catchError((Object _) {});
   }
 
   /// Out of the party, out of its voice: the server took this launcher out of the call already.
   void _partyChanged() {
     if (!active) return;
     final party = parties.party;
-    if (party == null || party.id != _partyId) unawaited(_stop());
+    if (party == null || party.id != _partyId) {
+      unawaited(_stop());
+    } else if (party.callId == callId && party.callMedia == MediaRoute.sfu) {
+      unawaited(_moveToServer());
+    }
   }
 
   void _event(TogetherEvent event) {
     final mesh = _mesh;
     final data = event.json;
-    if (mesh == null) return;
+    if (!active) return;
     switch (event.type) {
-      case 'signal' when data['call'] == callId:
+      case 'call.media' when data['callId'] == callId && MediaRoute.parse(data['media']) == MediaRoute.sfu:
+        unawaited(_moveToServer());
+      case 'signal' when mesh != null && data['call'] == callId:
         unawaited(
           mesh
               .onSignal(data['from'] as String, data['device'] as String, data['kind'] as String, data['data'])
               .catchError((Object _) {}),
         );
-      case 'call.left' when data['callId'] == callId:
+      case 'call.left' when mesh != null && data['callId'] == callId:
         unawaited(mesh.drop(data['userId'] as String, sayBye: false).catchError((Object _) {}));
       case 'call.ended' when data['callId'] == callId:
         unawaited(_stop());
+      // Joined on another device: quiet here and still in the party, so the same voice never
+      // comes out of two devices. That device talks to everyone now: no goodbye from here.
+      case 'call.moved' when data['callId'] == callId:
+        final client = data['client'] as String? ?? '';
+        movedTo = client;
+        unawaited(_stop(sayBye: false));
+        onMoved?.call(client);
     }
   }
 

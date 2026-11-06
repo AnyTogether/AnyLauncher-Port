@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../remote/remote_protocol.dart';
 import 'account.dart';
+import 'media.dart';
 import 'people.dart';
 
 /// Share play: the game the user runs, streamed to friends who watch it live (WebRTC, one peer
@@ -19,6 +20,7 @@ class SharePlay {
     this.host,
     this.title,
     this.invited = const [],
+    this.media = MediaRoute.mesh,
   });
 
   factory SharePlay.fromJson(Map<String, dynamic> json) => SharePlay(
@@ -29,6 +31,7 @@ class SharePlay {
     title: json['title'] as String?,
     open: json['open'] == true,
     maxViewers: (json['maxViewers'] as num?)?.toInt() ?? 2,
+    media: MediaRoute.parse(json['media']),
     viewers: [
       for (final viewer in json['viewers'] as List? ?? const [])
         if (viewer is Map<String, dynamic>) ShareViewer.fromJson(viewer),
@@ -48,6 +51,10 @@ class SharePlay {
   final String? title;
   final bool open;
   final int maxViewers;
+
+  /// The mesh (the host streams to each viewer), or the media server: viewers without a pad
+  /// watch from there, viewers with one keep their direct connection to the host.
+  final MediaRoute media;
   final List<ShareViewer> viewers;
 
   /// Invited and not here yet; only the host is told.
@@ -72,12 +79,16 @@ class ShareViewer {
   final int? slot;
 }
 
-/// What starting gives: the share play and the servers to reach each other through.
+/// What starting and joining give: the share play, the servers to reach each other through, and
+/// its media server room while it is "sfu".
 class SharePlayStart {
-  const SharePlayStart(this.sharePlay, this.iceServers, this.expiresAt);
+  const SharePlayStart(this.sharePlay, this.iceServers, this.expiresAt, {this.sfu});
   final SharePlay sharePlay;
   final List<Map<String, dynamic>> iceServers;
   final DateTime? expiresAt;
+
+  /// The host may publish to it, a viewer only watch; null on the mesh.
+  final SfuAccess? sfu;
 
   factory SharePlayStart.fromJson(Map<String, dynamic> json) => SharePlayStart(
     SharePlay.fromJson(json['sharePlay'] as Map<String, dynamic>),
@@ -86,6 +97,7 @@ class SharePlayStart {
         if (server is Map<String, dynamic>) server,
     ],
     json['expiresAt'] is String ? DateTime.tryParse(json['expiresAt'] as String) : null,
+    sfu: SfuAccess.fromJson(json['sfu']),
   );
 }
 
@@ -143,6 +155,14 @@ class SharePlayClient {
 
   Future<void> end(String id) async {
     await account.call('DELETE', 'share-plays/$id');
+  }
+
+  /// Watches a friend's share play: a seat, and its media server room while it is "sfu".
+  Future<SharePlayStart> join(String id) async => SharePlayStart.fromJson(await account.call('POST', 'share-plays/$id/join'));
+
+  /// Stops watching.
+  Future<void> leave(String id) async {
+    await account.call('POST', 'share-plays/$id/leave');
   }
 
   Future<void> invite(String id, List<String> userIds) async {

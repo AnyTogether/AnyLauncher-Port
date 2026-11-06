@@ -394,6 +394,94 @@ void main() {
       await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_party_code_tr.png'));
     });
 
+    /// A party of Utku (leading, in voice), Ana (talking) and Cem, with its chat.
+    void partyWithChat(List<ChatMessage> messages) {
+      model.together.hub.parties
+        ..party = const Party(
+          id: 'p1',
+          leaderId: 'u-me',
+          open: false,
+          members: [
+            Person(id: 'u-me', handle: 'utku', displayName: 'Utku Halis'),
+            Person(id: 'u-ana', handle: 'ana', displayName: 'Ana'),
+            Person(id: 'u-cem', handle: 'cem', displayName: 'Cem Yılmaz'),
+          ],
+          invited: [],
+          callId: 'call-1',
+          inCall: {'u-me', 'u-ana'},
+          conversationId: 'chat-1',
+        )
+        ..notifyListeners();
+      model.together.hub.partyChat
+        ..thread = messages
+        ..loaded = true;
+    }
+
+    ChatMessage said(int seq, String author, String text, {int? replyTo, List<ReactionCount> reactions = const []}) =>
+        ChatMessage(
+          id: 'pm$seq',
+          conversationId: 'chat-1',
+          seq: seq,
+          authorId: author,
+          text: text,
+          createdAt: DateTime.now().subtract(Duration(minutes: 10 - seq)),
+          replyTo: replyTo,
+          reactions: reactions,
+        );
+
+    testWidgets('golden: a party with its chat beside the rows, the keys on a message', (tester) async {
+      fixture = makeFixture();
+      model = fixture.model;
+      signedInPreview(model);
+      partyWithChat([
+        said(1, 'u-dan', 'Good luck tonight, I have to go'),
+        said(2, 'u-ana', 'Boss at the bridge, who has potions?'),
+        said(3, 'u-me', 'I have three', replyTo: 2),
+        said(
+          4,
+          'u-cem',
+          'Ready when you are',
+          reactions: const [
+            ReactionCount(name: 'gg', count: 2, userIds: ['u-me', 'u-ana']),
+          ],
+        ),
+      ]);
+      model.open(Layer.party);
+      model.together.partyChatKeys
+        ..focused = true
+        ..cursor = 0;
+      await pumpLauncher(tester, model);
+      expect(find.text('Former member'), findsOneWidget);
+      expect(find.text('Chat'), findsOneWidget);
+      await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_party_chat_en.png'));
+    });
+
+    testWidgets('golden: the chat empty, in Turkish, in a narrower window', (tester) async {
+      fixture = makeFixture(language: Language.byCode('tr'));
+      model = fixture.model;
+      signedInPreview(model);
+      partyWithChat(const []);
+      model.open(Layer.party);
+      await pumpLauncher(tester, model, size: const Size(1280, 900));
+      expect(find.text('Bunu yalnız parti okur. Katılan herkes o ana kadarki mesajları görür.'), findsOneWidget);
+      await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_party_chat_empty_tr.png'));
+    });
+
+    testWidgets('golden: reporting a message in the chat, in Turkish', (tester) async {
+      fixture = makeFixture(language: Language.byCode('tr'));
+      model = fixture.model;
+      signedInPreview(model);
+      final rude = said(2, 'u-cem', 'Hepiniz çok kötü oynuyorsunuz');
+      partyWithChat([said(1, 'u-ana', 'Hazır mısınız?'), rude]);
+      model.open(Layer.party);
+      model.together.openPartyMessageMenu(rude);
+      model.together.runPartyMenuItem('report');
+      model.together.partyChatKeys.menu!.row = 1;
+      await pumpLauncher(tester, model);
+      expect(find.text('Bu mesajı bildir'), findsOneWidget);
+      await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_party_chat_report_tr.png'));
+    });
+
     testWidgets("golden: a friend's profile with games, play time and rare trophies", (tester) async {
       fixture = makeFixture();
       model = fixture.model;

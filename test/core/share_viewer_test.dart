@@ -209,7 +209,8 @@ void main() {
 
     test('asks for an offer, then again a moment later and every few seconds until connected', () {
       fakeAsync((async) {
-        session.start();
+        // Made in the fake zone, so its futures run on the fake clock.
+        session = make()..start();
         expect(signals.single.$3, 'renegotiate');
         async.elapse(const Duration(milliseconds: 1600));
         expect(signals, hasLength(2));

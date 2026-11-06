@@ -139,6 +139,7 @@ class ShareWatchSession {
     switch (message.kind) {
       case 'bye':
         await _drop();
+        _queued.clear();
         _set('waiting');
         _schedule(askEvery);
       case 'offer':
@@ -226,11 +227,11 @@ class ShareWatchSession {
   /// New relay credentials for the next connection.
   void renew(List<Map<String, dynamic>> servers) => iceServers = servers;
 
+  /// The connection goes; candidates that came before the next offer stay for it.
   Future<void> _drop() async {
     final link = _link;
     _link = null;
     _greeted.clear();
-    _queued.clear();
     await link?.close();
   }
 
@@ -284,14 +285,15 @@ class SharePadPump {
     if (state == null) return;
     final now = _now();
     if (state == _last && _lastSent != null && now.difference(_lastSent!) < keepAlive) return;
-    _sequence = (_sequence + 1) & 0xFFFFFFFF;
+    final sequence = (_sequence + 1) & 0xFFFFFFFF;
     final packet = SharePadPacket.packet(
       state,
-      sequence: _sequence,
+      sequence: sequence,
       sentMicros: now.microsecondsSinceEpoch,
       session: session,
     );
     if (send(packet)) {
+      _sequence = sequence;
       _last = state;
       _lastSent = now;
     }

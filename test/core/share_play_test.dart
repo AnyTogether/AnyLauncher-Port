@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:anyps5_desktop/core/together/people.dart';
+import 'package:anyps5_desktop/core/together/share_audio.dart';
 import 'package:anyps5_desktop/core/together/share_host.dart';
 import 'package:anyps5_desktop/core/together/share_play.dart';
 import 'package:test/test.dart';
@@ -53,7 +54,8 @@ class FakeLink implements ShareLink {
   @override
   String get signalingState => signaling;
   @override
-  String get connectionState => closed ? 'closed' : 'connecting';
+  String get connectionState => closed ? 'closed' : state;
+  String state = 'connecting';
   @override
   bool get hasRemote => remote;
   @override
@@ -71,13 +73,36 @@ class FakeLink implements ShareLink {
       encodings.add(maxBitrate);
   @override
   Future<void> close() async => closed = true;
+
+  void Function(String)? hello;
+  final soundOut = <Uint8List>[];
+  int soundTracks = 0;
+  bool canAddSound = true;
+  ShareLinkStats? measured;
+  @override
+  set onHello(void Function(String) handler) => hello = handler;
+  @override
+  Future<bool> addSound() async {
+    if (canAddSound) soundTracks++;
+    return canAddSound;
+  }
+
+  @override
+  bool sendSound(Uint8List packet, {int most = 65536}) {
+    soundOut.add(packet);
+    return true;
+  }
+
+  @override
+  Future<ShareLinkStats?> stats() async => measured;
 }
 
 class FakeEngine implements ShareEngine {
   final links = <FakeLink>[];
   bool stopped = false;
+  bool sound = true;
   @override
-  bool get hasSound => true;
+  bool get hasSound => sound;
   @override
   Future<bool> start({required String windowTitle}) async => true;
   @override
@@ -233,6 +258,57 @@ void main() {
       expect(bridges.released, [3]);
       await session.close();
       expect(engine.stopped, isTrue);
+    });
+
+    test('sound: PCM to everyone until a viewer\'s hello asks for Opus and their answer takes it', () async {
+      await session.apply(share([viewer('a', 'd1'), viewer('b', 'd2')]));
+      final a = engine.links[0];
+      final b = engine.links[1];
+      final packet = Uint8List(16 + 960);
+      session.pushSound(packet);
+      expect([a.soundOut.length, b.soundOut.length], [1, 1]);
+      // Not a hello, and a hello for PCM only: nothing changes.
+      a.hello!('hi');
+      b.hello!(const ShareAudioHello([ShareAudioCodec.pcm]).text);
+      await pumpEventQueue();
+      expect([a.soundTracks, b.soundTracks], [0, 0]);
+      a.hello!(const ShareAudioHello([ShareAudioCodec.opus, ShareAudioCodec.pcm]).text);
+      await pumpEventQueue();
+      expect(a.soundTracks, 1);
+      expect(signals.where((signal) => signal.$1 == 'a' && signal.$3 == 'offer'), hasLength(2), reason: 'offered again');
+      a.hello!(const ShareAudioHello([ShareAudioCodec.opus]).text);
+      await pumpEventQueue();
+      expect(a.soundTracks, 1, reason: 'once');
+      const answer =
+          'v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=rtpmap:96 H264/90000\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=rtpmap:111 opus/48000/2\r\na=fmtp:111 minptime=10\r\na=recvonly';
+      await session.receive(const ShareSignal(
+        sharePlayId: 's1', from: 'a', device: 'd1', kind: 'answer', data: {'type': 'answer', 'sdp': answer},
+      ));
+      final taken = a.remotes.single['sdp'] as String;
+      expect(taken, contains('a=fmtp:111 minptime=10;stereo=1;sprop-stereo=1;maxaveragebitrate=128000;useinbandfec=1;usedtx=0'));
+      expect(taken, contains('a=ptime:10'));
+      expect(session.sound, {'a': ShareAudioCodec.opus, 'b': ShareAudioCodec.pcm});
+      session.pushSound(packet);
+      expect([a.soundOut.length, b.soundOut.length], [1, 2], reason: 'no more PCM for the Opus viewer');
+    });
+
+    test('without an Opus track to give, a hello leaves the viewer on PCM', () async {
+      engine.sound = false;
+      await session.apply(share([viewer('a', 'd1')]));
+      engine.links.single.hello!(const ShareAudioHello([ShareAudioCodec.opus, ShareAudioCodec.pcm]).text);
+      await pumpEventQueue();
+      expect(engine.links.single.soundTracks, 0);
+      expect(signals.where((signal) => signal.$3 == 'offer'), hasLength(1));
+    });
+
+    test('each connected viewer\'s link is measured for the host\'s list', () async {
+      await session.apply(share([viewer('a', 'd1')]));
+      engine.links.single.measured = const ShareLinkStats(roundTripMs: 23, relayed: false, framesPerSecond: 60, frameHeight: 720);
+      await session.measure();
+      expect(session.stats, isEmpty, reason: 'not connected yet');
+      engine.links.single.state = 'connected';
+      await session.measure();
+      expect(session.stats['a']!.roundTripMs, 23);
     });
 
     test('signals of another share play are not taken', () async {

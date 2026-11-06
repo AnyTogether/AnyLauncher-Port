@@ -99,10 +99,39 @@ class PresenceGame {
   bool get together => kind == 'lan';
 }
 
+/// The share play a friend hosts, in their presence.
+class PresenceShare {
+  const PresenceShare({
+    required this.sharePlayId,
+    required this.titleId,
+    required this.open,
+    required this.viewers,
+    required this.maxViewers,
+    this.title,
+  });
+
+  final String sharePlayId;
+  final String titleId;
+  final String? title;
+
+  /// Open to friends and not full: a friend may walk in.
+  final bool open;
+  final int viewers;
+  final int maxViewers;
+}
+
 /// What a friend shows: in a game (which, since when), online, away or offline, the party they
-/// are in and the game session they host.
+/// are in, the game session and the share play they host.
 class Presence {
-  const Presence({this.state = PresenceState.offline, this.status, this.titleId, this.since, this.party, this.game});
+  const Presence({
+    this.state = PresenceState.offline,
+    this.status,
+    this.titleId,
+    this.since,
+    this.party,
+    this.game,
+    this.share,
+  });
 
   factory Presence.fromJson(Map<String, dynamic>? json) {
     if (json == null) return const Presence();
@@ -141,6 +170,7 @@ class Presence {
               hostId: game['hostId'] as String?,
             )
           : null,
+      share: _share(json['share']),
     );
   }
 
@@ -152,6 +182,19 @@ class Presence {
   final DateTime? since;
   final PresenceParty? party;
   final PresenceGame? game;
+  final PresenceShare? share;
+
+  static PresenceShare? _share(Object? share) {
+    if (share is! Map<String, dynamic> || share['sharePlayId'] is! String) return null;
+    return PresenceShare(
+      sharePlayId: share['sharePlayId'] as String,
+      titleId: share['titleId'] as String? ?? '',
+      title: share['title'] as String?,
+      open: share['open'] == true,
+      viewers: (share['viewers'] as num? ?? 0).toInt(),
+      maxViewers: (share['maxViewers'] as num? ?? 2).toInt(),
+    );
+  }
 
   bool get playing => state == PresenceState.inGame;
   bool get online => state != PresenceState.offline;

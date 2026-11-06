@@ -726,6 +726,10 @@ enum Layer {
   /// PS in a game: the game paused under Resume, Game Settings and Close Game.
   quickMenu,
 
+  /// A friend's share play watched full screen (share_play_model.dart): the controller is the
+  /// game's, PS leaves.
+  shareWatch,
+
   /// PS held in a game: Close Game?
   closeGame,
 
@@ -1333,6 +1337,10 @@ class AppModel extends ChangeNotifier {
   bool pointerFocus = false;
 
   late final AudioOut _audio = services.audio?.call() ?? const SilentAudio();
+
+  /// The sound card opened (it may still be off with the launcher's sounds): a watched share
+  /// play's sound plays through it.
+  Future<bool> startSound() => _audio.start();
 
   /// The interface's soft sounds (moving, selecting, going back, something finished).
   late final InterfaceSounds sounds = InterfaceSounds(_audio);
@@ -3867,6 +3875,8 @@ class AppModel extends ChangeNotifier {
       return;
     }
     if (!preferences.onboarded) return _onboardingCommand(command);
+    // Watching a share play: the controller is the game's.
+    if (overlay == Layer.shareWatch) return sharePlay.watchCommand(command);
     // At start a profile is picked first: PS waits.
     if (overlay == Layer.profilePicker && profileFlow.atLaunch && command == Command.home) return sounds.play(Cue.bump);
     if (command == Command.home) {
@@ -3996,6 +4006,9 @@ class AppModel extends ChangeNotifier {
       case Layer.leaderboard:
         together.leaderboardCommand(command);
         return;
+      case Layer.shareWatch:
+        // Taken above; here only for the switch's sake.
+        return sharePlay.watchCommand(command);
       case Layer.quickMenu || Layer.closeGame when command == Command.back || command == Command.options:
         resumeGame();
         return;

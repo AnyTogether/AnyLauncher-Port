@@ -217,6 +217,9 @@ class PanelView extends StatelessWidget {
       Layer.cloudStorage => T.text('cloudStorageTitle'),
       // Appearance › Themes.
       Layer.themes => T.text('appearance'),
+      // The user's own profile: the count pinned, and the Hub the themes come from, beside it.
+      Layer.showcaseEdit => T.text('showcaseEdit'),
+      Layer.profileTheme => T.text('profileTheme'),
       _ => category.title,
     };
     return _Scrim(

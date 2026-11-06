@@ -771,6 +771,11 @@ enum Layer {
 
   /// The Theme Studio: the theme in use changed live, the launcher behind it showing each change.
   themeStudio,
+
+  /// The user's own profile: Edit showcase (up to six trophies and games pinned) and Profile
+  /// theme (a Theme Hub theme to wear), as panels over it (together_profile.dart).
+  showcaseEdit,
+  profileTheme,
 }
 
 /// A settings row the panels draw and the keyboard moves through.
@@ -4043,6 +4048,9 @@ class AppModel extends ChangeNotifier {
         // Closed: the board's topics are no longer listened to.
         if (overlay != Layer.findPlayers) together.findClosed();
         return;
+      case Layer.showcaseEdit || Layer.profileTheme when command == Command.back || command == Command.options:
+        together.backToProfile();
+        return;
       case Layer.friendOptions when command == Command.back || command == Command.options:
         // A question asked in place (together_ask.dart) is answered Cancel first.
         if (!together.cancelAsk()) open(Layer.friends, cue: Cue.back);
@@ -4068,6 +4076,8 @@ class AppModel extends ChangeNotifier {
           Layer.profileMenu ||
           Layer.themes ||
           Layer.themeStudio ||
+          Layer.showcaseEdit ||
+          Layer.profileTheme ||
           Layer.notifications ||
           Layer.compat ||
           Layer.findPlayers ||
@@ -4591,6 +4601,17 @@ class AppModel extends ChangeNotifier {
         return [PanelCategory(id: 'themes', title: T.text('themes'), rows: themeRows())];
       case Layer.themeStudio:
         return [PanelCategory(id: 'studio', title: T.text('themeStudio'), rows: studioRows())];
+      case Layer.showcaseEdit:
+        return [
+          PanelCategory(
+            id: 'showcase',
+            title: T.format('showcasePinned', [together.showcasePins?.count ?? 0]),
+            rows: together.showcaseRows(),
+          ),
+        ];
+      case Layer.profileTheme:
+        // Under the heading Profile theme: where the themes come from.
+        return [PanelCategory(id: 'profileTheme', title: T.text('themesHub'), rows: together.profileThemeRows())];
       case Layer.friendOptions:
         return [
           PanelCategory(

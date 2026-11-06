@@ -4,6 +4,7 @@ import 'account.dart';
 import 'levels.dart';
 import 'notifier.dart';
 import 'people.dart';
+import 'profile_look.dart';
 import 'socket.dart';
 
 /// The signed-in user's own side of AnyTogether that the lists do not carry: their trophy level,
@@ -43,6 +44,9 @@ class SelfProfile with Notifier {
   /// the picture is a signed link that runs out, read again with the profile.
   String? privateName;
   String? privateAvatar;
+
+  /// The Theme Hub theme on the user's profile; null for none (or a server before them).
+  ProfileTheme? wornTheme;
   int _changing = 0;
   int _changingReceipts = 0;
 
@@ -85,6 +89,7 @@ class SelfProfile with Notifier {
       if (_changingReceipts == 0) readReceipts = profile['readReceipts'] != false;
       privateName = _text(profile['privateName']);
       privateAvatar = _text(profile['privateAvatar']);
+      if (profile.containsKey('theme')) wornTheme = ProfileTheme.fromJson(profile['theme']);
     }
     loaded = true;
     notifyListeners();
@@ -191,6 +196,7 @@ class SelfProfile with Notifier {
   void clear() {
     privateName = null;
     privateAvatar = null;
+    wornTheme = null;
     level = null;
     status = PresenceStatus.online;
     readReceipts = true;

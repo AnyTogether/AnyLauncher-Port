@@ -88,6 +88,8 @@ extension LauncherThemes on AppModel {
   /// The Studio goes back to the themes, the themes back to Appearance on the Themes row.
   void backFromThemes() {
     if (overlay == Layer.themeStudio) return open(Layer.themes, cue: Cue.back);
+    // Opened from Theme: name on a profile: back to it.
+    if (together.backFromHubToProfile()) return;
     open(Layer.settings, cue: Cue.back);
     final categories = panelCategories();
     final index = categories.indexWhere((category) => category.id == 'appearance');

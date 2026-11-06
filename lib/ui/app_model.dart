@@ -64,6 +64,7 @@ import '../core/profiles/profile_saves.dart';
 import '../core/profiles/profiles.dart';
 import '../core/together/account.dart' show ClientTooOld, TogetherAccount;
 import '../core/together/levels.dart';
+import '../core/together/media.dart' show SfuRoom;
 import '../core/together/talk_key.dart';
 import '../core/together/token_store.dart';
 import '../core/online/online_peer_mesh.dart';
@@ -956,6 +957,7 @@ class LauncherServices {
     this.togetherServer,
     this.togetherPollEvery,
     this.voiceEngine,
+    this.sfuRoom,
     this.gameLinks,
     this.talkKeys,
     this.engineReleases,
@@ -1089,6 +1091,9 @@ class LauncherServices {
 
   /// Party voice's microphone and connections; flutter_webrtc by default.
   final VoiceEngine Function()? voiceEngine;
+
+  /// Media server rooms, for share plays and party calls bigger than the mesh; LiveKit by default.
+  final SfuRoom Function()? sfuRoom;
 
   /// Online play's peer connections to the other players; flutter_webrtc by default.
   final GameLinks Function()? gameLinks;

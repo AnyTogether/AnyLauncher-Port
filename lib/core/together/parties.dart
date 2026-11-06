@@ -1,12 +1,14 @@
 import 'dart:async';
 
 import 'account.dart';
+import 'media.dart';
 import 'notifier.dart';
 import 'people.dart';
 import 'play_together.dart';
 import 'socket.dart';
 
-/// At most eight in a party: its voice is a mesh, each member talking to every other.
+/// At most eight in a party on a server without a media server: its voice is a mesh, each member
+/// talking to every other. A server with one says its own size ([Party.max]).
 const maxPartySize = 8;
 
 /// A party's join code: eight characters people can read out, and the website's page for it. A
@@ -138,6 +140,8 @@ class Party {
     required this.inCall,
     this.muted = const {},
     this.deafened = const {},
+    this.callMedia = MediaRoute.mesh,
+    this.max = maxPartySize,
     this.joinCode,
     this.discord,
     this.requests = const [],
@@ -163,6 +167,11 @@ class Party {
       inCall: call is Map<String, dynamic> ? _ids(call['in']) : const {},
       muted: call is Map<String, dynamic> ? _ids(call['muted']) : const {},
       deafened: call is Map<String, dynamic> ? _ids(call['deafened']) : const {},
+      callMedia: call is Map<String, dynamic> ? MediaRoute.parse(call['media']) : MediaRoute.mesh,
+      max: switch (json['max']) {
+        final num max when max >= 1 => max.toInt(),
+        _ => maxPartySize,
+      },
       joinCode: JoinCode.fromJson(json['joinCode']),
       discord: json['discord'] is String && (json['discord'] as String).isNotEmpty ? json['discord'] as String : null,
       requests: [
@@ -188,6 +197,13 @@ class Party {
   /// Who in the call hears no one (and so is muted too).
   final Set<String> deafened;
 
+  /// The call on the mesh, or through the media server (a call with more voices than the mesh
+  /// holds, on a server with one).
+  final MediaRoute callMedia;
+
+  /// How many the party may hold on this server: eight, or more with a media server.
+  final int max;
+
   /// The leader's code for people who are not friends to ask to join with; null when none works.
   final JoinCode? joinCode;
 
@@ -209,7 +225,7 @@ class Party {
       if (item is String) item else if (item is Map && item['userId'] is String) item['userId'] as String,
   };
 
-  bool get full => members.length >= maxPartySize;
+  bool get full => members.length >= max;
 
   bool leads(String userId) => leaderId == userId;
 
@@ -224,6 +240,7 @@ class Party {
     Set<String>? inCall,
     Set<String>? muted,
     Set<String>? deafened,
+    MediaRoute? callMedia,
     JoinCode? Function()? joinCode,
     String? Function()? discord,
     List<Person>? requests,
@@ -237,6 +254,8 @@ class Party {
     inCall: inCall ?? this.inCall,
     muted: muted ?? this.muted,
     deafened: deafened ?? this.deafened,
+    callMedia: callMedia ?? this.callMedia,
+    max: max,
     joinCode: joinCode == null ? this.joinCode : joinCode(),
     discord: discord == null ? this.discord : discord(),
     requests: requests ?? this.requests,
@@ -526,8 +545,17 @@ class Parties with Notifier {
           deafened: data['deafened'] == true ? {...current.deafened, user} : ({...current.deafened}..remove(user)),
         );
         notifyListeners();
+      case 'call.media' when data['callId'] == current.callId:
+        party = current.copyWith(callMedia: MediaRoute.parse(data['media']));
+        notifyListeners();
       case 'call.ended':
-        party = current.copyWith(callId: () => null, inCall: const {}, muted: const {}, deafened: const {});
+        party = current.copyWith(
+          callId: () => null,
+          inCall: const {},
+          muted: const {},
+          deafened: const {},
+          callMedia: MediaRoute.mesh,
+        );
         notifyListeners();
     }
   }

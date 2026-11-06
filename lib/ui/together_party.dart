@@ -116,7 +116,7 @@ extension TogetherParty on TogetherModel {
       ...togetherRows(party, me.id),
       PanelRow(
         id: 'party-members',
-        title: T.format('partyMembers', [party.members.length, maxPartySize]),
+        title: T.format('partyMembers', [party.members.length, party.max]),
         kind: const InfoRow(''),
       ),
       for (final member in party.members)
@@ -363,6 +363,7 @@ extension TogetherParty on TogetherModel {
       PanelRow(
         id: 'voice-leave',
         title: T.text('voiceLeave'),
+        detail: voice.viaServer ? T.text('mediaViaServer') : null,
         kind: ActionRow(() => unawaited(hub.voice.leave()), destructive: true),
       ),
     ];

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'account.dart';
 import 'friends.dart';
 import 'game_sessions.dart';
+import 'media.dart';
 import 'messages.dart';
 import 'notifier.dart';
 import 'parties.dart';
@@ -20,6 +21,7 @@ class TogetherHub with Notifier {
   TogetherHub({
     required this.account,
     required VoiceEngine Function() voiceEngine,
+    SfuRoom Function()? sfuRoom,
     required String bridgeFile,
     TogetherSocket? socket,
   }) : socket = socket ?? TogetherSocket(account: account),
@@ -31,7 +33,7 @@ class TogetherHub with Notifier {
     parties = Parties(account: account, socket: this.socket)..addListener(notifyListeners);
     games = GameSessions(account: account, socket: this.socket, bridgeFile: bridgeFile)..addListener(notifyListeners);
     social = Social(account: account, socket: this.socket)..addListener(notifyListeners);
-    voice = Voice(account: account, socket: this.socket, parties: parties, engine: voiceEngine)
+    voice = Voice(account: account, socket: this.socket, parties: parties, engine: voiceEngine, sfuRoom: sfuRoom)
       ..addListener(notifyListeners);
     account.addListener(_accountChanged);
     _accountChanged();

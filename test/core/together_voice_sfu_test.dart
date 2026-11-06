@@ -127,6 +127,8 @@ void main() {
     expect(voice.viaServer, isFalse);
     await server.nextFrame('signal');
     expect(engine.links, hasLength(1));
+    server.push('call.joined', {'callId': 'c-9', 'partyId': server.party!['id'], 'userId': 'u-me', 'device': 'd-me'});
+    await until(() => parties.party!.callId == 'c-9');
 
     server.push('call.media', {'callId': 'c-9', 'partyId': server.party!['id'], 'media': 'sfu'});
     await until(() => rooms.isNotEmpty && rooms.single.microphone != null);

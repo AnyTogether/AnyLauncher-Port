@@ -38,6 +38,7 @@ import '../core/game_settings.dart';
 import 'app_model.dart';
 import 'compare_view.dart';
 import 'family_gate.dart';
+import 'livekit_room.dart';
 import 'online_webrtc.dart';
 import 'strings.dart';
 import 'voice_webrtc.dart';
@@ -69,6 +70,7 @@ class TogetherModel {
     hub = TogetherHub(
       account: account,
       voiceEngine: app.services.voiceEngine ?? WebRtcVoice.new,
+      sfuRoom: app.services.sfuRoom ?? LiveKitRoom.new,
       bridgeFile: GameSessions.defaultBridgeFile(app.paths.config),
     );
     hub.games.onInvite = (invite) {
@@ -1203,6 +1205,7 @@ class TogetherModel {
         'handle_taken' => T.text('togetherHandleTaken'),
         'handle_reserved' => T.text('togetherHandleReserved'),
         'links_not_allowed' => T.text('togetherNoLinks'),
+        'media_server_off' => T.format('togetherMediaServerOff', [(error.extra['max'] as num?)?.toInt() ?? 4]),
         _ => error.title.isEmpty ? T.text('togetherUnreachable') : error.title,
       };
     }

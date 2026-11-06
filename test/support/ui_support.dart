@@ -22,6 +22,7 @@ import 'package:anyps5_desktop/core/replay_buffer.dart';
 import 'package:anyps5_desktop/core/trophies.dart';
 import 'package:anyps5_desktop/core/installer.dart';
 import 'package:anyps5_desktop/core/toolkit_download.dart';
+import 'package:anyps5_desktop/core/together/media.dart' show SfuRoom;
 import 'package:anyps5_desktop/core/together/talk_key.dart';
 import 'package:anyps5_desktop/core/together/token_store.dart';
 import 'package:anyps5_desktop/core/together/voice_mesh.dart';
@@ -39,6 +40,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
 import 'fake_toolkit.dart';
+import 'fake_sfu.dart';
 import 'fake_voice.dart';
 import 'fixtures.dart';
 import 'trophy_fixture.dart';
@@ -142,6 +144,7 @@ Fixture makeFixture({
   TokenStore? togetherStore,
   TokenStore Function(String profile)? togetherStoreFor,
   VoiceEngine Function()? voice,
+  SfuRoom Function()? sfuRoom,
   KeyStateReader? keys,
   Uri? engine,
   Uri? armEngine,
@@ -229,6 +232,7 @@ Fixture makeFixture({
       togetherServer: together,
       togetherPollEvery: const Duration(milliseconds: 10),
       voiceEngine: voice ?? FakeVoiceEngine.new,
+      sfuRoom: sfuRoom ?? FakeSfuRoom.new,
       talkKeys: () => keys,
       engineReleases: engine == null ? null : GitHubReleases(api: engine),
       armEngineReleases: armEngine == null

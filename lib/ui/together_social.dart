@@ -26,6 +26,24 @@ class SocialScreens {
   /// Each read of a board counts up, so an answer to an older one is dropped.
   int boardReads = 0;
 
+  /// The challenges over the board (together_challenges.dart): the game's, or the user's own
+  /// over the overall board; whether the keys are on them, and on which.
+  List<Challenge> boardChallenges = const [];
+  bool boardOnChallenges = false;
+  int boardChallenge = 0;
+  int challengeReads = 0;
+
+  /// One challenge: which, what came back, the standings row or button the keys are on, a join
+  /// or leave on its way, and the screen it goes back to.
+  String? challengeId;
+  ChallengeDetail? challenge;
+  bool challengeFailed = false;
+  int challengeIndex = 0;
+  bool challengeOnActions = false;
+  int challengeAction = 0;
+  bool challengeBusy = false;
+  PanelSpot? challengeReturn;
+
   /// The notifications could not be read.
   bool noticesFailed = false;
 
@@ -47,6 +65,13 @@ class SocialScreens {
     boardIndex = 0;
     boardFailed = false;
     boardMissing = false;
+    boardChallenges = const [];
+    boardOnChallenges = false;
+    boardChallenge = 0;
+    challengeId = null;
+    challenge = null;
+    challengeFailed = false;
+    challengeBusy = false;
     noticesFailed = false;
     compat.clear();
     compatAsked.clear();
@@ -261,17 +286,21 @@ extension TogetherSocial on TogetherModel {
     if (!signedIn) return;
     final from = app.overlay;
     if (from != null && from != Layer.leaderboard && from != Layer.profile) screens.boardReturn = app.spot;
-    if (screens.boardTitleId != game?.titleId) {
+    if (screens.boardTitleId != game?.titleId || screens.board == null) {
       screens
         ..boardKind = GameBoard.points
-        ..board = null;
+        ..board = null
+        ..boardChallenges = const []
+        ..boardChallenge = 0;
     }
     screens
       ..boardTitleId = game?.titleId
       ..boardName = game?.nameFor([T.language.code]) ?? ''
-      ..boardIndex = 0;
+      ..boardIndex = 0
+      ..boardOnChallenges = false;
     app.open(Layer.leaderboard);
     unawaited(loadLeaderboard());
+    unawaited(loadBoardChallenges());
   }
 
   Future<void> loadLeaderboard() async {
@@ -311,6 +340,7 @@ extension TogetherSocial on TogetherModel {
 
   void closeLeaderboard() {
     screens.boardReads++;
+    screens.challengeReads++;
     final back = screens.boardReturn;
     screens.boardReturn = null;
     app.returnTo(back);
@@ -319,9 +349,11 @@ extension TogetherSocial on TogetherModel {
   List<BoardLine> get boardLines => screens.board?.lines(user?.id ?? '') ?? const [];
 
   /// Up and down through the people, left and right through a game's boards, △ between friends
-  /// and everyone, select opens someone's profile.
+  /// and everyone, select opens someone's profile. Up past the first line reaches the
+  /// challenges over the board, where left and right move through them.
   void leaderboardCommand(Command command) {
     final lines = boardLines;
+    if (boardChallengeCommand(command, lines)) return;
     switch (command) {
       case Command.up || Command.down:
         final way = command == Command.down ? 1 : -1;
@@ -330,6 +362,7 @@ extension TogetherSocial on TogetherModel {
         while (next >= 0 && next < lines.length && lines[next] is BoardGap) {
           next += way;
         }
+        if (next < 0 && enterBoardChallenges()) return;
         if (next < 0 || next >= lines.length) return;
         screens.boardIndex = next;
         app.sounds.play(Cue.move);
@@ -432,7 +465,12 @@ extension TogetherSocial on TogetherModel {
             ?noticeDetail(note),
             note.read ? ago(note.updatedAt) : T.format('socialNotifNew', [ago(note.updatedAt)]),
           ].join('\n'),
-          person: note.actor == null ? null : TogetherModel.card(note.actor!),
+          person: note.actor == null || note.kind == NoticeKind.challengeStarted ? null : TogetherModel.card(note.actor!),
+          icon: switch (note.kind) {
+            NoticeKind.challengeStarted => PanelIcon.flag,
+            NoticeKind.challengeEnded => PanelIcon.trophy,
+            _ => null,
+          },
           level: note.kind == NoticeKind.levelUp ? note.level : null,
           kind: ActionRow(() => openNotice(note)),
         ),
@@ -463,6 +501,9 @@ extension TogetherSocial on TogetherModel {
         // The conversation it is about, not the first in the list.
         final conversation = note.data['conversationId'];
         unawaited(conversation is String ? openConversation(conversation) : openMessages());
+      case NoticeKind.challengeInvite || NoticeKind.challengeStarted || NoticeKind.challengeEnded:
+        final id = TogetherChallenges.noticeChallengeId(note);
+        if (id != null) openChallenge(id);
       case NoticeKind.warning || NoticeKind.other:
         app.refresh();
     }
@@ -496,6 +537,9 @@ extension TogetherSocial on TogetherModel {
       NoticeKind.lfgRequest => T.format('discoverNotifLfgRequest', [name, _noticeGame(note)]),
       NoticeKind.lfgAccepted => T.format('discoverNotifLfgAccepted', [name, _noticeGame(note)]),
       NoticeKind.levelUp => T.format('notifLevelUp', [note.level?.level ?? hub.self.level?.level ?? 0]),
+      NoticeKind.challengeInvite => T.format('notifChallengeInvite', [name, TogetherChallenges.noticeTitle(note)]),
+      NoticeKind.challengeStarted => T.format('notifChallengeStarted', [TogetherChallenges.noticeTitle(note)]),
+      NoticeKind.challengeEnded => TogetherChallenges.endedText(note),
       NoticeKind.warning => T.text('socialNotifWarning'),
       NoticeKind.other => T.text('socialNotifOther'),
     };
@@ -521,6 +565,8 @@ extension TogetherSocial on TogetherModel {
         return joined.isEmpty ? null : joined;
       case NoticeKind.warning:
         return note.data['reason'] is String ? note.data['reason'] as String : null;
+      case NoticeKind.challengeInvite || NoticeKind.challengeStarted || NoticeKind.challengeEnded:
+        return challengeNoticeDetail(note);
       default:
         return null;
     }

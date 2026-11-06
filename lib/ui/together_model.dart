@@ -14,6 +14,7 @@ import '../core/online/online_play.dart';
 import '../core/profiles/profiles.dart' show ProfileAccount, ProfileMode;
 import '../core/remote/remote_protocol.dart';
 import '../core/together/account.dart';
+import '../core/together/challenges.dart';
 import '../core/together/compat.dart';
 import '../core/together/discover.dart';
 import '../core/together/e2ee_client.dart';
@@ -60,6 +61,7 @@ part 'together_play.dart';
 part 'together_profile.dart';
 part 'together_find.dart';
 part 'together_social.dart';
+part 'together_challenges.dart';
 
 /// The launcher's version, as AnyTogether hears it.
 const launcherVersion = '0.1.19';
@@ -414,6 +416,7 @@ class TogetherModel {
         Layer.compare,
         Layer.feed,
         Layer.leaderboard,
+        Layer.challenge,
         Layer.notifications,
         Layer.compat,
         Layer.findPlayers,

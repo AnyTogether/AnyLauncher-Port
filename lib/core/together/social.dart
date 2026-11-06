@@ -395,6 +395,9 @@ enum NoticeKind {
   lfgRequest,
   lfgAccepted,
   levelUp,
+  challengeInvite,
+  challengeStarted,
+  challengeEnded,
   warning,
   other;
 
@@ -408,13 +411,22 @@ enum NoticeKind {
     'lfg_request' => lfgRequest,
     'lfg_accepted' => lfgAccepted,
     'level_up' => levelUp,
+    'challenge_invite' => challengeInvite,
+    'challenge_started' => challengeStarted,
+    'challenge_ended' => challengeEnded,
     'warning' => warning,
     _ => other,
   };
 
   /// Whether a new one deserves a toast of its own: requests, invites and missed calls are
-  /// announced by their own events already.
-  bool get toastsOnItsOwn => this == message || this == warning || this == other;
+  /// announced by their own events already; challenges by nothing else.
+  bool get toastsOnItsOwn =>
+      this == message ||
+      this == warning ||
+      this == other ||
+      this == challengeInvite ||
+      this == challengeStarted ||
+      this == challengeEnded;
 }
 
 /// A notification from AnyTogether: a friend request or answer, messages while no device was
@@ -426,6 +438,7 @@ class Notice {
     required this.kind,
     required this.kindName,
     this.actor,
+    this.subjectId,
     this.data = const {},
     this.read = false,
     required this.createdAt,
@@ -443,6 +456,7 @@ class Notice {
       actor: json['actor'] is Map<String, dynamic> && (json['actor'] as Map)['userId'] is String
           ? Person.fromJson(json['actor'] as Map<String, dynamic>)
           : null,
+      subjectId: json['subjectId'] is String ? json['subjectId'] as String : null,
       // Fields of a shape this launcher does not expect are left out, not a failure.
       data: data is Map<String, dynamic> ? data : const {},
       read: json['read'] == true,
@@ -460,9 +474,13 @@ class Notice {
   /// Who did it; null for a warning.
   final Person? actor;
 
+  /// What it is about (a challenge's ID for the challenge kinds).
+  final String? subjectId;
+
   /// What the kind carries: message {conversationId, title, group, count, text}, game_invite
   /// {sessionId, titleId}, warning {reason}, lfg_* {postId, titleId, gameNames, purpose,
-  /// invite}, level_up {level, tier, frame}.
+  /// invite}, level_up {level, tier, frame}, challenge_* {challengeId, title, titleId, gameNames,
+  /// metric, endsAt}, challenge_ended also {rank, value, entrants, winner}.
   final Map<String, dynamic> data;
   final bool read;
   final DateTime createdAt;
@@ -478,6 +496,7 @@ class Notice {
     kind: kind,
     kindName: kindName,
     actor: actor,
+    subjectId: subjectId,
     data: data,
     read: true,
     createdAt: createdAt,

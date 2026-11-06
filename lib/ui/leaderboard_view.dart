@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../core/together/social.dart';
 import 'app_model.dart';
+import 'challenge_view.dart';
 import 'components.dart';
 import 'glass.dart';
 import 'level_badge.dart';
@@ -41,6 +42,7 @@ class LeaderboardView extends StatelessWidget {
         ? T.text('socialBoardOverall')
         : (screens.boardName.isEmpty ? together.gameName(titleId) : screens.boardName);
     final board = screens.board;
+    final onChallenges = screens.boardOnChallenges && screens.boardChallenges.isNotEmpty;
     return LayerScrim(
       opacity: 0.7,
       child: Padding(
@@ -94,6 +96,18 @@ class LeaderboardView extends StatelessWidget {
               ],
             ),
             SizedBox(height: 28 * scale),
+            // The challenges on this board; nothing at all when there are none.
+            AnimatedSize(
+              duration: Motion.layout,
+              curve: Motion.settle,
+              alignment: Alignment.topLeft,
+              child: screens.boardChallenges.isEmpty
+                  ? const SizedBox(width: double.infinity)
+                  : Padding(
+                      padding: EdgeInsets.only(bottom: 24 * scale),
+                      child: ChallengeStrip(model: model),
+                    ),
+            ),
             Expanded(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -135,7 +149,10 @@ class LeaderboardView extends StatelessWidget {
                           runSpacing: 8 * scale,
                           children: [
                             Hint(keys: '↑ ↓', label: T.text('hintMove')),
-                            if (titleId != null) Hint(keys: '← →', label: T.text('socialHintBoard')),
+                            if (onChallenges)
+                              Hint(keys: '← →', label: T.text('challengeHintMove'))
+                            else if (titleId != null)
+                              Hint(keys: '← →', label: T.text('socialHintBoard')),
                             Hint(
                               keys: 'O',
                               glyph: PadGlyph.triangle,
@@ -145,7 +162,7 @@ class LeaderboardView extends StatelessWidget {
                             Hint(
                               keys: 'Enter',
                               glyph: PadGlyph.cross,
-                              label: T.text('socialHintProfile'),
+                              label: T.text(onChallenges ? 'challengeHintOpen' : 'socialHintProfile'),
                               action: HintAction.select,
                             ),
                             Hint(
@@ -269,6 +286,8 @@ class _Lines extends StatelessWidget {
     final screens = together.screens;
     final board = screens.board;
     final lines = together.boardLines;
+    // While the keys are on the challenges, no line is lit.
+    final at = screens.boardOnChallenges && screens.boardChallenges.isNotEmpty ? -1 : screens.boardIndex;
     final note = board == null
         ? T.text(
             screens.boardMissing
@@ -289,7 +308,7 @@ class _Lines extends StatelessWidget {
           if (board != null)
             for (var index = 0; index < lines.length; index++)
               KeepVisible(
-                active: screens.boardIndex == index,
+                active: at == index,
                 child: switch (lines[index]) {
                   BoardPerson(:final entry, :final me) => _EntryRow(
                     key: ValueKey('board-${entry.user.id}'),
@@ -297,7 +316,7 @@ class _Lines extends StatelessWidget {
                     entry: entry,
                     me: me,
                     board: board.board,
-                    focused: screens.boardIndex == index,
+                    focused: at == index,
                     onTap: () => unawaited(together.openProfile(entry.user.handle, card: entry.user)),
                   ),
                   BoardGap() => Padding(
@@ -315,7 +334,7 @@ class _Lines extends StatelessWidget {
                     rank: rank,
                     value: value,
                     board: board.board,
-                    focused: screens.boardIndex == index,
+                    focused: at == index,
                   ),
                 },
               ),

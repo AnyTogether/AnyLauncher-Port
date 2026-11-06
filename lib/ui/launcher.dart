@@ -13,6 +13,7 @@ import '../core/together/levels.dart';
 import 'app_model.dart';
 import 'theme_studio_view.dart';
 import 'browser_play.dart';
+import 'challenge_view.dart';
 import 'compare_view.dart';
 import 'components.dart';
 import 'controller_test_view.dart';
@@ -482,6 +483,10 @@ class _LauncherShellState extends State<LauncherShell> {
                                               Layer.leaderboard => WithBackPill(
                                                 onBack: () => model.handle(Command.back),
                                                 child: LeaderboardView(model: model),
+                                              ),
+                                              Layer.challenge => WithBackPill(
+                                                onBack: () => model.handle(Command.back),
+                                                child: ChallengeDetailView(model: model),
                                               ),
                                               null => const SizedBox.shrink(),
                                               _ => PanelView(model: model),

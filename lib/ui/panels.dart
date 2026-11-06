@@ -773,6 +773,24 @@ class _RowView extends StatelessWidget {
         if (row.person != null) ...[
           PersonAvatar(person: row.person!, size: 44 * scale, focused: focused),
           SizedBox(width: 16 * scale),
+        ] else if (row.icon != null) ...[
+          Container(
+            width: 44 * scale,
+            height: 44 * scale,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: model.accentChoice.color.withValues(alpha: focused ? 0.16 : 0.22),
+            ),
+            child: Icon(
+              switch (row.icon!) {
+                PanelIcon.flag => Icons.flag_rounded,
+                PanelIcon.trophy => Icons.emoji_events_rounded,
+              },
+              size: 22 * scale,
+              color: focused ? model.accentChoice.color : Colors.white,
+            ),
+          ),
+          SizedBox(width: 16 * scale),
         ],
         Expanded(
           child: Column(

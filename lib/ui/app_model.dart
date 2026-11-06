@@ -700,6 +700,9 @@ enum Layer {
   notifications,
   compat,
 
+  /// A challenge on a game's leaderboard (together_challenges.dart): its standings, Join and Leave.
+  challenge,
+
   /// Find Players (together_find.dart): the looking-for-group board, the user's posts, public
   /// parties and people to meet; the post form; one game's hub.
   findPlayers,
@@ -768,6 +771,9 @@ enum Layer {
 }
 
 /// A settings row the panels draw and the keyboard moves through.
+/// The signs a row can carry before its title.
+enum PanelIcon { flag, trophy }
+
 class PanelRow {
   const PanelRow({
     required this.id,
@@ -777,6 +783,7 @@ class PanelRow {
     this.glyph,
     this.person,
     this.level,
+    this.icon,
   });
 
   final String id;
@@ -792,6 +799,9 @@ class PanelRow {
 
   /// Their trophy level, drawn after the title.
   final LevelBadge? level;
+
+  /// A sign drawn before the title where no one's picture is (a challenge's notifications).
+  final PanelIcon? icon;
 
   bool get focusable => kind is! InfoRow;
 }
@@ -3983,6 +3993,9 @@ class AppModel extends ChangeNotifier {
         return;
       case Layer.leaderboard:
         together.leaderboardCommand(command);
+        return;
+      case Layer.challenge:
+        together.challengeCommand(command);
         return;
       case Layer.quickMenu || Layer.closeGame when command == Command.back || command == Command.options:
         resumeGame();

@@ -163,6 +163,8 @@
   "profileFailed": "Kunde inte läsas in just nu",
   "profileNoGames": "Inga spel har spelats än",
   "profileNoTrophies": "Inga troféer än",
+  "profileRecentActivity": "Senaste aktivitet",
+  "profileNoActivity": "Ingen aktivitet än",
   "profileLoading": "Läser in…",
   "profileHoursMinutes": "%d h %d min",
   "profileHoursOnly": "%d h",

@@ -166,6 +166,8 @@
   "profileFailed": "Не удалось загрузить это прямо сейчас.",
   "profileNoGames": "Пока не сыграно ни одной игры",
   "profileNoTrophies": "Трофеев пока нет",
+  "profileRecentActivity": "Недавняя активность",
+  "profileNoActivity": "Пока нет активности",
   "profileLoading": "Загрузка…",
   "profileHoursMinutes": "%d ч %d мин.",
   "profileHoursOnly": "%d ч",

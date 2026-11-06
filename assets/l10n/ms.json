@@ -165,6 +165,8 @@
   "profileFailed": "Tidak dapat memuatkan ini buat masa ini",
   "profileNoGames": "Belum ada permainan yang dimainkan",
   "profileNoTrophies": "Belum ada trofi",
+  "profileRecentActivity": "Aktiviti terkini",
+  "profileNoActivity": "Belum ada aktiviti",
   "profileLoading": "Sedang memuatkan…",
   "profileHoursMinutes": "%d jam %d minit",
   "profileHoursOnly": "%d jam",

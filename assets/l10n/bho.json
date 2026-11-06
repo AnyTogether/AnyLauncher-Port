@@ -166,6 +166,8 @@
   "profileFailed": "एहके अबहीं लोड ना कइल जा सकल",
   "profileNoGames": "अबहीं ले कोई गेम ना खेला गइल",
   "profileNoTrophies": "अबहीं ले कोई ट्रॉफ़ी ना",
+  "profileRecentActivity": "हाल के गतिविधि",
+  "profileNoActivity": "अबहीं ले कवनो गतिविधि ना",
   "profileLoading": "लोड हो रहल बा...",
   "profileHoursMinutes": "%d h %d मि",
   "profileHoursOnly": "%d एच",

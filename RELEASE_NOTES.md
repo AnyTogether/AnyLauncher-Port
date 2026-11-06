@@ -5,7 +5,10 @@ release when it is made.
 
 ## Next release
 
-Nothing yet.
+- **A profile shows the person's recent activity**, as on the Mac: the trophies, platinums,
+  first plays, long sessions, new friends and milestones they shared, under their recent
+  trophies, with the reactions each item got. It follows what they let you see, and an item
+  that changes while the profile is open changes there too.
 
 ## 0.1.19
 

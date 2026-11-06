@@ -166,6 +166,8 @@
   "profileFailed": "No se pudo cargar en este momento",
   "profileNoGames": "Aún no has jugado a ningún juego",
   "profileNoTrophies": "Aún no tienes trofeos",
+  "profileRecentActivity": "Actividad reciente",
+  "profileNoActivity": "Aún no hay actividad",
   "profileLoading": "Cargando…",
   "profileHoursMinutes": "%d h %d min",
   "profileHoursOnly": "%d h",

@@ -166,6 +166,8 @@
   "profileFailed": "Couldn't load this right now",
   "profileNoGames": "No games played yet",
   "profileNoTrophies": "No trophies yet",
+  "profileRecentActivity": "Recent activity",
+  "profileNoActivity": "No activity yet",
   "profileLoading": "Loading…",
   "profileHoursMinutes": "%d h %d min",
   "profileHoursOnly": "%d h",

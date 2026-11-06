@@ -166,6 +166,8 @@
   "profileFailed": "تعذر تحميل هذا الآن",
   "profileNoGames": "لم يتم لعب أي مباريات حتى الآن",
   "profileNoTrophies": "لا الجوائز بعد",
+  "profileRecentActivity": "النشاط الأخير",
+  "profileNoActivity": "لا نشاط بعد",
   "profileLoading": "جارٍ التحميل…",
   "profileHoursMinutes": "%d ح %d دقيقة",
   "profileHoursOnly": "%d ساعة",

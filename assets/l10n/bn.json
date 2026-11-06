@@ -166,6 +166,8 @@
   "profileFailed": "এই মুহূর্তে এটি লোড করা যায়নি",
   "profileNoGames": "এখনো খেলা হয়নি",
   "profileNoTrophies": "এখনো কোনো ট্রফি নেই",
+  "profileRecentActivity": "সাম্প্রতিক কার্যকলাপ",
+  "profileNoActivity": "এখনও কোনো কার্যকলাপ নেই",
   "profileLoading": "লোড হচ্ছে…",
   "profileHoursMinutes": "%d h %d মিনিট",
   "profileHoursOnly": "%d ঘণ্টা",

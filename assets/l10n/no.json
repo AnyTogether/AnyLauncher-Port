@@ -164,6 +164,8 @@
   "profileFailed": "Kunne ikke laste inn dette akkurat nå",
   "profileNoGames": "Ingen spill spilt ennå",
   "profileNoTrophies": "Ingen trofeer ennå",
+  "profileRecentActivity": "Nylig aktivitet",
+  "profileNoActivity": "Ingen aktivitet ennå",
   "profileLoading": "Laster inn …",
   "profileHoursMinutes": "%d t %d min",
   "profileHoursOnly": "%d t",

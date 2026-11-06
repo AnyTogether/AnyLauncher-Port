@@ -161,6 +161,8 @@
   "profileFailed": "មិនអាចផ្ទុកទិន្នន័យនេះបានទេនៅពេលនេះ",
   "profileNoGames": "មិនទាន់បានលេងហ្គេមណាមួយនៅឡើយទេ",
   "profileNoTrophies": "មិនទាន់មានពានរង្វាន់នៅឡើយទេ",
+  "profileRecentActivity": "សកម្មភាពថ្មីៗ",
+  "profileNoActivity": "មិនទាន់មានសកម្មភាពនៅឡើយទេ",
   "profileLoading": "កំពុងផ្ទុក…",
   "profileHoursMinutes": "%d ម៉ោង %d នាទី",
   "profileHoursOnly": "%d ម៉ោង",

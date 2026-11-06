@@ -166,6 +166,8 @@
   "profileFailed": "इसे अभी लोड नहीं किया जा सका",
   "profileNoGames": "अभी तक कोई गेम नहीं खेला गया",
   "profileNoTrophies": "अभी तक कोई ट्रॉफ़ी नहीं",
+  "profileRecentActivity": "हाल की गतिविधि",
+  "profileNoActivity": "अभी कोई गतिविधि नहीं",
   "profileLoading": "लोड हो रहा है...",
   "profileHoursMinutes": "%d h %d मि",
   "profileHoursOnly": "%d एच",

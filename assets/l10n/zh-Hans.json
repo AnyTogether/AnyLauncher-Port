@@ -165,6 +165,8 @@
   "profileFailed": "暂时无法加载",
   "profileNoGames": "尚未玩过游戏",
   "profileNoTrophies": "还没有奖杯",
+  "profileRecentActivity": "最近动态",
+  "profileNoActivity": "暂无动态",
   "profileLoading": "正在加载…",
   "profileHoursMinutes": "%d 小时 %d 分钟",
   "profileHoursOnly": "%d 小时",

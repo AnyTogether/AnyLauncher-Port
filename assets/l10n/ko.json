@@ -165,6 +165,8 @@
   "profileFailed": "현재 불러올 수 없음",
   "profileNoGames": "아직 플레이한 게임이 없음",
   "profileNoTrophies": "아직 획득한 트로피가 없음",
+  "profileRecentActivity": "최근 활동",
+  "profileNoActivity": "아직 활동이 없어요",
   "profileLoading": "불러오는 중…",
   "profileHoursMinutes": "%d시간 %d분",
   "profileHoursOnly": "%d시간",

@@ -165,6 +165,8 @@
   "profileFailed": "ບໍ່ສາມາດໂຫຼດຂໍ້ມູນນີ້ໄດ້ໃນຂະນະນີ້",
   "profileNoGames": "ຍັງບໍ່ທັນມີການຫຼິ້ນເກມໃດໆ",
   "profileNoTrophies": "ຍັງບໍ່ທັນມີຖ້ວຍລາງວັນໃດໆ",
+  "profileRecentActivity": "ກິດຈະກຳຫຼ້າສຸດ",
+  "profileNoActivity": "ຍັງບໍ່ມີກິດຈະກຳ",
   "profileLoading": "ກຳລັງໂຫຼດ…",
   "profileHoursMinutes": "%d ຊົ່ວໂມງ %d ນາທີ",
   "profileHoursOnly": "%d ຊົ່ວໂມງ",

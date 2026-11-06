@@ -1,5 +1,9 @@
 part of 'together_model.dart';
 
+/// What can be chosen on a profile before its games: the theme it wears (Theme: name, to the Hub),
+/// Compare trophies on someone else's, Edit showcase and Profile theme on the user's own.
+enum ProfileAction { theme, compare, editShowcase, profileTheme }
+
 /// Profiles (the user's own and friends') with games, play time and trophies; and playing with
 /// friends: while a game runs the launcher opens an AnyTogether game session for it (when the
 /// user lets friends join), and a friend's Join starts the same game here when the game version
@@ -40,6 +44,10 @@ extension TogetherProfiles on TogetherModel {
       final page = await hub.profiles.page(handle, card: card);
       if (app.overlay != Layer.profile) return;
       profile = page;
+      // The keys start on the first thing to do, past Theme: name.
+      if (profileIndex == 0 && profileActions.length > 1 && profileActions.first == ProfileAction.theme) {
+        profileIndex = 1;
+      }
     } on Object {
       profileFailed = true;
     }
@@ -49,6 +57,8 @@ extension TogetherProfiles on TogetherModel {
   void closeProfile() {
     final back = profileReturn;
     profile = null;
+    showcasePins = null;
+    themeChoices = null;
     app.returnTo(back);
   }
 
@@ -58,13 +68,45 @@ extension TogetherProfiles on TogetherModel {
     return page != null && !page.profile.isMe;
   }
 
-  /// Where the games start among the items the keys move through: after Compare trophies.
-  int get profileGamesFrom => canCompare ? 1 : 0;
+  /// The user's own profile, read, while signed in: its showcase and theme can be changed.
+  bool get canEditProfile {
+    final page = profile;
+    return page != null && page.profile.isMe && signedIn;
+  }
 
-  /// Items the keys move through: Compare trophies (on someone else's profile), the games, then
-  /// the trophies.
+  /// What the keys reach before the games, in the order they show.
+  List<ProfileAction> get profileActions => [
+    if (profile?.profile.look.theme != null) ProfileAction.theme,
+    if (canCompare) ProfileAction.compare,
+    if (canEditProfile) ...[ProfileAction.editShowcase, ProfileAction.profileTheme],
+  ];
+
+  /// Where the games start among the items the keys move through: after the actions.
+  int get profileGamesFrom => profileActions.length;
+
+  /// The profile's accent: the one it picked, else its theme's; null for the launcher's own.
+  Color? get profileAccent {
+    final hex = profile?.profile.look.accentHex;
+    if (hex == null) return null;
+    return Color(0xFF000000 | int.parse(hex.substring(1), radix: 16));
+  }
+
+  /// Items the keys move through: the actions, the games, then the trophies.
   int get profileItems =>
       profileGamesFrom + (profile?.library.value?.length ?? 0) + (profile?.trophies.value?.length ?? 0);
+
+  void runProfileAction(ProfileAction action) {
+    switch (action) {
+      case ProfileAction.theme:
+        openWornThemeInHub();
+      case ProfileAction.compare:
+        compareProfile();
+      case ProfileAction.editShowcase:
+        openShowcaseEditor();
+      case ProfileAction.profileTheme:
+        openThemeChooser();
+    }
+  }
 
   void profileCommand(Command command) {
     switch (command) {
@@ -76,13 +118,237 @@ extension TogetherProfiles on TogetherModel {
         if (next != profileIndex) app.sounds.play(Cue.move);
         profileIndex = next;
         app.refresh();
-      case Command.select when canCompare && profileIndex == 0:
-        compareProfile();
+      case Command.select when profileIndex < profileActions.length:
+        runProfileAction(profileActions[profileIndex]);
       case Command.back || Command.options:
         closeProfile();
       default:
         break;
     }
+  }
+
+  // Editing the user's own profile.
+
+  /// Back from Edit showcase or Profile theme to the profile, on the item that opened it.
+  void backToProfile() {
+    final from = app.overlay == Layer.profileTheme ? ProfileAction.profileTheme : ProfileAction.editShowcase;
+    showcasePins = null;
+    themeChoices = null;
+    app.open(Layer.profile, cue: Cue.back);
+    profileIndex = profileActions.indexOf(from).clamp(0, profileItems == 0 ? 0 : profileItems - 1);
+    app.refresh();
+  }
+
+  /// Edit showcase: the user's trophies and games to pin, six in all.
+  void openShowcaseEditor() {
+    final page = profile;
+    if (page == null || !canEditProfile) return;
+    showcasePins = _savedPins = ShowcasePins.of(page.showcase.value);
+    // What can be pinned stays put while choosing, whatever each save answers.
+    final pinned = page.showcase.value;
+    final earned = page.trophies.value ?? const <EarnedTrophy>[];
+    final library = page.library.value ?? const <PlayedGame>[];
+    _pinChoices = (
+      trophies: [
+        for (final trophy in pinned?.trophies ?? const <EarnedTrophy>[])
+          if (!earned.any((other) => other.titleId == trophy.titleId && other.trophyId == trophy.trophyId)) trophy,
+        ...earned,
+      ],
+      games: [
+        for (final game in pinned?.games ?? const <PlayedGame>[])
+          if (!library.any((other) => other.titleId == game.titleId)) game,
+        ...library,
+      ],
+    );
+    app.open(Layer.showcaseEdit);
+  }
+
+  /// The trophies to pin (the ones pinned that the recent list no longer has first), then the
+  /// games; each a switch, the heading over the trophies saying how many may be pinned.
+  List<PanelRow> showcaseRows() {
+    final pins = showcasePins;
+    final choices = _pinChoices;
+    if (pins == null || choices == null) return const [];
+    final language = T.language.code;
+    final (:trophies, :games) = choices;
+    return [
+      PanelRow(id: 'pins-trophies', title: T.text('showcasePickTrophies'), kind: InfoRow(T.text('showcaseHint'))),
+      if (trophies.isEmpty)
+        PanelRow(id: 'pins-no-trophies', title: T.text('profileNoTrophies'), kind: const InfoRow('')),
+      for (final trophy in trophies)
+        PanelRow(
+          id: 'pin-trophy-${trophy.titleId}-${trophy.trophyId}',
+          title: trophy.name(language) ?? T.text('trophyHidden'),
+          detail: [
+            trophy.gameName(language),
+            TogetherProfiles.rarity(trophy.rarityLabel),
+          ].where((part) => part.isNotEmpty).join(' · '),
+          kind: ToggleRow(
+            pins.hasTrophy(trophy.titleId, trophy.trophyId),
+            (_) => _pin(showcasePins?.toggleTrophy(trophy.titleId, trophy.trophyId)),
+          ),
+        ),
+      PanelRow(id: 'pins-games', title: T.text('showcasePickGames'), kind: const InfoRow('')),
+      if (games.isEmpty) PanelRow(id: 'pins-no-games', title: T.text('profileNoGames'), kind: const InfoRow('')),
+      for (final game in games)
+        PanelRow(
+          id: 'pin-game-${game.titleId}',
+          title:
+              app.games.where((known) => known.titleId == game.titleId).firstOrNull?.nameFor([language]) ??
+              game.name(language),
+          detail: TogetherProfiles.playTime(game.secondsPlayed),
+          kind: ToggleRow(pins.hasGame(game.titleId), (_) => _pin(showcasePins?.toggleGame(game.titleId))),
+        ),
+    ];
+  }
+
+  /// A pin changed: shown at once and saved; a seventh is refused with the reason.
+  void _pin(ShowcasePins? next) {
+    if (showcasePins == null) return;
+    if (next == null) {
+      app.sounds.play(Cue.bump);
+      app.show(T.text('showcaseHint'));
+      return;
+    }
+    showcasePins = next;
+    app.refresh();
+    unawaited(_savePins(next));
+  }
+
+  /// PUT /me/showcase with both lists, one save at a time (the last pins win, even after the
+  /// editor closed). A refused save puts back the pins saved last and says so; the profile shows
+  /// what the server kept.
+  Future<void> _savePins(ShowcasePins pins) async {
+    _pinsToSave = pins;
+    if (savingPins) return;
+    savingPins = true;
+    try {
+      while (_pinsToSave != null) {
+        final sending = _pinsToSave!;
+        _pinsToSave = null;
+        try {
+          final saved = await hub.profiles.saveShowcase(sending);
+          _savedPins = sending;
+          final page = profile;
+          if (page != null && page.profile.isMe) profile = page.copyWith(showcase: SectionShown(saved));
+        } on Object {
+          if (_pinsToSave == null) {
+            if (showcasePins != null) showcasePins = _savedPins;
+            app.show(T.text('showcaseSaveFailed'));
+          }
+        }
+        app.refresh();
+      }
+    } finally {
+      savingPins = false;
+    }
+  }
+
+  /// Profile theme: the Hub's popular themes to wear, Take it off for the one worn.
+  void openThemeChooser() {
+    if (!canEditProfile) return;
+    themeChoices = null;
+    app.open(Layer.profileTheme);
+    unawaited(_loadThemeChoices());
+  }
+
+  Future<void> _loadThemeChoices() async {
+    themeChoices = null;
+    app.refresh();
+    Section<List<ProfileTheme>> read;
+    try {
+      read = SectionShown(await hub.profiles.popularThemes());
+    } on Object {
+      read = const SectionFailed();
+    }
+    if (app.overlay != Layer.profileTheme) return;
+    themeChoices = read;
+    app.refresh();
+  }
+
+  /// The theme on the user's profile: as the profile shown says, else as /me said.
+  ProfileTheme? get wornTheme {
+    final page = profile;
+    if (page != null && page.profile.isMe) return page.profile.look.theme;
+    return hub.self.wornTheme;
+  }
+
+  List<PanelRow> profileThemeRows() {
+    final worn = wornTheme;
+    final choices = themeChoices;
+    return [
+      if (worn != null)
+        PanelRow(
+          id: 'theme-off',
+          title: T.text('themeTakeOff'),
+          detail: T.format('themeWorn', [worn.name]),
+          kind: ActionRow(() => unawaited(wearTheme(null))),
+        ),
+      ...switch (choices) {
+        null => [PanelRow(id: 'theme-loading', title: T.text('hubLoading'), kind: const InfoRow(''))],
+        SectionShown(:final items) when items.isEmpty && worn == null => [
+          PanelRow(id: 'theme-empty', title: T.text('hubEmpty'), kind: const InfoRow('')),
+        ],
+        SectionShown(:final items) => [
+          for (final theme in [if (worn != null && !items.any((theme) => theme.id == worn.id)) worn, ...items])
+            PanelRow(
+              id: 'theme-${theme.id}',
+              title: theme.name,
+              detail: theme.id == worn?.id
+                  ? T.text('themeOnProfile')
+                  : (theme.makerName == null ? null : T.format('themeBy', [theme.makerName!])),
+              kind: ActionRow(() => unawaited(wearTheme(theme.id))),
+            ),
+        ],
+        _ => [
+          PanelRow(
+            id: 'theme-retry',
+            title: T.text('hubFailed'),
+            kind: ActionRow(() => unawaited(_loadThemeChoices())),
+          ),
+        ],
+      },
+    ];
+  }
+
+  /// Puts the Theme Hub theme [id] on the user's profile, or takes the one worn off (null). From
+  /// Profile theme it goes back to the profile, which shows it; from the Hub the Hub stays.
+  Future<void> wearTheme(String? id) async {
+    try {
+      final look = await hub.profiles.wearTheme(id);
+      hub.self.wornTheme = look.theme;
+      final page = profile;
+      if (page != null && page.profile.isMe) profile = page.copyWith(profile: page.profile.withLook(look));
+      app.show(look.theme == null ? T.text('themeTakenOff') : T.format('themeWornNow', [look.theme!.name]));
+      if (app.overlay == Layer.profileTheme) return backToProfile();
+    } on Object {
+      app.show(T.text('profileThemeFailed'));
+    }
+    app.refresh();
+  }
+
+  /// Theme: name on a profile: the Theme Hub (Settings › Appearance › Themes), on the theme when
+  /// it is listed; Back comes back to the profile.
+  void openWornThemeInHub() {
+    final theme = profile?.profile.look.theme;
+    if (theme == null) return;
+    hubFromProfile = profileIndex;
+    app.open(Layer.themes);
+    final rows = app.panelCategories().firstOrNull?.rows ?? const <PanelRow>[];
+    final at = rows.indexWhere((row) => row.id == 'hub-${theme.id}');
+    if (at >= 0) app.panelRow = at;
+    app.refresh();
+  }
+
+  /// Back from the Hub opened from a profile; false when it was not.
+  bool backFromHubToProfile() {
+    final index = hubFromProfile;
+    if (index == null || profile == null) return false;
+    hubFromProfile = null;
+    app.open(Layer.profile, cue: Cue.back);
+    profileIndex = index;
+    app.refresh();
+    return true;
   }
 
   /// Compare trophies, from the profile shown.

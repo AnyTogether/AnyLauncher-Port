@@ -1,6 +1,7 @@
 import 'account.dart';
 import 'levels.dart';
 import 'people.dart';
+import 'profile_look.dart';
 
 /// The user's language, then English, then any.
 String? pickName(Map<String, String> names, String language) {
@@ -28,6 +29,7 @@ class TogetherProfile {
     this.trophyLevel,
     this.privateName,
     this.privateAvatar,
+    this.look = const ProfileLook(),
   });
 
   factory TogetherProfile.fromJson(Map<String, dynamic> json) => TogetherProfile(
@@ -41,6 +43,7 @@ class TogetherProfile {
     trophyLevel: TrophyLevel.fromJson(json['trophyLevel']),
     privateName: json['privateName'] is String ? json['privateName'] as String : null,
     privateAvatar: json['privateAvatar'] is String ? json['privateAvatar'] as String : null,
+    look: ProfileLook.fromJson(json),
   );
 
   final String userId;
@@ -60,6 +63,24 @@ class TogetherProfile {
   /// The friends-only name and picture, for a friend (or the user) signed in.
   final String? privateName;
   final String? privateAvatar;
+
+  /// Its cover, accent and the Theme Hub theme it wears; empty on a server before them.
+  final ProfileLook look;
+
+  /// The same profile wearing [next].
+  TogetherProfile withLook(ProfileLook next) => TogetherProfile(
+    userId: userId,
+    handle: handle,
+    displayName: displayName,
+    avatar: avatar,
+    bio: bio,
+    country: country,
+    friendship: friendship,
+    trophyLevel: trophyLevel,
+    privateName: privateName,
+    privateAvatar: privateAvatar,
+    look: next,
+  );
 
   /// The profile as a name card, its private name and picture with it.
   Person get card => Person(
@@ -212,6 +233,15 @@ class ProfilePage {
   /// What they pinned: failed on a server without showcases, which shows nothing.
   final Section<Showcase> showcase;
 
+  /// The same page with [profile] or [showcase] changed (the user's own, after an edit).
+  ProfilePage copyWith({TogetherProfile? profile, Section<Showcase>? showcase}) => ProfilePage(
+    profile: profile ?? this.profile,
+    library: library,
+    trophies: trophies,
+    showcase: showcase ?? this.showcase,
+    detailsPrivate: detailsPrivate,
+  );
+
   /// Games, play time, trophies and points, from the library; null when it is not shown.
   ({int games, int seconds, int trophies, int points})? get totals {
     final games = library.value;
@@ -282,6 +312,24 @@ class Profiles {
       trophies: await trophies,
       showcase: await showcase,
     );
+  }
+
+  /// Pins [pins] to the user's profile: PUT /me/showcase with both lists (the server counts a
+  /// stored list left out). More than six is never sent. The showcase as the server keeps it.
+  Future<Showcase> saveShowcase(ShowcasePins pins) async {
+    if (pins.count > ShowcasePins.max) throw ArgumentError.value(pins.count, 'pins', 'up to six');
+    return Showcase.fromJson(await account.call('PUT', 'me/showcase', pins.toJson()));
+  }
+
+  /// Puts the Theme Hub theme [id] on the user's profile, or takes the one worn off (null):
+  /// PATCH /me/look. Putting one on clears the cover and accent. The look as it is now.
+  Future<ProfileLook> wearTheme(String? id) async =>
+      ProfileLook.fromJson(await account.call('PATCH', 'me/look', {'theme': id}));
+
+  /// The Theme Hub's popular themes, to choose one to wear.
+  Future<List<ProfileTheme>> popularThemes() async {
+    final json = await account.call('GET', 'themes?sort=popular&limit=24');
+    return [for (final theme in json['themes'] as List<dynamic>? ?? const []) ?ProfileTheme.fromJson(theme)];
   }
 
   /// The games either side has trophies in, both-play first; private when they keep their

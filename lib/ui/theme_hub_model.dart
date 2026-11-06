@@ -11,6 +11,7 @@ import '../core/together/account.dart';
 import '../core/together/theme_hub.dart';
 import 'app_model.dart';
 import 'strings.dart';
+import 'together_model.dart';
 
 /// What the Hub showed: nothing read yet, reading, the themes, or a failure.
 sealed class HubList {
@@ -78,7 +79,13 @@ extension ThemeHubModel on AppModel {
         HubShown(:final themes) when themes.isEmpty => [
           PanelRow(id: 'hub-empty', title: T.text('hubEmpty'), kind: const InfoRow('')),
         ],
-        HubShown(:final themes) => [for (final theme in themes) _hubRow(theme)],
+        HubShown(:final themes) => [
+          for (final theme in themes) ...[
+            _hubRow(theme),
+            // Signed in, a theme on AnyTogether's Hub (a server id) can be worn on the profile.
+            if (together.signedIn && HubTheme.isId(theme.id)) _wearRow(theme),
+          ],
+        ],
       },
     ];
   }
@@ -95,6 +102,17 @@ extension ThemeHubModel on AppModel {
         if (inUse) T.text('themeActive'),
       ].join(', '),
       kind: ActionRow(() => current ? useTheme(installed) : unawaited(installFromHub(theme))),
+    );
+  }
+
+  /// Wear on my profile under a Hub theme; Take it off under the one worn.
+  PanelRow _wearRow(HubTheme theme) {
+    final worn = together.hub.self.wornTheme?.id == theme.id;
+    return PanelRow(
+      id: 'hub-wear-${theme.id}',
+      title: worn ? T.text('themeTakeOff') : T.text('themeWear'),
+      detail: worn ? T.format('themeWorn', [theme.name]) : null,
+      kind: ActionRow(() => unawaited(together.wearTheme(worn ? null : theme.id))),
     );
   }
 

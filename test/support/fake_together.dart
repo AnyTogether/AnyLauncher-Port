@@ -222,6 +222,65 @@ class FakeTogether {
   final Map<String, List<Map<String, dynamic>>> compareLists = {};
   final Map<String, Map<String, dynamic>> compareViews = {};
 
+  /// The Theme Hub's published themes (cards as GET /themes sends them): a profile may wear one.
+  final List<Map<String, dynamic>> hubThemes = [];
+
+  /// PATCH /me/look with a theme: only a published one; putting it on clears the cover and
+  /// accent unless they come too. The user's own profile answers with it after.
+  (int, Object?) _look(Map<String, dynamic> body) {
+    if (body.containsKey('theme')) {
+      final id = body['theme'];
+      if (id == null) {
+        me['theme'] = null;
+      } else {
+        final theme = hubThemes.where((theme) => theme['id'] == id).firstOrNull;
+        if (theme == null) return problem(400, 'bad_request', 'theme: no such theme in the Theme Hub');
+        me['theme'] = {
+          for (final key in const ['id', 'name', 'colors', 'preview', 'thumb', 'maker']) key: theme[key],
+        };
+        me['cover'] = null;
+        me['accent'] = null;
+      }
+    }
+    if (body.containsKey('accent')) me['accent'] = body['accent'];
+    final own = profiles[me['handle']];
+    if (own != null) {
+      for (final key in const ['cover', 'accent', 'theme']) {
+        own[key] = me[key];
+      }
+    }
+    return (200, {'cover': me['cover'], 'accent': me['accent'], 'theme': me['theme']});
+  }
+
+  /// PUT /me/showcase: up to six pins, trophies and games together, from the user's own
+  /// trophies and library; the showcase as the user sees it back.
+  (int, Object?) _saveShowcase(Map<String, dynamic> body) {
+    final trophies = [for (final pin in body['trophies'] as List<dynamic>? ?? const []) pin as Map<String, dynamic>];
+    final games = [for (final id in body['games'] as List<dynamic>? ?? const []) id as String];
+    if (trophies.length + games.length > 6) {
+      return problem(400, 'bad_request', 'showcase: up to six pins, trophies and games together');
+    }
+    final handle = me['handle'] as String;
+    // The user's earned trophies: the recent ones and any pinned before.
+    final earned = [
+      ...?trophyLists[handle],
+      for (final trophy in showcases[handle]?['trophies'] as List<dynamic>? ?? const []) trophy as Map<String, dynamic>,
+    ];
+    final library = libraries[handle] ?? const [];
+    return (
+      200,
+      showcases[handle] = {
+        'trophies': [
+          for (final pin in trophies)
+            ...earned
+                .where((trophy) => trophy['titleId'] == pin['titleId'] && trophy['trophyId'] == pin['trophyId'])
+                .take(1),
+        ],
+        'games': [for (final id in games) ...library.where((game) => game['titleId'] == id)],
+      },
+    );
+  }
+
   /// Game sessions by id, and the invites to the user.
   final Map<String, Map<String, dynamic>> gameSessions = {};
   final List<Map<String, dynamic>> gameInvites = [];
@@ -449,6 +508,12 @@ class FakeTogether {
             'profile': me,
           },
         );
+      case ('PATCH', 'me/look'):
+        return _look(call.body);
+      case ('PUT', 'me/showcase'):
+        return _saveShowcase(call.body);
+      case ('GET', 'themes?sort=popular&limit=24'):
+        return (200, {'themes': hubThemes, 'next': null});
       case ('PATCH', 'me/presence'):
         if (call.body['status'] case final String status when presenceStatuses) {
           if (!const ['online', 'idle', 'dnd', 'invisible'].contains(status)) return problem(400, 'bad_request');

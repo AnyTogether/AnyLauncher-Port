@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/painting.dart' show Color;
+
 import '../core/audio/tones.dart';
 import '../core/game_library.dart';
 import '../core/gamepad/feel.dart' show HapticCue;
@@ -25,6 +27,7 @@ import '../core/together/socket.dart';
 import '../core/together/game_sessions.dart';
 import '../core/together/messages.dart';
 import '../core/together/private_identity.dart';
+import '../core/together/profile_look.dart';
 import '../core/together/profiles.dart';
 import '../core/together/parties.dart';
 import '../core/together/play_together.dart';
@@ -226,6 +229,18 @@ class TogetherModel {
   int profileIndex = 0;
   PanelSpot? profileReturn;
 
+  /// The user's own profile being edited: the pins while choosing (null when not), the pins
+  /// saved last, whether a save is on its way and the pins waiting for it; the Theme Hub's
+  /// themes to wear (null while they are read); the profile item Theme: name was chosen on, while
+  /// the Hub it opened is shown.
+  ShowcasePins? showcasePins;
+  ShowcasePins? _savedPins;
+  bool savingPins = false;
+  ShowcasePins? _pinsToSave;
+  ({List<EarnedTrophy> trophies, List<PlayedGame> games})? _pinChoices;
+  Section<List<ProfileTheme>>? themeChoices;
+  int? hubFromProfile;
+
   /// Comparing trophies: with whom, their games (once read), the game the keys are on; one
   /// game's trophies side by side once one is opened, and the trophy the keys are on; the layer
   /// it goes back to.
@@ -337,6 +352,11 @@ class TogetherModel {
       replyingTo = null;
       editingMessage = null;
       profile = null;
+      showcasePins = null;
+      _savedPins = null;
+      _pinsToSave = null;
+      themeChoices = null;
+      hubFromProfile = null;
       compareWith = null;
       compareGames = null;
       comparison = null;
@@ -347,6 +367,8 @@ class TogetherModel {
         Layer.friendOptions,
         Layer.messages,
         Layer.profile,
+        Layer.showcaseEdit,
+        Layer.profileTheme,
         Layer.compare,
         Layer.feed,
         Layer.leaderboard,

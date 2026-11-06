@@ -73,6 +73,7 @@ class PartyChatPane extends StatelessWidget {
                                 KeepVisible(
                                   active: focused?.id == message.id,
                                   child: _Bubble(
+                                    model: model,
                                     message: message,
                                     mine: message.authorId == me,
                                     me: me,

@@ -26,7 +26,13 @@ class MessageMenu {
   int row = 0;
   int reaction = 0;
   bool confirming = false;
+
+  /// Reporting the message: the reasons are the rows.
+  bool reporting = false;
 }
+
+/// Why a message is reported, as the server knows the reasons.
+const reportReasons = ['spam', 'harassment', 'hate', 'sexual', 'other'];
 
 /// Messages on AnyTogether: the conversations (and friends to start one with) on the left, the
 /// thread on the right with quick replies a controller can send and a field to type in.
@@ -190,6 +196,11 @@ extension TogetherMessages on TogetherModel {
   /// Sends [text] to the conversation shown, as the answer to the message being replied to.
   Future<void> sendMessage(String text) async {
     if (text.trim().isEmpty) return;
+    // Encrypted, and nobody on the other side can read it now: nothing goes out.
+    if (openLock?.state == EncryptionState.noDevice) {
+      app.show(T.format('e2eeNoDevice', [partnerName]));
+      return;
+    }
     app.sounds.play(Cue.select);
     final reply = replyingTo;
     replyingTo = null;
@@ -202,6 +213,7 @@ extension TogetherMessages on TogetherModel {
   }
 
   void messagesCommand(Command command) {
+    if (lockSheet) return _lockSheetCommand(command);
     if (messageMenu != null) return _menuCommand(command);
     final targets = messageTargets;
     if (!messagesInThread) {
@@ -328,6 +340,7 @@ extension TogetherMessages on TogetherModel {
   void _resetThread() {
     messageCursor = null;
     messageMenu = null;
+    lockSheet = false;
     replyingTo = null;
     if (editingMessage != null) {
       editingMessage = null;
@@ -385,15 +398,27 @@ extension TogetherMessages on TogetherModel {
     final menu = messageMenu;
     if (menu == null) return const [];
     final shown = menu.message;
-    if (shown == null) return const ['pin', 'mute'];
+    if (shown == null) {
+      final lock = hub.messages.lockOf(menu.conversationId);
+      return [
+        if (lock != null) 'lock',
+        if (lock?.state == EncryptionState.on && app.services.pickImage != null) 'photo',
+        'pin',
+        'mute',
+      ];
+    }
     if (menu.confirming) return const ['unsend-confirm', 'cancel'];
+    if (menu.reporting) return [for (final reason in reportReasons) 'report-$reason', 'cancel'];
     final message = _current(shown);
     final me = user?.id;
+    final readable = !message.encrypted || message.seal == SealState.opened;
     return [
       'react',
       'reply',
-      if (Messages.canEdit(message, me, DateTime.now())) 'edit',
+      if (message.attachment != null && message.media?.gone != true) 'open',
+      if (Messages.canEdit(message, me, DateTime.now()) && readable) 'edit',
       if (message.authorId == me) 'unsend',
+      if (message.authorId != me && readable) 'report',
     ];
   }
 
@@ -405,6 +430,15 @@ extension TogetherMessages on TogetherModel {
       'edit' => T.text('messagesEdit'),
       'unsend' || 'unsend-confirm' => T.text('messagesUnsend'),
       'pin' => T.text(conversation?.pinned == true ? 'conversationUnpin' : 'conversationPin'),
+      'lock' => T.text(hub.messages.lockOf(conversation?.id)?.state == EncryptionState.off ? 'e2eeOff' : 'e2eeOn'),
+      'photo' => T.text('messagesSendPhoto'),
+      'open' => T.text('messagesOpenAttachment'),
+      'report' => T.text('messagesReport'),
+      'report-spam' => T.text('reportReasonSpam'),
+      'report-harassment' => T.text('reportReasonHarassment'),
+      'report-hate' => T.text('reportReasonHate'),
+      'report-sexual' => T.text('reportReasonSexual'),
+      'report-other' => T.text('reportReasonOther'),
       'mute' => T.text(conversation?.muted == true ? 'conversationUnmute' : 'conversationMute'),
       _ => T.text('cancel'),
     };
@@ -470,6 +504,26 @@ extension TogetherMessages on TogetherModel {
         messageMenu = null;
         app.sounds.play(Cue.select);
         unawaited(unsendMessage(message));
+      case 'lock':
+        openLockSheet();
+        return;
+      case 'photo':
+        messageMenu = null;
+        app.sounds.play(Cue.select);
+        unawaited(sendPhoto());
+      case 'open' when message != null:
+        messageMenu = null;
+        app.sounds.play(Cue.select);
+        unawaited(openAttachment(message));
+      case 'report':
+        menu
+          ..reporting = true
+          ..row = 0;
+        app.sounds.play(Cue.select);
+      case final String reason when reason.startsWith('report-') && message != null:
+        messageMenu = null;
+        app.sounds.play(Cue.select);
+        unawaited(reportMessage(message, reason.substring('report-'.length)));
       case 'pin' when conversation != null:
         messageMenu = null;
         app.sounds.play(Cue.select);
@@ -547,6 +601,8 @@ extension TogetherMessages on TogetherModel {
       ? T.text('messagesEarlier')
       : target.deleted
       ? T.text('messagesDeleted')
+      : target.encrypted && target.seal != SealState.opened
+      ? shownText(target)
       : (target.words ?? '');
 
   /// The message of the user's that gets the receipt line: their newest one in the thread.
@@ -662,7 +718,8 @@ extension TogetherMessages on TogetherModel {
     if (app.overlay == Layer.messages && hub.messages.openId == conversation) return;
     // Muted: it comes in, unread, without a word.
     if (hub.messages.byId(conversation as String?)?.muted == true) return;
-    final text = data['text'];
+    // A sealed one says no more than that it came.
+    final text = data['sealed'] != null ? T.text('e2eeNotification') : data['text'];
     if (text is! String) return;
     final name =
         hub.messages.byId(conversation)?.author(author as String?)?.displayName ??
@@ -677,7 +734,198 @@ extension TogetherMessages on TogetherModel {
     );
   }
 
+  // End-to-end encryption.
+
+  /// The open direct conversation's lock as last worked out; null for a group, before it is
+  /// known, or on a server without encryption.
+  ConversationLock? get openLock => hub.messages.lockOf(hub.messages.openId);
+
+  /// The other person's name in the open conversation, for the encryption texts.
+  String get partnerName {
+    final conversation = hub.messages.open;
+    return authorName(conversation, conversation?.partner(user?.id));
+  }
+
+  /// The encryption sheet's rows: "We compared them" while the number is not marked, OK for a
+  /// devices-changed notice, and the way back.
+  List<String> get lockSheetRows {
+    final lock = openLock;
+    return [
+      if (lock?.safetyNumber != null && lock?.compared != true) 'compared',
+      if (lock?.notice != null) 'dismiss',
+      'close',
+    ];
+  }
+
+  /// The sheet with what the lock means, the safety number and both people's devices.
+  void openLockSheet() {
+    if (openLock == null) return;
+    messageMenu = null;
+    lockSheet = true;
+    lockSheetRow = 0;
+    app.sounds.play(Cue.select);
+    app.refresh();
+  }
+
+  void closeLockSheet() {
+    lockSheet = false;
+    app.sounds.play(Cue.back);
+    app.refresh();
+  }
+
+  void runLockSheetRow(String row) {
+    final id = hub.messages.openId;
+    switch (row) {
+      case 'compared' when id != null:
+        hub.e2ee?.markCompared(id);
+        app.sounds.play(Cue.select);
+      case 'dismiss' when id != null:
+        hub.e2ee?.dismissNotice(id);
+        app.sounds.play(Cue.select);
+      default:
+        closeLockSheet();
+        return;
+    }
+    lockSheetRow = lockSheetRow.clamp(0, lockSheetRows.length - 1);
+    app.refresh();
+  }
+
+  /// The devices-changed notice's OK, from the thread.
+  void dismissLockNotice() {
+    final id = hub.messages.openId;
+    if (id == null) return;
+    hub.e2ee?.dismissNotice(id);
+    app.refresh();
+  }
+
+  void _lockSheetCommand(Command command) {
+    final rows = lockSheetRows;
+    switch (command) {
+      case Command.up || Command.down || Command.left || Command.right:
+        final forward = command == Command.down || command == Command.right;
+        final next = (lockSheetRow + (forward ? 1 : -1)).clamp(0, rows.length - 1);
+        if (next == lockSheetRow) return;
+        lockSheetRow = next;
+        app.sounds.play(Cue.move);
+        app.refresh();
+      case Command.select:
+        runLockSheetRow(rows[lockSheetRow.clamp(0, rows.length - 1)]);
+      case Command.back || Command.options:
+        closeLockSheet();
+      default:
+        break;
+    }
+  }
+
+  /// The words a message shows: its text, or why a sealed one shows none.
+  static String shownText(ChatMessage message) {
+    if (message.deleted) return T.text('messagesDeleted');
+    return switch (message.seal) {
+      SealState.beforeDevice => T.text('e2eeBeforeDevice'),
+      SealState.undecryptable => T.text('e2eeUndecryptable'),
+      SealState.opening => '…',
+      _ => message.text ?? '',
+    };
+  }
+
+  /// A sealed message's list preview: what it says once opened, Encrypted message otherwise.
+  static String previewText(ChatMessage message) {
+    if (message.encrypted && message.seal != SealState.opened) return T.text('e2eePreview');
+    if (message.encrypted && (message.text ?? '').isEmpty && message.attachment != null) {
+      return switch (message.attachment!.kind) {
+        'clip' => T.text('messagesClip'),
+        'voice' => T.text('messagesVoice'),
+        _ => T.text('messagesPhoto'),
+      };
+    }
+    return message.text ?? '';
+  }
+
+  /// A photo picked, re-encoded here (no location or camera data goes along), sealed and sent.
+  Future<void> sendPhoto() async {
+    final pick = app.services.pickImage;
+    if (pick == null) return;
+    try {
+      final path = await pick();
+      if (path == null) return;
+      final file = File(path);
+      if (file.lengthSync() > SealedPhoto.maxSourceBytes) throw const FormatException('too big');
+      final photo = await SealedPhoto.clean(file.readAsBytesSync());
+      await hub.messages.sendPhoto(photo.bytes, type: photo.type, width: photo.width, height: photo.height);
+    } on Object catch (error) {
+      app.show(message(error));
+    }
+  }
+
+  /// A sealed attachment's file (or poster) opened in memory, once per message.
+  Future<Uint8List> sealedFile(ChatMessage message, {bool poster = false}) {
+    final key = '${message.id}:${message.sealed?.sig}:${poster ? 'poster' : 'file'}';
+    final known = sealedFiles[key];
+    if (known != null) return known;
+    if (sealedFiles.length >= 40) sealedFiles.remove(sealedFiles.keys.first);
+    final loading = hub.messages.attachmentBytes(message, poster: poster);
+    sealedFiles[key] = loading;
+    // A failure is tried again the next time it is asked for.
+    loading.then(
+      (_) {},
+      onError: (Object _) {
+        sealedFiles.remove(key);
+      },
+    );
+    return loading;
+  }
+
+  /// A sealed attachment opened from a temporary file only this user can read, in the
+  /// system's viewer or player.
+  Future<void> openAttachment(ChatMessage message) async {
+    final attachment = message.attachment;
+    if (attachment == null) return;
+    try {
+      final bytes = await sealedFile(message);
+      final folder = Directory(p.join(Directory.systemTemp.path, 'anyps5-attachments'))..createSync(recursive: true);
+      Posix.chmod(folder.path, 448); // 0700
+      // What was opened an hour ago and more goes first.
+      for (final old in folder.listSync()) {
+        if (old is File && DateTime.now().difference(old.statSync().modified) > const Duration(hours: 1)) {
+          try {
+            old.deleteSync();
+          } on FileSystemException {
+            // Still open in a viewer.
+          }
+        }
+      }
+      final extension = switch (attachment.type) {
+        'image/png' => 'png',
+        'image/jpeg' => 'jpg',
+        'image/webp' => 'webp',
+        'video/mp4' => 'mp4',
+        'audio/ogg' => 'ogg',
+        'audio/webm' => 'webm',
+        'audio/mp4' || 'audio/aac' => 'm4a',
+        _ => 'bin',
+      };
+      final path = p.join(folder.path, '${uuidv7()}.$extension');
+      writePrivately(path, bytes);
+      app.services.openUrl?.call(Uri.file(path));
+    } on Object {
+      app.show(T.text('messagesAttachmentFailed'));
+    }
+  }
+
+  Future<void> reportMessage(ChatMessage message, String reason) async {
+    try {
+      await hub.messages.report(_current(message), reason);
+      app.show(T.text('messagesReported'));
+    } on Object {
+      app.show(T.text('messagesReportFailed'));
+    }
+  }
+
   void sendFailed(Object error) {
+    if (error is E2eeUnavailable) {
+      app.show(T.format('e2eeNoDevice', [partnerName]));
+      return;
+    }
     app.show(
       error is TogetherProblem && error.code == 'link_blocked'
           ? T.text('messagesLinkBlocked')

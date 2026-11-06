@@ -63,6 +63,7 @@ import '../core/toolkit_download.dart';
 import '../core/profiles/profile_saves.dart';
 import '../core/profiles/profiles.dart';
 import '../core/together/account.dart' show ClientTooOld, TogetherAccount;
+import '../core/together/e2ee_keys.dart';
 import '../core/together/levels.dart';
 import '../core/together/talk_key.dart';
 import '../core/together/token_store.dart';
@@ -1968,6 +1969,10 @@ class AppModel extends ChangeNotifier {
 
   /// The other profiles' sessions in tests and previews, which give the first one's in memory.
   final Map<String, MemoryTokenStore> _memoryStores = {};
+
+  /// Their end-to-end encryption keys and notes, in memory there too.
+  final Map<String, MemoryE2eeKeyStore> _memoryKeys = {};
+  final Map<String, MemoryE2eeNotesStore> _memoryNotes = {};
   final LauncherServices services;
   final HostSystem system;
   final GameSettingsStore settingsStore;

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'account.dart';
+import 'e2ee_client.dart';
 import 'friends.dart';
 import 'game_sessions.dart';
 import 'messages.dart';
@@ -22,12 +23,13 @@ class TogetherHub with Notifier {
     required VoiceEngine Function() voiceEngine,
     required String bridgeFile,
     TogetherSocket? socket,
+    this.e2ee,
   }) : socket = socket ?? TogetherSocket(account: account),
        profiles = Profiles(account) {
     this.socket.addListener(notifyListeners);
     friends = Friends(account: account, socket: this.socket)..addListener(notifyListeners);
     self = SelfProfile(account: account, socket: this.socket)..addListener(notifyListeners);
-    messages = Messages(account: account, socket: this.socket)..addListener(notifyListeners);
+    messages = Messages(account: account, socket: this.socket, e2ee: e2ee)..addListener(notifyListeners);
     parties = Parties(account: account, socket: this.socket)..addListener(notifyListeners);
     games = GameSessions(account: account, socket: this.socket, bridgeFile: bridgeFile)..addListener(notifyListeners);
     social = Social(account: account, socket: this.socket)..addListener(notifyListeners);
@@ -44,6 +46,9 @@ class TogetherHub with Notifier {
   /// The user's own trophy level and whether they appear offline.
   late final SelfProfile self;
   late final Messages messages;
+
+  /// End-to-end encryption of direct messages; null keeps them plain (tests of other parts).
+  final EndToEnd? e2ee;
   late final Parties parties;
   late final Voice voice;
   late final GameSessions games;
@@ -68,10 +73,15 @@ class TogetherHub with Notifier {
     friends.clear();
     self.clear();
     messages.clear();
+    e2ee?.clear();
     parties.clear();
     games.clear();
     social.clear();
-    if (user != null) socket.start();
+    if (user != null) {
+      socket.start();
+      // This device's keys made (once) and registered: a server without them says so.
+      unawaited(e2ee?.start().then((_) {}, onError: (Object _) {}));
+    }
     notifyListeners();
   }
 

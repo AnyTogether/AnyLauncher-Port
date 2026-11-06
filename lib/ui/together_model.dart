@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import '../core/audio/tones.dart';
 import '../core/game_library.dart';
@@ -13,6 +14,7 @@ import '../core/remote/remote_protocol.dart';
 import '../core/together/account.dart';
 import '../core/together/compat.dart';
 import '../core/together/discover.dart';
+import '../core/together/e2ee_client.dart';
 import '../core/together/family.dart';
 import '../core/together/friends.dart';
 import '../core/together/hub.dart';
@@ -33,12 +35,14 @@ import '../core/together/talk_key.dart';
 import '../core/together/voice.dart';
 import '../core/controls.dart';
 import '../core/together/token_store.dart';
+import 'package:path/path.dart' as p;
 import '../core/trophies.dart';
 import '../core/game_settings.dart';
 import 'app_model.dart';
 import 'compare_view.dart';
 import 'family_gate.dart';
 import 'online_webrtc.dart';
+import 'sealed_photo.dart';
 import 'strings.dart';
 import 'voice_webrtc.dart';
 
@@ -66,8 +70,16 @@ class TogetherModel {
       clientName: clientName(app.system),
       pollEvery: app.services.togetherPollEvery,
     );
+    // This device's end-to-end encryption keys, kept by the profile signed in.
+    e2ee = EndToEnd(
+      account: account,
+      keys: () => app.e2eeKeysFor(app.sessionProfileId),
+      notes: () => app.e2eeNotesFor(app.sessionProfileId),
+      deviceName: () => deviceName,
+    );
     hub = TogetherHub(
       account: account,
+      e2ee: e2ee,
       voiceEngine: app.services.voiceEngine ?? WebRtcVoice.new,
       bridgeFile: GameSessions.defaultBridgeFile(app.paths.config),
     );
@@ -175,6 +187,9 @@ class TogetherModel {
   /// The live side: the gateway socket and the lists it keeps current.
   late final TogetherHub hub;
 
+  /// End-to-end encryption of direct messages (together_messages.dart shows it).
+  late final EndToEnd e2ee;
+
   /// The talk key read anywhere on the desktop; null where it is read only in the launcher.
   TalkKeyWatch? talkWatch;
 
@@ -209,6 +224,12 @@ class TogetherModel {
   /// one of the user's.
   int? messageCursor;
   MessageMenu? messageMenu;
+
+  /// Messages: the encryption sheet over the open conversation (its lock, safety number and
+  /// devices) and the row the keys are on in it; sealed files opened here, by message.
+  bool lockSheet = false;
+  int lockSheetRow = 0;
+  final Map<String, Future<Uint8List>> sealedFiles = {};
   int? replyingTo;
   ChatMessage? editingMessage;
 

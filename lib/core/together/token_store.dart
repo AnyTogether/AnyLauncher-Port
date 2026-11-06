@@ -177,16 +177,22 @@ class FileTokenStore implements TokenStore {
       }
       return;
     }
-    final folder = Directory(p.dirname(file))..createSync(recursive: true);
-    Posix.chmod(folder.path, 448); // 0700
     final bytes = utf8.encode(jsonEncode(session.toJson()));
-    final temporary = File('$file.tmp');
-    // Empty and private first, then the secret.
-    temporary.writeAsBytesSync(const []);
-    Posix.chmod(temporary.path, 384); // 0600
-    temporary.writeAsBytesSync(sealer == null ? bytes : sealer!.seal(bytes), flush: true);
-    temporary.renameSync(file);
+    writePrivately(file, sealer == null ? bytes : sealer!.seal(bytes));
   }
+}
+
+/// Writes [bytes] to [file] so only this user can read it: its folder 0700 and the file 0600
+/// before anything is in it (on POSIX), then put in place whole.
+void writePrivately(String file, List<int> bytes) {
+  final folder = Directory(p.dirname(file))..createSync(recursive: true);
+  Posix.chmod(folder.path, 448); // 0700
+  final temporary = File('$file.tmp');
+  // Empty and private first, then the secret.
+  temporary.writeAsBytesSync(const []);
+  Posix.chmod(temporary.path, 384); // 0600
+  temporary.writeAsBytesSync(bytes, flush: true);
+  temporary.renameSync(file);
 }
 
 /// chmod(2), which dart:io does not offer; nothing on Windows.
@@ -307,7 +313,8 @@ final class _Blob extends Struct {
 /// DPAPI (CryptProtectData) for the current Windows user, with the launcher's own entropy, so
 /// another account or computer cannot open the file.
 class DpapiSealer implements Sealer {
-  DpapiSealer() {
+  /// [entropy] keeps one use's files from opening as another's (the session, the E2EE keys).
+  DpapiSealer({String entropy = 'AnyPS5 AnyTogether session'}) : _entropy = utf8.encode(entropy) {
     final crypt = DynamicLibrary.open('crypt32.dll');
     _protect = crypt
         .lookupFunction<
@@ -356,7 +363,7 @@ class DpapiSealer implements Sealer {
   }
 
   static const _uiForbidden = 0x1;
-  static final _entropy = utf8.encode('AnyPS5 AnyTogether session');
+  final List<int> _entropy;
 
   late final int Function(
     Pointer<_Blob>,

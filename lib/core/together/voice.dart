@@ -63,6 +63,13 @@ class Voice with Notifier {
   bool held = false;
   VoiceProblem? problem;
 
+  /// The voice moved to another of the user's devices (the phone, while it is the controller):
+  /// the client there ("phone", "web", a launcher). Joining here again takes it back.
+  String? movedTo;
+
+  /// Told when the voice moves away, with [movedTo].
+  void Function(String client)? onMoved;
+
   bool get active => _mesh != null || _room != null || _moving;
 
   /// The call goes through the media server.
@@ -95,6 +102,7 @@ class Voice with Notifier {
     if (party == null || me == null || joining || active) return;
     joining = true;
     problem = null;
+    movedTo = null;
     notifyListeners();
     final engine = this.engine();
     try {
@@ -276,7 +284,7 @@ class Voice with Notifier {
     notifyListeners();
   }
 
-  Future<void> _stop() async {
+  Future<void> _stop({bool sayBye = true}) async {
     final mesh = _mesh;
     final room = _room;
     _mesh = null;
@@ -288,7 +296,7 @@ class Voice with Notifier {
     _levels?.cancel();
     _renew?.cancel();
     notifyListeners();
-    await mesh?.close();
+    await mesh?.close(sayBye: sayBye);
     await room?.leave().catchError((Object _) {});
   }
 
@@ -320,6 +328,13 @@ class Voice with Notifier {
         unawaited(mesh.drop(data['userId'] as String, sayBye: false).catchError((Object _) {}));
       case 'call.ended' when data['callId'] == callId:
         unawaited(_stop());
+      // Joined on another device: quiet here and still in the party, so the same voice never
+      // comes out of two devices. That device talks to everyone now: no goodbye from here.
+      case 'call.moved' when data['callId'] == callId:
+        final client = data['client'] as String? ?? '';
+        movedTo = client;
+        unawaited(_stop(sayBye: false));
+        onMoved?.call(client);
     }
   }
 

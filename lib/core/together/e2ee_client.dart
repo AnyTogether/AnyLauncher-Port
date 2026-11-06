@@ -454,7 +454,9 @@ class EndToEnd with Notifier {
       sealedFile.ciphertext,
       'application/octet-stream',
     );
-    final id = media['id'];
+    // {media: MediaView, usage}, as the server answers an upload.
+    final view = media['media'] is Map<String, dynamic> ? media['media'] as Map<String, dynamic> : media;
+    final id = view['id'];
     if (id is! String) throw const TogetherProblem(500, 'internal', 'No media ID came back');
     SealedPoster? still;
     if (poster != null) {

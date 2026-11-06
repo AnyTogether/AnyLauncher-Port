@@ -90,9 +90,10 @@ class FakeE2ee {
           'width': null,
           'height': null,
           'durationMs': null,
-          'url': '/files/$mediaId',
+          // Signed links are absolute, as the server's are.
+          'url': '${server.base}/files/$mediaId',
           'thumb': null,
-          'poster': posters.containsKey(mediaId) ? '/files/$mediaId/poster' : null,
+          'poster': posters.containsKey(mediaId) ? '${server.base}/files/$mediaId/poster' : null,
           'sealed': true,
           'createdAt': '2026-11-06T00:00:00Z',
         },
@@ -161,7 +162,14 @@ class FakeE2ee {
       final id = '0190f1a2-0000-7000-8000-${(media.length + 1).toString().padLeft(12, '0')}';
       media[id] = call.bytes;
       server.files['/files/$id'] = call.bytes;
-      return (201, {'id': id, 'kind': upload.group(1), 'sealed': true, 'url': '/files/$id'});
+      // As the server answers: the media and the account's storage use.
+      return (
+        201,
+        {
+          'media': {'id': id, 'kind': upload.group(1), 'sealed': true, 'url': '${server.base}/files/$id'},
+          'usage': {'used': call.bytes.length, 'limit': 104857600, 'saves': 0, 'media': call.bytes.length},
+        },
+      );
     }
     final poster = RegExp(r'^me/media/([^/]+)/poster$').firstMatch(call.path);
     if (poster != null && call.method == 'PUT') {

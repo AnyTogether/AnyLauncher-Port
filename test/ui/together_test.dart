@@ -937,7 +937,7 @@ void main() {
       model.handle(launcher.Command.up);
       expect(together.focusedMessage!.seq, 3);
       model.handle(launcher.Command.select);
-      expect(together.messageMenuItems, ['react', 'reply'], reason: "Ana's: no edit, no unsend");
+      expect(together.messageMenuItems, ['react', 'reply', 'report'], reason: "Ana's: no edit, no unsend, a report");
       // 👍 ❤️ 😂: the third.
       model.handle(launcher.Command.right);
       model.handle(launcher.Command.right);

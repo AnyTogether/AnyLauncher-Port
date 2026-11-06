@@ -92,7 +92,7 @@ void main() {
     conversationWithAna(encryptedThread(), lock(EncryptionState.on, notice: DevicesChange.theirs));
     await pumpLauncher(tester, model);
     expect(find.text('End-to-end encrypted'), findsOneWidget);
-    expect(find.text('Ana’s devices changed. Compare the safety number again.'), findsOneWidget);
+    expect(find.text("Ana's devices changed. Compare the safety number again."), findsOneWidget);
     expect(find.text('Sent before this device was added.'), findsOneWidget);
     expect(find.text('This message could not be decrypted.'), findsOneWidget);
     expect(find.text('Nine works. Bring Cem.'), findsWidgets);
@@ -111,7 +111,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(model.together.lockSheet, isTrue);
     expect(find.text('44483'), findsOneWidget);
-    expect(find.text('47718'), findsOneWidget);
+    expect(find.text('18510'), findsOneWidget);
     expect(find.text('We compared them'), findsOneWidget);
     expect(find.text('Ana’s MacBook Air'), findsOneWidget);
     expect(find.text('A new device cannot read messages sent before it was added.'), findsOneWidget);

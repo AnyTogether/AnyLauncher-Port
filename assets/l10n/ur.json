@@ -1422,5 +1422,18 @@
   "gameUnlockingHint": "%@ کو غیر مقفل کیا جا رہا ہے اور یہ مکمل ہونے پر شروع ہوتا ہے۔کینسل انلاک اس کی ترتیبات میں اسے روکتا ہے۔",
   "stateUpdatingShort": "اپ ڈیٹ کر رہا ہے۔",
   "stateEngineShort": "انجن کو اپ ڈیٹ کر رہا ہے۔",
-  "stateWaitingEngineShort": "انجن کا انتظار کر رہے ہیں۔"
+  "stateWaitingEngineShort": "انجن کا انتظار کر رہے ہیں۔",
+  "partyChat": "چیٹ",
+  "partyChatWrite": "پارٹی کو پیغام بھیجیں",
+  "partyChatEmpty": "اسے صرف پارٹی پڑھتی ہے۔ جو بھی شامل ہو، اب تک کے پیغامات دیکھتا ہے۔",
+  "partyChatFormer": "سابق رکن",
+  "messagesReport": "رپورٹ کریں",
+  "messagesReportTitle": "اس پیغام کی رپورٹ کریں",
+  "messagesReportDetail": "اسے ایک ماڈریٹر پڑھتا ہے۔ لکھنے والے کو نہیں بتایا جاتا کہ رپورٹ کس نے کی۔",
+  "messagesReported": "شکریہ۔ ایک ماڈریٹر اسے دیکھے گا۔",
+  "reportReasonSpam": "اسپام یا اشتہار",
+  "reportReasonHarassment": "ہراسانی یا دھونس",
+  "reportReasonHate": "نفرت انگیز بات",
+  "reportReasonSexual": "جنسی مواد",
+  "reportReasonOther": "کچھ اور"
 }

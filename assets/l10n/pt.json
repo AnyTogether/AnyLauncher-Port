@@ -1422,5 +1422,18 @@
   "gameUnlockingHint": "%@ está sendo desbloqueado e será iniciado quando terminar. Cancele o desbloqueio nas configurações dele para interrompê-lo.",
   "stateUpdatingShort": "Atualizando",
   "stateEngineShort": "Atualizando o mecanismo",
-  "stateWaitingEngineShort": "Aguardando o mecanismo"
+  "stateWaitingEngineShort": "Aguardando o mecanismo",
+  "partyChat": "Chat",
+  "partyChatWrite": "Escreva para o grupo",
+  "partyChatEmpty": "Só o grupo lê isto. Quem entrar vê as mensagens até agora.",
+  "partyChatFormer": "Ex-membro",
+  "messagesReport": "Denunciar",
+  "messagesReportTitle": "Denunciar esta mensagem",
+  "messagesReportDetail": "Um moderador vai ler. O autor não fica sabendo quem denunciou.",
+  "messagesReported": "Obrigado. Um moderador vai analisar.",
+  "reportReasonSpam": "Spam ou anúncios",
+  "reportReasonHarassment": "Assédio ou bullying",
+  "reportReasonHate": "Discurso de ódio",
+  "reportReasonSexual": "Conteúdo sexual",
+  "reportReasonOther": "Outra coisa"
 }

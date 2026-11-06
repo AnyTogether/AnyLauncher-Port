@@ -1406,5 +1406,18 @@
   "gameUnlockingHint": "正在解鎖 %@，完成後會啟動。在其設定中選取「取消解鎖」即可停止。",
   "stateUpdatingShort": "正在更新",
   "stateEngineShort": "正在更新引擎",
-  "stateWaitingEngineShort": "正在等待引擎"
+  "stateWaitingEngineShort": "正在等待引擎",
+  "partyChat": "聊天",
+  "partyChatWrite": "傳訊息給派對",
+  "partyChatEmpty": "只有派對成員能看到這裡。加入的人能看到先前的訊息。",
+  "partyChatFormer": "前成員",
+  "messagesReport": "檢舉",
+  "messagesReportTitle": "檢舉這則訊息",
+  "messagesReportDetail": "版主會查看。作者不會知道是誰檢舉的。",
+  "messagesReported": "謝謝，版主會查看。",
+  "reportReasonSpam": "垃圾訊息或廣告",
+  "reportReasonHarassment": "騷擾或霸凌",
+  "reportReasonHate": "仇恨言論",
+  "reportReasonSexual": "色情內容",
+  "reportReasonOther": "其他"
 }

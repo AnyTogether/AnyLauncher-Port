@@ -1945,6 +1945,8 @@ class AppModel extends ChangeNotifier {
     editingRow = id;
     // A click in Settings' search field: the keys are there.
     if (id == SettingsSearch.searchRow) settingsSearchFocused = true;
+    // A click in the party chat's field: the keys are in the chat.
+    if (id == TogetherPartyChat.draftRow) together.partyChatKeys.focused = true;
     notifyListeners();
   }
 
@@ -3727,6 +3729,8 @@ class AppModel extends ChangeNotifier {
       galleryIndex = 0;
       galleryViewing = false;
     }
+    // The party's chat: its newest messages, read while it shows.
+    if (next == Layer.party) together.partyScreenOpened();
     _skipToFocusable();
     _changed();
   }
@@ -3971,6 +3975,9 @@ class AppModel extends ChangeNotifier {
         return;
       case Layer.messages:
         together.messagesCommand(command);
+        return;
+      // The party's chat beside its rows: → into it, everything while the keys are there.
+      case Layer.party when together.partyChatCommand(command):
         return;
       case Layer.profile:
         together.profileCommand(command);
@@ -6018,6 +6025,7 @@ class AppModel extends ChangeNotifier {
     panelSections = false;
     settingsSearchFocused = false;
     editingValue = null;
+    together.partyChatKeys.focused = false;
     handle(Command.select);
   }
 
@@ -6066,6 +6074,7 @@ class AppModel extends ChangeNotifier {
     panelRow = index;
     pointerFocus = true;
     settingsSearchFocused = false;
+    together.partyChatKeys.focused = false;
     _changed();
   }
 

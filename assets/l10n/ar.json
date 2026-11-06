@@ -1422,5 +1422,18 @@
   "gameUnlockingHint": "يتم الآن إلغاء قفل %@ ويبدأ عند الانتهاء. إلغاء إلغاء القفل في إعداداته يوقفه.",
   "stateUpdatingShort": "تحديث",
   "stateEngineShort": "تحديث المحرك",
-  "stateWaitingEngineShort": "في انتظار المحرك"
+  "stateWaitingEngineShort": "في انتظار المحرك",
+  "partyChat": "الدردشة",
+  "partyChatWrite": "راسل المجموعة",
+  "partyChatEmpty": "لا يقرأ هذا إلا أعضاء المجموعة. ومن ينضم يرى الرسائل السابقة.",
+  "partyChatFormer": "عضو سابق",
+  "messagesReport": "إبلاغ",
+  "messagesReportTitle": "الإبلاغ عن هذه الرسالة",
+  "messagesReportDetail": "يقرؤها مشرف. لا يُخبَر كاتبها بمن أرسل البلاغ.",
+  "messagesReported": "شكرًا. سيراجعها مشرف.",
+  "reportReasonSpam": "رسائل مزعجة أو إعلانات",
+  "reportReasonHarassment": "تحرّش أو تنمّر",
+  "reportReasonHate": "خطاب كراهية",
+  "reportReasonSexual": "محتوى جنسي",
+  "reportReasonOther": "شيء آخر"
 }

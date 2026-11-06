@@ -1422,5 +1422,18 @@
   "gameUnlockingHint": "%@ আনলক করা হচ্ছে এবং এটি হয়ে গেলে শুরু হয়। বাতিল আনলক এর সেটিংসে এটি বন্ধ করে দেয়।",
   "stateUpdatingShort": "আপডেট করা হচ্ছে",
   "stateEngineShort": "ইঞ্জিন আপডেট করা হচ্ছে",
-  "stateWaitingEngineShort": "ইঞ্জিনের জন্য অপেক্ষা করছি"
+  "stateWaitingEngineShort": "ইঞ্জিনের জন্য অপেক্ষা করছি",
+  "partyChat": "চ্যাট",
+  "partyChatWrite": "পার্টিকে বার্তা পাঠান",
+  "partyChatEmpty": "এটি শুধু পার্টি পড়ে। যে-ই যোগ দেয়, এ পর্যন্ত সব বার্তা দেখতে পায়।",
+  "partyChatFormer": "প্রাক্তন সদস্য",
+  "messagesReport": "রিপোর্ট করুন",
+  "messagesReportTitle": "এই বার্তাটি রিপোর্ট করুন",
+  "messagesReportDetail": "একজন মডারেটর এটি পড়েন। লেখককে জানানো হয় না কে রিপোর্ট করেছে।",
+  "messagesReported": "ধন্যবাদ। একজন মডারেটর এটি দেখবেন।",
+  "reportReasonSpam": "স্প্যাম বা বিজ্ঞাপন",
+  "reportReasonHarassment": "হয়রানি বা উৎপীড়ন",
+  "reportReasonHate": "ঘৃণাসূচক কথা",
+  "reportReasonSexual": "যৌন বিষয়বস্তু",
+  "reportReasonOther": "অন্য কিছু"
 }

@@ -1422,5 +1422,18 @@
   "gameUnlockingHint": "%@ のロックが解除されており、完了すると開始されます。設定でロック解除をキャンセルすると停止します。",
   "stateUpdatingShort": "更新中",
   "stateEngineShort": "エンジンを更新しています",
-  "stateWaitingEngineShort": "エンジンを待っています"
+  "stateWaitingEngineShort": "エンジンを待っています",
+  "partyChat": "チャット",
+  "partyChatWrite": "パーティーにメッセージ",
+  "partyChatEmpty": "パーティーのメンバーだけが読めます。参加した人はこれまでのメッセージも見られます。",
+  "partyChatFormer": "元メンバー",
+  "messagesReport": "報告",
+  "messagesReportTitle": "このメッセージを報告",
+  "messagesReportDetail": "モデレーターが確認します。投稿者には誰が報告したか伝わりません。",
+  "messagesReported": "ありがとうございます。モデレーターが確認します。",
+  "reportReasonSpam": "スパム・広告",
+  "reportReasonHarassment": "嫌がらせ・いじめ",
+  "reportReasonHate": "ヘイトスピーチ",
+  "reportReasonSexual": "性的なコンテンツ",
+  "reportReasonOther": "その他"
 }

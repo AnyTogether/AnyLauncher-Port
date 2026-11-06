@@ -1406,5 +1406,18 @@
   "gameUnlockingHint": "%@ se odemyká a po dokončení procesu se spustí. Proces lze zastavit volbou „Zrušit odemknutí“ v jeho nastavení.",
   "stateUpdatingShort": "Aktualizace",
   "stateEngineShort": "Aktualizace enginu",
-  "stateWaitingEngineShort": "Čekání na engine"
+  "stateWaitingEngineShort": "Čekání na engine",
+  "partyChat": "Chat",
+  "partyChatWrite": "Napsat skupině",
+  "partyChatEmpty": "Čte to jen skupina. Kdo se přidá, uvidí dosavadní zprávy.",
+  "partyChatFormer": "Bývalý člen",
+  "messagesReport": "Nahlásit",
+  "messagesReportTitle": "Nahlásit tuto zprávu",
+  "messagesReportDetail": "Přečte ji moderátor. Autor se nedozví, kdo ji nahlásil.",
+  "messagesReported": "Děkujeme. Moderátor se na to podívá.",
+  "reportReasonSpam": "Spam nebo reklama",
+  "reportReasonHarassment": "Obtěžování nebo šikana",
+  "reportReasonHate": "Nenávistné projevy",
+  "reportReasonSexual": "Sexuální obsah",
+  "reportReasonOther": "Něco jiného"
 }

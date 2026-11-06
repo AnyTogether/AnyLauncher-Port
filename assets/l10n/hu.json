@@ -1384,5 +1384,18 @@
   "gameUnlockingHint": "A %@ feloldása folyamatban van; a folyamat végeztével elindul. A beállításoknál a „Feloldás megszakítása” opcióval leállítható.",
   "stateUpdatingShort": "A",
   "stateEngineShort": "frissítése\nA",
-  "stateWaitingEngineShort": "motor frissítése\nVárakozás a"
+  "stateWaitingEngineShort": "motor frissítése\nVárakozás a",
+  "partyChat": "Csevegés",
+  "partyChatWrite": "Írj a csapatnak",
+  "partyChatEmpty": "Ezt csak a csapat olvassa. Aki csatlakozik, látja az eddigi üzeneteket.",
+  "partyChatFormer": "Korábbi tag",
+  "messagesReport": "Jelentés",
+  "messagesReportTitle": "Üzenet jelentése",
+  "messagesReportDetail": "Egy moderátor elolvassa. A szerzője nem tudja meg, ki jelentette.",
+  "messagesReported": "Köszönjük. Egy moderátor megnézi.",
+  "reportReasonSpam": "Spam vagy hirdetés",
+  "reportReasonHarassment": "Zaklatás vagy bántalmazás",
+  "reportReasonHate": "Gyűlöletbeszéd",
+  "reportReasonSexual": "Szexuális tartalom",
+  "reportReasonOther": "Valami más"
 }

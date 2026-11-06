@@ -1422,5 +1422,18 @@
   "gameUnlockingHint": "%@ wird entsperrt und startet danach. Brich den Vorgang in den Spieleinstellungen ab, um ihn zu stoppen.",
   "stateUpdatingShort": "Wird aktualisiert",
   "stateEngineShort": "Engine wird aktualisiert",
-  "stateWaitingEngineShort": "Warten auf die Engine"
+  "stateWaitingEngineShort": "Warten auf die Engine",
+  "partyChat": "Chat",
+  "partyChatWrite": "Nachricht an die Party",
+  "partyChatEmpty": "Nur die Party liest das. Wer beitritt, sieht die bisherigen Nachrichten.",
+  "partyChatFormer": "Ehemaliges Mitglied",
+  "messagesReport": "Melden",
+  "messagesReportTitle": "Diese Nachricht melden",
+  "messagesReportDetail": "Ein Moderator liest sie. Der Verfasser erfährt nicht, wer sie gemeldet hat.",
+  "messagesReported": "Danke. Ein Moderator sieht es sich an.",
+  "reportReasonSpam": "Spam oder Werbung",
+  "reportReasonHarassment": "Belästigung oder Mobbing",
+  "reportReasonHate": "Hassrede",
+  "reportReasonSexual": "Sexuelle Inhalte",
+  "reportReasonOther": "Etwas anderes"
 }

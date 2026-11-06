@@ -1404,5 +1404,18 @@
   "gameUnlockingHint": "%@ er ved at blive låst op og starter, når processen er færdig. Du kan stoppe den ved at vælge \"Annuller oplåsning\" i indstillingerne.",
   "stateUpdatingShort": "Opdaterer",
   "stateEngineShort": "Opdaterer motoren",
-  "stateWaitingEngineShort": "Venter på motoren"
+  "stateWaitingEngineShort": "Venter på motoren",
+  "partyChat": "Chat",
+  "partyChatWrite": "Skriv til gruppen",
+  "partyChatEmpty": "Kun gruppen læser dette. Alle, der kommer med, kan se beskederne indtil nu.",
+  "partyChatFormer": "Tidligere medlem",
+  "messagesReport": "Anmeld",
+  "messagesReportTitle": "Anmeld denne besked",
+  "messagesReportDetail": "En moderator læser den. Afsenderen får ikke at vide, hvem der anmeldte den.",
+  "messagesReported": "Tak. En moderator kigger på det.",
+  "reportReasonSpam": "Spam eller reklame",
+  "reportReasonHarassment": "Chikane eller mobning",
+  "reportReasonHate": "Hadefuld tale",
+  "reportReasonSexual": "Seksuelt indhold",
+  "reportReasonOther": "Noget andet"
 }

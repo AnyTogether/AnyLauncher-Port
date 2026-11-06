@@ -1406,5 +1406,18 @@
   "gameUnlockingHint": "%@ ay ina-unlock at nagsisimula kapag tapos na ito. Kanselahin. I-unlock sa mga setting nito. Ihihinto ito.",
   "stateUpdatingShort": "Ina-update",
   "stateEngineShort": "Ina-update ang makina",
-  "stateWaitingEngineShort": "Naghihintay para sa makina"
+  "stateWaitingEngineShort": "Naghihintay para sa makina",
+  "partyChat": "Chat",
+  "partyChatWrite": "Mag-message sa party",
+  "partyChatEmpty": "Ang party lang ang nakakabasa nito. Makikita ng sinumang sasali ang mga mensahe hanggang ngayon.",
+  "partyChatFormer": "Dating miyembro",
+  "messagesReport": "I-report",
+  "messagesReportTitle": "I-report ang mensaheng ito",
+  "messagesReportDetail": "Babasahin ito ng moderator. Hindi sasabihin sa sumulat kung sino ang nag-report.",
+  "messagesReported": "Salamat. Titingnan ito ng isang moderator.",
+  "reportReasonSpam": "Spam o ads",
+  "reportReasonHarassment": "Panliligalig o pambu-bully",
+  "reportReasonHate": "Mapoot na pananalita",
+  "reportReasonSexual": "Sekswal na nilalaman",
+  "reportReasonOther": "Iba pa"
 }

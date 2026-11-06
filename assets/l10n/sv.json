@@ -1404,5 +1404,18 @@
   "gameUnlockingHint": "%@ låses upp och startar när det är klart. Du kan avbryta upplåsningen via inställningarna.",
   "stateUpdatingShort": "Uppdaterar",
   "stateEngineShort": "Uppdaterar motorn",
-  "stateWaitingEngineShort": "Väntar på motorn"
+  "stateWaitingEngineShort": "Väntar på motorn",
+  "partyChat": "Chatt",
+  "partyChatWrite": "Skriv till gruppen",
+  "partyChatEmpty": "Bara gruppen läser det här. Den som går med ser meddelandena hittills.",
+  "partyChatFormer": "Tidigare medlem",
+  "messagesReport": "Anmäl",
+  "messagesReportTitle": "Anmäl det här meddelandet",
+  "messagesReportDetail": "En moderator läser det. Avsändaren får inte veta vem som anmälde det.",
+  "messagesReported": "Tack. En moderator tittar på det.",
+  "reportReasonSpam": "Spam eller reklam",
+  "reportReasonHarassment": "Trakasserier eller mobbning",
+  "reportReasonHate": "Hatpropaganda",
+  "reportReasonSexual": "Sexuellt innehåll",
+  "reportReasonOther": "Något annat"
 }

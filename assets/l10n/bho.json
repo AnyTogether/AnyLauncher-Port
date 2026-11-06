@@ -1422,5 +1422,18 @@
   "gameUnlockingHint": "%@ अनलॉक हो रहल बा आ पूरा होतहीं शुरू हो जाई। एकर setting में Cancel Unlock दबइला पर ई रुक जाई।",
   "stateUpdatingShort": "अपडेट करे",
   "stateEngineShort": "इंजन के अपडेट कइल जा रहल बा",
-  "stateWaitingEngineShort": "इंजन के इंतजार कइल जा रहल बा"
+  "stateWaitingEngineShort": "इंजन के इंतजार कइल जा रहल बा",
+  "partyChat": "चैट",
+  "partyChatWrite": "दल के संदेश भेजीं",
+  "partyChatEmpty": "एकरा के खाली दल पढ़ेला। जे भी जुड़ी, ओकरा अब तक के संदेश लउकी।",
+  "partyChatFormer": "पुरान सदस्य",
+  "messagesReport": "रिपोर्ट करीं",
+  "messagesReportTitle": "एह संदेश के रिपोर्ट करीं",
+  "messagesReportDetail": "एकरा के एगो मॉडरेटर पढ़ी। लिखे वाला के ना बतावल जाई कि रिपोर्ट के कइलस।",
+  "messagesReported": "धन्यवाद। एगो मॉडरेटर एकरा के देखी।",
+  "reportReasonSpam": "स्पैम भा विज्ञापन",
+  "reportReasonHarassment": "परेशान कइल भा धमकावल",
+  "reportReasonHate": "नफरत वाला बात",
+  "reportReasonSexual": "यौन सामग्री",
+  "reportReasonOther": "कुछ अउर"
 }

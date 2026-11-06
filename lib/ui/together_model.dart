@@ -19,6 +19,7 @@ import '../core/together/hub.dart';
 import '../core/together/levels.dart';
 import '../core/together/people.dart';
 import '../core/together/self.dart';
+import '../core/together/share_play.dart';
 import '../core/together/server.dart';
 import '../core/together/social.dart';
 import '../core/together/socket.dart';
@@ -99,6 +100,7 @@ class TogetherModel {
     hub.addListener(app.refresh);
     hub.social
       ..onNotice = noticeArrived
+      ..onActivity = profileActivityChanged
       ..onFamilyNotice = (_) => unawaited(family.refresh());
     // The friends-only names and pictures the friends list brought, for every card shown.
     identities = hub.friends.identities;
@@ -805,6 +807,7 @@ class TogetherModel {
           kind: ActionRow(openFindPlayers),
         ),
       ...socialRows(),
+      ...app.sharePlay.watchRows(),
       ...gameRows(),
       for (final person in friends.incoming) ...[
         PanelRow(
@@ -1213,6 +1216,8 @@ class TogetherModel {
   void _event(TogetherEvent event) {
     // Online play follows the same game session: players joining, leaving, signalling.
     online.handle(event);
+    // Share play: the one hosted, the one watched, the invites.
+    if (event.type == 'live.ready' || event.type.startsWith('share_play.')) app.sharePlay.event(event);
     findEvent(event);
     final data = event.json;
     switch (event.type) {

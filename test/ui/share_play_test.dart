@@ -1,15 +1,21 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:anyps5_desktop/core/capture/game_sound.dart';
+import 'package:anyps5_desktop/core/controllers/pad_info.dart';
 import 'package:anyps5_desktop/core/desktop/desktop.dart';
+import 'package:anyps5_desktop/core/gamepad/pad_navigation.dart';
 import 'package:anyps5_desktop/core/game_library.dart';
 import 'package:anyps5_desktop/core/installer.dart';
-import 'package:anyps5_desktop/ui/app_model.dart' hide Command, GameState;
+import 'package:anyps5_desktop/ui/app_model.dart' hide GameState;
+import 'package:anyps5_desktop/ui/share_speaker.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
 import '../core/share_play_test.dart' show FakeEngine;
+import '../core/share_watch_test.dart' show FakeWatchEngine;
 import '../support/fake_together.dart';
 import '../support/ui_support.dart';
 import 'desktop_features_test.dart' show FakeDesktop;
@@ -22,7 +28,18 @@ class TitledDesktop extends FakeDesktop implements GameAreas {
   String? gameTitle(int pid) => 'Orbit Runner';
 }
 
-/// Hosting share play from the quick menu: start, a friend comes in, Let Them Play, stop.
+class FakeSpeaker implements ShareSoundOut {
+  final packets = <Uint8List>[];
+  bool stopped = false;
+  @override
+  void push(Uint8List packet) => packets.add(packet);
+  @override
+  void stop() => stopped = true;
+}
+
+/// Hosting share play from the quick menu: start, a friend comes in, Let Them Play, stop. And
+/// watching a friend's: from their invite in the Friends panel, full screen, the controller once
+/// they hand it over, PS to leave.
 void main() {
   late FakeTogether server;
   late Fixture fixture;
@@ -58,6 +75,7 @@ void main() {
     model = fixture.model;
     engine = FakeEngine();
     model.sharePlay.engineOverride = () => engine;
+    model.sharePlay.soundOverride = (_) => SilentGameSound();
     model.together.email = 'utku@example.com';
     await model.together.sendCode();
     model.together.code = '123456';
@@ -94,7 +112,7 @@ void main() {
   }
 
   void choose(String id) {
-    final row = model.panelCategories().single.rows.firstWhere((row) => row.id == id);
+    final row = model.panelCategories().expand((category) => category.rows).firstWhere((row) => row.id == id);
     switch (row.kind) {
       case ActionRow(:final run):
         run();
@@ -138,6 +156,121 @@ void main() {
     model.stopGame();
     await playing;
   }, skip: Platform.isWindows ? 'the stand-in game is a shell script' : false);
+
+  group('watching', () {
+    late FakeWatchEngine watcher;
+    late FakeSpeaker speaker;
+    var pad = const PadState();
+
+    Map<String, Object?> anas(List<Map<String, Object?>> viewers) => {
+      'id': 'sp-9',
+      'host': {'userId': 'u-ana', 'handle': 'ana', 'displayName': 'Ana'},
+      'hostDevice': 'ana-mac',
+      'titleId': 'PPSA02002',
+      'title': 'Neon Alley',
+      'open': false,
+      'maxViewers': 2,
+      'viewers': viewers,
+    };
+    final me = {
+      'user': {'userId': 'u-me', 'handle': 'utku', 'displayName': 'Utku'},
+      'device': 'my-device',
+    };
+
+    setUp(() {
+      watcher = FakeWatchEngine();
+      speaker = FakeSpeaker();
+      model.sharePlay.watchEngineOverride = () => watcher;
+      model.sharePlay.speakerOverride = () => speaker;
+      model.sharePlay.padOverride = () => pad;
+    });
+
+    List<String> friendRows() {
+      model.open(Layer.friends);
+      return model.panelCategories().expand((category) => category.rows).map((row) => row.id).toList();
+    }
+
+    Future<void> watchFromInvite() async {
+      server.push('share_play.invite', {
+        'sharePlayId': 'sp-9',
+        'from': {'userId': 'u-ana', 'handle': 'ana', 'displayName': 'Ana'},
+        'titleId': 'PPSA02002',
+        'title': 'Neon Alley',
+      });
+      await until(() => model.sharePlay.invites.isNotEmpty);
+      expect(model.toast, T.format('sharePlayInvitedYou', ['Ana', 'Neon Alley']));
+      expect(friendRows(), containsAllInOrder(['share-watch-sp-9', 'share-decline-sp-9']));
+      server.answers['POST share-plays/sp-9/join'] = (201, {'sharePlay': anas([me]), 'iceServers': <Object>[], 'expiresAt': null});
+      choose('share-watch-sp-9');
+      await until(() => model.overlay == Layer.shareWatch);
+      await until(() => server.frames.any((frame) => frame['op'] == 'signal' && frame['kind'] == 'renegotiate'));
+    }
+
+    test('an invite in the Friends panel, the host\'s offer answered, the pad once handed over, PS leaves', () async {
+      await watchFromInvite();
+      final ask = server.frames.firstWhere((frame) => frame['op'] == 'signal');
+      expect(ask['to'], 'u-ana');
+      expect(ask['device'], 'ana-mac');
+      expect(ask['share'], 'sp-9');
+      expect(model.sharePlay.invites, isEmpty);
+
+      server.push('share_play.signal', {
+        'sharePlayId': 'sp-9',
+        'from': 'u-ana',
+        'device': 'ana-mac',
+        'kind': 'offer',
+        'data': {'type': 'offer', 'sdp': 'o1'},
+      });
+      await until(() => server.frames.any((frame) => frame['kind'] == 'answer'));
+      final link = watcher.links.single;
+      link.opened!('audio');
+      expect(link.texts.single.$2, contains('audio-hello'));
+      link.binary!('audio', Uint8List(976));
+      expect(speaker.packets, hasLength(1));
+
+      // While only watching, ○ leaves too; with the pad, only PS does.
+      server.push('share_play.updated', anas([{...me, 'slot': 2}]));
+      await until(() => model.sharePlay.watchSlot == 2);
+      expect(model.toast, T.format('sharePlayYouPlay', [2]));
+      pad = const PadState(pressed: {PadButton.south});
+      await until(() => link.binaries.any((sent) => sent.$1 == 'pad'));
+      model.handle(Command.back);
+      expect(model.overlay, Layer.shareWatch);
+
+      server.answers['POST share-plays/sp-9/leave'] = (204, null);
+      model.handle(Command.home);
+      await until(() => model.overlay != Layer.shareWatch);
+      expect(model.sharePlay.isWatching, isFalse);
+      expect(link.closed, isTrue);
+      expect(speaker.stopped, isTrue);
+      await until(() => server.callsTo('share-plays/sp-9/leave').isNotEmpty);
+      expect(server.frames.where((frame) => frame['op'] == 'signal').last['kind'], 'bye');
+    });
+
+    test('the host stopping ends the watch with a word; a full share play says so', () async {
+      await watchFromInvite();
+      server.push('share_play.ended', {'sharePlayId': 'sp-9', 'reason': 'ended'});
+      await until(() => !model.sharePlay.isWatching);
+      expect(model.toast, T.format('sharePlayHostStopped', ['Ana']));
+      expect(model.overlay, isNot(Layer.shareWatch));
+
+      server.answers['POST share-plays/sp-9/join'] = (409, {'status': 409, 'code': 'full', 'title': 'Full'});
+      await model.sharePlay.watch('sp-9');
+      expect(model.toast, T.text('sharePlayFull'));
+      expect(model.sharePlay.isWatching, isFalse);
+    });
+
+    test('a friend sharing who lets friends in is in the Friends panel', () async {
+      server.push('presence.updated', {
+        'userId': 'u-ana',
+        'state': 'in_game',
+        'titleId': 'PPSA02002',
+        'share': {'sharePlayId': 'sp-9', 'titleId': 'PPSA02002', 'title': 'Neon Alley', 'open': true, 'viewers': 1, 'maxViewers': 3},
+      });
+      await until(() => model.together.hub.friends.friends.any((friend) => friend.presence.share != null));
+      expect(friendRows(), contains('share-friend-sp-9'));
+    });
+  });
 
   test('signed out, the quick menu offers no share play', () async {
     final playing = (await play()).done;

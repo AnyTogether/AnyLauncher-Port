@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:anyps5_desktop/core/together/account.dart';
 import 'package:anyps5_desktop/core/together/discover.dart';
+import 'package:anyps5_desktop/core/together/share_play.dart';
 import 'package:anyps5_desktop/ui/app_model.dart' hide GameState;
 import 'package:anyps5_desktop/ui/launcher.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
@@ -170,6 +171,42 @@ void main() {
       model.selected = model.games.indexWhere((game) => game.titleId == 'PPSA02002');
       model.open(Layer.gameSettings);
       expect(model.panelCategories().single.rows.map((row) => row.id), contains('find-players'));
+    });
+
+    test('Live now lists share plays to watch here, to ask to watch, and those asked', () {
+      fixture = makeFixture();
+      model = fixture.model;
+      signedIn();
+      PublicShare listed(String id, String join, {bool requested = false}) => PublicShare.fromJson({
+        'id': id,
+        'host': card('u-$id', 'Host $id'),
+        'titleId': 'PPSA02002',
+        'title': 'Neon Alley',
+        'game': {
+          'names': {'en': 'Neon Alley'},
+        },
+        'language': 'tr',
+        'join': join,
+        'live': true,
+        'viewers': 1,
+        'maxViewers': 3,
+        'requested': requested,
+      })!;
+      model.together.findState.live = [listed('a', 'open'), listed('b', 'request'), listed('c', 'request', requested: true)];
+      model.open(Layer.findPlayers);
+      final parties = model.panelCategories().firstWhere((category) => category.id == 'parties');
+      expect(parties.title, T.text('discoverLiveAndParties'));
+      final rows = {for (final row in parties.rows) row.id: row};
+      expect(rows['live-a']!.title, T.format('sharePlayWatchFriend', ['Host a', 'Neon Alley']));
+      expect(rows['live-a']!.detail, contains(T.format('sharePlayWatching', [1, 3])));
+      expect(rows['live-b']!.title, T.format('discoverAskToWatch', ['Host b', 'Neon Alley']));
+      expect(rows['live-c']!.title, T.format('discoverAskedToWatch', ['Host c', 'Neon Alley']));
+      expect(rows['live-c']!.kind, isA<InfoRow>());
+      model.together.findState.live = const [];
+      expect(
+        model.panelCategories().firstWhere((category) => category.id == 'parties').rows.map((row) => row.id),
+        containsAllInOrder(['live-title', 'live-none', 'pub-title']),
+      );
     });
 
     test('a post\'s row follows where the user stands with it', () {

@@ -15,6 +15,10 @@ class FindState {
   List<PublicParty> parties = const [];
   List<DiscoveredPerson> suggestions = const [];
 
+  /// Share plays under Live now (anyone may watch, or ask to), and those the user asked to.
+  List<PublicShare> live = const [];
+  Set<String> askedToWatch = {};
+
   /// Friend requests sent from here, so the row says so at once.
   Set<String> askedFriends = {};
   Discovery? discovery;
@@ -49,6 +53,8 @@ class FindState {
     asked = const [];
     parties = const [];
     suggestions = const [];
+    live = const [];
+    askedToWatch = {};
     askedFriends = {};
     discovery = null;
     hubTitle = null;
@@ -157,6 +163,10 @@ extension TogetherFind on TogetherModel {
     final mine = quiet(discover.mine());
     final parties = quiet(discover.parties());
     final suggestions = quiet(discover.suggestions());
+    // Share plays only where the family lets the user watch them.
+    final live = (family.rules?.sharePlay ?? true)
+        ? quiet(SharePlayClient(account).public(live: true))
+        : Future<List<PublicShare>?>.value(const []);
     try {
       final (posts, more) = await board;
       if (read == findState.reads && findState.filter == filter) {
@@ -185,6 +195,9 @@ extension TogetherFind on TogetherModel {
     }
     if (partiesRead != null) findState.parties = partiesRead;
     if (suggestionsRead != null) findState.suggestions = suggestionsRead;
+    final liveRead = await live;
+    if (read != findState.reads) return;
+    if (liveRead != null) findState.live = liveRead;
     app.refresh();
   }
 
@@ -565,6 +578,68 @@ extension TogetherFind on TogetherModel {
     );
   }
 
+  /// Live now: share plays anyone may watch (here, full screen) or ask the host to watch.
+  List<PanelRow> liveRows() {
+    if (!(family.rules?.sharePlay ?? true)) return const [];
+    return [
+      PanelRow(id: 'live-title', title: T.text('discoverLiveNow'), kind: InfoRow(T.text('discoverLiveDetail'))),
+      if (findState.live.isEmpty) PanelRow(id: 'live-none', title: T.text('discoverNoLive'), kind: const InfoRow('')),
+      for (final share in findState.live) shareRow(share),
+    ];
+  }
+
+  PanelRow shareRow(PublicShare share) {
+    final host = share.host == null ? '?' : TogetherModel.shown(share.host!).name;
+    final name =
+        app.games.where((game) => game.titleId == share.titleId).firstOrNull?.nameFor([_lang]) ??
+        pickName(share.names, _lang) ??
+        share.title ??
+        share.titleId;
+    final detail = [
+      T.format('sharePlayWatching', [share.viewers, share.maxViewers]),
+      if (share.language case final language?) DiscoverLanguages.name(language),
+    ].join(' · ');
+    final person = share.host == null ? null : TogetherModel.card(share.host!, status: PersonStatus.playing);
+    if (share.open) {
+      return PanelRow(
+        id: 'live-${share.id}',
+        title: T.format('sharePlayWatchFriend', [host, name]),
+        detail: detail,
+        person: person,
+        kind: ActionRow(() => unawaited(app.sharePlay.watch(share.id))),
+      );
+    }
+    if (share.requested || findState.askedToWatch.contains(share.id)) {
+      return PanelRow(
+        id: 'live-${share.id}',
+        title: T.format('discoverAskedToWatch', [host, name]),
+        detail: detail,
+        person: person,
+        kind: const InfoRow(''),
+      );
+    }
+    return PanelRow(
+      id: 'live-${share.id}',
+      title: T.format('discoverAskToWatch', [host, name]),
+      detail: detail,
+      person: person,
+      kind: ActionRow(() => unawaited(askToWatch(share, host))),
+    );
+  }
+
+  /// Asks the host of a share play under Live now to let the user watch; their yes comes as an
+  /// invite in the Friends panel.
+  Future<void> askToWatch(PublicShare share, String host) async {
+    try {
+      await SharePlayClient(account).askToWatch(share.id);
+      findState.askedToWatch = {...findState.askedToWatch, share.id};
+      app.show(T.format('discoverAskedToWatchToast', [host]));
+    } on Object catch (error) {
+      app.show(message(error));
+    }
+    app.refresh();
+  }
+
   List<PanelRow> publicPartyRows() => [
     PanelRow(
       id: 'pub-title',
@@ -655,7 +730,11 @@ extension TogetherFind on TogetherModel {
         title: waiting > 0 ? '${T.text('discoverMyPosts')} ($waiting)' : T.text('discoverMyPosts'),
         rows: myPostRows(),
       ),
-      PanelCategory(id: 'parties', title: T.text('discoverPublicParties'), rows: publicPartyRows()),
+      PanelCategory(
+        id: 'parties',
+        title: T.text((family.rules?.sharePlay ?? true) ? 'discoverLiveAndParties' : 'discoverPublicParties'),
+        rows: [...liveRows(), ...publicPartyRows()],
+      ),
       PanelCategory(id: 'people', title: T.text('discoverPeople'), rows: peopleRows()),
     ];
   }
@@ -975,11 +1054,11 @@ extension TogetherFind on TogetherModel {
     app.refresh();
   }
 
-  /// Let in: to the party (its invite waits there). A share play invite is the Mac's: this
-  /// launcher has no share play to watch, so it opens the party panel where its invite shows.
+  /// Let in: to the party (its invite waits there), or watching the share play.
   void followInvite(LfgInvite? invite) {
     if (invite == null) return;
-    if (invite.isSharePlay || hub.parties.party?.id == invite.id) return app.open(Layer.party);
+    if (invite.isSharePlay) return unawaited(app.sharePlay.watch(invite.id));
+    if (hub.parties.party?.id == invite.id) return app.open(Layer.party);
     unawaited(joinParty(invite.id));
   }
 

@@ -1,319 +1,158 @@
-import 'dart:typed_data';
-
-import 'package:anyps5_desktop/core/controllers/pad_info.dart';
-import 'package:anyps5_desktop/core/gamepad/pad_navigation.dart';
-import 'package:anyps5_desktop/core/remote/remote_protocol.dart';
-import 'package:anyps5_desktop/core/together/share_audio.dart';
+import 'package:anyps5_desktop/core/together/media.dart';
 import 'package:anyps5_desktop/core/together/share_play.dart';
 import 'package:anyps5_desktop/core/together/share_watch.dart';
-import 'package:fake_async/fake_async.dart';
+import 'package:anyps5_desktop/core/together/socket.dart';
 import 'package:test/test.dart';
 
-class FakeWatchLink implements WatchLink {
-  final remotes = <Map<String, dynamic>>[];
-  final locals = <Map<String, dynamic>>[];
-  final candidates = <Map<String, dynamic>>[];
-  final texts = <(String, String)>[];
-  final binaries = <(String, Uint8List)>[];
-  bool remote = false;
-  bool closed = false;
-  bool open = true;
-  bool refuseStereo = false;
-  String state = 'new';
-  void Function()? stateChanged;
-  void Function(String)? opened;
-  void Function(String, Uint8List)? binary;
-  void Function(Map<String, dynamic>)? candidate;
+import '../support/fake_sfu.dart';
+import '../support/fake_together.dart';
 
-  @override
-  Future<void> setRemote(Map<String, dynamic> description) async {
-    remotes.add(description);
-    remote = true;
-  }
+Map<String, dynamic> share({String media = 'sfu', int? mySlot, bool watching = true, String id = 's-1'}) => {
+  'id': id,
+  'host': FakeTogether.card('u-host', 'host', 'Host'),
+  'hostDevice': 'd-host',
+  'titleId': 'PPSA01001',
+  'open': true,
+  'maxViewers': 12,
+  'media': media,
+  'viewers': [
+    if (watching) {'user': FakeTogether.card('u-me', 'utku', 'Utku'), 'device': 'd-me', 'slot': mySlot},
+    {'user': FakeTogether.card('u-ana', 'ana', 'Ana'), 'device': 'd-ana', 'slot': null},
+  ],
+};
 
-  @override
-  Future<Map<String, dynamic>> createAnswer() async => {
-    'type': 'answer',
-    'sdp': 'v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=rtpmap:111 opus/48000/2\r\na=fmtp:111 minptime=10',
-  };
+SfuAccess room(String token, {DateTime? expires}) => SfuAccess(
+  url: 'wss://media.example.org',
+  token: token,
+  room: 'share-s-1',
+  identity: 'u-me',
+  expiresAt: expires ?? DateTime.now().add(const Duration(minutes: 10)),
+);
 
-  @override
-  Future<void> setLocal(Map<String, dynamic> description) async {
-    if (refuseStereo && (description['sdp'] as String).contains('stereo')) throw StateError('no');
-    locals.add(description);
-  }
+SharePlayStart joined(Map<String, dynamic> sharePlay, {SfuAccess? sfu}) =>
+    SharePlayStart(SharePlay.fromJson(sharePlay), const [], null, sfu: sfu);
 
-  @override
-  Future<void> addCandidate(Map<String, dynamic> candidate) async => candidates.add(candidate);
-  @override
-  bool get hasRemote => remote;
-  @override
-  String get connectionState => closed ? 'closed' : state;
-  @override
-  set onCandidate(void Function(Map<String, dynamic>) handler) => candidate = handler;
-  @override
-  set onState(void Function() handler) => stateChanged = handler;
-  @override
-  set onOpen(void Function(String) handler) => opened = handler;
-  @override
-  set onBinary(void Function(String, Uint8List) handler) => binary = handler;
-
-  @override
-  bool sendBinary(String label, Uint8List bytes, {int most = 65536}) {
-    if (!open) return false;
-    binaries.add((label, bytes));
-    return true;
-  }
-
-  @override
-  bool sendText(String label, String text) {
-    if (!open) return false;
-    texts.add((label, text));
-    return true;
-  }
-
-  @override
-  Future<WatchStats> stats() async => const WatchStats(roundTripMs: 31, framesPerSecond: 60, height: 720);
-  @override
-  Future<void> close() async => closed = true;
-}
-
-class FakeWatchEngine implements WatchEngine {
-  final links = <FakeWatchLink>[];
-  @override
-  List<ShareAudioCodec> codecs = const [ShareAudioCodec.opus, ShareAudioCodec.pcm];
-  @override
-  Future<WatchLink> link(List<Map<String, dynamic>> iceServers) async {
-    final link = FakeWatchLink();
-    links.add(link);
-    return link;
-  }
-}
-
-ShareSignal fromHost(String kind, [Object? data, String device = 'host-dev']) =>
-    ShareSignal(sharePlayId: 's1', from: 'h', device: device, kind: kind, data: data);
+TogetherEvent updated(Map<String, dynamic> sharePlay) => TogetherEvent('e', 'share_play.updated', sharePlay);
 
 void main() {
-  group('audio', () {
-    test('the hello reads and writes as the Mac and the website send it', () {
-      const hello = ShareAudioHello([ShareAudioCodec.opus, ShareAudioCodec.pcm]);
-      expect(hello.text, '{"type":"audio-hello","v":1,"codecs":["opus","pcm"]}');
-      expect(ShareAudioHello.parse('{"type":"audio-hello","v":1,"codecs":["flac","pcm"]}')!.codecs, [ShareAudioCodec.pcm]);
-      expect(ShareAudioHello.parse('{"type":"audio-hello","v":1,"codecs":["pcm"]}')!.chosen, ShareAudioCodec.pcm);
-      expect(ShareAudioHello.parse('nope'), isNull);
-      expect(ShareAudioHello.parse('{"type":"other","codecs":[]}'), isNull);
-    });
+  late List<FakeSfuRoom> rooms;
+  late List<String> fetched;
+  late List<bool> mesh;
+  late bool failNext;
+  late ShareWatch watch;
 
-    test('stereo Opus is asked for on every Opus format, with the rate and 10 ms frames', () {
-      const sdp = 'v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111 63\r\na=rtpmap:111 opus/48000/2\r\na=fmtp:111 minptime=10;stereo=0\r\n'
-          'a=rtpmap:63 opus/48000/2\r\na=ptime:20\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=rtpmap:96 H264/90000';
-      final viewer = ShareAudioSdp.stereoOpus(sdp);
-      expect(viewer, contains('a=fmtp:111 minptime=10;stereo=1;sprop-stereo=1\r\n'));
-      expect(viewer, contains('a=rtpmap:63 opus/48000/2\r\na=fmtp:63 stereo=1;sprop-stereo=1'));
-      expect(viewer, contains('a=ptime:20'));
-      final host = ShareAudioSdp.stereoOpus(sdp, kbps: 128, frameMs: 10);
-      expect(host, contains('maxaveragebitrate=128000;useinbandfec=1;usedtx=0'));
-      expect(host, contains('a=ptime:10\r\nm=video'));
-      expect(ShareAudioSdp.stereoOpus('v=0\r\nm=video 9 X 96'), 'v=0\r\nm=video 9 X 96');
-    });
-
-    test('an answer takes Opus only with an audio section that is not turned down', () {
-      const opus = 'm=audio 9 X 111\r\na=rtpmap:111 opus/48000/2\r\na=recvonly';
-      expect(ShareAudioSdp.takesOpus(opus), isTrue);
-      expect(ShareAudioSdp.takesOpus('m=audio 0 X 111\r\na=rtpmap:111 opus/48000/2'), isFalse);
-      expect(ShareAudioSdp.takesOpus('m=audio 9 X 111\r\na=rtpmap:111 opus/48000/2\r\na=inactive'), isFalse);
-      expect(ShareAudioSdp.takesOpus('m=video 9 X 96\r\na=rtpmap:96 H264/90000'), isFalse);
-    });
-  });
-
-  group('the pad packet', () {
-    test('a controller as the engine\'s 80-byte input, as the Mac sends it', () {
-      const state = PadState(
-        pressed: {PadButton.south, PadButton.dpadUp, PadButton.start, PadButton.select},
-        leftX: -1,
-        leftY: 1,
-        rightX: 0,
-        rightY: -0.5,
-        l2: 0.05,
-        r2: 1,
-      );
-      final packet = SharePadPacket.packet(state, sequence: 7, sentMicros: 1234, session: 99);
-      final data = ByteData.sublistView(packet);
-      expect(packet, hasLength(RemotePacket.inputSize));
-      expect(RemotePacket.inputSession(packet), 99);
-      expect(data.getUint32(8, Endian.little), 7);
-      expect(data.getUint64(16, Endian.little), 1234);
-      expect(
-        data.getUint32(32, Endian.little),
-        SharePadPacket.cross | SharePadPacket.up | SharePadPacket.options | SharePadPacket.touchPad | SharePadPacket.r2,
-      );
-      expect(packet.sublist(36, 42), [0, 255, 128, 64, 13, 255]);
-      expect(data.getFloat32(60, Endian.little), closeTo(9.80665, 0.0001));
-    });
-
-    test('the pump sends on a change and at least every 8 ms, and waits for the channel', () {
-      var state = const PadState();
-      var now = DateTime(2026, 11, 6, 12);
-      var open = false;
-      final sent = <Uint8List>[];
-      final pump = SharePadPump(
-        read: () => state,
-        send: (packet) {
-          if (!open) return false;
-          sent.add(packet);
-          return true;
-        },
-        session: 5,
-        now: () => now,
-      );
-      pump.tick();
-      expect(sent, isEmpty);
-      open = true;
-      pump.tick();
-      pump.tick();
-      expect(sent, hasLength(1), reason: 'nothing changed within 8 ms');
-      now = now.add(const Duration(milliseconds: 9));
-      pump.tick();
-      expect(sent, hasLength(2), reason: 'kept alive');
-      state = const PadState(pressed: {PadButton.east});
-      pump.tick();
-      expect(sent, hasLength(3));
-      expect(ByteData.sublistView(sent.last).getUint32(32, Endian.little), SharePadPacket.circle);
-      expect(ByteData.sublistView(sent.last).getUint32(8, Endian.little), 3);
-    });
-  });
-
-  group('the viewer', () {
-    late FakeWatchEngine engine;
-    late List<(String, String, String, Object?)> signals;
-    late List<Uint8List> sound;
-    late ShareWatchSession session;
-
-    ShareWatchSession make() => ShareWatchSession(
-      id: 's1',
-      hostId: 'h',
-      hostDevice: 'host-dev',
-      engine: engine,
-      iceServers: const [],
-      signal: (to, device, kind, data) => signals.add((to, device, kind, data)),
-      onSound: sound.add,
-      changed: () {},
+  setUp(() {
+    rooms = [];
+    fetched = [];
+    mesh = [];
+    failNext = false;
+    watch = ShareWatch(
+      me: 'u-me',
+      room: () {
+        final made = FakeSfuRoom(fail: failNext);
+        rooms.add(made);
+        return made;
+      },
+      access: (id) async {
+        fetched.add(id);
+        return room('fresh-${fetched.length}');
+      },
+      onMesh: mesh.add,
     );
+  });
 
-    setUp(() {
-      engine = FakeWatchEngine();
-      signals = [];
-      sound = [];
-      session = make();
-    });
+  test('which way a viewer watches: the media server only in an "sfu" share play without a pad', () {
+    expect(ShareWatch.pathFor(SharePlay.fromJson(share()), 'u-me'), ShareWatchPath.sfu);
+    expect(ShareWatch.pathFor(SharePlay.fromJson(share(mySlot: 2)), 'u-me'), ShareWatchPath.mesh);
+    expect(ShareWatch.pathFor(SharePlay.fromJson(share(media: 'mesh')), 'u-me'), ShareWatchPath.mesh);
+    expect(ShareWatch.pathFor(SharePlay.fromJson(share()..remove('media')), 'u-me'), ShareWatchPath.mesh);
+    expect(ShareWatch.pathFor(SharePlay.fromJson(share(watching: false)), 'u-me'), ShareWatchPath.none);
+  });
 
-    test('asks for an offer, then again a moment later and every few seconds until connected', () {
-      fakeAsync((async) {
-        session.start();
-        expect(signals.single.$3, 'renegotiate');
-        async.elapse(const Duration(milliseconds: 1600));
-        expect(signals, hasLength(2));
-        async.elapse(const Duration(seconds: 5));
-        expect(signals, hasLength(3));
-        session.receive(fromHost('offer', {'type': 'offer', 'sdp': 'o1'}));
-        async.flushMicrotasks();
-        engine.links.single
-          ..state = 'connected'
-          ..stateChanged!();
-        final asked = signals.where((signal) => signal.$3 == 'renegotiate').length;
-        async.elapse(const Duration(seconds: 20));
-        expect(signals.where((signal) => signal.$3 == 'renegotiate').length, asked);
-        expect(session.connected, isTrue);
-      });
-    });
+  test('a mesh share play never touches the media server', () async {
+    await watch.start(joined(share(media: 'mesh')));
+    expect(watch.path, ShareWatchPath.mesh);
+    expect(rooms, isEmpty);
+    expect(mesh, [true]);
+    await watch.handle(updated(share(media: 'mesh')));
+    expect(mesh, [true], reason: 'told once');
+    expect(fetched, isEmpty);
+  });
 
-    test('answers the offer with stereo Opus, after the candidates that came early', () async {
-      await session.receive(fromHost('candidate', {'candidate': 'c0', 'sdpMid': '0', 'sdpMLineIndex': 0}));
-      await session.receive(fromHost('offer', {'type': 'offer', 'sdp': 'o1'}, 'host-dev-2'));
-      final link = engine.links.single;
-      expect(link.remotes.single, {'type': 'offer', 'sdp': 'o1'});
-      expect(link.candidates.single['candidate'], 'c0');
-      expect(link.locals.single['sdp'], contains('stereo=1;sprop-stereo=1'));
-      final answer = signals.last;
-      expect(answer.$3, 'answer');
-      expect(answer.$2, 'host-dev-2', reason: 'the host\'s device follows its signals');
-      expect((answer.$4! as Map)['sdp'], contains('stereo=1'));
-      await session.receive(fromHost('candidate', {'candidate': 'c1'}));
-      expect(link.candidates, hasLength(2));
-      // A second offer on the same connection (the Opus track added) goes on the same link.
-      await session.receive(fromHost('offer', {'type': 'offer', 'sdp': 'o2'}));
-      expect(engine.links, hasLength(1));
-      expect(link.remotes, hasLength(2));
-    });
+  test("without a pad: the join answer's room, the host's picture, no mesh at all", () async {
+    await watch.start(joined(share(), sfu: room('from-join')));
+    expect(watch.path, ShareWatchPath.sfu);
+    expect(rooms.single.access?.token, 'from-join');
+    expect(fetched, isEmpty);
+    expect(mesh, isEmpty, reason: 'no mesh signals while watching from the server');
+    expect(watch.hasPicture, isFalse);
+    rooms.single.tracks['u-ana'] = {'game'};
+    expect(watch.hasPicture, isFalse, reason: "only the host's game track is the picture");
+    rooms.single.tracks['u-host'] = {sfuTrackNames.video, sfuTrackNames.audio};
+    expect(watch.hasPicture, isTrue);
+  });
 
-    test('an answer WebRTC refuses with stereo goes as it was made', () async {
-      await session.receive(fromHost('offer', {'type': 'offer', 'sdp': 'o1'}));
-      final link = engine.links.single..refuseStereo = true;
-      await session.receive(fromHost('offer', {'type': 'offer', 'sdp': 'o2'}));
-      expect(link.locals.last['sdp'], isNot(contains('stereo')));
-    });
+  test('a pad handed over moves to the mesh; taken back, to a fresh room', () async {
+    await watch.start(joined(share(), sfu: room('from-join')));
+    await watch.handle(updated(share(mySlot: 3)));
+    expect(watch.path, ShareWatchPath.mesh);
+    expect(rooms.single.left, isTrue);
+    expect(mesh, [true]);
+    await watch.handle(updated(share()));
+    expect(watch.path, ShareWatchPath.sfu);
+    expect(mesh, [true, false]);
+    expect(fetched, ['s-1'], reason: 'the join token was used');
+    expect(rooms.last.access?.token, 'fresh-1');
+    expect(rooms.last.left, isFalse);
+  });
 
-    test('says hello on the sound channel once, plays PCM and hands pad answers on', () async {
-      final padOut = <Uint8List>[];
-      session = ShareWatchSession(
-        id: 's1',
-        hostId: 'h',
-        hostDevice: 'host-dev',
-        engine: engine,
-        iceServers: const [],
-        signal: (to, device, kind, data) => signals.add((to, device, kind, data)),
-        onSound: sound.add,
-        onPadOutput: padOut.add,
-        changed: () {},
-      );
-      await session.receive(fromHost('offer', {'type': 'offer', 'sdp': 'o1'}));
-      final link = engine.links.single;
-      link.opened!('pad');
-      link.opened!('audio');
-      link.opened!('audio');
-      expect(link.texts, [('audio', '{"type":"audio-hello","v":1,"codecs":["opus","pcm"]}')]);
-      link.binary!('audio', Uint8List(976));
-      link.binary!('pad', Uint8List(32));
-      expect(sound, hasLength(1));
-      expect(padOut, hasLength(1));
-      expect(session.sendPad(Uint8List(80)), isTrue);
-      expect(link.binaries.single.$1, 'pad');
-    });
+  test('a share play that turns "sfu" mid-way leaves the mesh for the room', () async {
+    await watch.start(joined(share(media: 'mesh')));
+    await watch.handle(updated(share()));
+    expect(mesh, [true, false]);
+    expect(rooms.single.access?.token, 'fresh-1');
+  });
 
-    test('a launcher that plays no Opus track sends no hello and takes PCM', () async {
-      engine.codecs = const [];
-      await session.receive(fromHost('offer', {'type': 'offer', 'sdp': 'o1'}));
-      engine.links.single.opened!('audio');
-      expect(engine.links.single.texts, isEmpty);
-    });
+  test('a join token past its time is not used: a fresh one is asked for', () async {
+    await watch.start(joined(share(), sfu: room('old', expires: DateTime.now().subtract(const Duration(seconds: 1)))));
+    expect(rooms.single.access?.token, 'fresh-1');
+  });
 
-    test('a broken link asks again; bye drops the connection; signals from others are not taken', () async {
-      await session.receive(fromHost('offer', {'type': 'offer', 'sdp': 'o1'}));
-      final link = engine.links.single;
-      signals.clear();
-      link
-        ..state = 'failed'
-        ..stateChanged!();
-      expect(signals.single.$3, 'renegotiate');
-      expect(session.state, 'reconnecting');
-      await session.receive(fromHost('offer', {'type': 'offer', 'sdp': 'o2'}));
-      expect(engine.links, hasLength(2), reason: 'a failed connection is made again');
-      expect(link.closed, isTrue);
-      await session.receive(const ShareSignal(sharePlayId: 's1', from: 'stranger', device: 'x', kind: 'bye'));
-      expect(engine.links.last.closed, isFalse);
-      await session.receive(fromHost('bye'));
-      expect(engine.links.last.closed, isTrue);
-      expect(session.state, 'waiting');
-      await session.close();
-      expect(signals.where((signal) => signal.$3 == 'bye'), isEmpty, reason: 'no connection left to say bye on');
-    });
+  test('a media server that cannot be reached is tried again on the next update', () async {
+    failNext = true;
+    await watch.start(joined(share(), sfu: room('from-join')));
+    expect(watch.path, ShareWatchPath.sfu);
+    expect(watch.problem, isTrue);
+    expect(watch.server, isNull);
+    failNext = false;
+    await watch.handle(updated(share()));
+    expect(watch.problem, isFalse);
+    expect(watch.server, same(rooms.last));
+    expect(rooms.last.connected, isTrue);
+  });
 
-    test('leaving says bye to the host', () async {
-      await session.receive(fromHost('offer', {'type': 'offer', 'sdp': 'o1'}));
-      await session.close();
-      expect(signals.last.$3, 'bye');
-      expect(engine.links.single.closed, isTrue);
-      expect(session.state, 'closed');
-    });
+  test('taken out, or the share play ended: out of the room; other share plays are not ours', () async {
+    await watch.start(joined(share(), sfu: room('from-join')));
+    await watch.handle(updated(share(id: 's-2', mySlot: 2)));
+    expect(watch.path, ShareWatchPath.sfu);
+    await watch.handle(updated(share(watching: false)));
+    expect(watch.path, ShareWatchPath.none);
+    expect(rooms.single.left, isTrue);
+
+    await watch.start(joined(share(), sfu: room('again')));
+    await watch.handle(const TogetherEvent('e', 'share_play.ended', {'sharePlayId': 's-1'}));
+    expect(watch.path, ShareWatchPath.none);
+    expect(watch.sharePlay, isNull);
+    expect(rooms.last.left, isTrue);
+  });
+
+  test('stopping leaves the room and the mesh', () async {
+    await watch.start(joined(share(mySlot: 2)));
+    await watch.stop();
+    expect(mesh, [true, false]);
+    await watch.start(joined(share(), sfu: room('from-join')));
+    await watch.stop();
+    expect(rooms.single.left, isTrue);
+    expect(watch.path, ShareWatchPath.none);
   });
 }

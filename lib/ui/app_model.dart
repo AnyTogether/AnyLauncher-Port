@@ -64,6 +64,7 @@ import '../core/profiles/profile_saves.dart';
 import '../core/profiles/profiles.dart';
 import '../core/together/account.dart' show ClientTooOld, TogetherAccount;
 import '../core/together/levels.dart';
+import '../core/together/media.dart' show SfuRoom;
 import '../core/together/talk_key.dart';
 import '../core/together/token_store.dart';
 import '../core/online/online_peer_mesh.dart';
@@ -960,6 +961,7 @@ class LauncherServices {
     this.togetherServer,
     this.togetherPollEvery,
     this.voiceEngine,
+    this.sfuRoom,
     this.gameLinks,
     this.talkKeys,
     this.engineReleases,
@@ -1093,6 +1095,9 @@ class LauncherServices {
 
   /// Party voice's microphone and connections; flutter_webrtc by default.
   final VoiceEngine Function()? voiceEngine;
+
+  /// Media server rooms, for share plays and party calls bigger than the mesh; LiveKit by default.
+  final SfuRoom Function()? sfuRoom;
 
   /// Online play's peer connections to the other players; flutter_webrtc by default.
   final GameLinks Function()? gameLinks;
@@ -1953,6 +1958,8 @@ class AppModel extends ChangeNotifier {
     editingRow = id;
     // A click in Settings' search field: the keys are there.
     if (id == SettingsSearch.searchRow) settingsSearchFocused = true;
+    // A click in the party chat's field: the keys are in the chat.
+    if (id == TogetherPartyChat.draftRow) together.partyChatKeys.focused = true;
     notifyListeners();
   }
 
@@ -3735,6 +3742,8 @@ class AppModel extends ChangeNotifier {
       galleryIndex = 0;
       galleryViewing = false;
     }
+    // The party's chat: its newest messages, read while it shows.
+    if (next == Layer.party) together.partyScreenOpened();
     _skipToFocusable();
     _changed();
   }
@@ -3981,6 +3990,9 @@ class AppModel extends ChangeNotifier {
         return;
       case Layer.messages:
         together.messagesCommand(command);
+        return;
+      // The party's chat beside its rows: → into it, everything while the keys are there.
+      case Layer.party when together.partyChatCommand(command):
         return;
       case Layer.profile:
         together.profileCommand(command);
@@ -6031,6 +6043,7 @@ class AppModel extends ChangeNotifier {
     panelSections = false;
     settingsSearchFocused = false;
     editingValue = null;
+    together.partyChatKeys.focused = false;
     handle(Command.select);
   }
 
@@ -6079,6 +6092,7 @@ class AppModel extends ChangeNotifier {
     panelRow = index;
     pointerFocus = true;
     settingsSearchFocused = false;
+    together.partyChatKeys.focused = false;
     _changed();
   }
 

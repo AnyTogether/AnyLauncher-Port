@@ -11,6 +11,8 @@ import 'strings.dart';
 import 'theme.dart';
 import 'together_model.dart';
 
+part 'party_chat_view.dart';
+
 /// Messages: the conversations and friends on the left, the thread on the right with the quick
 /// replies a controller can send and a field to type in.
 class MessagesView extends StatelessWidget {
@@ -649,6 +651,7 @@ class _Bubble extends StatelessWidget {
     this.author,
     this.quote,
     this.receipt,
+    this.maxWidth = 560,
   });
 
   final ChatMessage message;
@@ -663,6 +666,9 @@ class _Bubble extends StatelessWidget {
 
   /// Under the user's newest message: Sent, Delivered, Read, Seen by.
   final String? receipt;
+
+  /// How wide a bubble grows at most (the party's narrower chat keeps them narrower).
+  final double maxWidth;
   final VoidCallback onTap;
   final void Function(String name) onReaction;
 
@@ -689,7 +695,7 @@ class _Bubble extends StatelessWidget {
         crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: 560 * scale),
+            constraints: BoxConstraints(maxWidth: maxWidth * scale),
             child: FocusRing(
               focused: focused,
               radius: 18 * scale,

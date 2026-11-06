@@ -165,6 +165,8 @@
   "profileFailed": "Hindi ma-load ito ngayon",
   "profileNoGames": "Wala pang larong nalalaro",
   "profileNoTrophies": "Wala pang tropeo",
+  "profileRecentActivity": "Kamakailang aktibidad",
+  "profileNoActivity": "Wala pang aktibidad",
   "profileLoading": "Naglo-load…",
   "profileHoursMinutes": "%d h %d min",
   "profileHoursOnly": "%d h",

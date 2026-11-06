@@ -442,3 +442,84 @@ class _ReactionPill extends StatelessWidget {
     );
   }
 }
+
+/// One item of someone's recent activity on their profile, as the Mac's profile column has it:
+/// who and what on two lines, when, and the reactions it got as counts; reacting stays in the
+/// feed.
+class ProfileActivityRow extends StatelessWidget {
+  const ProfileActivityRow({super.key, required this.model, required this.item, required this.focused});
+
+  final AppModel model;
+  final Activity item;
+  final bool focused;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final ink = focused ? LookScope.focusedInk(context) : Colors.white;
+    final local = item.game == null
+        ? null
+        : model.games.where((game) => game.titleId == item.game!.titleId).firstOrNull;
+    final reactions = [for (final reaction in Reaction.values) if (item.reactions.count(reaction) > 0) reaction];
+    return PaneRow(
+      focused: focused,
+      radius: 14 * scale,
+      margin: EdgeInsets.only(bottom: 8 * scale),
+      padding: EdgeInsets.all(12 * scale),
+      child: Row(
+        children: [
+          PersonAvatar(person: TogetherModel.card(item.actor), size: 40 * scale),
+          SizedBox(width: 14 * scale),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: TogetherModel.shown(item.actor).name,
+                        style: AppText.display(15 * scale, weight: FontWeight.w600, color: ink),
+                      ),
+                      TextSpan(
+                        text: ' ${model.together.activityText(item)}',
+                        style: AppText.display(15 * scale, color: ink.withValues(alpha: 0.82)),
+                      ),
+                    ],
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                SizedBox(height: 5 * scale),
+                Row(
+                  children: [
+                    Text(
+                      TogetherSocial.ago(item.createdAt),
+                      style: AppText.display(12 * scale, weight: FontWeight.w500, color: ink.withValues(alpha: 0.55)),
+                    ),
+                    for (final reaction in reactions) ...[
+                      SizedBox(width: 12 * scale),
+                      Icon(FeedView.icon(reaction), size: 14 * scale, color: FeedView.color(reaction)),
+                      SizedBox(width: 4 * scale),
+                      Text(
+                        T.number(item.reactions.count(reaction)),
+                        style: AppText.display(12 * scale, weight: FontWeight.w600, color: ink.withValues(alpha: 0.7)),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (local?.icon != null) ...[
+            SizedBox(width: 14 * scale),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10 * scale),
+              child: SizedBox.square(dimension: 48 * scale, child: ArtworkImage(path: local!.icon!, cacheWidth: 144)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}

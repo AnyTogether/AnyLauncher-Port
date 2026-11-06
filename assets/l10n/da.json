@@ -163,6 +163,8 @@
   "profileFailed": "Kunne ikke indlæses i øjeblikket",
   "profileNoGames": "Ingen spil spillet endnu",
   "profileNoTrophies": "Ingen trofæer endnu",
+  "profileRecentActivity": "Seneste aktivitet",
+  "profileNoActivity": "Ingen aktivitet endnu",
   "profileLoading": "Indlæser…",
   "profileHoursMinutes": "%d t %d min",
   "profileHoursOnly": "%d t",

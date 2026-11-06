@@ -165,6 +165,8 @@
   "profileFailed": "Nu s-a putut încărca momentan",
   "profileNoGames": "Încă nu există jocuri jucate",
   "profileNoTrophies": "Încă nu există trofee",
+  "profileRecentActivity": "Activitate recentă",
+  "profileNoActivity": "Nicio activitate încă",
   "profileLoading": "Se încarcă…",
   "profileHoursMinutes": "%d h %d min",
   "profileHoursOnly": "%d h",

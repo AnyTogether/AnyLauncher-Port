@@ -166,6 +166,8 @@
   "profileFailed": "Şu an yüklenemedi",
   "profileNoGames": "Henüz oynanmış oyun yok",
   "profileNoTrophies": "Henüz kupa yok",
+  "profileRecentActivity": "Son etkinlikler",
+  "profileNoActivity": "Henüz etkinlik yok",
   "profileLoading": "Yükleniyor…",
   "profileHoursMinutes": "%d sa %d dk",
   "profileHoursOnly": "%d sa",

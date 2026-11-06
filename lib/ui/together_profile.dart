@@ -61,10 +61,24 @@ extension TogetherProfiles on TogetherModel {
   /// Where the games start among the items the keys move through: after Compare trophies.
   int get profileGamesFrom => canCompare ? 1 : 0;
 
-  /// Items the keys move through: Compare trophies (on someone else's profile), the games, then
-  /// the trophies.
+  /// Items the keys move through: Compare trophies (on someone else's profile), the games, the
+  /// trophies, then the recent activity.
   int get profileItems =>
-      profileGamesFrom + (profile?.library.value?.length ?? 0) + (profile?.trophies.value?.length ?? 0);
+      profileGamesFrom +
+      (profile?.library.value?.length ?? 0) +
+      (profile?.trophies.value?.length ?? 0) +
+      (profile?.activity.value?.length ?? 0);
+
+  /// An activity item changed (the gateway's `feed.item`, a reaction in the feed): the profile
+  /// shown takes it too.
+  void profileActivityChanged(Activity item) {
+    final page = profile;
+    if (page == null) return;
+    final next = page.withActivity(item);
+    if (identical(next, page)) return;
+    profile = next;
+    app.refresh();
+  }
 
   void profileCommand(Command command) {
     switch (command) {

@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../core/discord_presence.dart';
-import '../core/together/parties.dart';
 import 'app_model.dart';
 import 'strings.dart';
 
@@ -126,7 +125,7 @@ class DiscordModel {
         partyText: T.text('discordInParty'),
         game: game?.name,
         since: since,
-        party: party == null ? null : DiscordParty(id: party.id, size: party.members.length, max: maxPartySize),
+        party: party == null ? null : DiscordParty(id: party.id, size: party.members.length, max: party.max),
         buttons: buttons,
       );
       if (game != null) _loadGames();

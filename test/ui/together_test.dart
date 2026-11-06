@@ -876,6 +876,30 @@ void main() {
       await together.joinParty('p-full');
       expect(model.toast, 'The party is full');
     });
+
+    test("a party bigger than the mesh: the server's size, and voice through the media server", () async {
+      final together = model.together;
+      await together.startParty();
+      server.party!['max'] = 24;
+      server.push('party.updated', server.party);
+      await until(() => together.hub.parties.party?.max == 24);
+      model.open(Layer.party);
+      expect(row('party-members').title, 'In the party · 1/24');
+
+      server.answers['POST calls'] = (
+        201,
+        {
+          'call': {'id': 'c-big', 'kind': 'party', 'partyId': server.party!['id'], 'media': 'sfu', 'in': const []},
+          'iceServers': const [],
+          'expiresAt': null,
+          'sfu': {'url': 'wss://media.example.org', 'token': 'jwt', 'room': 'call-c-big', 'identity': 'u-me'},
+        },
+      );
+      await together.joinVoice();
+      expect(model.toast, "You're in voice");
+      expect(together.hub.voice.viaServer, isTrue);
+      expect(row('voice-leave').detail, 'Through the media server');
+    });
   });
 
   group('message actions, receipts, pins', () {

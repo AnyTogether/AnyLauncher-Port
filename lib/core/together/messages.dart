@@ -335,6 +335,7 @@ class Conversation {
     this.muted = false,
     this.receipts,
     this.encrypted = false,
+    this.partyId,
   });
 
   factory Conversation.fromJson(Map<String, dynamic> json) {
@@ -363,6 +364,7 @@ class Conversation {
             ]
           : null,
       encrypted: json['encrypted'] == true,
+      partyId: json['partyId'] as String?,
     );
   }
 
@@ -385,6 +387,10 @@ class Conversation {
 
   /// A direct conversation with an end-to-end encrypted message in it: no plain text from then on.
   final bool encrypted;
+
+  /// The party whose chat this is (it sits beside the party, never in the list); null for any
+  /// other conversation, and from an older server.
+  final String? partyId;
 
   /// The others' messages after the read mark that are still there, as the server counts them;
   /// an older server's from the marks.
@@ -420,6 +426,7 @@ class Conversation {
     muted: muted,
     receipts: receipts ?? this.receipts,
     encrypted: encrypted || (lastMessage?.encrypted ?? false),
+    partyId: partyId,
   );
 
   /// The other person of a direct conversation.
@@ -457,6 +464,14 @@ class Messages with Notifier {
 
   List<Conversation> conversations = const [];
 
+  /// Conversations kept somewhere else: a party's chat, beside the party. They are not in the
+  /// list or its unread count, bring no notice, and are never a reason to read the list again.
+  final Set<String> elsewhere = {};
+
+  /// Conversations a message came in for that the list still did not have once it was read
+  /// again for it (a party's or a community's chat): the list is not read again for them.
+  final Set<String> _unlisted = {};
+
   /// A message did not get there: why (a blocked link, no connection).
   void Function(Object error)? onSendFailed;
 
@@ -487,9 +502,12 @@ class Messages with Notifier {
     final list = await account.call('GET', 'me/conversations');
     final fetched = [
       for (final json in (list['conversations'] as List<dynamic>? ?? const []))
-        Conversation.fromJson(json as Map<String, dynamic>),
+        if (Conversation.fromJson(json as Map<String, dynamic>) case final c
+            when c.partyId == null && !elsewhere.contains(c.id))
+          c,
     ];
     conversations = ordered(await _openLast(fetched));
+    _unlisted.removeAll(conversations.map((c) => c.id));
     loaded = true;
     await _countUnread();
     final shown = open;
@@ -884,7 +902,17 @@ class Messages with Notifier {
     }
     final conversation = byId(message.conversationId);
     if (conversation == null) {
-      unawaited(refresh().catchError((Object _) {}));
+      // A conversation new to the list is read with it, once: one the list does not have even
+      // then is left alone, however many messages come for it.
+      final id = message.conversationId;
+      if (!_unlisted.contains(id)) {
+        _unlisted.add(id);
+        unawaited(
+          refresh().then((_) {
+            if (byId(id) != null) _unlisted.remove(id);
+          }, onError: (Object _) => _unlisted.remove(id)),
+        );
+      }
       notifyListeners();
       return;
     }
@@ -1071,6 +1099,7 @@ class Messages with Notifier {
 
   void clear() {
     _typing.clear();
+    _unlisted.clear();
     conversations = const [];
     unread = 0;
     loaded = false;
@@ -1097,6 +1126,8 @@ class Messages with Notifier {
 
   void _handle(TogetherEvent event, ChatMessage? opened) {
     final data = event.json;
+    // A party's chat keeps its own messages (party_chat.dart).
+    if (elsewhere.contains(data['conversationId'])) return;
     switch (event.type) {
       case 'live.ready':
         unawaited(refresh().then((_) => _catchUp()).catchError((Object _) {}));

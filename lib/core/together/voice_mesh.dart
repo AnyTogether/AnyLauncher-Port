@@ -171,9 +171,11 @@ class VoiceMesh {
   }
 
   /// Leaves: a bye to everyone, every connection closed, the microphone off.
-  Future<void> close() async {
+  /// Out: a bye to everyone (unless the voice moved to another of the user's devices, which
+  /// talks to them now), every connection closed, the microphone let go.
+  Future<void> close({bool sayBye = true}) async {
     for (final peer in _peers.values.toList()) {
-      _send(peer, 'bye', null);
+      if (sayBye) _send(peer, 'bye', null);
       await peer.link.close();
     }
     _peers.clear();

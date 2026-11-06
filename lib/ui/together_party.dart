@@ -330,6 +330,17 @@ extension TogetherParty on TogetherModel {
       return [PanelRow(id: 'voice-off', title: T.text('familyNoVoice'), kind: InfoRow(T.text('familyNoVoiceDetail')))];
     }
     if (!voice.active) {
+      final elsewhere = voice.movedTo;
+      if (elsewhere != null && party.inCall.contains(user?.id)) {
+        return [
+          PanelRow(
+            id: 'voice-join',
+            title: T.text('voiceTakeBack'),
+            detail: T.text(elsewhere == 'phone' ? 'voiceOnPhone' : 'voiceOnOtherDevice'),
+            kind: ActionRow(() => unawaited(joinVoice())),
+          ),
+        ];
+      }
       final others = party.inCall.where((id) => id != user?.id).length;
       return [
         PanelRow(

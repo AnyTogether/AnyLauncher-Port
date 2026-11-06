@@ -137,6 +137,9 @@ class TogetherModel {
     hub.messages.onSendFailed = (error) => sendFailed(error);
     hub.voice
       ..pushToTalk = app.preferences.pushToTalk
+      ..onMoved = (client) {
+        app.show(T.text(client == 'phone' ? 'voiceMovedPhone' : 'voiceMovedAway'));
+      }
       ..addListener(_voiceChanged);
     final reader = app.services.talkKeys != null ? app.services.talkKeys!() : KeyStateReader.system();
     if (reader != null) {

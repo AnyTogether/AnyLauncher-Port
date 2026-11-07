@@ -32,8 +32,8 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
 }
 
-// The launcher's "setFullscreen" (a bool): the window full screen or back; "minimize". GTK
-// asks the window manager, which works on X11 and Wayland alike.
+// The launcher's "setFullscreen" (a bool): the window full screen or back; "minimize" and
+// "restore". GTK asks the window manager, which works on X11 and Wayland alike.
 static void window_method_cb(FlMethodChannel* channel,
                              FlMethodCall* method_call, gpointer user_data) {
   MyApplication* self = MY_APPLICATION(user_data);
@@ -57,6 +57,12 @@ static void window_method_cb(FlMethodChannel* channel,
   } else if (strcmp(fl_method_call_get_name(method_call), "minimize") == 0) {
     // The launcher's own Minimize, full screen having no title bar.
     gtk_window_iconify(window);
+    g_autoptr(FlValue) result = fl_value_new_bool(TRUE);
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
+  } else if (strcmp(fl_method_call_get_name(method_call), "restore") == 0) {
+    // Back from minimized once the game it stepped aside for has closed: in front again.
+    gtk_window_deiconify(window);
+    gtk_window_present(window);
     g_autoptr(FlValue) result = fl_value_new_bool(TRUE);
     response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
   } else if (strcmp(fl_method_call_get_name(method_call), "close") == 0) {

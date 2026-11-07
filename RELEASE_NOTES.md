@@ -8,6 +8,11 @@ release when it is made.
 - **Arabic and Urdu are laid out right to left**, as on the Mac. Every screen is mirrored, the
   games after the selected one sit on its left, and ← and → (and a mouse drag on the games and
   the sliders) follow what the screen shows. A share play you watch keeps the controller as it is.
+- **Hide the launcher while a game runs**, as on the Mac (Settings › Behaviour). The launcher's
+  window is minimized once the game starts and comes back when it closes. PS still brings it
+  back with the quick menu, and Resume puts it aside again.
+- **Check for updates can be turned off**, as on the Mac (Settings › Behaviour). Off, the
+  launcher and the engine look for new versions only when you ask in Settings › About.
 
 ## 0.1.20
 

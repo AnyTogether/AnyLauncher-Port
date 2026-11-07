@@ -459,6 +459,9 @@ void main() {
     // A plain test: real sockets to the fake server (testWidgets answers every HTTP request itself).
     test('signed in: the picture goes up as the AnyTogether one, and the account\'s comes down', () async {
       final server = await FakeTogether.start();
+      // The kept session is one the server knows, so nothing signs it out.
+      server.validAccess.add('access-u-me');
+      server.validRefresh.add('refresh-u-me');
       final store = MemoryTokenStore(session('u-me', 'utku', 'Utku'));
       fixture = makeFixture(together: server.base, togetherStore: store);
       final model = fixture.model;

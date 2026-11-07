@@ -15,6 +15,10 @@ release when it is made.
   with Let them watch and Not now, and the ones who asked with your code say so.
 - **A join code for your share play**, as on the Mac: make one, copy it or its link, make a
   new one or stop it. Anyone with it can ask to watch, and you still say yes to each one.
+- **Watch a big share play through the media server**, as on the Mac. In a share play with
+  more than four viewers you watch from the media server until the host lets you play, then
+  straight from the host, and back when they take the pad. The corner chip says when the
+  picture comes through the media server.
 - **A controller's battery in percent** where the system measures it, as on the Mac. On Linux
   it comes from the pad's power supply (DualSense, DualShock 4 and other pads whose driver gives
   a percentage). On Windows a DualSense or DualShock 4 is read from its own report. Pads the

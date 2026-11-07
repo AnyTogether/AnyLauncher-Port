@@ -18,8 +18,10 @@ import '../core/together/people.dart';
 import '../core/together/share_host.dart';
 import '../core/together/share_play.dart';
 import '../core/together/share_viewer.dart';
+import '../core/together/share_watch.dart';
 import '../core/together/socket.dart';
 import 'app_model.dart';
+import 'livekit_room.dart';
 import 'share_speaker.dart';
 import 'share_webrtc.dart';
 import 'strings.dart';
@@ -666,6 +668,10 @@ class SharePlayModel {
   // Watching.
 
   ShareWatchSession? _watch;
+
+  /// How the picture comes, as the Mac's watcher decides it: from the media server without a pad
+  /// in a share play that goes through it, else straight from the host ([_watch]).
+  ShareWatch? _route;
   WatchEngine? _watchEngine;
   ShareSoundOut? _speaker;
   SharePadPump? _pump;
@@ -683,7 +689,10 @@ class SharePlayModel {
   PanelSpot? _watchReturn;
 
   bool get isWatching => _watch != null;
-  bool get watchConnected => _watch?.connected ?? false;
+  bool get watchConnected => (_watch?.connected ?? false) || (_route?.hasPicture ?? false);
+
+  /// Watching from the media server now.
+  bool get watchViaServer => _route?.path == ShareWatchPath.sfu;
 
   /// The pad the host handed the user, null while they only watch.
   int? get watchSlot {
@@ -693,6 +702,11 @@ class SharePlayModel {
 
   /// The host's picture, drawn by flutter_webrtc; nothing in tests.
   Widget? watchVideo() {
+    final route = _route;
+    final host = watching?.host?.id;
+    if (route != null && route.path == ShareWatchPath.sfu && host != null) {
+      return ServerPicture(room: route.server, host: host, placeholder: const SizedBox.shrink());
+    }
     final engine = _watchEngine;
     if (engine is! WebRtcWatch) return null;
     return RTCVideoView(engine.renderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain);
@@ -735,7 +749,7 @@ class SharePlayModel {
       if (host == null) return;
       final engine = watchEngineOverride?.call() ?? WebRtcWatch();
       final speaker = speakerOverride?.call() ?? SoloudShareSound();
-      final session = ShareWatchSession(
+      ShareWatchSession mesh() => ShareWatchSession(
         id: id,
         hostId: host.id,
         hostDevice: joined.sharePlay.hostDevice,
@@ -746,6 +760,7 @@ class SharePlayModel {
         onSound: speaker.push,
         changed: app.refresh,
       );
+      final session = mesh();
       _watch = session;
       _watchEngine = engine;
       _speaker = speaker;
@@ -755,11 +770,40 @@ class SharePlayModel {
       _watchReturn = app.overlay == Layer.shareWatch ? _watchReturn : app.spot;
       unawaited(app.startSound());
       app.open(Layer.shareWatch);
-      session.start();
+      // The direct connection to the host only while the route says so: on the mesh, or with a
+      // pad; from the media server otherwise, as on the Mac.
+      var started = false;
+      final route = ShareWatch(
+        me: me.id,
+        room: app.services.sfuRoom ?? LiveKitRoom.new,
+        access: (shareId) => MediaServerClient(app.together.account).sharePlay(shareId),
+        onMesh: (on) {
+          final current = _watch;
+          if (current == null || current.id != id) return;
+          if (on && !started) {
+            started = true;
+            current.start();
+          } else if (!on && started) {
+            // The pad taken back: off the host's connection, a fresh one ready for the next.
+            started = false;
+            _pump?.stop();
+            _pump = null;
+            final fresh = mesh();
+            _watch = fresh;
+            unawaited(current.close());
+          }
+          app.refresh();
+        },
+        changed: app.refresh,
+      );
+      _route = route;
+      await route.start(joined);
       _followSlot();
       _watchStatsTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
-        final stats = await session.stats();
-        if (_watch != session) return;
+        final current = _watch;
+        if (current == null || current.id != id) return;
+        final stats = await current.stats();
+        if (_watch != current) return;
         watchStats = stats;
         app.refresh();
       });
@@ -801,6 +845,9 @@ class SharePlayModel {
     final session = _watch;
     if (session == null) return;
     _watch = null;
+    final route = _route;
+    _route = null;
+    if (route != null) unawaited(route.stop().catchError((Object _) {}));
     _pump?.stop();
     _pump = null;
     _watchStatsTimer?.cancel();
@@ -835,7 +882,14 @@ class SharePlayModel {
         watching = sharePlay;
         final now = watchSlot;
         if (now != before) app.show(now == null ? T.text('sharePlayYouWatch') : T.format('sharePlayYouPlay', [now]));
-        _followSlot();
+        // The route follows: a pad handed over moves to the host's connection, taken back to the
+        // media server.
+        final route = _route;
+        if (route != null) {
+          unawaited(route.apply(sharePlay).then((_) => _followSlot(), onError: (Object _) {}));
+        } else {
+          _followSlot();
+        }
         app.refresh();
         return true;
       case 'share_play.signal' when data['sharePlayId'] == session.id:

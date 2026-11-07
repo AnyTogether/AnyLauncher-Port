@@ -16,6 +16,7 @@ import 'package:path/path.dart' as p;
 
 import '../core/share_play_test.dart' show FakeEngine;
 import '../core/share_viewer_test.dart' show FakeWatchEngine;
+import '../support/fake_sfu.dart';
 import '../support/fake_together.dart';
 import '../support/ui_support.dart';
 import 'desktop_features_test.dart' show FakeDesktop;
@@ -45,6 +46,7 @@ void main() {
   late Fixture fixture;
   late AppModel model;
   late FakeEngine engine;
+  late List<FakeSfuRoom> rooms;
 
   Future<void> until(bool Function() condition) async {
     for (var tries = 0; tries < 500 && !condition(); tries++) {
@@ -71,7 +73,16 @@ void main() {
   setUp(() async {
     server = await FakeTogether.start();
     server.friend('u-ana', 'ana', 'Ana', presence: {'state': 'online'});
-    fixture = makeFixture(together: server.base, desktop: TitledDesktop());
+    rooms = [];
+    fixture = makeFixture(
+      together: server.base,
+      desktop: TitledDesktop(),
+      sfuRoom: () {
+        final room = FakeSfuRoom();
+        rooms.add(room);
+        return room;
+      },
+    );
     model = fixture.model;
     engine = FakeEngine();
     model.sharePlay.engineOverride = () => engine;
@@ -370,6 +381,58 @@ void main() {
       await model.sharePlay.watch('sp-9');
       expect(model.toast, T.text('sharePlayFull'));
       expect(model.sharePlay.isWatching, isFalse);
+    });
+
+    test('through the media server: watched from there without a pad, from the host with one', () async {
+      server.answers['POST share-plays/sp-9/join'] = (
+        201,
+        {
+          'sharePlay': {...anas([me]), 'media': 'sfu', 'maxViewers': 12},
+          'iceServers': <Object>[],
+          'expiresAt': null,
+          'sfu': {
+            'url': 'wss://media.example.org',
+            'token': 'viewer-token',
+            'room': 'share-sp-9',
+            'identity': 'u-me',
+            'expiresAt': DateTime.now().add(const Duration(minutes: 10)).toUtc().toIso8601String(),
+          },
+        },
+      );
+      await model.sharePlay.watch('sp-9');
+      await until(() => rooms.isNotEmpty && rooms.single.connected);
+      expect(rooms.single.access!.token, 'viewer-token', reason: 'the join answer\'s room while fresh');
+      expect(model.sharePlay.watchViaServer, isTrue);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(server.frames.where((frame) => frame['op'] == 'signal'), isEmpty, reason: 'no direct connection asked for');
+      expect(model.sharePlay.watchConnected, isFalse);
+      rooms.single.tracks['u-ana'] = {'game', 'game-audio'};
+      rooms.single.changed?.call();
+      expect(model.sharePlay.watchConnected, isTrue, reason: 'the host\'s picture came from the media server');
+
+      // Ana hands over pad 2: out of the room, onto her connection.
+      server.push('share_play.updated', {
+        ...anas([{...me, 'slot': 2}]),
+        'media': 'sfu',
+        'maxViewers': 12,
+      });
+      await until(() => rooms.single.left);
+      await until(() => server.frames.any((frame) => frame['op'] == 'signal' && frame['kind'] == 'renegotiate'));
+      expect(model.sharePlay.watchViaServer, isFalse);
+
+      // And takes it back: a fresh room.
+      server.answers['GET share-plays/sp-9/sfu'] = (
+        200,
+        {'url': 'wss://media.example.org', 'token': 'fresh-token', 'room': 'share-sp-9', 'identity': 'u-me'},
+      );
+      server.push('share_play.updated', {...anas([me]), 'media': 'sfu', 'maxViewers': 12});
+      await until(() => rooms.length == 2 && rooms.last.connected);
+      expect(rooms.last.access!.token, 'fresh-token');
+
+      server.answers['POST share-plays/sp-9/leave'] = (204, null);
+      model.handle(Command.home);
+      await until(() => !model.sharePlay.isWatching);
+      await until(() => rooms.last.left);
     });
 
     test('a friend sharing who lets friends in is in the Friends panel', () async {

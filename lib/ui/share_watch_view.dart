@@ -114,6 +114,7 @@ class _Chip extends StatelessWidget {
     final stats = share.watchStats;
     final parts = [
       if (share.watchSlot case final slot?) T.format('sharePlayPlayer', [slot]) else T.text('sharePlayOnlyWatches'),
+      if (share.watchViaServer) T.text('mediaViaServer'),
       if (stats?.roundTripMs case final roundTrip?) T.format('sharePlayRoundTrip', [roundTrip.round()]),
       if ((stats?.framesPerSecond, stats?.height) case (final fps?, final height?)) '${height}p${fps.round()}',
     ];

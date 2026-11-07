@@ -80,12 +80,78 @@ void main() {
     });
   });
 
+  group('Advanced', () {
+    test('a game\'s sticks, mouse and ramps, as on the Mac, in the engine\'s input file', () {
+      openGame(orbit());
+      (row('advanced').kind as ActionRow).run();
+      expect(model.overlay, Layer.advanced);
+      expect(
+        model.panelCategories().single.rows.map((row) => row.id),
+        [
+          'sticksSection',
+          'leftDeadzone',
+          'rightDeadzone',
+          'mouseSection',
+          'sensitivity',
+          'vertical',
+          'curve',
+          'offset',
+          'maxSpeed',
+          'smoothing',
+          'decay',
+          'keyboardSection',
+          'modifier',
+          'keyboardRamp',
+          'triggerRamp',
+          'graphicsSection',
+          'shaderCache',
+          'shareSection',
+          'export',
+          'import',
+          'resetAdvanced',
+        ],
+      );
+      StepperRow stepper(String id) => row(id).kind as StepperRow;
+      expect([stepper('leftDeadzone').min, stepper('leftDeadzone').max, stepper('leftDeadzone').step], [0, 90, 2]);
+      expect(stepper('sensitivity').format(10), '${T.decimal(1, 1)}×');
+      expect(stepper('smoothing').format(0), T.text('off'));
+      expect(stepper('keyboardRamp').step, 50);
+      stepper('leftDeadzone').set(12);
+      stepper('sensitivity').set(25);
+      stepper('triggerRamp').set(300);
+      final tuning = model.currentSettings(orbit()).tuning!;
+      expect([tuning.leftDeadzone, tuning.mouseSensitivity, tuning.triggerRampMs], [12, 25, 300]);
+      expect(tuning.lines, ['LeftStickDeadzone = 12', 'MouseSensitivity = 2.5', 'TriggerRampMs = 300']);
+      final file = p.join(fixture.temp.path, 'input.ini');
+      model.currentSettings(orbit()).writeInputFile(file);
+      expect(File(file).readAsStringSync(), contains('MouseSensitivity = 2.5'));
+      // Back to every default: nothing of its own is kept.
+      stepper('leftDeadzone').set(0);
+      stepper('sensitivity').set(10);
+      stepper('triggerRamp').set(0);
+      expect(model.currentSettings(orbit()).tuning, isNull);
+      stepper('rightDeadzone').set(8);
+      (row('shaderCache').kind as ToggleRow).set(false);
+      (row('resetAdvanced').kind as ActionRow).run();
+      expect(model.currentSettings(orbit()).tuning, isNull);
+      expect(model.currentSettings(orbit()).shaderCache, isNull);
+      // Back: the game's settings, on Advanced.
+      model.handle(Command.back);
+      expect(model.overlay, Layer.gameSettings);
+      expect(model.panelCategories().single.rows[model.panelRow].id, 'advanced');
+    });
+  });
+
   group('settings files', () {
     test('Export writes the game\'s settings as the macOS launcher does', () async {
       final folder = Directory(p.join(fixture.temp.path, 'out'))..createSync();
       savedTo = folder.path;
       model.saveSettings(orbit(), const GameSettings(frameGeneration: true, overlay: OverlayCorner.topLeft));
       openGame(orbit());
+      expect(model.panelCategories().expand((category) => category.rows).map((row) => row.id), isNot(contains('export')));
+      // On the Advanced page, as on the Mac.
+      (row('advanced').kind as ActionRow).run();
+      expect(model.overlay, Layer.advanced);
       expect(row('export').title, 'Export settings');
       await model.exportSettings(orbit());
       final file = File(p.join(folder.path, 'Orbit Runner - AnyPS5.json'));

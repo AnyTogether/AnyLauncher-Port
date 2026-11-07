@@ -18,6 +18,11 @@ release when it is made.
   back with the quick menu, and Resume puts it aside again.
 - **Check for updates can be turned off**, as on the Mac (Settings › Behaviour). Off, the
   launcher and the engine look for new versions only when you ask in Settings › About.
+- **A game's Advanced page**, as on the Mac (Game settings › Advanced): each stick's dead zone,
+  the mouse as the camera (sensitivity, vertical speed, response curve, minimum tilt, maximum
+  speed, smoothing, center after), the slow movement amount and the keyboard's stick and trigger
+  ramps, written to the engine's input file as the Mac writes them. The shader cache switch and
+  Export and Import settings moved there, with Reset advanced settings.
 - **Edit your AnyTogether profile here**, as on the Mac: **Settings › AnyTogether › Your profile**
   has your display name, bio and two-letter country, with **Save profile**, and your handle with
   **Change handle** and the day it may change again.

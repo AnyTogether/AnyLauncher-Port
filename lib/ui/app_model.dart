@@ -685,6 +685,10 @@ enum Layer {
   settings,
   gameSettings,
   controls,
+
+  /// A game's Advanced page: its sticks, the mouse as the camera, the keyboard's ramps, the
+  /// shader cache and its settings file, as on the Mac.
+  advanced,
   confirmUninstall,
   updateChoice,
 
@@ -1292,6 +1296,7 @@ class AppModel extends ChangeNotifier {
     Layer.settings,
     Layer.gameSettings,
     Layer.controls,
+    Layer.advanced,
     Layer.trophies,
     Layer.gallery,
     Layer.friends,
@@ -3985,6 +3990,7 @@ class AppModel extends ChangeNotifier {
           (overlay == null ||
               overlay == Layer.gameSettings ||
               overlay == Layer.controls ||
+              overlay == Layer.advanced ||
               overlay == Layer.trophies)) {
         moveSelection(command == Command.nextGame ? 1 : -1);
       }
@@ -4059,6 +4065,17 @@ class AppModel extends ChangeNotifier {
         }
         if (command == Command.back || command == Command.options) {
           open(Layer.gameSettings, cue: Cue.back);
+          return;
+        }
+        _panelCommand(command);
+        return;
+      case Layer.advanced:
+        // Back to the game's settings, on the row that opened the page.
+        if (command == Command.back || command == Command.options) {
+          open(Layer.gameSettings, cue: Cue.back);
+          final row = panelCategories().firstOrNull?.rows.indexWhere((row) => row.id == 'advanced') ?? -1;
+          if (row >= 0) panelRow = row;
+          _changed();
           return;
         }
         _panelCommand(command);
@@ -4614,6 +4631,8 @@ class AppModel extends ChangeNotifier {
         return [PanelCategory(id: 'game', title: game.name, rows: _gameRows(game))];
       case Layer.controls when game != null:
         return [PanelCategory(id: 'controls', title: game.name, rows: _controlRows(game))];
+      case Layer.advanced when game != null:
+        return [PanelCategory(id: 'advanced', title: game.name, rows: _advancedRows(game))];
       case Layer.confirmUninstall when game != null:
         return [
           PanelCategory(
@@ -5456,6 +5475,212 @@ class AppModel extends ChangeNotifier {
     ];
   }
 
+  /// A game's Advanced page, as the Mac's advancedRows: the stick dead zones, the mouse as the
+  /// camera, the keyboard's slow movement and ramps (all written to the engine's input file at the
+  /// next start), the shader cache, its settings file and a reset.
+  List<PanelRow> _advancedRows(Game game) {
+    final settings = currentSettings(game);
+    final tuning = settings.tuning ?? const InputTuning();
+    void change(GameSettings next) => saveSettings(game, next);
+    String percent(int value) => T.percent(value);
+    String times(int value) => '${T.decimal(value / 10, 1)}×';
+    String tenths(int value) => T.decimal(value / 10, 1);
+    String milliseconds(int value) => value == 0 ? T.text('off') : '$value ms';
+    PanelRow tune(
+      String id,
+      String title,
+      String detail,
+      int value,
+      int min,
+      int max,
+      int step,
+      String Function(int) format,
+      InputTuning Function(InputTuning tuning, int value) set,
+    ) => PanelRow(
+      id: id,
+      title: T.text(title),
+      detail: T.text(detail),
+      kind: StepperRow(
+        value: value,
+        min: min,
+        max: max,
+        step: step,
+        format: format,
+        set: (value) {
+          final next = set(settings.tuning ?? const InputTuning(), value);
+          // Back to every default: nothing of its own is kept, as the Mac keeps it.
+          change(settings.copyWith(tuning: next.lines.isEmpty ? null : next));
+        },
+      ),
+    );
+    PanelRow section(String id, String title) => PanelRow(id: id, title: T.text(title), kind: const InfoRow(''));
+    return [
+      section('sticksSection', 'sectionSticks'),
+      tune(
+        'leftDeadzone',
+        'leftDeadzone',
+        'deadzoneDetail',
+        tuning.leftDeadzone,
+        0,
+        90,
+        2,
+        percent,
+        (t, v) => t.copyWith(leftDeadzone: v),
+      ),
+      tune(
+        'rightDeadzone',
+        'rightDeadzone',
+        'deadzoneDetail',
+        tuning.rightDeadzone,
+        0,
+        90,
+        2,
+        percent,
+        (t, v) => t.copyWith(rightDeadzone: v),
+      ),
+      section('mouseSection', 'sectionMouse'),
+      tune(
+        'sensitivity',
+        'mouseSensitivity',
+        'mouseSensitivityDetail',
+        tuning.mouseSensitivity,
+        1,
+        100,
+        1,
+        times,
+        (t, v) => t.copyWith(mouseSensitivity: v),
+      ),
+      tune(
+        'vertical',
+        'mouseVertical',
+        'mouseVerticalDetail',
+        tuning.mouseVerticalScale,
+        1,
+        100,
+        1,
+        times,
+        (t, v) => t.copyWith(mouseVerticalScale: v),
+      ),
+      tune(
+        'curve',
+        'mouseCurve',
+        'mouseCurveDetail',
+        tuning.mouseCurve,
+        2,
+        50,
+        1,
+        tenths,
+        (t, v) => t.copyWith(mouseCurve: v),
+      ),
+      tune(
+        'offset',
+        'mouseMinimum',
+        'mouseMinimumDetail',
+        tuning.mouseDeadzoneOffset,
+        0,
+        90,
+        2,
+        percent,
+        (t, v) => t.copyWith(mouseDeadzoneOffset: v),
+      ),
+      tune(
+        'maxSpeed',
+        'mouseMaxSpeed',
+        'mouseMaxSpeedDetail',
+        tuning.mouseMaxSpeed,
+        1,
+        100,
+        1,
+        times,
+        (t, v) => t.copyWith(mouseMaxSpeed: v),
+      ),
+      tune(
+        'smoothing',
+        'mouseSmoothing',
+        'mouseSmoothingDetail',
+        tuning.mouseSmoothingMs,
+        0,
+        500,
+        5,
+        milliseconds,
+        (t, v) => t.copyWith(mouseSmoothingMs: v),
+      ),
+      tune(
+        'decay',
+        'mouseDecay',
+        'mouseDecayDetail',
+        tuning.mouseDecayMs,
+        5,
+        1000,
+        5,
+        (value) => '$value ms',
+        (t, v) => t.copyWith(mouseDecayMs: v),
+      ),
+      section('keyboardSection', 'sectionKeyboard'),
+      tune(
+        'modifier',
+        'stickModifierScale',
+        'stickModifierScaleDetail',
+        tuning.stickModifierScale,
+        5,
+        100,
+        5,
+        percent,
+        (t, v) => t.copyWith(stickModifierScale: v),
+      ),
+      tune(
+        'keyboardRamp',
+        'keyboardRamp',
+        'keyboardRampDetail',
+        tuning.keyboardRampMs,
+        0,
+        2000,
+        50,
+        milliseconds,
+        (t, v) => t.copyWith(keyboardRampMs: v),
+      ),
+      tune(
+        'triggerRamp',
+        'triggerRamp',
+        'triggerRampDetail',
+        tuning.triggerRampMs,
+        0,
+        2000,
+        50,
+        milliseconds,
+        (t, v) => t.copyWith(triggerRampMs: v),
+      ),
+      section('graphicsSection', 'sectionGraphics'),
+      PanelRow(
+        id: 'shaderCache',
+        title: T.text('shaderCache'),
+        detail: T.text('shaderCacheDetail'),
+        kind: ToggleRow(
+          settings.shaderCache ?? true,
+          (value) => change(settings.copyWith(shaderCache: value ? null : false)),
+        ),
+      ),
+      section('shareSection', 'sectionShare'),
+      PanelRow(
+        id: 'export',
+        title: T.text('exportSettings'),
+        detail: T.text('exportSettingsDetail'),
+        kind: ActionRow(() => unawaited(exportSettings(game))),
+      ),
+      PanelRow(
+        id: 'import',
+        title: T.text('importSettings'),
+        detail: T.text('importSettingsDetail'),
+        kind: ActionRow(() => unawaited(importSettings(game))),
+      ),
+      PanelRow(
+        id: 'resetAdvanced',
+        title: T.text('resetAdvanced'),
+        kind: ActionRow(() => change(settings.copyWith(tuning: null, shaderCache: null))),
+      ),
+    ];
+  }
+
   List<PanelRow> _gameRows(Game game) {
     final settings = currentSettings(game);
     void change(GameSettings next) => saveSettings(game, next);
@@ -5654,26 +5879,13 @@ class AppModel extends ChangeNotifier {
         kind: ActionRow(openGallery),
       ),
       ...together.gameSocialRows(game),
+      // Sticks, the mouse, the keyboard's ramps, the shader cache and the settings file, as on
+      // the Mac.
       PanelRow(
-        id: 'shaderCache',
-        title: T.text('shaderCache'),
-        detail: T.text('shaderCacheDetail'),
-        kind: ToggleRow(
-          settings.shaderCache ?? true,
-          (value) => change(settings.copyWith(shaderCache: value ? null : false)),
-        ),
-      ),
-      PanelRow(
-        id: 'export',
-        title: T.text('exportSettings'),
-        detail: T.text('exportSettingsDetail'),
-        kind: ActionRow(() => unawaited(exportSettings(game))),
-      ),
-      PanelRow(
-        id: 'import',
-        title: T.text('importSettings'),
-        detail: T.text('importSettingsDetail'),
-        kind: ActionRow(() => unawaited(importSettings(game))),
+        id: 'advanced',
+        title: T.text('advanced'),
+        detail: T.text('advancedDetail'),
+        kind: ActionRow(() => open(Layer.advanced)),
       ),
       PanelRow(
         id: 'link',

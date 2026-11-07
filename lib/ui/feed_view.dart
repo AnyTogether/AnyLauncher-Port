@@ -222,8 +222,8 @@ class _ActivityCard extends StatelessWidget {
                 children: [
                   PersonAvatar(person: TogetherModel.card(item.actor), size: 48 * scale),
                   if (item.kind == ActivityKind.levelUp && item.level != null)
-                    Positioned(
-                      right: -4 * scale,
+                    PositionedDirectional(
+                      end: -4 * scale,
                       bottom: -4 * scale,
                       child: LevelBadgeView(level: item.level!, size: 24 * scale),
                     ),
@@ -358,7 +358,7 @@ class _TrophyChip extends StatelessWidget {
     final scale = LayoutScale.of(context);
     final grade = TrophyGrade.values.where((grade) => grade.name == trophy.grade).firstOrNull ?? TrophyGrade.bronze;
     return Container(
-      padding: EdgeInsets.fromLTRB(7 * scale, 4 * scale, 10 * scale, 4 * scale),
+      padding: EdgeInsetsDirectional.fromSTEB(7 * scale, 4 * scale, 10 * scale, 4 * scale),
       decoration: BoxDecoration(color: ink.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(8 * scale)),
       child: Row(
         mainAxisSize: MainAxisSize.min,

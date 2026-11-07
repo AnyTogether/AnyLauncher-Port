@@ -2016,5 +2016,15 @@
   "profilePictureFromTogetherDetail": "AnyTogether profilindeki fotoğraf bu bilgisayarda da görünür.",
   "profilePictureUploaded": "AnyTogether fotoğrafın güncellendi",
   "profilePictureDownloadFailed": "AnyTogether fotoğrafın indirilemedi",
-  "profilePictureTooSmall": "Resim çok küçük: en az 32 piksel olmalı"
+  "profilePictureTooSmall": "Resim çok küçük: en az 32 piksel olmalı",
+  "discoverAsksWatch": "%@ izlemek istiyor",
+  "discoverListOpenWatch": "Herkes izleyebilir",
+  "discoverLiveToggle": "Şimdi canlı",
+  "discoverLiveToggleDetail": "Herkes izleyebilsin diye Şimdi canlı'da da göster.",
+  "discoverLetWatch": "%@ izlesin",
+  "sharePlayMediaServerFailed": "Medya sunucusuna ulaşılamadı",
+  "sharePlayMaxViewersServerDetail": "En fazla 4 kişi yayını doğrudan bilgisayarından alır. Daha fazlasında izleyenler medya sunucusundan izler, oyuncuların doğrudan bağlantısı kalır.",
+  "shareCodeMakeDetail": "Kodu olan herkes izlemek isteyebilir. Her birine yine sen karar verirsin.",
+  "joinCodeMade": "Yeni kod: %@",
+  "joinCodeStopped": "Kod artık çalışmıyor"
 }

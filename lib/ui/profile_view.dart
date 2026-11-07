@@ -54,7 +54,7 @@ class ProfileView extends StatelessWidget {
       opacity: 0.64,
       child: Stack(
         children: [
-          Positioned(top: 0, left: 0, right: 0, child: _HeaderLook(look: look)),
+          PositionedDirectional(top: 0, start: 0, end: 0, child: _HeaderLook(look: look)),
           Padding(
             padding: EdgeInsets.fromLTRB(90 * scale, 64 * scale, 90 * scale, 50 * scale),
             child: Row(
@@ -304,7 +304,7 @@ class _ThemeChip extends StatelessWidget {
           return AnimatedContainer(
             duration: Motion.focus,
             curve: Motion.settle,
-            padding: EdgeInsets.fromLTRB(8 * scale, 6 * scale, 12 * scale, 6 * scale),
+            padding: EdgeInsetsDirectional.fromSTEB(8 * scale, 6 * scale, 12 * scale, 6 * scale),
             decoration: BoxDecoration(
               color: focused ? Colors.white : Colors.white.withValues(alpha: hovering ? 0.16 : 0.09),
               borderRadius: BorderRadius.circular(40 * scale),
@@ -326,8 +326,8 @@ class _ThemeChip extends StatelessWidget {
                   child: Stack(
                     children: [
                       for (var index = 0; index < colours.length; index++)
-                        Positioned(
-                          left: 9 * index * scale,
+                        PositionedDirectional(
+                          start: 9 * index * scale,
                           child: Container(
                             width: 14 * scale,
                             height: 14 * scale,

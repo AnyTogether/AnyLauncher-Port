@@ -27,6 +27,9 @@ release when it is made.
   opens the phone app's port over the cable through usbmuxd and joins it to its phone server.
   On Windows that is Apple Mobile Device Support (it comes with iTunes or the Apple Devices app),
   on Linux the usbmuxd package (libimobiledevice).
+- **Arabic and Urdu are laid out right to left**, as on the Mac. Every screen is mirrored, the
+  games after the selected one sit on its left, and ← and → (and a mouse drag on the games and
+  the sliders) follow what the screen shows. A share play you watch keeps the controller as it is.
 - **Hide the launcher while a game runs**, as on the Mac (Settings › Behaviour). The launcher's
   window is minimized once the game starts and comes back when it closes. PS still brings it
   back with the quick menu, and Resume puts it aside again.

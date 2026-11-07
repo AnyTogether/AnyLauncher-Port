@@ -252,10 +252,10 @@ class Legible extends StatelessWidget {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Positioned(
-          left: -reach,
+        PositionedDirectional(
+          start: -reach,
           top: -reach,
-          right: -reach,
+          end: -reach,
           bottom: -reach,
           // The plate is a blurred rounded box drawn with a mask filter, which the GPU draws in
           // one cheap step; filtering a layer (as it was) cost a pass for every plate on screen.

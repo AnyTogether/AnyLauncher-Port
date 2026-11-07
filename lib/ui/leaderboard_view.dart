@@ -100,7 +100,7 @@ class LeaderboardView extends StatelessWidget {
             AnimatedSize(
               duration: Motion.layout,
               curve: Motion.settle,
-              alignment: Alignment.topLeft,
+              alignment: AlignmentDirectional.topStart,
               child: screens.boardChallenges.isEmpty
                   ? const SizedBox(width: double.infinity)
                   : Padding(

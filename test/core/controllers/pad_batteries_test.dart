@@ -128,6 +128,11 @@ void main() {
         reason: 'the only DualSense',
       );
       expect(
+        probe.battery(vendor: 0x054C, product: 0x0CE6, serial: '01-00-00-51-ab-a0'),
+        PadBattery(72, charging: false),
+        reason: 'the address in the other byte order',
+      );
+      expect(
         probe.battery(vendor: 0x054C, product: 0x0CE6, serial: 'ff:ff:ff:ff:ff:ff'),
         isNull,
         reason: 'another one',

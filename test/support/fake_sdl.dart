@@ -60,6 +60,11 @@ class FakeSdl implements SdlBackend {
 
   @override
   void setPlayerIndex(int instance, int player) => calls.add('player $instance $player');
+  /// Serials by instance, as SDL_JoystickGetSerial gives them.
+  final Map<int, String> serials = {};
+  @override
+  String? serial(int instance) => serials[instance];
+
   @override
   void quit() => quitCalled = true;
 }

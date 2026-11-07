@@ -450,6 +450,7 @@ class TogetherModel {
         Layer.profileTheme,
         Layer.compare,
         Layer.feed,
+        Layer.captures,
         Layer.leaderboard,
         Layer.challenge,
         Layer.notifications,

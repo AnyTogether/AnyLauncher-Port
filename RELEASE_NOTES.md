@@ -5,7 +5,11 @@ release when it is made.
 
 ## Next release
 
-Nothing yet.
+- **Hide the launcher while a game runs**, as on the Mac (Settings › Behaviour). The launcher's
+  window is minimized once the game starts and comes back when it closes. PS still brings it
+  back with the quick menu, and Resume puts it aside again.
+- **Check for updates can be turned off**, as on the Mac (Settings › Behaviour). Off, the
+  launcher and the engine look for new versions only when you ask in Settings › About.
 
 ## 0.1.20
 

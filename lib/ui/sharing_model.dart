@@ -24,7 +24,7 @@ extension GameSharing on AppModel {
   /// first run's setup nothing opens; a game not in the library is said.
   void followLink(DeepLink link) {
     if (!preferences.onboarded) return;
-    unawaited(desktop.raiseLauncher());
+    unawaited(raiseLauncher());
     switch (link) {
       case LibraryLink():
         open(Layer.library);

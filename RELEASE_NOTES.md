@@ -5,6 +5,10 @@ release when it is made.
 
 ## Next release
 
+- **A controller's battery in percent** where the system measures it, as on the Mac. On Linux
+  it comes from the pad's power supply (DualSense, DualShock 4 and other pads whose driver gives
+  a percentage). On Windows a DualSense or DualShock 4 is read from its own report. Pads the
+  system has no percentage for keep the four levels.
 - **Hide the launcher while a game runs**, as on the Mac (Settings › Behaviour). The launcher's
   window is minimized once the game starts and comes back when it closes. PS still brings it
   back with the quick menu, and Resume puts it aside again.

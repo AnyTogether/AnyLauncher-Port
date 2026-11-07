@@ -597,7 +597,7 @@ void main() {
       fixture.dispose();
     });
 
-    Future<Future<void>> startOrbit() async {
+    Future<({Future<void> done})> startOrbit() async {
       final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
       final installed = Installer.installedFolder(orbit, model.root!);
       File(p.join(installed, 'app.elf')).writeAsStringSync('#!/bin/sh\nsleep 5\n');
@@ -605,12 +605,12 @@ void main() {
       model.select(model.games.indexOf(orbit));
       final playing = model.play(orbit);
       await until(() => model.running != null);
-      return playing;
+      return (done: playing);
     }
 
     test('off by default: the window stays', () async {
       expect(model.preferences.hideWhilePlaying, isFalse);
-      final playing = await startOrbit();
+      final playing = (await startOrbit()).done;
       await Future<void>.delayed(const Duration(milliseconds: 50));
       expect(window.minimized, 0);
       model.stopGame();
@@ -628,7 +628,7 @@ void main() {
       (row.kind as ToggleRow).set(true);
       model.closeOverlay();
       expect(Preferences.fromJson(model.preferences.toJson()).hideWhilePlaying, isTrue, reason: 'kept');
-      final playing = await startOrbit();
+      final playing = (await startOrbit()).done;
       await until(() => window.minimized == 1);
       expect(model.hiddenForGame, isTrue);
       desktop.focused = false;

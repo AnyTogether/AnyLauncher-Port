@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../core/together/e2ee.dart' show safetyGroups;
 import '../core/together/e2ee_client.dart';
 import '../core/together/messages.dart';
+import '../core/together/people.dart' show Friend;
 import 'app_model.dart';
 import 'components.dart';
 import 'glass.dart';
@@ -74,7 +75,11 @@ class MessagesView extends StatelessWidget {
                       radius: 26 * scale,
                       opacity: 0.45,
                       padding: EdgeInsets.all(28 * scale),
-                      child: selected == null ? const SizedBox.expand() : _Thread(model: model, target: selected),
+                      child: switch (selected) {
+                        null => const SizedBox.expand(),
+                        NewGroupTarget() => _GroupComposer(model: model),
+                        _ => _Thread(model: model, target: selected),
+                      },
                     ),
                   ),
                 ],
@@ -101,7 +106,7 @@ class _TargetRow extends StatelessWidget {
     final together = model.together;
     final me = together.user?.id;
     final conversation = target is ConversationTarget ? (target as ConversationTarget).conversation : null;
-    final (String name, String detail, int unread, PanelPerson person) = switch (target) {
+    final (String name, String detail, int unread, PanelPerson? person) = switch (target) {
       ConversationTarget(:final conversation) => (
         conversation.name(me),
         _preview(conversation, me),
@@ -123,6 +128,7 @@ class _TargetRow extends StatelessWidget {
         0,
         TogetherModel.card(friend.person, status: TogetherModel.status(friend.presence)),
       ),
+      NewGroupTarget() => (T.text('messagesNewGroup'), T.text('messagesNewGroupDetail'), 0, null),
     };
     final color = focused ? Colors.black : Colors.white;
     final muted = conversation?.muted == true;
@@ -142,7 +148,15 @@ class _TargetRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            PersonAvatar(person: person, size: 42 * scale, focused: focused),
+            if (person != null)
+              PersonAvatar(person: person, size: 42 * scale, focused: focused)
+            else
+              Container(
+                width: 42 * scale,
+                height: 42 * scale,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: color.withValues(alpha: 0.1)),
+                child: Icon(Icons.group_add_rounded, size: 20 * scale, color: color),
+              ),
             SizedBox(width: 14 * scale),
             Expanded(
               child: Column(
@@ -235,6 +249,7 @@ class _Thread extends StatelessWidget {
     final title = switch (target) {
       ConversationTarget(:final conversation) => conversation.name(me),
       FriendTarget(:final friend) => friend.person.displayName,
+      NewGroupTarget() => T.text('messagesNewGroup'),
     };
     final showing = conversation != null && messages.openId == conversation.id;
     final thread = showing ? messages.thread : const <ChatMessage>[];
@@ -405,6 +420,215 @@ class _Thread extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// A new group: its name, the friends to pick (a tick on each one picked) and Start the group.
+class _GroupComposer extends StatelessWidget {
+  const _GroupComposer({required this.model});
+
+  final AppModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final together = model.together;
+    final friends = together.groupFriends;
+    final inside = together.messagesInThread;
+    final accent = model.accentChoice.color;
+    final ready = together.groupPicked.isNotEmpty;
+    final startFocused = inside && together.groupFocus == friends.length + 1;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 52 * scale,
+              height: 52 * scale,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: accent.withValues(alpha: 0.85)),
+              child: Icon(
+                Icons.groups_rounded,
+                size: 26 * scale,
+                color: LookScope.inkOnAccent(context, accent, Colors.white),
+              ),
+            ),
+            SizedBox(width: 16 * scale),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(T.text('messagesNewGroup'), style: AppText.display(24 * scale, weight: FontWeight.w600)),
+                  SizedBox(height: 2 * scale),
+                  Text(
+                    T.format('messagesGroupPicked', [together.groupPicked.length]),
+                    style: AppText.display(14 * scale, color: Colors.white.withValues(alpha: 0.55)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 18 * scale),
+        FocusRing(
+          focused: inside && together.groupFocus == 0 && model.editingRow == null,
+          radius: 12 * scale,
+          child: RowTextField(
+            model: model,
+            row: together.groupNameField,
+            kind: together.groupNameField.kind as TextRow,
+            focused: false,
+          ),
+        ),
+        SizedBox(height: 14 * scale),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(4 * scale),
+            child: Column(
+              children: [
+                for (var index = 0; index < friends.length; index++)
+                  KeepVisible(
+                    active: inside && together.groupFocus == index + 1,
+                    child: _GroupFriendRow(
+                      model: model,
+                      friend: friends[index],
+                      picked: together.groupPicked.contains(friends[index].person.id),
+                      focused: inside && together.groupFocus == index + 1,
+                      onTap: () {
+                        together.groupFocus = index + 1;
+                        together.toggleGroupFriend(friends[index].person.id);
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        SizedBox(height: 14 * scale),
+        Semantics(
+          button: true,
+          label: T.text('messagesGroupCreate'),
+          child: Pressable(
+            onTap: () => unawaited(together.startGroup()),
+            builder: (context, hovering) => AnimatedContainer(
+              duration: Motion.focus,
+              curve: Motion.settle,
+              padding: EdgeInsets.symmetric(vertical: 13 * scale),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: startFocused
+                    ? Colors.white
+                    : ready
+                    ? accent.withValues(alpha: hovering ? 0.95 : 0.8)
+                    : Colors.white.withValues(alpha: hovering ? 0.1 : 0.06),
+                borderRadius: BorderRadius.circular(24 * scale),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.forum_rounded,
+                    size: 17 * scale,
+                    color: startFocused
+                        ? Colors.black
+                        : ready
+                        ? LookScope.inkOnAccent(context, accent, Colors.white)
+                        : Colors.white.withValues(alpha: 0.45),
+                  ),
+                  SizedBox(width: 10 * scale),
+                  Text(
+                    T.text('messagesGroupCreate'),
+                    style: AppText.display(
+                      16 * scale,
+                      weight: FontWeight.w600,
+                      color: startFocused
+                          ? Colors.black
+                          : ready
+                          ? LookScope.inkOnAccent(context, accent, Colors.white)
+                          : Colors.white.withValues(alpha: 0.45),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _GroupFriendRow extends StatelessWidget {
+  const _GroupFriendRow({
+    required this.model,
+    required this.friend,
+    required this.picked,
+    required this.focused,
+    required this.onTap,
+  });
+
+  final AppModel model;
+  final Friend friend;
+  final bool picked;
+  final bool focused;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final color = focused ? Colors.black : Colors.white;
+    final accent = model.accentChoice.color;
+    return Semantics(
+      checked: picked,
+      label: friend.person.displayName,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: Motion.focus,
+          curve: Motion.settle,
+          margin: EdgeInsets.only(bottom: 6 * scale),
+          padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 9 * scale),
+          decoration: BoxDecoration(
+            color: focused ? Colors.white : Colors.white.withValues(alpha: picked ? 0.1 : 0.04),
+            borderRadius: BorderRadius.circular(14 * scale),
+          ),
+          child: Row(
+            children: [
+              PersonAvatar(person: TogetherModel.card(friend.person), size: 38 * scale, focused: focused),
+              SizedBox(width: 14 * scale),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      TogetherModel.shown(friend.person).name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.display(15 * scale, weight: FontWeight.w600, color: color),
+                    ),
+                    Text(
+                      '@${friend.person.handle}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.display(12 * scale, color: color.withValues(alpha: 0.55)),
+                    ),
+                  ],
+                ),
+              ),
+              AnimatedSwitcher(
+                duration: Motion.focus,
+                child: Icon(
+                  picked ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                  key: ValueKey(picked),
+                  size: 22 * scale,
+                  color: picked ? (focused ? Colors.black : accent) : color.withValues(alpha: focused ? 0.4 : 0.35),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

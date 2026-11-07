@@ -41,7 +41,9 @@ import '../core/together/talk_key.dart';
 import '../core/together/voice.dart';
 import '../core/controls.dart';
 import '../core/together/token_store.dart';
+
 import 'package:path/path.dart' as p;
+
 import '../core/trophies.dart';
 import '../core/game_settings.dart';
 import 'app_model.dart';
@@ -239,6 +241,12 @@ class TogetherModel {
   int messageFocus = 0;
   String draft = '';
 
+  /// Messages: the new group's row the keys are on (0 its name, then the friends, then Start
+  /// the group), the friends picked for it and its name.
+  int groupFocus = 0;
+  final Set<String> groupPicked = {};
+  String groupName = '';
+
   /// Messages: the message the keys are on (counted from the newest; null while they are on
   /// the quick replies and the field), the menu open over the thread (a message's or a
   /// conversation's), and what the composer is doing: answering a message (its seq) or editing
@@ -376,6 +384,8 @@ class TogetherModel {
   /// Signed in or out: what depends on it starts or stops.
   void signedInChanged() {
     app.remote?.togetherServer = account.base.toString();
+    // Another account (or none): what was typed for the last one's profile goes.
+    nameDraft = bioDraft = countryDraft = handleDraft = null;
     if (!signedIn) {
       friendHandle = '';
       chosen = null;
@@ -386,6 +396,9 @@ class TogetherModel {
       messagesIndex = 0;
       messagesSelectedKey = null;
       messagesInThread = false;
+      groupFocus = 0;
+      groupPicked.clear();
+      groupName = '';
       messageCursor = null;
       messageMenu = null;
       replyingTo = null;
@@ -1078,7 +1091,9 @@ class TogetherModel {
           detail: T.text('profileMineDetail'),
           kind: ActionRow(() => unawaited(openMyProfile())),
         ),
+        ...profileEditRows(),
         ...privateIdentityRows(),
+        ...privacyRows(),
         ...discoveryRows(),
         PanelRow(
           id: 'together-join',
@@ -1270,6 +1285,10 @@ class TogetherModel {
         'rate_limited' => T.text('togetherTooMany'),
         'handle_taken' => T.text('togetherHandleTaken'),
         'handle_reserved' => T.text('togetherHandleReserved'),
+        'handle_cooldown' => switch (DateTime.tryParse(error.extra['handleChangeAt'] as String? ?? '')) {
+          final DateTime at => T.format('togetherHandleAgain', [CompareView.day(at)]),
+          null => error.title,
+        },
         'links_not_allowed' => T.text('togetherNoLinks'),
         'media_server_off' => T.format('togetherMediaServerOff', [(error.extra['max'] as num?)?.toInt() ?? 4]),
         _ => error.title.isEmpty ? T.text('togetherUnreachable') : error.title,
@@ -1327,6 +1346,144 @@ class TogetherModel {
       watch.start();
     } else {
       watch.stop();
+    }
+  }
+
+  // The profile: name, bio, country and handle, and who sees what.
+
+  /// What is typed in Your profile, until it is saved (null: the profile's own, which follows a
+  /// change made on the website).
+  String? nameDraft;
+  String? bioDraft;
+  String? countryDraft;
+  String? handleDraft;
+
+  List<PanelRow> profileEditRows() {
+    final self = hub.self;
+    final me = user;
+    if (!self.loaded || me == null) return const [];
+    final next = self.handleChangeAt;
+    return [
+      PanelRow(id: 'together-edit', title: T.text('togetherEditProfile'), kind: const InfoRow('')),
+      PanelRow(
+        id: 'together-name',
+        title: T.text('togetherName'),
+        kind: TextRow(nameDraft ?? me.displayName, (text) => nameDraft = text, submit: () => unawaited(saveProfile())),
+      ),
+      PanelRow(
+        id: 'together-bio',
+        title: T.text('togetherBio'),
+        kind: TextRow(bioDraft ?? self.bio ?? '', (text) => bioDraft = text, submit: () => unawaited(saveProfile())),
+      ),
+      PanelRow(
+        id: 'together-country',
+        title: T.text('togetherCountry'),
+        detail: T.text('togetherCountryDetail'),
+        kind: TextRow(
+          countryDraft ?? self.country ?? '',
+          (text) => countryDraft = text,
+          submit: () => unawaited(saveProfile()),
+        ),
+      ),
+      PanelRow(
+        id: 'together-save',
+        title: T.text('togetherSaveProfile'),
+        kind: ActionRow(() => unawaited(saveProfile())),
+      ),
+      PanelRow(
+        id: 'together-handle',
+        title: T.text('togetherHandle'),
+        detail: next == null
+            ? T.text('togetherHandleDetail')
+            : T.format('togetherHandleAgain', [CompareView.day(next)]),
+        kind: TextRow(handleDraft ?? me.handle, (text) => handleDraft = text, submit: () => unawaited(changeHandle())),
+      ),
+      PanelRow(
+        id: 'together-handle-save',
+        title: T.text('togetherChangeHandle'),
+        kind: ActionRow(() => unawaited(changeHandle())),
+      ),
+    ];
+  }
+
+  /// The name, bio and country as typed: only what changed goes, and a blank name stays as it was.
+  Future<void> saveProfile() async {
+    final me = user;
+    final self = hub.self;
+    if (me == null) return;
+    final name = (nameDraft ?? me.displayName).trim();
+    final bio = bioDraft ?? self.bio ?? '';
+    final country = countryDraft ?? self.country ?? '';
+    try {
+      await self.updateProfile(
+        displayName: name != me.displayName && name.isNotEmpty ? name : null,
+        bio: bio != (self.bio ?? '') ? bio : null,
+        country: country.trim().toUpperCase() != (self.country ?? '') ? country : null,
+      );
+      nameDraft = null;
+      bioDraft = null;
+      countryDraft = null;
+      app.show(T.text('togetherProfileSaved'));
+    } on Object catch (error) {
+      app.show(message(error));
+    }
+  }
+
+  Future<void> changeHandle() async {
+    final handle = (handleDraft ?? '').trim();
+    if (handle.isEmpty || handle.toLowerCase() == user?.handle) return;
+    try {
+      await hub.self.changeHandle(handle);
+      handleDraft = null;
+      app.show(T.format('togetherHandleChanged', [user?.handle ?? handle]));
+    } on TogetherProblem catch (problem) {
+      app.show(problem.code == 'bad_request' ? T.text('togetherHandleInvalid') : message(problem));
+    } on Object catch (error) {
+      app.show(message(error));
+    }
+  }
+
+  /// Who sees the games, trophies, friends, being online and being found by name; the gallery's
+  /// own setting where the server keeps files.
+  List<PanelRow> privacyRows() {
+    final self = hub.self;
+    if (!self.loaded) return const [];
+    final sections = [
+      (PrivacySection.library, 'privacyLibrary'),
+      (PrivacySection.trophies, 'privacyTrophies'),
+      (PrivacySection.friends, 'privacyFriends'),
+      (PrivacySection.presence, 'privacyPresence'),
+      (PrivacySection.search, 'privacySearch'),
+      if (app.saveSync.cloudAvailable) (PrivacySection.gallery, 'cloudPrivacyGallery'),
+    ];
+    return [
+      PanelRow(id: 'together-privacy', title: T.text('togetherPrivacyTitle'), kind: const InfoRow('')),
+      for (final (section, title) in sections)
+        PanelRow(
+          id: 'privacy-${section.name}',
+          title: T.text(title),
+          kind: ChoiceRow(
+            [
+              for (final visibility in ProfileVisibility.values)
+                T.text(switch (visibility) {
+                  ProfileVisibility.everyone => 'visibilityEveryone',
+                  ProfileVisibility.friends => 'visibilityFriends',
+                  ProfileVisibility.nobody => section == PrivacySection.search ? 'visibilityNoOne' : 'visibilityNobody',
+                }),
+            ],
+            ProfileVisibility.values.indexOf(self.privacy[section] ?? ProfileVisibility.friends),
+            (index) => unawaited(setPrivacy(section, ProfileVisibility.values[index])),
+          ),
+        ),
+    ];
+  }
+
+  Future<void> setPrivacy(PrivacySection section, ProfileVisibility visibility) async {
+    if (hub.self.privacy[section] == visibility) return;
+    try {
+      await hub.self.setPrivacy(section, visibility);
+    } on Object catch (error) {
+      app.show(message(error));
     }
   }
 

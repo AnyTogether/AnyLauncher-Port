@@ -555,6 +555,28 @@ class FakeTogether {
         );
       case ('PATCH', 'me/look'):
         return _look(call.body);
+      // Your profile and who sees what, as AnyTogether's profile routes answer them.
+      case ('PATCH', 'me/profile'):
+        for (final key in const ['displayName', 'bio', 'country', 'privateName']) {
+          if (call.body.containsKey(key)) me[key] = call.body[key];
+        }
+        return (200, me);
+      case ('PATCH', 'me/handle'):
+        final handle = call.body['handle'] as String? ?? '';
+        if (!RegExp(r'^[a-z0-9_.]{3,20}$').hasMatch(handle)) return problem(400, 'bad_request');
+        if (people.containsKey(handle)) return problem(409, 'handle_taken');
+        if (me['handleChangeAt'] case final String at) {
+          return (
+            429,
+            {'type': 'about:blank', 'status': 429, 'code': 'handle_cooldown', 'title': 'Not yet', 'handleChangeAt': at},
+          );
+        }
+        me['handle'] = handle;
+        me['handleChangeAt'] = DateTime.now().toUtc().add(const Duration(days: 30)).toIso8601String();
+        return (200, me);
+      case ('PATCH', 'me/privacy'):
+        final privacy = me['privacy'] = {...?(me['privacy'] as Map<String, dynamic>?), ...call.body};
+        return (200, privacy);
       case ('PUT', 'me/showcase'):
         return _saveShowcase(call.body);
       case ('GET', 'themes?sort=popular&limit=24'):
@@ -650,6 +672,16 @@ class FakeTogether {
         if (call.body['readReceipts'] is! bool) return problem(400, 'bad_request');
         me['readReceipts'] = call.body['readReceipts'];
         return (200, {'readReceipts': me['readReceipts']});
+      case ('POST', 'conversations') when call.body['group'] == true:
+        // A group: always a new one, with its name when it has one.
+        final members = [
+          for (final id in call.body['members'] as List<dynamic>)
+            people.values.firstWhere((person) => person['userId'] == id),
+        ];
+        final group = conversation('c-${++_ids}', members);
+        group['kind'] = 'group';
+        group['title'] = call.body['title'];
+        return (201, group);
       case ('POST', 'conversations'):
         final other = (call.body['members'] as List<dynamic>).single as String;
         final existing = conversations.values.where(

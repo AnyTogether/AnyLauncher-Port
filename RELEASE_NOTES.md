@@ -14,6 +14,13 @@ release when it is made.
 - **Start a group chat**, as on the Mac: **Messages** lists **New group** under your
   conversations. Pick the friends, give it a name if you like, and **Start the group** opens it
   to write in.
+- **Call a friend**, as on the Mac: **Friends** has **Call** under every online friend. A call
+  to you rings with their picture over the launcher (Enter answers, Esc declines). Over a game a
+  notice says who calls, and where the launcher reads keys over a game (Windows, and X11 on
+  Linux, as for the talk key) Alt+A answers or Alt+D declines without leaving it. A call
+  nobody answers is said as a missed call. In a call, Friends shows who you talk to, whether they
+  muted or deafened, the microphone, Deafen, push-to-talk and **Hang up**. The voice is the
+  party's, so the same microphone and talk key work.
 - **Captures**, as on the Mac: **Friends › Captures** shows the screenshots and clips you, your
   friends and players you met shared. Like one at once, read and write comments with one level of
   replies (quick ones like GG too), view the picture, delete your own, and △ opens who posted it.

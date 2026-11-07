@@ -2090,5 +2090,20 @@
   "cloudSentTo": "%@ sohbetine gönderildi",
   "cloudShare": "Paylaş",
   "cloudShareToGallery": "Galerime ekle",
-  "cloudShowInFolder": "Klasörde göster"
+  "cloudShowInFolder": "Klasörde göster",
+  "callRinging": "Seni arıyor",
+  "callAnswer": "Cevapla",
+  "callDecline": "Reddet",
+  "callWith": "%@ ile görüşmedesin",
+  "callCalling": "%@ aranıyor…",
+  "callFriend": "%@ kişisini ara",
+  "callHangUp": "Görüşmeyi bitir",
+  "callMissed": "%@ aradı, cevaplanmadı",
+  "callDeclined": "%@ aramayı reddetti",
+  "callEnded": "%@ ile görüşme bitti",
+  "callNoAnswer": "%@ cevap vermedi",
+  "callAnsweredElsewhere": "Arama başka bir cihazda cevaplandı",
+  "voiceSpeaking": "konuşuyor",
+  "callKeys": "Alt+A cevaplar, Alt+D reddeder",
+  "callIsCalling": "%@ seni arıyor"
 }

@@ -13,6 +13,7 @@ import '../core/together/levels.dart';
 import 'app_model.dart';
 import 'theme_studio_view.dart';
 import 'browser_play.dart';
+import 'calls_view.dart';
 import 'captures_view.dart';
 import 'challenge_view.dart';
 import 'compare_view.dart';
@@ -504,6 +505,8 @@ class _LauncherShellState extends State<LauncherShell> {
                                         ),
                                       ),
                                       if (model.starting != null) _StartingCard(model: model),
+                                      if (model.together.ringing != null && model.pairing == null)
+                                        RingingCard(model: model),
                                       if (model.pairing != null) PairingCard(model: model),
                                       _Toast(
                                         message: model.toast,

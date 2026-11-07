@@ -45,6 +45,7 @@ import '../core/together/play_together.dart';
 import '../core/together/sync.dart';
 import '../core/together/talk_key.dart';
 import '../core/together/voice.dart';
+import '../core/together/voice_mesh.dart' show VoiceDenied;
 import '../core/controls.dart';
 import '../core/together/token_store.dart';
 
@@ -71,6 +72,7 @@ part 'together_find.dart';
 part 'together_social.dart';
 part 'together_challenges.dart';
 part 'together_captures.dart';
+part 'together_calls.dart';
 
 /// The launcher's version, as AnyTogether hears it.
 const launcherVersion = '0.1.20';
@@ -176,6 +178,8 @@ class TogetherModel {
       ..onMoved = (client) {
         app.show(T.text(client == 'phone' ? 'voiceMovedPhone' : 'voiceMovedAway'));
       }
+      ..onAnswered = callAnswered
+      ..onCallEnded = callEnded
       ..addListener(_voiceChanged);
     final reader = app.services.talkKeys != null ? app.services.talkKeys!() : KeyStateReader.system();
     if (reader != null) {
@@ -240,6 +244,9 @@ class TogetherModel {
   /// Captures and the gallery's Share menu (together_captures.dart); tests choose the clip tools.
   final CapturesState captures = CapturesState();
   ClipTools? clipToolsOverride;
+
+  /// Calls with one friend (together_calls.dart): the one ringing here.
+  final CallState calls = CallState();
 
   /// Messages: the conversation or friend chosen on the left, whether the keys are in the thread,
   /// which quick reply (or the field, the last) is focused there, and what is typed.
@@ -878,6 +885,7 @@ class TogetherModel {
     }
     final friends = hub.friends;
     return [
+      ...callRows(),
       PanelRow(
         id: 'friends-me',
         title: T.text('profileMine'),
@@ -933,7 +941,7 @@ class TogetherModel {
           title: T.text('friendsNone'),
           kind: InfoRow(T.format('friendsYourHandle', [me.handle])),
         ),
-      for (final friend in friends.friends)
+      for (final friend in friends.friends) ...[
         PanelRow(
           id: 'friend-${friend.person.id}',
           // Their friends-only name when they set one, the handle (and public name) beside.
@@ -943,6 +951,9 @@ class TogetherModel {
           level: friend.level,
           kind: ActionRow(() => openFriend(friend)),
         ),
+        // Online friends can be called, as on the Mac.
+        ?callRow(friend),
+      ],
       for (final person in friends.outgoing) ...[
         PanelRow(
           id: 'waiting-${person.id}',
@@ -1316,6 +1327,7 @@ class TogetherModel {
     if (event.type == 'live.ready' || event.type.startsWith('share_play.')) app.sharePlay.event(event);
     findEvent(event);
     if (event.type.startsWith('post.')) capturesEvent(event);
+    if (const {'call.ringing', 'call.answered', 'call.ended'}.contains(event.type)) callEvent(event);
     final data = event.json;
     switch (event.type) {
       case 'live.ready':

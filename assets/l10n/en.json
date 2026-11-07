@@ -2090,5 +2090,20 @@
   "cloudSentTo": "Sent to %@",
   "cloudShare": "Share",
   "cloudShareToGallery": "Share to my gallery",
-  "cloudShowInFolder": "Show in folder"
+  "cloudShowInFolder": "Show in folder",
+  "callRinging": "Is calling you",
+  "callAnswer": "Answer",
+  "callDecline": "Decline",
+  "callWith": "In a call with %@",
+  "callCalling": "Calling %@…",
+  "callFriend": "Call %@",
+  "callHangUp": "Hang up",
+  "callMissed": "Missed call from %@",
+  "callDeclined": "%@ declined the call",
+  "callEnded": "The call with %@ ended",
+  "callNoAnswer": "%@ didn't answer",
+  "callAnsweredElsewhere": "The call was answered on another device",
+  "voiceSpeaking": "speaking",
+  "callKeys": "Alt+A answers, Alt+D declines",
+  "callIsCalling": "%@ is calling you"
 }

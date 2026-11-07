@@ -3917,6 +3917,12 @@ class AppModel extends ChangeNotifier {
       if (command == Command.back) answerPairing(false);
       return;
     }
+    // A friend calling: Enter answers, Back declines, as on the Mac.
+    if (together.ringing != null && command != Command.home) {
+      if (command == Command.select) unawaited(together.acceptRinging());
+      if (command == Command.back) together.declineRinging();
+      return;
+    }
     if (!preferences.onboarded) return _onboardingCommand(command);
     // Watching a share play: the controller is the game's.
     if (overlay == Layer.shareWatch) return sharePlay.watchCommand(command);

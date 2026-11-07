@@ -4,6 +4,7 @@ import 'account.dart';
 import 'media.dart';
 import 'notifier.dart';
 import 'parties.dart';
+import 'people.dart';
 import 'socket.dart';
 import 'voice_mesh.dart';
 
@@ -75,6 +76,21 @@ class Voice with Notifier {
   /// Told when the voice moves away, with [movedTo].
   void Function(String client)? onMoved;
 
+  /// The friend in a call with one friend (null in the party's voice), and whether it still
+  /// rings on their side.
+  Person? friend;
+  bool waiting = false;
+
+  /// Who else in the call muted or deafened themselves, as the join and call.updated say.
+  Set<String> mutedOthers = {};
+  Set<String> deafenedOthers = {};
+
+  /// A call with a friend ended by the server: declined, given up or hung up on their side.
+  void Function(Person friend, String? reason)? onCallEnded;
+
+  /// The friend picked up.
+  void Function(Person friend)? onAnswered;
+
   bool get active => _mesh != null || _room != null || _moving;
 
   /// The call goes through the media server.
@@ -103,8 +119,38 @@ class Voice with Notifier {
   /// Joins the party's voice (starting it if no one talks yet).
   Future<void> join() async {
     final party = parties.party;
+    if (party == null) return;
+    try {
+      await _start(() => account.call('POST', 'calls', {'partyId': party.id}), partyId: party.id);
+    } on Object {
+      // Said through [problem].
+    }
+  }
+
+  /// Rings [person] (POST /calls with their user ID): the call is joined here already and waits
+  /// for them to answer, as the Mac's Call. Throws what refused it ([problem] says the
+  /// microphone).
+  Future<void> callFriend(Person person) =>
+      _start(() => account.call('POST', 'calls', {'userId': person.id}), friend: person, waiting: true);
+
+  /// A ringing call answered on this device (refused with conflict, 409, when another of the
+  /// user's devices answered first).
+  Future<void> answer(String id, Person from) =>
+      _start(() => account.call('POST', 'calls/$id/answer', {}), friend: from);
+
+  /// A ringing call declined: it ends for the caller too.
+  Future<void> decline(String id) => account.call('POST', 'calls/$id/decline', {});
+
+  /// Into a call the server joined: the party's ([partyId]) or one with [friend]; the microphone
+  /// first, then the media server's room or the mesh with everyone already in.
+  Future<void> _start(
+    Future<Map<String, dynamic>> Function() post, {
+    String? partyId,
+    Person? friend,
+    bool waiting = false,
+  }) async {
     final me = account.user?.id;
-    if (party == null || me == null || joining || active) return;
+    if (me == null || joining || active) return;
     joining = true;
     problem = null;
     movedTo = null;
@@ -116,17 +162,31 @@ class Voice with Notifier {
       problem = VoiceProblem.microphone;
       joining = false;
       notifyListeners();
-      return;
+      throw const VoiceDenied();
     }
     try {
-      final joined = await account.call('POST', 'calls', {'partyId': party.id});
+      final joined = await post();
       final call = joined['call'] as Map<String, dynamic>;
       final id = call['id'] as String;
-      if (MediaRoute.parse(call['media']) == MediaRoute.sfu) {
+      this.friend = friend;
+      this.waiting = waiting;
+      final members = [
+        for (final peer in call['in'] as List<dynamic>? ?? const [])
+          if (peer is Map && peer['userId'] is String) peer,
+      ];
+      mutedOthers = {
+        for (final peer in members)
+          if (peer['muted'] == true || peer['deafened'] == true) peer['userId'] as String,
+      };
+      deafenedOthers = {
+        for (final peer in members)
+          if (peer['deafened'] == true) peer['userId'] as String,
+      };
+      if (partyId != null && MediaRoute.parse(call['media']) == MediaRoute.sfu) {
         // The media server's SDK takes the microphone itself.
         await engine.stop();
         callId = id;
-        _partyId = party.id;
+        _partyId = partyId;
         try {
           await _enterRoom(id, SfuAccess.fromJson(joined['sfu']));
         } on Object {
@@ -146,7 +206,7 @@ class Voice with Notifier {
       );
       _mesh = mesh;
       callId = id;
-      _partyId = party.id;
+      _partyId = partyId;
       if (deafened) engine.setHearing(false);
       _apply();
       _levels = Timer.periodic(measureEvery, (_) => unawaited(mesh.measure()));
@@ -160,7 +220,12 @@ class Voice with Notifier {
       }
     } on Object {
       await engine.stop();
+      if (callId == null) {
+        this.friend = null;
+        this.waiting = false;
+      }
       problem = VoiceProblem.failed;
+      rethrow;
     } finally {
       joining = false;
       notifyListeners();
@@ -328,6 +393,10 @@ class Voice with Notifier {
     room?.onChange = null;
     callId = null;
     _partyId = null;
+    friend = null;
+    waiting = false;
+    mutedOthers = {};
+    deafenedOthers = {};
     held = false;
     // Out of the call: hearing comes back, and the microphone is as it was before deafening.
     if (deafened) {
@@ -343,7 +412,8 @@ class Voice with Notifier {
 
   /// Out of the party, out of its voice: the server took this launcher out of the call already.
   void _partyChanged() {
-    if (!active) return;
+    // A call with a friend is no party's.
+    if (!active || _partyId == null) return;
     final party = parties.party;
     if (party == null || party.id != _partyId) {
       unawaited(_stop());
@@ -367,8 +437,27 @@ class Voice with Notifier {
         );
       case 'call.left' when mesh != null && data['callId'] == callId:
         unawaited(mesh.drop(data['userId'] as String, sayBye: false).catchError((Object _) {}));
+      case 'call.answered' when data['callId'] == callId && data['userId'] != account.user?.id && waiting:
+        waiting = false;
+        notifyListeners();
+        if (friend case final Person person) onAnswered?.call(person);
+      case 'call.updated' when data['callId'] == callId && data['userId'] is String:
+        final userId = data['userId'] as String;
+        if (data['muted'] == true) {
+          mutedOthers = {...mutedOthers, userId};
+        } else {
+          mutedOthers = {...mutedOthers}..remove(userId);
+        }
+        if (data['deafened'] == true) {
+          deafenedOthers = {...deafenedOthers, userId};
+        } else {
+          deafenedOthers = {...deafenedOthers}..remove(userId);
+        }
+        notifyListeners();
       case 'call.ended' when data['callId'] == callId:
+        final person = friend;
         unawaited(_stop());
+        if (person != null) onCallEnded?.call(person, data['reason'] as String?);
       // Joined on another device: quiet here and still in the party, so the same voice never
       // comes out of two devices. That device talks to everyone now: no goodbye from here.
       case 'call.moved' when data['callId'] == callId:

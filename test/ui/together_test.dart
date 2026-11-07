@@ -250,7 +250,9 @@ void main() {
         'friends-handle',
         'friends-ask',
         'friend-u-bora',
+        'friend-call-u-bora',
         'friend-u-ana',
+        'friend-call-u-ana',
       ]);
       final rows = model.panelCategories().single.rows.skip(5).toList();
       expect(rows[4].detail, '@bora · Playing Neon Alley');

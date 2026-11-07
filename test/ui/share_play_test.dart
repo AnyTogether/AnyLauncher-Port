@@ -159,6 +159,9 @@ void main() {
 
   test('with the media server: more than four may watch, the picture goes there once, listing, asks and the code', () async {
     server.answers['GET media-server'] = (200, {'sfu': true, 'maxShareViewers': 16, 'maxPartySize': 32});
+    // Asked again, as signing in asks it (before this server had a media server).
+    await model.sharePlay.loadMediaLimits();
+    expect(model.sharePlay.mediaLimits?.maxShareViewers, 16);
     final playing = (await play()).done;
     model.sharePlay.maxViewers = 8;
     server.answers['POST share-plays'] = (201, {'sharePlay': {...sharePlay([]), 'maxViewers': 8}, 'iceServers': <Object>[], 'expiresAt': null});
@@ -253,6 +256,7 @@ void main() {
   test('without a media server the host keeps four at most', () async {
     final playing = (await play()).done;
     server.answers['POST share-plays'] = (201, {'sharePlay': sharePlay([]), 'iceServers': <Object>[], 'expiresAt': null});
+    expect(quickRows(), contains('share-start'));
     choose('share-start');
     await until(() => model.sharePlay.active);
     final max = model.panelCategories().expand((category) => category.rows).firstWhere((row) => row.id == 'share-max');

@@ -49,6 +49,10 @@ release when it is made.
 - **Start a group chat**, as on the Mac: **Messages** lists **New group** under your
   conversations. Pick the friends, give it a name if you like, and **Start the group** opens it
   to write in.
+- **Place and zoom your profile picture**, as on the Mac: a picture you choose opens in a crop,
+  where you drag it inside the circle and zoom with the slider or ← →, then **Save**. Signed in,
+  **Use as my AnyTogether picture** puts it on your AnyTogether profile, and **Use my AnyTogether
+  picture** brings the one there to this profile.
 - **Deafen in party voice**, as on the Mac: hear nobody, with your microphone off, and the others
   see you deafened. Turning it off puts your microphone back as it was, and turning the
   microphone on hears everyone again.

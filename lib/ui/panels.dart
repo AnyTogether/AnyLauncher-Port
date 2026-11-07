@@ -334,7 +334,7 @@ class PanelView extends StatelessWidget {
                       SizedBox(width: 24 * scale),
                       Expanded(
                         child: Align(
-                          alignment: Alignment.centerRight,
+                          alignment: AlignmentDirectional.centerEnd,
                           child: ConstrainedBox(
                             constraints: BoxConstraints(maxWidth: 400 * scale),
                             child: SettingsSearchField(model: model),
@@ -377,7 +377,10 @@ class PanelView extends StatelessWidget {
                       ),
                       if (partyChat) ...[
                         SizedBox(width: 28 * scale),
-                        SizedBox(width: 560 * scale, child: PartyChatPane(model: model)),
+                        SizedBox(
+                          width: 560 * scale,
+                          child: PartyChatPane(model: model),
+                        ),
                       ],
                     ],
                   ),
@@ -435,7 +438,7 @@ class _CategoryListState extends State<_CategoryList> {
         child: SingleChildScrollView(
           controller: _scroll,
           // Room for the bar beside the tabs and their focus ring.
-          padding: EdgeInsets.fromLTRB(3 * scale, 3 * scale, 14 * scale, 3 * scale),
+          padding: EdgeInsetsDirectional.fromSTEB(3 * scale, 3 * scale, 14 * scale, 3 * scale),
           child: Column(
             children: [
               for (var index = 0; index < categories.length; index++)
@@ -671,7 +674,7 @@ class _RowView extends StatelessWidget {
             width: 46 * scale,
             height: 26 * scale,
             padding: EdgeInsets.all(3 * scale),
-            alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+            alignment: value ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20 * scale),
               color: value ? accent : (focused ? ink.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.18)),
@@ -1060,7 +1063,9 @@ class _SliderState extends State<_Slider> {
 
   void _setAt(double dx, double width) {
     if (width <= 0) return;
-    final value = widget.row.valueAt(dx / width);
+    // Mirrored (Arabic, Urdu): the bar fills from the right.
+    final along = Directionality.of(context) == TextDirection.rtl ? width - dx : dx;
+    final value = widget.row.valueAt(along / width);
     if (value != widget.row.value) widget.onSet(value);
   }
 
@@ -1093,18 +1098,18 @@ class _SliderState extends State<_Slider> {
           width: width,
           height: 28 * scale,
           child: Stack(
-            alignment: Alignment.centerLeft,
+            alignment: AlignmentDirectional.centerStart,
             children: [
-              Positioned(
-                left: knob / 2,
-                right: knob / 2,
+              PositionedDirectional(
+                start: knob / 2,
+                end: knob / 2,
                 child: Container(
                   height: track,
                   decoration: BoxDecoration(color: empty, borderRadius: BorderRadius.circular(track)),
                 ),
               ),
-              Positioned(
-                left: knob / 2,
+              PositionedDirectional(
+                start: knob / 2,
                 child: AnimatedContainer(
                   duration: duration,
                   curve: Motion.settle,
@@ -1113,10 +1118,10 @@ class _SliderState extends State<_Slider> {
                   decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(track)),
                 ),
               ),
-              AnimatedPositioned(
+              AnimatedPositionedDirectional(
                 duration: duration,
                 curve: Motion.settle,
-                left: (width - knob) * fraction,
+                start: (width - knob) * fraction,
                 child: Container(
                   width: knob,
                   height: knob,
@@ -1883,8 +1888,8 @@ class PersonAvatar extends StatelessWidget {
             ),
           ),
           if (person.status != null)
-            Positioned(
-              right: -size * 0.02,
+            PositionedDirectional(
+              end: -size * 0.02,
               bottom: -size * 0.02,
               child: StatusDot(
                 status: person.status!,
@@ -2102,7 +2107,7 @@ class GalleryView extends StatelessWidget {
                       ),
               ),
               SizedBox(height: 14 * scale),
-              const Align(alignment: Alignment.centerRight, child: HintBar(options: false, games: false)),
+              const Align(alignment: AlignmentDirectional.centerEnd, child: HintBar(options: false, games: false)),
             ],
           ),
         ),
@@ -2152,8 +2157,8 @@ class _ClipTile extends StatelessWidget {
             child: Icon(Icons.play_arrow_rounded, size: 34 * scale, color: Colors.white),
           ),
         ),
-        Positioned(
-          left: 12 * scale,
+        PositionedDirectional(
+          start: 12 * scale,
           bottom: 10 * scale,
           child: Container(
             padding: EdgeInsets.symmetric(horizontal: 8 * scale, vertical: 3 * scale),

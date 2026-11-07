@@ -107,10 +107,10 @@ class FocusRing extends StatelessWidget {
       clipBehavior: Clip.none,
       children: [
         child,
-        Positioned(
-          left: -width * 1.6,
+        PositionedDirectional(
+          start: -width * 1.6,
           top: -width * 1.6,
-          right: -width * 1.6,
+          end: -width * 1.6,
           bottom: -width * 1.6,
           child: IgnorePointer(
             child: AnimatedOpacity(
@@ -285,9 +285,9 @@ class _ConsoleButtonState extends State<ConsoleButton> {
         : Stack(
             children: [
               button,
-              Positioned(
-                left: 18 * scale,
-                right: 18 * scale,
+              PositionedDirectional(
+                start: 18 * scale,
+                end: 18 * scale,
                 bottom: 7 * scale,
                 child: widget.indeterminate
                     ? IndeterminateLine(color: lineColor, height: 3 * scale)
@@ -465,8 +465,8 @@ class _IndeterminateLineState extends State<IndeterminateLine> with SingleTicker
               return Stack(
                 children: [
                   Container(color: Colors.white.withValues(alpha: 0.16)),
-                  Positioned(
-                    left: constraints.maxWidth * phase,
+                  PositionedDirectional(
+                    start: constraints.maxWidth * phase,
                     width: constraints.maxWidth * 0.35,
                     top: 0,
                     bottom: 0,
@@ -961,15 +961,15 @@ class WithBackPill extends StatelessWidget {
       children: [
         child,
         if (line == null)
-          Positioned(
+          PositionedDirectional(
             top: 18 * scale,
-            right: 24 * scale,
+            end: 24 * scale,
             child: BackPill(onTap: onBack),
           )
         else
-          Positioned(
+          PositionedDirectional(
             top: line.top * scale,
-            right: line.side * scale,
+            end: line.side * scale,
             height: lineHeight,
             child: Center(child: BackPill(onTap: onBack)),
           ),

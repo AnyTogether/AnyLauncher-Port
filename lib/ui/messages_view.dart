@@ -269,7 +269,7 @@ class _Thread extends StatelessWidget {
             if (lock != null) ...[
               SizedBox(height: 6 * scale),
               Align(
-                alignment: Alignment.centerLeft,
+                alignment: AlignmentDirectional.centerStart,
                 child: _LockLine(lock: lock, accent: accent, onTap: together.openLockSheet),
               ),
             ],
@@ -421,7 +421,7 @@ class _Mark extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
     return Padding(
-      padding: EdgeInsets.only(left: 6 * scale),
+      padding: EdgeInsetsDirectional.only(start: 6 * scale),
       child: Semantics(
         label: label,
         child: Icon(icon, size: 14 * scale, color: color.withValues(alpha: 0.55)),
@@ -444,7 +444,7 @@ class _ComposerNote extends StatelessWidget {
     final scale = LayoutScale.of(context);
     return Container(
       margin: EdgeInsets.only(bottom: 10 * scale),
-      padding: EdgeInsets.fromLTRB(14 * scale, 8 * scale, 8 * scale, 8 * scale),
+      padding: EdgeInsetsDirectional.fromSTEB(14 * scale, 8 * scale, 8 * scale, 8 * scale),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(12 * scale),
@@ -782,7 +782,7 @@ class _Bubble extends StatelessWidget {
                       if (quote != null && !message.deleted)
                         Container(
                           margin: EdgeInsets.only(bottom: 6 * scale),
-                          padding: EdgeInsets.fromLTRB(10 * scale, 4 * scale, 8 * scale, 4 * scale),
+                          padding: EdgeInsetsDirectional.fromSTEB(10 * scale, 4 * scale, 8 * scale, 4 * scale),
                           decoration: BoxDecoration(
                             border: Border(
                               left: BorderSide(color: ink.withValues(alpha: 0.45), width: 2.5 * scale),
@@ -861,7 +861,7 @@ class _Bubble extends StatelessWidget {
             ),
           if (receipt != null)
             Padding(
-              padding: EdgeInsets.only(top: 3 * scale, right: 4 * scale),
+              padding: EdgeInsetsDirectional.only(top: 3 * scale, end: 4 * scale),
               child: Text(
                 receipt!,
                 style: AppText.display(11 * scale, weight: FontWeight.w500, color: Colors.white.withValues(alpha: 0.5)),
@@ -971,7 +971,7 @@ class _LockLine extends StatelessWidget {
         builder: (context, hovering) => AnimatedContainer(
           duration: Motion.focus,
           curve: Motion.settle,
-          padding: EdgeInsets.fromLTRB(9 * scale, 4 * scale, 11 * scale, 4 * scale),
+          padding: EdgeInsetsDirectional.fromSTEB(9 * scale, 4 * scale, 11 * scale, 4 * scale),
           decoration: BoxDecoration(
             color: (on ? accent : Colors.white).withValues(alpha: hovering ? 0.18 : 0.08),
             borderRadius: BorderRadius.circular(12 * scale),
@@ -1011,7 +1011,7 @@ class _DevicesNotice extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
     return Container(
-      padding: EdgeInsets.fromLTRB(14 * scale, 10 * scale, 10 * scale, 10 * scale),
+      padding: EdgeInsetsDirectional.fromSTEB(14 * scale, 10 * scale, 10 * scale, 10 * scale),
       decoration: BoxDecoration(
         color: Palette.warning.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(14 * scale),
@@ -1431,8 +1431,8 @@ class _SealedAttachmentView extends StatelessWidget {
                     ),
                   ),
                 if (attachment.kind == 'clip')
-                  Positioned(
-                    right: 8 * scale,
+                  PositionedDirectional(
+                    end: 8 * scale,
                     bottom: 6 * scale,
                     child: Text(length, style: AppText.display(12 * scale, weight: FontWeight.w700)),
                   ),

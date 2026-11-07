@@ -391,127 +391,131 @@ class _LauncherShellState extends State<LauncherShell> {
                         listenable: model,
                         // Behind a game or any other window the launcher rests: every animation
                         // stops and no frame is drawn, the GPU left to what is in front.
-                        builder: (context, _) => InputScope(
-                          mode: model.inputMode,
-                          previousKey: AppModel.keyLabel(
-                            model.preferences.shortcuts[LauncherAction.previousSection].key,
-                          ),
-                          nextKey: AppModel.keyLabel(model.preferences.shortcuts[LauncherAction.nextSection].key),
-                          previousPad: AppModel.padLabel(
-                            model.preferences.shortcuts[LauncherAction.previousSection].pad,
-                          ),
-                          nextPad: AppModel.padLabel(model.preferences.shortcuts[LauncherAction.nextSection].pad),
-                          child: TickerMode(
-                            enabled: !model.resting,
-                            child: PointerFocus(
-                              value: model.pointerFocus,
-                              child: LookScope(
-                                glass: model.look == LookStyle.glass,
-                                solid: model.solidGlass,
-                                seeThrough: model.glassWindow.seeThrough,
-                                child: _WindowBase(
-                                  window: model.glassWindow,
-                                  deep: model.palette.deep,
-                                  child: Stack(
-                                    fit: StackFit.expand,
-                                    children: [
-                                      Backdrop(model: model, time: widget.time),
-                                      RepaintBoundary(
-                                        // Glass's see-through window: under a layer the home screen
-                                        // fades out, the layer a pane over the desktop (LayerScrim).
-                                        child: AnimatedOpacity(
-                                          opacity: model.glassWindow.seeThrough && model.overlay != null ? 0 : 1,
-                                          duration: Motion.overlay,
-                                          curve: Motion.settle,
-                                          child: AnimatedSwitcher(
-                                            layoutBuilder: uniqueSwitcherLayout(),
-                                            duration: Motion.fade,
-                                            switchInCurve: Motion.settle,
-                                            child: model.preferences.onboarded
-                                                ? HomeView(key: const ValueKey('home'), model: model, now: widget.now)
-                                                : OnboardingView(
-                                                    key: const ValueKey('onboarding'),
-                                                    model: model,
-                                                    time: widget.time,
-                                                  ),
-                                          ),
-                                        ),
-                                      ),
-                                      RepaintBoundary(
-                                        child: AnimatedSwitcher(
-                                          layoutBuilder: uniqueSwitcherLayout(),
-                                          duration: Motion.overlay,
-                                          reverseDuration: Motion.overlay,
-                                          switchInCurve: Motion.settle,
-                                          switchOutCurve: Curves.easeIn,
-                                          transitionBuilder: (child, animation) => FadeTransition(
-                                            opacity: animation,
-                                            child: ScaleTransition(
-                                              scale: Tween(begin: 0.985, end: 1.0).animate(animation),
-                                              child: child,
+                        // Arabic and Urdu: every screen mirrored, as on the Mac.
+                        builder: (context, _) => Directionality(
+                          textDirection: T.language.isRightToLeft ? TextDirection.rtl : TextDirection.ltr,
+                          child: InputScope(
+                            mode: model.inputMode,
+                            previousKey: AppModel.keyLabel(
+                              model.preferences.shortcuts[LauncherAction.previousSection].key,
+                            ),
+                            nextKey: AppModel.keyLabel(model.preferences.shortcuts[LauncherAction.nextSection].key),
+                            previousPad: AppModel.padLabel(
+                              model.preferences.shortcuts[LauncherAction.previousSection].pad,
+                            ),
+                            nextPad: AppModel.padLabel(model.preferences.shortcuts[LauncherAction.nextSection].pad),
+                            child: TickerMode(
+                              enabled: !model.resting,
+                              child: PointerFocus(
+                                value: model.pointerFocus,
+                                child: LookScope(
+                                  glass: model.look == LookStyle.glass,
+                                  solid: model.solidGlass,
+                                  seeThrough: model.glassWindow.seeThrough,
+                                  child: _WindowBase(
+                                    window: model.glassWindow,
+                                    deep: model.palette.deep,
+                                    child: Stack(
+                                      fit: StackFit.expand,
+                                      children: [
+                                        Backdrop(model: model, time: widget.time),
+                                        RepaintBoundary(
+                                          // Glass's see-through window: under a layer the home screen
+                                          // fades out, the layer a pane over the desktop (LayerScrim).
+                                          child: AnimatedOpacity(
+                                            opacity: model.glassWindow.seeThrough && model.overlay != null ? 0 : 1,
+                                            duration: Motion.overlay,
+                                            curve: Motion.settle,
+                                            child: AnimatedSwitcher(
+                                              layoutBuilder: uniqueSwitcherLayout(),
+                                              duration: Motion.fade,
+                                              switchInCurve: Motion.settle,
+                                              child: model.preferences.onboarded
+                                                  ? HomeView(key: const ValueKey('home'), model: model, now: widget.now)
+                                                  : OnboardingView(
+                                                      key: const ValueKey('onboarding'),
+                                                      model: model,
+                                                      time: widget.time,
+                                                    ),
                                             ),
                                           ),
-                                          child: KeyedSubtree(
-                                            key: ValueKey(model.overlay),
-                                            child: switch (model.overlay) {
-                                              Layer.library => LibraryGrid(model: model),
-                                              Layer.log => LogView(model: model),
-                                              Layer.crashReport => CrashReportView(model: model),
-                                              Layer.controllerTest => ControllerTestView(model: model),
-                                              Layer.browserPlay => BrowserPlayView(model: model),
-                                              Layer.trophies => TrophyView(model: model),
-                                              Layer.gallery => GalleryView(model: model),
-                                              Layer.profilePicker => ProfilePickerView(model: model),
-                                              Layer.addProfile => AddProfileView(model: model),
-                                              Layer.themeStudio => ThemeStudioView(model: model),
-                                              Layer.messages => WithBackPill(
-                                                onBack: () => model.handle(Command.back),
-                                                titleLine: (side: 80, top: 60),
-                                                child: MessagesView(model: model),
+                                        ),
+                                        RepaintBoundary(
+                                          child: AnimatedSwitcher(
+                                            layoutBuilder: uniqueSwitcherLayout(),
+                                            duration: Motion.overlay,
+                                            reverseDuration: Motion.overlay,
+                                            switchInCurve: Motion.settle,
+                                            switchOutCurve: Curves.easeIn,
+                                            transitionBuilder: (child, animation) => FadeTransition(
+                                              opacity: animation,
+                                              child: ScaleTransition(
+                                                scale: Tween(begin: 0.985, end: 1.0).animate(animation),
+                                                child: child,
                                               ),
-                                              Layer.profile => WithBackPill(
-                                                onBack: () => model.handle(Command.back),
-                                                child: ProfileView(model: model),
-                                              ),
-                                              Layer.compare => WithBackPill(
-                                                onBack: () => model.handle(Command.back),
-                                                child: CompareView(model: model),
-                                              ),
-                                              Layer.feed => WithBackPill(
-                                                onBack: () => model.handle(Command.back),
-                                                child: FeedView(model: model),
-                                              ),
-                                              Layer.shareWatch => ShareWatchView(model: model),
-                                              Layer.leaderboard => WithBackPill(
-                                                onBack: () => model.handle(Command.back),
-                                                child: LeaderboardView(model: model),
-                                              ),
-                                              Layer.challenge => WithBackPill(
-                                                onBack: () => model.handle(Command.back),
-                                                child: ChallengeDetailView(model: model),
-                                              ),
-                                              null => const SizedBox.shrink(),
-                                              _ => PanelView(model: model),
-                                            },
+                                            ),
+                                            child: KeyedSubtree(
+                                              key: ValueKey(model.overlay),
+                                              child: switch (model.overlay) {
+                                                Layer.library => LibraryGrid(model: model),
+                                                Layer.log => LogView(model: model),
+                                                Layer.crashReport => CrashReportView(model: model),
+                                                Layer.controllerTest => ControllerTestView(model: model),
+                                                Layer.browserPlay => BrowserPlayView(model: model),
+                                                Layer.trophies => TrophyView(model: model),
+                                                Layer.gallery => GalleryView(model: model),
+                                                Layer.profilePicker => ProfilePickerView(model: model),
+                                                Layer.addProfile => AddProfileView(model: model),
+                                                Layer.themeStudio => ThemeStudioView(model: model),
+                                                Layer.messages => WithBackPill(
+                                                  onBack: () => model.handle(Command.back),
+                                                  titleLine: (side: 80, top: 60),
+                                                  child: MessagesView(model: model),
+                                                ),
+                                                Layer.profile => WithBackPill(
+                                                  onBack: () => model.handle(Command.back),
+                                                  child: ProfileView(model: model),
+                                                ),
+                                                Layer.compare => WithBackPill(
+                                                  onBack: () => model.handle(Command.back),
+                                                  child: CompareView(model: model),
+                                                ),
+                                                Layer.feed => WithBackPill(
+                                                  onBack: () => model.handle(Command.back),
+                                                  child: FeedView(model: model),
+                                                ),
+                                                Layer.shareWatch => ShareWatchView(model: model),
+                                                Layer.leaderboard => WithBackPill(
+                                                  onBack: () => model.handle(Command.back),
+                                                  child: LeaderboardView(model: model),
+                                                ),
+                                                Layer.challenge => WithBackPill(
+                                                  onBack: () => model.handle(Command.back),
+                                                  child: ChallengeDetailView(model: model),
+                                                ),
+                                                null => const SizedBox.shrink(),
+                                                _ => PanelView(model: model),
+                                              },
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      if (model.starting != null) _StartingCard(model: model),
-                                      if (model.pairing != null) PairingCard(model: model),
-                                      _Toast(
-                                        message: model.toast,
-                                        level: model.toastLevel,
-                                        icon: model.toastIcon,
-                                        onTap: model.toastTap,
-                                      ),
-                                      if (model.showsWindowButtons)
-                                        WindowButtons(
-                                          accent: model.accentChoice.color,
-                                          onMinimize: model.minimizeLauncher,
-                                          onWindowed: () => unawaited(model.setLauncherFullscreen(false)),
-                                          onQuit: model.quitLauncher,
+                                        if (model.starting != null) _StartingCard(model: model),
+                                        if (model.pairing != null) PairingCard(model: model),
+                                        _Toast(
+                                          message: model.toast,
+                                          level: model.toastLevel,
+                                          icon: model.toastIcon,
+                                          onTap: model.toastTap,
                                         ),
-                                    ],
+                                        if (model.showsWindowButtons)
+                                          WindowButtons(
+                                            accent: model.accentChoice.color,
+                                            onMinimize: model.minimizeLauncher,
+                                            onWindowed: () => unawaited(model.setLauncherFullscreen(false)),
+                                            onQuit: model.quitLauncher,
+                                          ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -611,9 +615,9 @@ class _Toast extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scale = LayoutScale.of(context);
-    return Positioned(
-      left: 0,
-      right: 0,
+    return PositionedDirectional(
+      start: 0,
+      end: 0,
       bottom: 92 * scale,
       child: IgnorePointer(
         ignoring: onTap == null,
@@ -637,7 +641,7 @@ class _Toast extends StatelessWidget {
                       key: ValueKey(message),
                       radius: 34 * scale,
                       opacity: 0.66,
-                      padding: EdgeInsets.fromLTRB(12 * scale, 10 * scale, 28 * scale, 10 * scale),
+                      padding: EdgeInsetsDirectional.fromSTEB(12 * scale, 10 * scale, 28 * scale, 10 * scale),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -667,7 +671,7 @@ class _Toast extends StatelessWidget {
                       key: ValueKey(message),
                       radius: 30 * scale,
                       opacity: 0.6,
-                      padding: EdgeInsets.fromLTRB(10 * scale, 10 * scale, 26 * scale, 10 * scale),
+                      padding: EdgeInsetsDirectional.fromSTEB(10 * scale, 10 * scale, 26 * scale, 10 * scale),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [

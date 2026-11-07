@@ -5,7 +5,9 @@ release when it is made.
 
 ## Next release
 
-Nothing yet.
+- **Arabic and Urdu are laid out right to left**, as on the Mac. Every screen is mirrored, the
+  games after the selected one sit on its left, and ← and → (and a mouse drag on the games and
+  the sliders) follow what the screen shows. A share play you watch keeps the controller as it is.
 
 ## 0.1.20
 

@@ -6,7 +6,7 @@ import 'package:anyps5_desktop/ui/app_model.dart';
 import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart' show SizedBox;
+import 'package:flutter/widgets.dart' show Directionality, SizedBox, TextDirection, ValueKey;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/ui_support.dart';
@@ -416,6 +416,53 @@ void main() {
       }
     }
     expect(damaged, isEmpty);
+  });
+
+  test('Arabic and Urdu are written right to left, the others left to right', () async {
+    await T.load();
+    expect(Language.byCode('ar').isRightToLeft, isTrue);
+    expect(Language.byCode('ur').isRightToLeft, isTrue);
+    expect(const Language('fa-IR', 'فارسی', 1).isRightToLeft, isTrue, reason: 'by the base code');
+    for (final code in ['en', 'tr', 'de', 'zh-Hant', 'hi']) {
+      expect(Language.byCode(code).isRightToLeft, isFalse, reason: code);
+    }
+  });
+
+  testWidgets('Arabic mirrors the screens, as on the Mac: the next games on the left, → to what is on the right', (
+    tester,
+  ) async {
+    await tester.runAsync(T.load);
+    final fixture = makeFixture(language: Language.byCode('ar'));
+    addTearDown(fixture.dispose);
+    final model = fixture.model;
+    model.select(1);
+    await pumpLauncher(tester, model);
+    final shell = tester.element(find.byKey(const ValueKey('home')));
+    expect(Directionality.of(shell), TextDirection.rtl);
+    final selected = tester.getCenter(find.byKey(ValueKey('tile-${model.games[1].id}')));
+    final next = tester.getCenter(find.byKey(ValueKey('tile-${model.games[2].id}')));
+    expect(next.dx, lessThan(selected.dx), reason: 'the next game is drawn on the left');
+    model.handle(Command.left);
+    expect(model.selected, 2, reason: '← moves to the game drawn on the left: the next one');
+    model.handle(Command.right);
+    expect(model.selected, 1);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('English stays left to right', (tester) async {
+    await tester.runAsync(T.load);
+    final fixture = makeFixture();
+    addTearDown(fixture.dispose);
+    final model = fixture.model;
+    model.select(1);
+    await pumpLauncher(tester, model);
+    expect(Directionality.of(tester.element(find.byKey(const ValueKey('home')))), TextDirection.ltr);
+    final selected = tester.getCenter(find.byKey(ValueKey('tile-${model.games[1].id}')));
+    final next = tester.getCenter(find.byKey(ValueKey('tile-${model.games[2].id}')));
+    expect(next.dx, greaterThan(selected.dx));
+    model.handle(Command.right);
+    expect(model.selected, 2);
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('the home screen fits in every bundled language', (tester) async {

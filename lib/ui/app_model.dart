@@ -636,7 +636,26 @@ abstract final class InstallSpan {
 }
 
 /// A move on the launcher's screen, from the keyboard or the phone.
-enum Command { left, right, up, down, select, back, options, previousGame, nextGame, home }
+enum Command {
+  left,
+  right,
+  up,
+  down,
+  select,
+  back,
+  options,
+  previousGame,
+  nextGame,
+  home;
+
+  /// Left for right and right for left, the rest as it is: on mirrored screens (Arabic, Urdu)
+  /// → moves to what is drawn on the right, as on the Mac.
+  Command get mirrored => switch (this) {
+    Command.left => Command.right,
+    Command.right => Command.left,
+    _ => this,
+  };
+}
 
 /// Where the home screen's focus is: the tiles, a top-bar button, a button under the title, or
 /// one of the update notice's (0 Restart Now, 1 Later), left of the top bar's.
@@ -3889,6 +3908,9 @@ class AppModel extends ChangeNotifier {
 
   /// Home screen, library and panels: what a command does where the user is.
   void handle(Command command) {
+    // Mirrored screens (Arabic, Urdu): → moves to what is drawn on the right, as on the Mac.
+    // Watching a share play the controller is the game's, so it stays as it is there.
+    if (T.language.isRightToLeft && overlay != Layer.shareWatch) command = command.mirrored;
     if (pairing != null) {
       if (command == Command.select) answerPairing(true);
       if (command == Command.back) answerPairing(false);

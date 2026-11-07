@@ -79,6 +79,9 @@ class FamilyGate {
   }
 
   bool get voiceAllowed => rules?.voiceChat ?? true;
+
+  /// Photos and clips may be shared (posts, chats, the gallery).
+  bool get mediaAllowed => rules?.mediaSharing ?? true;
   bool get messagesAllowed => rules == null || rules!.messages != MessageRule.nobody;
 
   /// Friend requests go through a parent (approved contacts only, or nobody).

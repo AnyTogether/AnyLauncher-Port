@@ -243,6 +243,7 @@ void main() {
         'friends-me',
         'friends-find',
         'friends-feed',
+        'friends-captures',
         'friends-board',
         'accept-u-cem',
         'decline-u-cem',
@@ -251,7 +252,7 @@ void main() {
         'friend-u-bora',
         'friend-u-ana',
       ]);
-      final rows = model.panelCategories().single.rows.skip(4).toList();
+      final rows = model.panelCategories().single.rows.skip(5).toList();
       expect(rows[4].detail, '@bora · Playing Neon Alley');
       expect(rows[4].person?.status, PersonStatus.playing);
       expect(model.together.hub.badge, 1);

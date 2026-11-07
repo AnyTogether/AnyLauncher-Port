@@ -923,6 +923,14 @@ extension TogetherMessages on TogetherModel {
         _ => T.text('messagesPhoto'),
       };
     }
+    // A photo or clip sent as it is: what it is, when no words came with it.
+    if ((message.text ?? '').isEmpty && message.media != null) {
+      return switch (message.media!.kind) {
+        'clip' => T.text('messagesClip'),
+        'voice' => T.text('messagesVoice'),
+        _ => T.text('messagesPhoto'),
+      };
+    }
     return message.text ?? '';
   }
 

@@ -13,7 +13,13 @@ import '../core/online/online_peer_mesh.dart';
 import '../core/online/online_play.dart';
 import '../core/profiles/profiles.dart' show ProfileAccount, ProfileMode;
 import '../core/remote/remote_protocol.dart';
+import '../core/capture/clip_tools.dart';
+import '../core/screenshots.dart';
 import '../core/together/account.dart';
+import '../core/together/cloud_saves.dart' show MediaLimits, StorageInfo;
+import '../core/together/e2ee.dart' show SealedAttachment;
+import '../core/together/media_files.dart';
+import '../core/together/posts.dart';
 import '../core/together/challenges.dart';
 import '../core/together/compat.dart';
 import '../core/together/discover.dart';
@@ -64,6 +70,7 @@ part 'together_profile.dart';
 part 'together_find.dart';
 part 'together_social.dart';
 part 'together_challenges.dart';
+part 'together_captures.dart';
 
 /// The launcher's version, as AnyTogether hears it.
 const launcherVersion = '0.1.20';
@@ -229,6 +236,10 @@ class TogetherModel {
 
   /// Party: its chat's keys and field (together_party_chat.dart).
   final PartyChatKeys partyChatKeys = PartyChatKeys();
+
+  /// Captures and the gallery's Share menu (together_captures.dart); tests choose the clip tools.
+  final CapturesState captures = CapturesState();
+  ClipTools? clipToolsOverride;
 
   /// Messages: the conversation or friend chosen on the left, whether the keys are in the thread,
   /// which quick reply (or the field, the last) is focused there, and what is typed.
@@ -1304,6 +1315,7 @@ class TogetherModel {
     // Share play: the one hosted, the one watched, the invites.
     if (event.type == 'live.ready' || event.type.startsWith('share_play.')) app.sharePlay.event(event);
     findEvent(event);
+    if (event.type.startsWith('post.')) capturesEvent(event);
     final data = event.json;
     switch (event.type) {
       case 'live.ready':

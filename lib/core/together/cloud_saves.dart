@@ -18,7 +18,14 @@ int _int(Object? value) => switch (value) {
 
 /// Whether the server keeps files (GET /storage, no sign-in needed).
 class StorageInfo {
-  const StorageInfo({required this.enabled, this.quota = 0, this.saveMax = 0, this.partSize = 0});
+  const StorageInfo({
+    required this.enabled,
+    this.quota = 0,
+    this.saveMax = 0,
+    this.partSize = 0,
+    this.media = const MediaLimits(),
+    this.galleryMax = 12,
+  });
 
   static const disabled = StorageInfo(enabled: false);
 
@@ -27,12 +34,48 @@ class StorageInfo {
     quota: _int(json['quota']),
     saveMax: _int(json['saveMax']),
     partSize: _int(json['partSize']),
+    media: json['media'] is Map<String, dynamic>
+        ? MediaLimits.fromJson(json['media'] as Map<String, dynamic>)
+        : const MediaLimits(),
+    galleryMax: json.containsKey('galleryMax') ? _int(json['galleryMax']) : 12,
   );
 
   final bool enabled;
   final int quota;
   final int saveMax;
   final int partSize;
+
+  /// What a picture, a clip and a clip's poster may be; the server's defaults when it does not say.
+  final MediaLimits media;
+
+  /// How many photos and clips a profile's gallery holds.
+  final int galleryMax;
+}
+
+/// The media limits GET /storage gives (`mediaLimits` on the server).
+class MediaLimits {
+  const MediaLimits({
+    this.image = 10 * 1024 * 1024,
+    this.clip = 25 * 1024 * 1024,
+    this.poster = 2 * 1024 * 1024,
+    this.pixels = 40000000,
+  });
+
+  factory MediaLimits.fromJson(Map<String, dynamic> json) {
+    int read(String key, int otherwise) => json.containsKey(key) && _int(json[key]) > 0 ? _int(json[key]) : otherwise;
+    const standard = MediaLimits();
+    return MediaLimits(
+      image: read('image', standard.image),
+      clip: read('clip', standard.clip),
+      poster: read('poster', standard.poster),
+      pixels: read('pixels', standard.pixels),
+    );
+  }
+
+  final int image;
+  final int clip;
+  final int poster;
+  final int pixels;
 }
 
 /// Bytes used, in all and by what; [limit] is the account's quota.

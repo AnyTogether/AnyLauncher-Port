@@ -14,6 +14,15 @@ release when it is made.
 - **Start a group chat**, as on the Mac: **Messages** lists **New group** under your
   conversations. Pick the friends, give it a name if you like, and **Start the group** opens it
   to write in.
+- **Captures**, as on the Mac: **Friends › Captures** shows the screenshots and clips you, your
+  friends and players you met shared. Like one at once, read and write comments with one level of
+  replies (quick ones like GG too), view the picture, delete your own, and △ opens who posted it.
+- **Share from the gallery**, as on the Mac: △ on a screenshot or clip opens **Share**. **Share to
+  AnyTogether** writes a post with a caption and Friends or Public, **Send to** puts it in one of
+  your chats (sealed where the chat is end-to-end encrypted), and **Share to my gallery** pins it
+  to your profile. A clip longer than a post takes is said before anything goes up, and one too
+  big is made smaller with ffmpeg first. Without a server that keeps files, △ shows the file in
+  its folder. Photos and clips sent this way show in the chat, here and on the Mac.
 - **Place and zoom your profile picture**, as on the Mac: a picture you choose opens in a crop,
   where you drag it inside the circle and zoom with the slider or ← →, then **Save**. Signed in,
   **Use as my AnyTogether picture** puts it on your AnyTogether profile, and **Use my AnyTogether

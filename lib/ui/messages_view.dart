@@ -1038,8 +1038,13 @@ class _Bubble extends StatelessWidget {
                         Padding(
                           padding: EdgeInsets.only(bottom: text.isEmpty ? 0 : 8 * scale, top: 4 * scale),
                           child: _SealedAttachmentView(model: model, message: message, ink: ink),
+                        )
+                      else if (message.media case final media? when !media.sealed)
+                        Padding(
+                          padding: EdgeInsets.only(bottom: text.isEmpty ? 0 : 8 * scale, top: 4 * scale),
+                          child: _PlainMediaView(model: model, media: media, ink: ink),
                         ),
-                      if (text.isNotEmpty || attachment == null)
+                      if (text.isNotEmpty || (attachment == null && (message.media == null || message.media!.sealed)))
                         Text(
                           text,
                           style: AppText.display(
@@ -1570,6 +1575,65 @@ class _DeviceList extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// A photo or clip sent as it is (from the gallery's Share, here or on the Mac): its picture or
+/// the clip's poster with a play mark; clicked, opened in the system's viewer or player.
+class _PlainMediaView extends StatelessWidget {
+  const _PlainMediaView({required this.model, required this.media, required this.ink});
+
+  final AppModel model;
+  final MediaLink media;
+  final Color ink;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = LayoutScale.of(context);
+    final link = media.url;
+    if (media.gone || link == null) {
+      return Text(
+        T.text('messagesDeleted'),
+        style: AppText.display(14 * scale, weight: FontWeight.w600, color: ink),
+      );
+    }
+    final still = media.kind == 'image' ? link : media.poster;
+    return Pressable(
+      onTap: () {
+        final url = Uri.tryParse(link);
+        if (url != null) model.services.openUrl?.call(url);
+      },
+      builder: (context, hovering) => ClipRRect(
+        borderRadius: BorderRadius.circular(12 * scale),
+        child: SizedBox(
+          width: 320 * scale,
+          child: AspectRatio(
+            aspectRatio: 16 / 9,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ColoredBox(color: Colors.black.withValues(alpha: 0.3)),
+                if (still != null)
+                  FutureBuilder<Uint8List>(
+                    future: model.together.picture(still),
+                    builder: (context, snapshot) => snapshot.hasData
+                        ? Image.memory(snapshot.data!, fit: BoxFit.cover, gaplessPlayback: true)
+                        : const SizedBox.shrink(),
+                  ),
+                if (media.kind == 'clip')
+                  Center(
+                    child: Icon(
+                      Icons.play_circle_fill_rounded,
+                      size: 40 * scale,
+                      color: Colors.white.withValues(alpha: hovering ? 1 : 0.85),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

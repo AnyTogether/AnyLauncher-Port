@@ -13,6 +13,7 @@ import '../core/together/levels.dart';
 import 'app_model.dart';
 import 'theme_studio_view.dart';
 import 'browser_play.dart';
+import 'captures_view.dart';
 import 'challenge_view.dart';
 import 'compare_view.dart';
 import 'components.dart';
@@ -462,7 +463,7 @@ class _LauncherShellState extends State<LauncherShell> {
                                               Layer.browserPlay => BrowserPlayView(model: model),
                                               Layer.cropPicture => PictureCropView(model: model),
                                               Layer.trophies => TrophyView(model: model),
-                                              Layer.gallery => GalleryView(model: model),
+                                              Layer.gallery => GalleryWithShare(model: model),
                                               Layer.profilePicker => ProfilePickerView(model: model),
                                               Layer.addProfile => AddProfileView(model: model),
                                               Layer.themeStudio => ThemeStudioView(model: model),
@@ -478,6 +479,10 @@ class _LauncherShellState extends State<LauncherShell> {
                                               Layer.compare => WithBackPill(
                                                 onBack: () => model.handle(Command.back),
                                                 child: CompareView(model: model),
+                                              ),
+                                              Layer.captures => WithBackPill(
+                                                onBack: () => model.handle(Command.back),
+                                                child: CapturesView(model: model),
                                               ),
                                               Layer.feed => WithBackPill(
                                                 onBack: () => model.handle(Command.back),

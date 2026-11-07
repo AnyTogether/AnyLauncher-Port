@@ -61,6 +61,9 @@ class FakeTogether {
   /// Files served as they are, by path (signed media links).
   final Map<String, List<int>> files = {};
 
+  /// The kind of each media the launcher uploaded (POST /me/media), by its ID.
+  final Map<String, String> mediaKinds = {};
+
   /// The gateway's sockets and the frames they sent.
   final List<WebSocket> sockets = [];
   final List<Map<String, dynamic>> frames = [];
@@ -899,7 +902,8 @@ class FakeTogether {
       if (partyChats.containsKey(id) && (call.body['attachments'] as List<dynamic>? ?? const []).isNotEmpty) {
         return problem(400, 'bad_request', "A party's chat takes text only");
       }
-      final text = call.body['text'] as String;
+      final attachments = call.body['attachments'] as List<dynamic>? ?? const [];
+      final text = call.body['text'] as String? ?? '';
       if (text.contains('blocked.example')) return problem(400, 'link_blocked', 'That link is blocked');
       final message = _message(
         id,
@@ -909,6 +913,16 @@ class FakeTogether {
         id: call.body['clientId'] as String?,
         replyTo: call.body['replyTo'] as int?,
       );
+      // A photo or clip sent as it is: the media the launcher uploaded, behind a link.
+      if (attachments.isNotEmpty && call.body['text'] == null) {
+        final media = (attachments.first as Map<String, dynamic>)['mediaId'] as String;
+        message
+          ..['text'] = null
+          ..['kind'] = mediaKinds[media] ?? 'image'
+          ..['attachments'] = [
+            {'id': media, 'kind': mediaKinds[media] ?? 'image', 'url': '$base/media/$media.png', 'poster': null},
+          ];
+      }
       messages.add(message);
       (conversations[id] ?? partyChats[id])!
         ..['lastSeq'] = messages.length

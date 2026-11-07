@@ -15,6 +15,11 @@ release when it is made.
   with Let them watch and Not now, and the ones who asked with your code say so.
 - **A join code for your share play**, as on the Mac: make one, copy it or its link, make a
   new one or stop it. Anyone with it can ask to watch, and you still say yes to each one.
+- **Hide the launcher while a game runs**, as on the Mac (Settings › Behaviour). The launcher's
+  window is minimized once the game starts and comes back when it closes. PS still brings it
+  back with the quick menu, and Resume puts it aside again.
+- **Check for updates can be turned off**, as on the Mac (Settings › Behaviour). Off, the
+  launcher and the engine look for new versions only when you ask in Settings › About.
 
 ## 0.1.20
 

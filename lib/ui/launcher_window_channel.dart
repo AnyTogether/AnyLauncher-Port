@@ -16,6 +16,9 @@ class ChannelLauncherWindow implements LauncherWindow {
   Future<bool> minimize() => _call('minimize');
 
   @override
+  Future<bool> restore() => _call('restore');
+
+  @override
   Future<bool> close() => _call('close');
 
   @override

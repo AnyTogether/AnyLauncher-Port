@@ -105,6 +105,9 @@ abstract class SfuRoom {
   /// The published microphone sends, or is muted.
   Future<void> setMicrophone(bool enabled);
 
+  /// Everyone else's sound heard, or nobody's (deafened in party voice).
+  Future<void> setHearing(bool on);
+
   /// Everyone else in the room.
   Set<String> get participants;
 

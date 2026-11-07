@@ -19,6 +19,10 @@ release when it is made.
   more than four viewers you watch from the media server until the host lets you play, then
   straight from the host, and back when they take the pad. The corner chip says when the
   picture comes through the media server.
+- **A controller's battery in percent** where the system measures it, as on the Mac. On Linux
+  it comes from the pad's power supply (DualSense, DualShock 4 and other pads whose driver gives
+  a percentage). On Windows a DualSense or DualShock 4 is read from its own report. Pads the
+  system has no percentage for keep the four levels.
 - **An iPhone on a USB cable reaches the launcher without Wi-Fi**, as on the Mac. The launcher
   opens the phone app's port over the cable through usbmuxd and joins it to its phone server.
   On Windows that is Apple Mobile Device Support (it comes with iTunes or the Apple Devices app),

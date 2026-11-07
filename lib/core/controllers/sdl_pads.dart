@@ -6,6 +6,7 @@ import 'package:ffi/ffi.dart';
 
 import '../gamepad/feel.dart';
 import '../gamepad/pad_navigation.dart';
+import 'pad_batteries.dart';
 import 'pad_info.dart';
 import 'pad_inventory.dart';
 import 'sdl_maps.dart';
@@ -65,6 +66,9 @@ abstract class SdlBackend {
   bool hasLed(int instance);
   bool setLed(int instance, int red, int green, int blue);
   void setPlayerIndex(int instance, int player);
+
+  /// The opened pad's serial (a PlayStation pad's Bluetooth address), null when SDL has none.
+  String? serial(int instance);
   void quit();
 }
 
@@ -84,7 +88,22 @@ class SdlPadSource implements PadSource, PadRumble, PadInventory {
     bool Function()? remapperRunning,
     this.platformDriver = 'SDL',
     this.steamTookOver,
+    this.batteries,
   }) : _remapper = remapperRunning ?? (() => false);
+
+  /// The system's battery percentages, where SDL2 gives only four levels; null: the levels.
+  final PadBatteryProbe? batteries;
+
+  /// A pad's battery: the system's percentage where it has one, else SDL2's level.
+  PadBattery? _battery(int instance, int level, {int? vendor, int? product}) {
+    try {
+      final measured = batteries?.battery(vendor: vendor, product: product, serial: backend.serial(instance));
+      if (measured != null) return measured;
+    } on Object {
+      // The level, then.
+    }
+    return SdlMaps.battery(level);
+  }
 
   /// The controllers Steam Input took over, left to its virtual pad (SteamLaunch.skipPhysicalPad).
   final bool Function(int vendor, int product)? steamTookOver;
@@ -163,7 +182,7 @@ class SdlPadSource implements PadSource, PadRumble, PadInventory {
         name: device.name,
         kind: SdlMaps.kind(device.type, vendor: vendor, product: product, name: device.name),
         connection: SdlMaps.connection(device.guid, powerLevel: reading?.powerLevel ?? -1),
-        battery: SdlMaps.battery(reading?.powerLevel ?? -1),
+        battery: _battery(device.instance, reading?.powerLevel ?? -1, vendor: vendor, product: product),
         driver: driver == 'SDL' ? platformDriver : driver,
         vendor: vendor,
         product: product,
@@ -180,7 +199,7 @@ class SdlPadSource implements PadSource, PadRumble, PadInventory {
       _batteryTick = 0;
       for (final entry in _open.entries.toList()) {
         final level = backend.read(entry.key)?.powerLevel ?? -1;
-        final battery = SdlMaps.battery(level);
+        final battery = _battery(entry.key, level, vendor: entry.value.vendor, product: entry.value.product);
         final connection = entry.value.connection == PadConnection.unknown && level == 4 ? PadConnection.usb : entry.value.connection;
         if (battery != entry.value.battery || connection != entry.value.connection) {
           _open[entry.key] = entry.value.copyWith(battery: battery, clearBattery: battery == null, connection: connection);
@@ -249,6 +268,7 @@ class SdlPadSource implements PadSource, PadRumble, PadInventory {
     }
     _open.clear();
     _visible = const [];
+    batteries?.dispose();
     backend.quit();
   }
 
@@ -364,6 +384,7 @@ class SdlLibrary implements SdlBackend {
   late final int Function(Pointer<Void>)? _hasLed;
   late final int Function(Pointer<Void>, int, int, int)? _setLed;
   late final void Function(Pointer<Void>, int) _setPlayer;
+  late final Pointer<Utf8> Function(Pointer<Void>)? _serial;
   late final int Function(int) _eventState;
   late final int Function(int) _joystickEventState;
 
@@ -452,6 +473,10 @@ class SdlLibrary implements SdlBackend {
         ? l.lookupFunction<Int32 Function(Pointer<Void>, Uint8, Uint8, Uint8), int Function(Pointer<Void>, int, int, int)>(
             'SDL_GameControllerSetLED',
           )
+        : null;
+    // 2.0.14 and later.
+    _serial = l.providesSymbol('SDL_JoystickGetSerial')
+        ? l.lookupFunction<Pointer<Utf8> Function(Pointer<Void>), Pointer<Utf8> Function(Pointer<Void>)>('SDL_JoystickGetSerial')
         : null;
     final getVersion = l.lookupFunction<Void Function(Pointer<_SdlVersion>), void Function(Pointer<_SdlVersion>)>('SDL_GetVersion');
     _version = using((arena) {
@@ -580,6 +605,17 @@ class SdlLibrary implements SdlBackend {
   void setPlayerIndex(int instance, int player) {
     final controller = _controllers[instance];
     if (controller != null) _setPlayer(controller, player);
+  }
+
+  @override
+  String? serial(int instance) {
+    final controller = _controllers[instance];
+    final serial = _serial;
+    if (controller == null || serial == null) return null;
+    final joystick = _joystick(controller);
+    if (joystick == nullptr) return null;
+    final text = serial(joystick);
+    return text == nullptr ? null : text.toDartString();
   }
 
   @override

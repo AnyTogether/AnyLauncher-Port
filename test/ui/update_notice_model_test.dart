@@ -141,6 +141,26 @@ void main() {
       expect(github.requests.length, greaterThan(asked));
     });
 
+    test('Check for updates off (Settings › Behaviour): no automatic look, Check now still asks', () async {
+      final model = launcher()..open(Layer.settings);
+      final row = model
+          .panelCategories()
+          .firstWhere((category) => category.id == 'general')
+          .rows
+          .firstWhere((row) => row.id == 'checkUpdates');
+      expect((row.kind as ToggleRow).value, isTrue, reason: 'on by default, as on the Mac');
+      (row.kind as ToggleRow).set(false);
+      expect(model.preferences.checkUpdates, isFalse);
+      expect(Preferences.fromJson(model.preferences.toJson()).checkUpdates, isFalse, reason: 'kept');
+      await model.updates.startupCheck();
+      model.updates.lastCheck = DateTime.now().subtract(const Duration(hours: 1));
+      model.updates.activated();
+      expect(github.requests, isEmpty, reason: 'nothing asked on its own');
+      expect(model.updates.latest, isNull);
+      await model.updates.check();
+      expect(model.updates.latest?.version, newer, reason: 'Check for Updates Now still asks');
+    });
+
     test('About shows where it stands', () async {
       final model = launcher();
       expect(model.updates.aboutRows().map((row) => row.detail), [

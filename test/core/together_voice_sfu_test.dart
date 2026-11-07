@@ -124,8 +124,8 @@ void main() {
     expect(rooms.single.hearing, isTrue);
     expect(rooms.single.microphone, isTrue);
     await until(() => server.callsTo('calls/c-9/mute').length >= 2);
-    final told = [for (final call in server.callsTo('calls/c-9/mute')) call.body];
-    expect(told, contains({'muted': true, 'deafened': true}));
+    final told = [for (final call in server.callsTo('calls/c-9/mute')) (call.body['muted'], call.body['deafened'])];
+    expect(told, contains((true, true)));
   });
 
   test('an "sfu" answer without a room asks for one', () async {

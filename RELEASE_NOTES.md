@@ -5,6 +5,11 @@ release when it is made.
 
 ## Next release
 
+- **Hide the launcher while a game runs**, as on the Mac (Settings › Behaviour). The launcher's
+  window is minimized once the game starts and comes back when it closes. PS still brings it
+  back with the quick menu, and Resume puts it aside again.
+- **Check for updates can be turned off**, as on the Mac (Settings › Behaviour). Off, the
+  launcher and the engine look for new versions only when you ask in Settings › About.
 - **Edit your AnyTogether profile here**, as on the Mac: **Settings › AnyTogether › Your profile**
   has your display name, bio and two-letter country, with **Save profile**, and your handle with
   **Change handle** and the day it may change again.

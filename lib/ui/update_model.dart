@@ -17,7 +17,8 @@ import 'strings.dart';
 import 'together_model.dart' show launcherVersion;
 
 /// New versions of AnyPS5 Desktop itself: looked for at the start, every six hours while the
-/// launcher stays open and when it comes back to the front after half an hour; a newer one is
+/// launcher stays open and when it comes back to the front after half an hour (while Settings ›
+/// Behaviour › Check for updates is on); a newer one is
 /// downloaded quietly and checked against the release's signature, then a quiet notice on the
 /// home screen offers Restart Now and Later (the next launch). Settings › About shows where it
 /// stands.
@@ -141,6 +142,8 @@ class LauncherUpdateModel {
   /// A quiet look; a newer release with a file for this system is downloaded at once (its
   /// notice comes once it is ready), one without is said once.
   Future<void> periodicCheck({bool first = false}) async {
+    // Settings › Behaviour › Check for updates off: only Check for Updates Now asks.
+    if (!app.preferences.checkUpdates) return;
     final before = latest?.version;
     await check(quiet: true);
     if (!available) return;
@@ -153,7 +156,7 @@ class LauncherUpdateModel {
 
   /// The launcher came back to the front: asked again after half an hour away.
   void activated() {
-    if (_source == null || checking || received != null) return;
+    if (_source == null || checking || received != null || !app.preferences.checkUpdates) return;
     final last = lastCheck;
     if (last != null && DateTime.now().difference(last) < afterAway) return;
     unawaited(periodicCheck());

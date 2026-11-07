@@ -16,7 +16,8 @@ import 'package:anyps5_desktop/ui/strings.dart';
 import 'package:anyps5_desktop/ui/theme.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart' show Center, Directionality, IgnorePointer, Offset, Stack, TextDirection, ValueKey;
+import 'package:flutter/widgets.dart'
+    show Center, Directionality, IgnorePointer, Offset, Stack, TextDirection, ValueKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
@@ -57,6 +58,14 @@ class FakeWindow implements LauncherWindow {
   @override
   Future<bool> minimize() async {
     minimized++;
+    return true;
+  }
+
+  int restored = 0;
+
+  @override
+  Future<bool> restore() async {
+    restored++;
     return true;
   }
 }
@@ -566,6 +575,74 @@ void main() {
       pads.press(PadButton.south);
       await playing;
       expect(model.running, isNull);
+    }, skip: Platform.isWindows ? 'the fake game is a shell script' : false);
+  });
+
+  group('Hide the launcher while a game runs', () {
+    late Fixture fixture;
+    late AppModel model;
+    late FakePads pads;
+    late FakeDesktop desktop;
+    late FakeWindow window;
+
+    setUp(() {
+      pads = FakePads();
+      desktop = FakeDesktop();
+      window = FakeWindow();
+      fixture = makeFixture(pads: () => pads, desktop: desktop, window: window);
+      model = fixture.model..startPads();
+    });
+    tearDown(() {
+      model.dispose();
+      fixture.dispose();
+    });
+
+    Future<({Future<void> done})> startOrbit() async {
+      final orbit = model.games.firstWhere((game) => game.titleId == 'PPSA01001');
+      final installed = Installer.installedFolder(orbit, model.root!);
+      File(p.join(installed, 'app.elf')).writeAsStringSync('#!/bin/sh\nsleep 5\n');
+      if (!Platform.isWindows) Process.runSync('chmod', ['755', p.join(installed, 'app.elf')]);
+      model.select(model.games.indexOf(orbit));
+      final playing = model.play(orbit);
+      await until(() => model.running != null);
+      return (done: playing);
+    }
+
+    test('off by default: the window stays', () async {
+      expect(model.preferences.hideWhilePlaying, isFalse);
+      final playing = (await startOrbit()).done;
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(window.minimized, 0);
+      model.stopGame();
+      await playing;
+      expect(window.restored, 0);
+    }, skip: Platform.isWindows ? 'the fake game is a shell script' : false);
+
+    test('on: minimized once the game starts, back from PS, aside again on Resume, back when it closes', () async {
+      model.open(Layer.settings);
+      final row = model
+          .panelCategories()
+          .firstWhere((category) => category.id == 'general')
+          .rows
+          .firstWhere((row) => row.id == 'hide');
+      (row.kind as ToggleRow).set(true);
+      model.closeOverlay();
+      expect(Preferences.fromJson(model.preferences.toJson()).hideWhilePlaying, isTrue, reason: 'kept');
+      final playing = (await startOrbit()).done;
+      await until(() => window.minimized == 1);
+      expect(model.hiddenForGame, isTrue);
+      desktop.focused = false;
+      model.preferences.pauseOnMenu = false;
+      pads.press(PadButton.guide);
+      await until(() => model.overlay == Layer.quickMenu && desktop.calls.contains('raise'));
+      expect(window.restored, 1, reason: 'the quick menu brings the window back first');
+      desktop.focused = true;
+      pads.press(PadButton.south);
+      await until(() => window.minimized == 2);
+      model.stopGame();
+      await playing;
+      expect(window.restored, 2, reason: 'back when the game closes');
+      expect(model.hiddenForGame, isFalse);
     }, skip: Platform.isWindows ? 'the fake game is a shell script' : false);
   });
 

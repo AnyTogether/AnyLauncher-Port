@@ -65,6 +65,18 @@ bool FlutterWindow::OnCreate() {
           result->Success(flutter::EncodableValue(hwnd != nullptr));
           return;
         }
+        // Back from minimized once the game it stepped aside for has closed.
+        if (call.method_name() == "restore") {
+          HWND hwnd = GetHandle();
+          if (hwnd != nullptr) {
+            if (::IsIconic(hwnd)) {
+              ::ShowWindow(hwnd, SW_RESTORE);
+            }
+            ::SetForegroundWindow(hwnd);
+          }
+          result->Success(flutter::EncodableValue(hwnd != nullptr));
+          return;
+        }
         // The launcher's own close (Quit, the window buttons' close in full screen): the same
         // close the title bar's button makes, posted so it runs after this call returns.
         // Flutter asks the launcher, shuts down, the window goes and the message loop ends;

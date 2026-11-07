@@ -7,6 +7,10 @@ abstract class LauncherWindow {
   /// Minimized to the taskbar or dock; whether it could.
   Future<bool> minimize();
 
+  /// Back from minimized (Settings › Behaviour › Hide the launcher while a game runs), in front
+  /// and with the keyboard; whether it could.
+  Future<bool> restore();
+
   /// Closes the window the way its title bar's close does (the runner posts the close, Flutter
   /// asks the launcher, shuts down and the process ends from its message loop): no exit() with
   /// the engine still drawing. Whether the close was asked.

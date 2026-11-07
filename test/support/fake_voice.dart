@@ -30,6 +30,12 @@ class FakeVoiceEngine implements VoiceEngine {
   @override
   void setTalking(bool on) => talking.add(on);
 
+  /// What deafening and undeafening set, in turn.
+  final List<bool> hearing = [];
+
+  @override
+  void setHearing(bool on) => hearing.add(on);
+
   @override
   Future<void> stop() async => stopped = true;
 }

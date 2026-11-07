@@ -58,6 +58,11 @@ class Voice with Notifier {
   /// The microphone is off (the others see it muted).
   bool muted = false;
 
+  /// Nobody in the call is heard and the microphone is off; undeafened, the microphone is as it
+  /// was before. The others see it (call.updated).
+  bool deafened = false;
+  bool _mutedBefore = false;
+
   /// Push-to-talk: the microphone sends only while [held].
   bool pushToTalk = false;
   bool held = false;
@@ -128,7 +133,7 @@ class Voice with Notifier {
           await leave();
           rethrow;
         }
-        if (muted) unawaited(_tellMuted());
+        if (muted || deafened) unawaited(_tellMuted());
         return;
       }
       final mesh = VoiceMesh(
@@ -142,10 +147,11 @@ class Voice with Notifier {
       _mesh = mesh;
       callId = id;
       _partyId = party.id;
+      if (deafened) engine.setHearing(false);
       _apply();
       _levels = Timer.periodic(measureEvery, (_) => unawaited(mesh.measure()));
       _renewBefore(joined['expiresAt']);
-      if (muted) unawaited(_tellMuted());
+      if (muted || deafened) unawaited(_tellMuted());
       // The newcomer calls everyone already in.
       for (final peer in (call['in'] as List<dynamic>? ?? const [])) {
         if (peer is! Map) continue;
@@ -181,6 +187,7 @@ class Voice with Notifier {
     }
     room.onChange = notifyListeners;
     _room = room;
+    if (deafened) unawaited(room.setHearing(false).catchError((Object _) {}));
     notifyListeners();
   }
 
@@ -242,19 +249,48 @@ class Voice with Notifier {
     });
   }
 
-  /// The microphone off or on; the others are told.
+  /// The microphone off or on; the others are told. On while deafened undeafens.
   void setMuted(bool on) {
-    if (muted == on) return;
+    if (deafened) {
+      // Off already; on hears everyone again.
+      if (on) return;
+      _hear(true);
+    } else if (muted == on) {
+      return;
+    }
     muted = on;
     _apply();
     if (active) unawaited(_tellMuted());
+  }
+
+  /// Deafened: nobody is heard and the microphone is off; undeafened, the microphone is as it was
+  /// before. The others are told.
+  void setDeafened(bool on) {
+    if (deafened == on) return;
+    if (on) {
+      _mutedBefore = muted;
+      muted = true;
+    } else {
+      muted = _mutedBefore;
+    }
+    _hear(!on);
+    _apply();
+    if (active) unawaited(_tellMuted());
+  }
+
+  /// The others heard or not, on every connection and in the media server's room.
+  void _hear(bool on) {
+    deafened = !on;
+    _mesh?.engine.setHearing(on);
+    final room = _room;
+    if (room != null) unawaited(room.setHearing(on).catchError((Object _) {}));
   }
 
   Future<void> _tellMuted() async {
     final id = callId;
     if (id == null) return;
     try {
-      await account.call('POST', 'calls/$id/mute', {'muted': muted});
+      await account.call('POST', 'calls/$id/mute', {'muted': muted, 'deafened': deafened});
     } on Object {
       // Only the mute mark is lost; the microphone itself is off.
     }
@@ -293,6 +329,11 @@ class Voice with Notifier {
     callId = null;
     _partyId = null;
     held = false;
+    // Out of the call: hearing comes back, and the microphone is as it was before deafening.
+    if (deafened) {
+      deafened = false;
+      muted = _mutedBefore;
+    }
     _levels?.cancel();
     _renew?.cancel();
     notifyListeners();

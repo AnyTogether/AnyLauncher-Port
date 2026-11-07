@@ -1566,5 +1566,16 @@
   "notifChallengeStarted": "%@ ha empezado",
   "notifChallengeEnded": "%1$@ terminó: quedaste %2$d de %3$d",
   "notifChallengeWon": "Ganaste %@",
-  "notifChallengeOver": "%@ terminó"
+  "notifChallengeOver": "%@ terminó",
+  "cloudPrivacyGallery": "Galería",
+  "messagesNewGroup": "Nuevo grupo",
+  "messagesNewGroupDetail": "Elige amigos y ponle nombre.",
+  "messagesGroupName": "Nombre del grupo (opcional)",
+  "messagesGroupPicked": "%d elegidos",
+  "messagesGroupCreate": "Crear el grupo",
+  "messagesGroupPick": "Elige primero al menos un amigo",
+  "messagesGroupMade": "%@ está listo",
+  "joinDeafen": "Ensordecer",
+  "joinDeafenDetail": "No oyes a nadie y tu micrófono está apagado.",
+  "joinDeafened": "ensordecido"
 }

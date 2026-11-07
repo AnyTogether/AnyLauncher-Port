@@ -116,6 +116,11 @@ class FakeEngine implements VoiceEngine {
   @override
   void setTalking(bool on) => talking = on;
 
+  bool hearing = true;
+
+  @override
+  void setHearing(bool on) => hearing = on;
+
   @override
   Future<void> stop() async => stopped = true;
 }
@@ -302,13 +307,48 @@ void main() {
       expect(engine.stopped, isTrue);
     });
 
+    test('deafened: nobody is heard, the microphone is off, the others are told; undeafened it is as before', () async {
+      await voice.join();
+      final mute = 'calls/${voice.callId}/mute';
+      voice.setDeafened(true);
+      expect(voice.deafened, isTrue);
+      expect(voice.muted, isTrue);
+      expect(engine.hearing, isFalse);
+      expect(engine.talking, isFalse);
+      await until(() => server.callsTo(mute).isNotEmpty);
+      expect(server.callsTo(mute).last.body, {'muted': true, 'deafened': true});
+      voice.setDeafened(false);
+      expect(engine.hearing, isTrue);
+      expect(voice.muted, isFalse, reason: 'the microphone was on before');
+      expect(engine.talking, isTrue);
+      await until(() => server.callsTo(mute).length == 2);
+      expect(server.callsTo(mute).last.body, {'muted': false, 'deafened': false});
+
+      // Muted first: undeafening keeps it muted; turning the microphone on undeafens.
+      voice.setMuted(true);
+      voice.setDeafened(true);
+      voice.setDeafened(false);
+      expect(voice.muted, isTrue);
+      voice.setDeafened(true);
+      voice.setMuted(false);
+      expect(voice.deafened, isFalse);
+      expect(engine.hearing, isTrue);
+      expect(engine.talking, isTrue);
+
+      // Out of the call: hearing comes back.
+      voice.setDeafened(true);
+      await voice.leave();
+      expect(voice.deafened, isFalse);
+      expect(voice.muted, isFalse);
+    });
+
     test('the microphone off tells the others; push-to-talk sends only while the key is held', () async {
       await voice.join();
       expect(voice.sending, isTrue);
       voice.setMuted(true);
       expect(engine.talking, isFalse);
       await until(() => server.callsTo('calls/${voice.callId}/mute').isNotEmpty);
-      expect(server.callsTo('calls/${voice.callId}/mute').single.body, {'muted': true});
+      expect(server.callsTo('calls/${voice.callId}/mute').single.body, {'muted': true, 'deafened': false});
       // Toggle mode: a press of the talk key turns it back on.
       voice.talkKey(true);
       voice.talkKey(false);

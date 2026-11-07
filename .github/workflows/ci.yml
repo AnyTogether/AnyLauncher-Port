@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      update_goldens:
+        description: Make the golden files again on macOS and upload them as the goldens artifact
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -70,7 +75,19 @@ jobs:
       # The goldens are made on macOS; the library watcher's one recursive watch is the macOS and
       # Windows mode, which the Linux job skips.
       - name: Run the test files that compare goldens, and the library watcher's
+        if: ${{ !inputs.update_goldens }}
         run: flutter test $(grep -rl matchesGoldenFile test | sort) test/core/library_watch_test.dart
+      # Run by hand on a branch whose screens changed: the goldens made here, to commit.
+      - name: Make the goldens again
+        if: ${{ inputs.update_goldens }}
+        run: flutter test --update-goldens $(grep -rl matchesGoldenFile test | sort)
+      - uses: actions/upload-artifact@v7
+        if: ${{ inputs.update_goldens }}
+        with:
+          name: goldens
+          path: test/**/goldens/
+          if-no-files-found: error
+          retention-days: 7
       - uses: actions/upload-artifact@v7
         if: failure()
         with:

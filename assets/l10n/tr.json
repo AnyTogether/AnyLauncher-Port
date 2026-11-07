@@ -1994,5 +1994,16 @@
   "notifChallengeStarted": "%@ başladı",
   "notifChallengeEnded": "%1$@ bitti: %3$d kişi içinde %2$d. oldun",
   "notifChallengeWon": "%@ meydan okumasını kazandın",
-  "notifChallengeOver": "%@ bitti"
+  "notifChallengeOver": "%@ bitti",
+  "cloudPrivacyGallery": "Galeri",
+  "messagesNewGroup": "Yeni grup",
+  "messagesNewGroupDetail": "Arkadaşlarını seç, bir ad ver.",
+  "messagesGroupName": "Grubun adı (isteğe bağlı)",
+  "messagesGroupPicked": "%d kişi seçildi",
+  "messagesGroupCreate": "Grubu kur",
+  "messagesGroupPick": "Önce en az bir arkadaş seç",
+  "messagesGroupMade": "%@ kuruldu",
+  "joinDeafen": "Sağırlaştır",
+  "joinDeafenDetail": "Kimseyi duymazsın, mikrofonun da kapanır.",
+  "joinDeafened": "duymuyor"
 }

@@ -47,6 +47,16 @@ class SelfProfile with Notifier {
 
   /// The Theme Hub theme on the user's profile; null for none (or a server before them).
   ProfileTheme? wornTheme;
+
+  /// The bio and two-letter country the profile shows; null when not set.
+  String? bio;
+  String? country;
+
+  /// When the handle may change again; null when it may now.
+  DateTime? handleChangeAt;
+
+  /// Who sees each part of the profile; the server's defaults until /me is read.
+  Map<PrivacySection, ProfileVisibility> privacy = Map.of(PrivacySection.standard);
   int _changing = 0;
   int _changingReceipts = 0;
 
@@ -90,9 +100,64 @@ class SelfProfile with Notifier {
       privateName = _text(profile['privateName']);
       privateAvatar = _text(profile['privateAvatar']);
       if (profile.containsKey('theme')) wornTheme = ProfileTheme.fromJson(profile['theme']);
+      _adoptOwn(profile);
     }
     loaded = true;
     notifyListeners();
+  }
+
+  /// The bio, country, next handle change and privacy an own profile has (/me's, or the answer
+  /// to a change).
+  void _adoptOwn(Map<String, dynamic> profile) {
+    bio = _text(profile['bio']);
+    country = _text(profile['country']);
+    handleChangeAt = DateTime.tryParse(profile['handleChangeAt'] as String? ?? '');
+    if (profile['privacy'] case final Map<String, dynamic> shown) privacy = PrivacySection.parse(shown);
+  }
+
+  /// The profile's changes answered with the whole profile: it is kept, and the user follows its
+  /// name, handle and picture.
+  void _changed(Map<String, dynamic> profile) {
+    _adoptIdentity(profile);
+    _adoptOwn(profile);
+    if (profile.containsKey('privateName')) privateName = _text(profile['privateName']);
+    if (profile.containsKey('privateAvatar')) privateAvatar = _text(profile['privateAvatar']);
+    notifyListeners();
+  }
+
+  /// The name, bio or country (PATCH /me/profile): only the ones given change, and a blank bio or
+  /// country clears it.
+  Future<void> updateProfile({String? displayName, String? bio, String? country}) async {
+    final changes = <String, dynamic>{
+      'displayName': ?displayName,
+      if (bio != null) 'bio': bio.trim().isEmpty ? null : bio,
+      if (country != null) 'country': country.trim().isEmpty ? null : country.trim().toUpperCase(),
+    };
+    _changed(await account.call('PATCH', 'me/profile', changes));
+  }
+
+  /// A new handle (PATCH /me/handle), without the @ and in small letters. Refused with
+  /// handle_taken, handle_reserved, handle_too_similar, handle_cooldown (with `handleChangeAt`)
+  /// or bad_request.
+  Future<void> changeHandle(String handle) async {
+    final cleaned = handle.trim().replaceAll(RegExp(r'^@+|@+$'), '').toLowerCase();
+    _changed(await account.call('PATCH', 'me/handle', {'handle': cleaned}));
+  }
+
+  /// Who sees one part of the profile (PATCH /me/privacy): shown at once, turned back (and thrown)
+  /// when the server says no.
+  Future<void> setPrivacy(PrivacySection section, ProfileVisibility visibility) async {
+    final before = Map.of(privacy);
+    privacy = {...privacy, section: visibility};
+    notifyListeners();
+    try {
+      privacy = PrivacySection.parse(await account.call('PATCH', 'me/privacy', {section.name: visibility.name}));
+    } on Object {
+      privacy = before;
+      rethrow;
+    } finally {
+      notifyListeners();
+    }
   }
 
   /// The status in a profile or a `presence.mode` event: its `status`, else (a server before
@@ -194,6 +259,10 @@ class SelfProfile with Notifier {
   }
 
   void clear() {
+    bio = null;
+    country = null;
+    handleChangeAt = null;
+    privacy = Map.of(PrivacySection.standard);
     privateName = null;
     privateAvatar = null;
     wornTheme = null;
@@ -238,6 +307,39 @@ class SelfProfile with Notifier {
   }
 
   void dispose() => unawaited(_events.cancel());
+}
+
+/// Who may see a part of the profile.
+enum ProfileVisibility { everyone, friends, nobody }
+
+/// The parts of the profile the privacy settings cover: games and play time, trophies, the
+/// friends list, being online and what is played, being found by name, and the gallery's pinned
+/// photos and clips (only where the server keeps files).
+enum PrivacySection {
+  library,
+  trophies,
+  friends,
+  presence,
+  search,
+  gallery;
+
+  /// The server's defaults.
+  static const standard = {
+    library: ProfileVisibility.friends,
+    trophies: ProfileVisibility.friends,
+    friends: ProfileVisibility.friends,
+    presence: ProfileVisibility.friends,
+    search: ProfileVisibility.everyone,
+    gallery: ProfileVisibility.friends,
+  };
+
+  /// The sections known here as the server sends them, the defaults for any it leaves out.
+  static Map<PrivacySection, ProfileVisibility> parse(Map<String, dynamic> json) => {
+    for (final section in values)
+      section:
+          ProfileVisibility.values.where((visibility) => visibility.name == json[section.name]).firstOrNull ??
+          standard[section]!,
+  };
 }
 
 /// The server kept online or invisible but has no idle or do not disturb yet.

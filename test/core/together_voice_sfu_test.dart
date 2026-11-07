@@ -114,6 +114,20 @@ void main() {
     expect(told, containsAll([true, false]));
   });
 
+  test('deafened in the media server\'s room: nobody is heard there, the microphone is off, the others are told', () async {
+    callAnswer('sfu');
+    await voice.join();
+    voice.setDeafened(true);
+    expect(rooms.single.hearing, isFalse);
+    expect(rooms.single.microphone, isFalse);
+    voice.setDeafened(false);
+    expect(rooms.single.hearing, isTrue);
+    expect(rooms.single.microphone, isTrue);
+    await until(() => server.callsTo('calls/c-9/mute').length >= 2);
+    final told = [for (final call in server.callsTo('calls/c-9/mute')) call.body];
+    expect(told, contains({'muted': true, 'deafened': true}));
+  });
+
   test('an "sfu" answer without a room asks for one', () async {
     callAnswer('sfu', withRoom: false);
     await voice.join();

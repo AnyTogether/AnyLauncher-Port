@@ -56,7 +56,14 @@ class SystemBattery {
     ];
     final wanted = normalize(serial);
     if (wanted != null) {
-      final match = same.where((battery) => normalize(battery.serial) == wanted).firstOrNull;
+      // A Bluetooth address may come in either byte order (SDL reads it from the pad's report).
+      final reversed = wanted.length == 12
+          ? [for (var at = 10; at >= 0; at -= 2) wanted.substring(at, at + 2)].join()
+          : wanted;
+      final match = same.where((battery) {
+        final have = normalize(battery.serial);
+        return have == wanted || have == reversed;
+      }).firstOrNull;
       if (match != null) return match.battery;
     }
     return same.length == 1 && (wanted == null || normalize(same.single.serial) == null) ? same.single.battery : null;

@@ -40,7 +40,7 @@ class OnboardingView extends StatelessWidget {
                   AnimatedContainer(
                     duration: Motion.layout,
                     curve: Motion.settle,
-                    margin: EdgeInsets.only(right: 10 * scale),
+                    margin: EdgeInsetsDirectional.only(end: 10 * scale),
                     width: (index == step ? 46 : 18) * scale,
                     height: 5 * scale,
                     decoration: BoxDecoration(
@@ -62,7 +62,7 @@ class OnboardingView extends StatelessWidget {
                     child: child,
                   ),
                 ),
-                layoutBuilder: uniqueSwitcherLayout(alignment: Alignment.topLeft),
+                layoutBuilder: uniqueSwitcherLayout(alignment: AlignmentDirectional.topStart),
                 child: KeyedSubtree(
                   key: ValueKey(step),
                   child: switch (step) {

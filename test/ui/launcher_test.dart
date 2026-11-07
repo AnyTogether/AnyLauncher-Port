@@ -91,6 +91,21 @@ void main() {
       await expectLater(shell, matchesGoldenFile('goldens/home_aurora_tr.png'));
     });
 
+    testWidgets('home, cosmic, in Arabic: mirrored, as on the Mac', (tester) async {
+      fixture = makeFixture(language: Language.byCode('ar'));
+      final model = fixture.model;
+      model.select(indexOf(model, 'PPSA02002'));
+      await pumpLauncher(tester, model);
+      await expectLater(shell, matchesGoldenFile('goldens/home_cosmic_ar.png'));
+    });
+
+    testWidgets('settings in Arabic: mirrored, as on the Mac', (tester) async {
+      fixture = makeFixture(language: Language.byCode('ar'));
+      final model = fixture.model..open(Layer.settings);
+      await pumpLauncher(tester, model);
+      await expectLater(shell, matchesGoldenFile('goldens/settings_ar.png'));
+    });
+
     testWidgets('home, sunset, a game that failed and one that cannot be read', (tester) async {
       fixture = makeFixture(theme: 2);
       final model = fixture.model;

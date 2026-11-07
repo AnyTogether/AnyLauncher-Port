@@ -47,7 +47,7 @@ class _WindowTrack extends StatelessWidget {
           children: [
             ColoredBox(color: back ?? Colors.white.withValues(alpha: 0.12)),
             FractionallySizedBox(
-              alignment: Alignment.centerLeft,
+              alignment: AlignmentDirectional.centerStart,
               widthFactor: progress,
               child: ColoredBox(color: color),
             ),

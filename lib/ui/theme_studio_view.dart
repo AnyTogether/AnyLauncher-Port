@@ -40,9 +40,9 @@ class ThemeStudioView extends StatelessWidget {
           ),
         ),
         Align(
-          alignment: Alignment.centerRight,
+          alignment: AlignmentDirectional.centerEnd,
           child: Padding(
-            padding: EdgeInsets.fromLTRB(0, 40 * scale, 40 * scale, 40 * scale),
+            padding: EdgeInsetsDirectional.fromSTEB(0, 40 * scale, 40 * scale, 40 * scale),
             child: SizedBox(
               width: 760 * scale,
               child: Glass(

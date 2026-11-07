@@ -41,12 +41,14 @@ void main() {
     testWidgets('the notice beside the top bar, Restart now focused (${language.code})', (tester) async {
       final model = ready(language);
       expect(model.updates.showsNotice, isTrue);
+      // Arabic and Urdu are mirrored: the notice is on the other side of the top bar.
+      final towards = language.isRightToLeft ? Command.right : Command.left;
       model.handle(Command.up);
-      model.handle(Command.left);
+      model.handle(towards);
       expect(model.focus, const HomeFocus.top(0));
-      model.handle(Command.left);
-      expect(model.focus, const HomeFocus.notice(1), reason: 'the pad reaches it left of the top bar');
-      model.handle(Command.left);
+      model.handle(towards);
+      expect(model.focus, const HomeFocus.notice(1), reason: 'the pad reaches it beside the top bar');
+      model.handle(towards);
       expect(model.focus, const HomeFocus.notice(0));
       await pumpLauncher(tester, model);
       await expectLater(shell, matchesGoldenFile('goldens/update_notice_${language.code}.png'));

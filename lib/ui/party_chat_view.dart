@@ -100,7 +100,7 @@ class PartyChatPane extends StatelessWidget {
                     child: typing.isEmpty
                         ? null
                         : Align(
-                            alignment: Alignment.centerLeft,
+                            alignment: AlignmentDirectional.centerStart,
                             child: Text(
                               T.format('messagesTyping', [together.partyAuthorName(typing.first)]),
                               style: AppText.display(13 * scale, color: Colors.white.withValues(alpha: 0.6)),
@@ -175,8 +175,8 @@ class _Readers extends StatelessWidget {
         clipBehavior: Clip.none,
         children: [
           for (var index = 0; index < people.length; index++)
-            Positioned(
-              left: step * index,
+            PositionedDirectional(
+              start: step * index,
               child: Semantics(
                 label: people[index].name,
                 child: DecoratedBox(

@@ -2090,5 +2090,15 @@
   "cloudSentTo": "%@ sohbetine gönderildi",
   "cloudShare": "Paylaş",
   "cloudShareToGallery": "Galerime ekle",
-  "cloudShowInFolder": "Klasörde göster"
+  "cloudShowInFolder": "Klasörde göster",
+  "discoverAsksWatch": "%@ izlemek istiyor",
+  "discoverListOpenWatch": "Herkes izleyebilir",
+  "discoverLiveToggle": "Şimdi canlı",
+  "discoverLiveToggleDetail": "Herkes izleyebilsin diye Şimdi canlı'da da göster.",
+  "discoverLetWatch": "%@ izlesin",
+  "sharePlayMediaServerFailed": "Medya sunucusuna ulaşılamadı",
+  "sharePlayMaxViewersServerDetail": "En fazla 4 kişi yayını doğrudan bilgisayarından alır. Daha fazlasında izleyenler medya sunucusundan izler, oyuncuların doğrudan bağlantısı kalır.",
+  "shareCodeMakeDetail": "Kodu olan herkes izlemek isteyebilir. Her birine yine sen karar verirsin.",
+  "joinCodeMade": "Yeni kod: %@",
+  "joinCodeStopped": "Kod artık çalışmıyor"
 }

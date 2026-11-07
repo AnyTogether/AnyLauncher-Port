@@ -2090,5 +2090,15 @@
   "cloudSentTo": "Sent to %@",
   "cloudShare": "Share",
   "cloudShareToGallery": "Share to my gallery",
-  "cloudShowInFolder": "Show in folder"
+  "cloudShowInFolder": "Show in folder",
+  "discoverAsksWatch": "%@ asks to watch",
+  "discoverListOpenWatch": "Anyone can watch",
+  "discoverLiveToggle": "Live now",
+  "discoverLiveToggleDetail": "Also list it under Live now for anyone to watch.",
+  "discoverLetWatch": "Let %@ watch",
+  "sharePlayMediaServerFailed": "Could not reach the media server",
+  "sharePlayMaxViewersServerDetail": "Up to 4 get a stream from your computer. With more, viewers watch through the media server and players keep a direct link.",
+  "shareCodeMakeDetail": "Anyone with the code can ask to watch. You still say yes to each one.",
+  "joinCodeMade": "New code: %@",
+  "joinCodeStopped": "The code no longer works"
 }

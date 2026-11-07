@@ -735,6 +735,9 @@ enum Layer {
   /// AnyTogether's social screens (together_social.dart): friends' activity, a leaderboard, the
   /// notifications behind the bell, and "How did it run?" after a game.
   feed,
+
+  /// Captures (together_captures.dart): the screenshots and clips posted, liked and commented on.
+  captures,
   leaderboard,
   notifications,
   compat,
@@ -2243,6 +2246,9 @@ class AppModel extends ChangeNotifier {
   }
 
   void _galleryCommand(Command command) {
+    // The post being written, then the Share menu, have the keys over the gallery.
+    if (together.captures.draft != null) return together.postDraftCommand(command);
+    if (together.captures.sharing) return together.shareCommand(command);
     final count = galleryShots.length;
     void move(int delta) {
       final next = (galleryIndex + delta).clamp(0, count == 0 ? 0 : count - 1);
@@ -2269,6 +2275,10 @@ class AppModel extends ChangeNotifier {
         galleryViewing = !galleryViewing;
         sounds.play(galleryViewing ? Cue.select : Cue.back);
         _changed();
+      // △ shares, as on the Mac: to a chat, to the AnyTogether gallery, as a post; without a
+      // server that keeps files, the file's folder.
+      case Command.options when count > 0:
+        together.openShareMenu();
       case Command.back || Command.options:
         if (galleryViewing) {
           galleryViewing = false;
@@ -3989,6 +3999,12 @@ class AppModel extends ChangeNotifier {
       if (command == Command.back) answerPairing(false);
       return;
     }
+    // A friend calling: Enter answers, Back declines, as on the Mac.
+    if (together.ringing != null && command != Command.home) {
+      if (command == Command.select) unawaited(together.acceptRinging());
+      if (command == Command.back) together.declineRinging();
+      return;
+    }
     if (!preferences.onboarded) return _onboardingCommand(command);
     // Watching a share play: the controller is the game's.
     if (overlay == Layer.shareWatch) return sharePlay.watchCommand(command);
@@ -4132,6 +4148,9 @@ class AppModel extends ChangeNotifier {
         return;
       case Layer.feed:
         together.feedCommand(command);
+        return;
+      case Layer.captures:
+        together.capturesCommand(command);
         return;
       case Layer.leaderboard:
         together.leaderboardCommand(command);

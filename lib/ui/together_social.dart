@@ -95,6 +95,14 @@ extension TogetherSocial on TogetherModel {
       detail: T.text('socialFeedRowDetail'),
       kind: ActionRow(openFeed),
     ),
+    // Captures need a server that keeps files.
+    if (capturesOffered)
+      PanelRow(
+        id: 'friends-captures',
+        title: T.text('capturesRow'),
+        detail: T.text('capturesRowDetail'),
+        kind: ActionRow(openCaptures),
+      ),
     PanelRow(
       id: 'friends-board',
       title: T.text('socialBoardTitle'),
@@ -465,7 +473,9 @@ extension TogetherSocial on TogetherModel {
             ?noticeDetail(note),
             note.read ? ago(note.updatedAt) : T.format('socialNotifNew', [ago(note.updatedAt)]),
           ].join('\n'),
-          person: note.actor == null || note.kind == NoticeKind.challengeStarted ? null : TogetherModel.card(note.actor!),
+          person: note.actor == null || note.kind == NoticeKind.challengeStarted
+              ? null
+              : TogetherModel.card(note.actor!),
           icon: switch (note.kind) {
             NoticeKind.challengeStarted => PanelIcon.flag,
             NoticeKind.challengeEnded => PanelIcon.trophy,

@@ -220,7 +220,10 @@ void main() {
       fixture = makeFixture();
       model = fixture.model;
       signedIn();
-      final mine = [for (final item in feed()) if (item.actor.id == 'u-ana') item];
+      final mine = [
+        for (final item in feed())
+          if (item.actor.id == 'u-ana') item,
+      ];
       model.open(Layer.profile);
       model.together
         ..profileIndex = 2
@@ -343,7 +346,7 @@ void main() {
       signedIn();
       model.open(Layer.friends);
       final ids = model.panelCategories().single.rows.map((row) => row.id).toList();
-      expect(ids.sublist(0, 4), ['friends-me', 'friends-find', 'friends-feed', 'friends-board']);
+      expect(ids.sublist(0, 5), ['friends-me', 'friends-find', 'friends-feed', 'friends-captures', 'friends-board']);
       model.selected = model.games.indexWhere((game) => game.titleId == 'PPSA02002');
       model.open(Layer.gameSettings);
       final rows = model.panelCategories().single.rows.map((row) => row.id).toList();

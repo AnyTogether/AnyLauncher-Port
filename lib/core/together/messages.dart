@@ -729,6 +729,61 @@ class Messages with Notifier {
     }
   }
 
+  /// A screenshot or clip from the gallery into [conversationId] (open or not), as the Mac's Send
+  /// to a chat: sealed where the conversation is end-to-end encrypted ([sealed] uploads it so),
+  /// else the [plain] upload's media attached. Throws what refused it.
+  Future<void> sendMedia(
+    String conversationId, {
+    required String kind,
+    required Future<String> Function() plain,
+    required Future<SealedAttachment> Function() sealed,
+  }) async {
+    final conversation = byId(conversationId);
+    final message = ChatMessage(
+      id: uuidv7(),
+      conversationId: conversationId,
+      seq: 0,
+      authorId: _me,
+      text: null,
+      createdAt: DateTime.now(),
+      pending: true,
+      kind: kind,
+    );
+    if (openId == conversationId) {
+      thread = [...thread, message];
+      notifyListeners();
+    }
+    try {
+      final lock = conversation == null ? null : await checkLock(conversation);
+      final Map<String, dynamic> json;
+      switch (lock?.state) {
+        case EncryptionState.on:
+          json = await _post(message, attachment: await sealed());
+        case EncryptionState.noDevice:
+          throw const E2eeUnavailable();
+        case EncryptionState.off || null:
+          final mediaId = await plain();
+          json = await account.call('POST', 'conversations/$conversationId/messages', {
+            'clientId': message.id,
+            'attachments': [
+              {'mediaId': mediaId},
+            ],
+          });
+      }
+      _arrived(await _openOne(ChatMessage.fromJson(json)));
+    } on Object {
+      // Not kept as failed: sending it again is sharing it again from the gallery.
+      if (thread.any((m) => m.id == message.id)) {
+        thread = [
+          for (final m in thread)
+            if (m.id != message.id) m,
+        ];
+        notifyListeners();
+      }
+      rethrow;
+    }
+  }
+
   /// A sealed attachment's file (or its poster), downloaded and opened in memory.
   Future<Uint8List> attachmentBytes(ChatMessage message, {bool poster = false}) async {
     final attachment = message.attachment;

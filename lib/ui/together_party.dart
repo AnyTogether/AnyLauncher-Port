@@ -328,11 +328,11 @@ extension TogetherParty on TogetherModel {
   /// The party's voice: joining, the microphone, push-to-talk and its key, leaving.
   List<PanelRow> voiceRows(Party party) {
     final voice = hub.voice;
-    final key = talkKeyName;
     if (!family.voiceAllowed && !voice.active) {
       return [PanelRow(id: 'voice-off', title: T.text('familyNoVoice'), kind: InfoRow(T.text('familyNoVoiceDetail')))];
     }
-    if (!voice.active) {
+    // In a call with a friend, the party's voice is joined in its place.
+    if (!voice.active || voice.friend != null) {
       final elsewhere = voice.movedTo;
       if (elsewhere != null && party.inCall.contains(user?.id)) {
         return [
@@ -354,6 +354,14 @@ extension TogetherParty on TogetherModel {
         ),
       ];
     }
+    return voiceControlRows();
+  }
+
+  /// The microphone, deafen, push-to-talk and its key, and leaving: the same in the party's
+  /// voice and a call with a friend.
+  List<PanelRow> voiceControlRows() {
+    final voice = hub.voice;
+    final key = talkKeyName;
     return [
       if (!voice.pushToTalk)
         PanelRow(
@@ -382,7 +390,7 @@ extension TogetherParty on TogetherModel {
       ),
       PanelRow(
         id: 'voice-leave',
-        title: T.text('voiceLeave'),
+        title: T.text(voice.friend == null ? 'voiceLeave' : 'callHangUp'),
         detail: voice.viaServer ? T.text('mediaViaServer') : null,
         kind: ActionRow(() => unawaited(hub.voice.leave()), destructive: true),
       ),
@@ -506,6 +514,8 @@ extension TogetherParty on TogetherModel {
   });
 
   Future<void> joinVoice() async {
+    // Out of a call with a friend first.
+    if (hub.voice.friend != null) await hub.voice.leave();
     await hub.voice.join();
     switch (hub.voice.problem) {
       case VoiceProblem.microphone:

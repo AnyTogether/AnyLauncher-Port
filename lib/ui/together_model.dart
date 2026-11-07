@@ -13,7 +13,13 @@ import '../core/online/online_peer_mesh.dart';
 import '../core/online/online_play.dart';
 import '../core/profiles/profiles.dart' show ProfileAccount, ProfileMode;
 import '../core/remote/remote_protocol.dart';
+import '../core/capture/clip_tools.dart';
+import '../core/screenshots.dart';
 import '../core/together/account.dart';
+import '../core/together/cloud_saves.dart' show MediaLimits, StorageInfo;
+import '../core/together/e2ee.dart' show SealedAttachment;
+import '../core/together/media_files.dart';
+import '../core/together/posts.dart';
 import '../core/together/challenges.dart';
 import '../core/together/compat.dart';
 import '../core/together/discover.dart';
@@ -39,6 +45,7 @@ import '../core/together/play_together.dart';
 import '../core/together/sync.dart';
 import '../core/together/talk_key.dart';
 import '../core/together/voice.dart';
+import '../core/together/voice_mesh.dart' show VoiceDenied;
 import '../core/controls.dart';
 import '../core/together/token_store.dart';
 
@@ -64,6 +71,8 @@ part 'together_profile.dart';
 part 'together_find.dart';
 part 'together_social.dart';
 part 'together_challenges.dart';
+part 'together_captures.dart';
+part 'together_calls.dart';
 
 /// The launcher's version, as AnyTogether hears it.
 const launcherVersion = '0.1.20';
@@ -169,6 +178,8 @@ class TogetherModel {
       ..onMoved = (client) {
         app.show(T.text(client == 'phone' ? 'voiceMovedPhone' : 'voiceMovedAway'));
       }
+      ..onAnswered = callAnswered
+      ..onCallEnded = callEnded
       ..addListener(_voiceChanged);
     final reader = app.services.talkKeys != null ? app.services.talkKeys!() : KeyStateReader.system();
     if (reader != null) {
@@ -229,6 +240,13 @@ class TogetherModel {
 
   /// Party: its chat's keys and field (together_party_chat.dart).
   final PartyChatKeys partyChatKeys = PartyChatKeys();
+
+  /// Captures and the gallery's Share menu (together_captures.dart); tests choose the clip tools.
+  final CapturesState captures = CapturesState();
+  ClipTools? clipToolsOverride;
+
+  /// Calls with one friend (together_calls.dart): the one ringing here.
+  final CallState calls = CallState();
 
   /// Messages: the conversation or friend chosen on the left, whether the keys are in the thread,
   /// which quick reply (or the field, the last) is focused there, and what is typed.
@@ -384,8 +402,12 @@ class TogetherModel {
   /// Signed in or out: what depends on it starts or stops.
   void signedInChanged() {
     app.remote?.togetherServer = account.base.toString();
-    // Another account (or none): what was typed for the last one's profile goes.
+    // Another account (or none): what was typed for the last one's profile goes, and so do a
+    // call ringing and the Captures read for it.
     nameDraft = bioDraft = countryDraft = handleDraft = null;
+    stopRinging();
+    calls.noAnswer?.cancel();
+    captures.follow(user?.id);
     if (!signedIn) {
       friendHandle = '';
       chosen = null;
@@ -428,6 +450,7 @@ class TogetherModel {
         Layer.profileTheme,
         Layer.compare,
         Layer.feed,
+        Layer.captures,
         Layer.leaderboard,
         Layer.challenge,
         Layer.notifications,
@@ -867,6 +890,7 @@ class TogetherModel {
     }
     final friends = hub.friends;
     return [
+      ...callRows(),
       PanelRow(
         id: 'friends-me',
         title: T.text('profileMine'),
@@ -922,7 +946,7 @@ class TogetherModel {
           title: T.text('friendsNone'),
           kind: InfoRow(T.format('friendsYourHandle', [me.handle])),
         ),
-      for (final friend in friends.friends)
+      for (final friend in friends.friends) ...[
         PanelRow(
           id: 'friend-${friend.person.id}',
           // Their friends-only name when they set one, the handle (and public name) beside.
@@ -932,6 +956,9 @@ class TogetherModel {
           level: friend.level,
           kind: ActionRow(() => openFriend(friend)),
         ),
+        // Online friends can be called, as on the Mac.
+        ?callRow(friend),
+      ],
       for (final person in friends.outgoing) ...[
         PanelRow(
           id: 'waiting-${person.id}',
@@ -1304,6 +1331,8 @@ class TogetherModel {
     // Share play: the one hosted, the one watched, the invites.
     if (event.type == 'live.ready' || event.type.startsWith('share_play.')) app.sharePlay.event(event);
     findEvent(event);
+    if (event.type.startsWith('post.')) capturesEvent(event);
+    if (const {'call.ringing', 'call.answered', 'call.ended'}.contains(event.type)) callEvent(event);
     final data = event.json;
     switch (event.type) {
       case 'live.ready':
@@ -1568,6 +1597,8 @@ class TogetherModel {
   }
 
   void dispose() {
+    stopRinging();
+    calls.noAnswer?.cancel();
     unawaited(online.stop());
     family.dispose();
     talkWatch?.stop();

@@ -243,15 +243,18 @@ void main() {
         'friends-me',
         'friends-find',
         'friends-feed',
+        'friends-captures',
         'friends-board',
         'accept-u-cem',
         'decline-u-cem',
         'friends-handle',
         'friends-ask',
         'friend-u-bora',
+        'friend-call-u-bora',
         'friend-u-ana',
+        'friend-call-u-ana',
       ]);
-      final rows = model.panelCategories().single.rows.skip(4).toList();
+      final rows = model.panelCategories().single.rows.skip(5).toList();
       expect(rows[4].detail, '@bora · Playing Neon Alley');
       expect(rows[4].person?.status, PersonStatus.playing);
       expect(model.together.hub.badge, 1);
@@ -1884,9 +1887,9 @@ void main() {
       expect(model.toast, 'Ana invites you to Orbit Runner');
       expect(model.together.hub.badge, 1);
       model.open(Layer.friends);
-      // After My Profile, Find players, Activity and Leaderboard.
-      expect(rowIds().skip(4).take(2), ['game-accept-gs-ana', 'game-decline-gs-ana']);
-      (model.panelCategories().single.rows[5].kind as ActionRow).run();
+      // After My Profile, Find players, Activity, Captures and Leaderboard.
+      expect(rowIds().skip(5).take(2), ['game-accept-gs-ana', 'game-decline-gs-ana']);
+      (model.panelCategories().single.rows[6].kind as ActionRow).run();
       await until(() => server.callsTo('game-sessions/gs-ana/decline').isNotEmpty);
       expect(model.together.hub.badge, 0);
     });

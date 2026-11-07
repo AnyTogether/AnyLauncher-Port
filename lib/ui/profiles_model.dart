@@ -56,6 +56,7 @@ extension LauncherProfiles on AppModel {
     'soundVolume',
     'musicVolume',
     'launcherVolume',
+    'hideWhilePlaying',
     'friendsJoin',
     'discordPresence',
     'discordJoin',

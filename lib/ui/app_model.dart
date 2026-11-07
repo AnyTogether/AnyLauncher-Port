@@ -187,6 +187,8 @@ class Preferences {
     ..launcherFullscreen = json['launcherFullscreen'] as bool?
     ..windowButtons = json['windowButtons'] as bool? ?? true
     ..pauseOnMenu = json['pauseOnMenu'] as bool? ?? true
+    ..hideWhilePlaying = json['hideWhilePlaying'] == true
+    ..checkUpdates = json['checkUpdates'] as bool? ?? true
     ..replayBuffer = json['replayBuffer'] == true
     ..replaySeconds = switch (json['replaySeconds']) {
       final num seconds when ReplayBuffer.lengths.contains(seconds.toInt()) => seconds.toInt(),
@@ -366,6 +368,14 @@ class Preferences {
   /// pauses.
   bool pauseOnMenu = true;
 
+  /// Settings › Behaviour: the launcher's window minimized once a game starts, back when it
+  /// closes, as on the Mac.
+  bool hideWhilePlaying = false;
+
+  /// Settings › Behaviour › Check for updates: off, the launcher and the engine look for new
+  /// versions only when asked (Settings › About), as on the Mac.
+  bool checkUpdates = true;
+
   /// Settings › Captures: the last [replaySeconds] of play kept while a game runs, for Share.
   bool replayBuffer = false;
   int replaySeconds = ReplayBuffer.defaultLength;
@@ -439,6 +449,8 @@ class Preferences {
     'launcherFullscreen': launcherFullscreen,
     'windowButtons': windowButtons,
     'pauseOnMenu': pauseOnMenu,
+    if (hideWhilePlaying) 'hideWhilePlaying': true,
+    if (!checkUpdates) 'checkUpdates': false,
     'replayBuffer': replayBuffer,
     'replaySeconds': replaySeconds,
     if (!shortcuts.isDefault) 'shortcuts': shortcuts.toJson(),
@@ -2442,11 +2454,41 @@ class AppModel extends ChangeNotifier {
     return desktop.launcherFocused() ?? active;
   }
 
-  /// The game back in front, the launcher behind it.
+  /// The game back in front, the launcher behind it (or minimized again, with Hide the
+  /// launcher while a game runs).
   Future<void> _showGame(RunningGame run) async {
     final shown = await desktop.focusGame(run.pid);
     _padLog?.call('PS: game ${shown ? 'in front' : 'could not be brought in front'}');
+    if (preferences.hideWhilePlaying && running?.$2 == run) await _hideForGame();
     checkFront();
+  }
+
+  /// Whether the launcher's window was minimized for the game playing (Settings › Behaviour ›
+  /// Hide the launcher while a game runs).
+  bool hiddenForGame = false;
+
+  /// The launcher's window steps aside while a game runs, as on the Mac: minimized, so it stays
+  /// in the taskbar and PS still brings it back with the quick menu.
+  Future<void> _hideForGame() async {
+    final window = services.window;
+    if (window == null) return;
+    final hidden = await window.minimize();
+    // The game closed while the window went: straight back.
+    if (running == null) {
+      if (hidden) await window.restore();
+      return;
+    }
+    hiddenForGame = hidden;
+  }
+
+  /// The launcher's window in front of everything (PS, a link, a crash report), back from
+  /// minimized first when it stepped aside for the game.
+  Future<bool> raiseLauncher() async {
+    if (hiddenForGame) {
+      hiddenForGame = false;
+      await services.window?.restore();
+    }
+    return desktop.raiseLauncher();
   }
 
   /// The built-in accent chosen in Settings › Appearance (or the look's own).
@@ -3521,6 +3563,8 @@ class AppModel extends ChangeNotifier {
       if (!engine.readsDisplaySettings) {
         unawaited(desktop.applyDisplay(run.pid, fullscreen: settings.fullscreen, windowSize: settings.windowSize));
       }
+      // Settings › Behaviour › Hide the launcher while a game runs.
+      if (preferences.hideWhilePlaying) unawaited(_hideForGame());
       _watchTrophies(game);
       together.gameChanged();
       discord.update();
@@ -3539,6 +3583,11 @@ class AppModel extends ChangeNotifier {
       unawaited(_stopReplay());
       media.gameEnded();
       sharePlay.gameEnded();
+      // Minimized for the game: back in front now it has closed, as on the Mac.
+      if (hiddenForGame) {
+        hiddenForGame = false;
+        unawaited(services.window?.restore());
+      }
       // The quick menu and the question go with the game.
       if (overlay == Layer.quickMenu || overlay == Layer.closeGame) overlay = null;
       updates.gameEnded();
@@ -3946,7 +3995,7 @@ class AppModel extends ChangeNotifier {
           unawaited(_showGame(run!));
         case GuideAction.showLauncher:
           // From the game: the launcher with the quick menu over it, the game paused first.
-          unawaited(run != null ? openQuickMenu() : desktop.raiseLauncher());
+          unawaited(run != null ? openQuickMenu() : raiseLauncher());
         case GuideAction.closeLayer:
           closeOverlay();
         case GuideAction.none:
@@ -4258,7 +4307,7 @@ class AppModel extends ChangeNotifier {
     final index = games.indexOf(game);
     if (index >= 0) selected = index;
     open(Layer.quickMenu);
-    if (!front) await desktop.raiseLauncher();
+    if (!front) await raiseLauncher();
   }
 
   /// Whether the game under the quick menu was sent its Options (paused, as far as the launcher
@@ -4272,12 +4321,12 @@ class AppModel extends ChangeNotifier {
     final front = _frontForGuide;
     if (running != null && !front) {
       open(Layer.closeGame);
-      unawaited(desktop.raiseLauncher());
+      unawaited(raiseLauncher());
       return;
     }
     if (overlay == Layer.controllerTest) return;
     open(Layer.homeMenu);
-    if (!front) unawaited(desktop.raiseLauncher());
+    if (!front) unawaited(raiseLauncher());
   }
 
   /// Back to the game from the quick menu (or Close Game?): the game in front again. Its pause
@@ -5194,6 +5243,14 @@ class AppModel extends ChangeNotifier {
             }),
           ),
           PanelRow(
+            id: 'hide',
+            title: T.text('hideWhilePlaying'),
+            kind: ToggleRow(preferences.hideWhilePlaying, (value) {
+              preferences.hideWhilePlaying = value;
+              savePreferences();
+            }),
+          ),
+          PanelRow(
             id: 'pauseOnMenu',
             title: T.text('pauseOnMenu'),
             detail: T.text('pauseOnMenuDetail'),
@@ -5213,6 +5270,17 @@ class AppModel extends ChangeNotifier {
             }),
           ),
           ...discord.settingsRows(),
+          PanelRow(
+            id: 'checkUpdates',
+            title: T.text('checkUpdates'),
+            detail: T.text('checkUpdatesDetail'),
+            kind: ToggleRow(preferences.checkUpdates, (value) {
+              preferences.checkUpdates = value;
+              savePreferences();
+              // On again: a quiet look at once, as on the Mac.
+              if (value) unawaited(updates.periodicCheck());
+            }),
+          ),
         ],
       ),
       PanelCategory(id: 'steam', title: T.text('steam'), rows: steam.settingsRows()),

@@ -157,6 +157,114 @@ void main() {
     await playing;
   }, skip: Platform.isWindows ? 'the stand-in game is a shell script' : false);
 
+  test('with the media server: more than four may watch, the picture goes there once, listing, asks and the code', () async {
+    server.answers['GET media-server'] = (200, {'sfu': true, 'maxShareViewers': 16, 'maxPartySize': 32});
+    final playing = (await play()).done;
+    model.sharePlay.maxViewers = 8;
+    server.answers['POST share-plays'] = (201, {'sharePlay': {...sharePlay([]), 'maxViewers': 8}, 'iceServers': <Object>[], 'expiresAt': null});
+    expect(quickRows(), contains('share-start'));
+    choose('share-start');
+    await until(() => model.sharePlay.active);
+    expect(server.calls.where((call) => call.path == 'share-plays').single.body['maxViewers'], 8);
+    PanelRow row(String id) => model.panelCategories().expand((category) => category.rows).firstWhere((row) => row.id == id);
+    final max = row('share-max');
+    expect((max.kind as StepperRow).max, 16, reason: 'the server\'s limit, as the Mac decides it');
+    expect(max.detail, T.text('sharePlayMaxViewersServerDetail'));
+    expect(quickRows(), containsAllInOrder(['share-on', 'share-code-make', 'share-open', 'share-max', 'share-public']));
+
+    // Six come in and the share play goes through the media server: Ana with a pad keeps her
+    // link here, the rest watch from there, and the picture is published once.
+    final others = [
+      for (final name in ['bo', 'cy', 'di', 'ed', 'fe'])
+        {
+          'user': {'userId': 'u-$name', 'handle': name, 'displayName': name.toUpperCase()},
+          'device': '$name-browser',
+        },
+    ];
+    server.answers['GET share-plays/sp-1/sfu'] = (
+      200,
+      {'url': 'wss://media.example.org', 'token': 'host-token', 'room': 'share-sp-1', 'identity': 'u-me'},
+    );
+    server.push('share_play.updated', {
+      ...sharePlay([{...ana, 'slot': 2}, ...others]),
+      'maxViewers': 8,
+      'media': 'sfu',
+    });
+    await until(() => engine.publisher?.connected ?? false);
+    expect(engine.publisher!.access!.token, 'host-token');
+    expect(model.sharePlay.hostingViaServer, isTrue);
+    expect(engine.links, hasLength(1), reason: 'only the pad holder on the mesh');
+    expect(row('share-play-u-bo').detail, '${T.text('sharePlayOnlyWatches')} · ${T.text('mediaViaServer')}');
+    server.push('share_play.updated', {
+      ...sharePlay([{...ana, 'slot': 2}, ...others]),
+      'maxViewers': 8,
+      'media': 'sfu',
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(server.callsTo('share-plays/sp-1/sfu'), hasLength(1), reason: 'published once');
+
+    // Listed in public for anyone to watch, under Live now, in Turkish.
+    final listed = {...sharePlay([{...ana, 'slot': 2}, ...others]), 'maxViewers': 8, 'media': 'sfu'};
+    server.answers['PATCH share-plays/sp-1'] = (200, {...listed, 'public': {'join': 'open', 'language': null, 'live': true}});
+    (row('share-public').kind as ChoiceRow).set(2);
+    await until(() => quickRows().contains('share-live'));
+    expect(server.callsTo('share-plays/sp-1', method: 'PATCH').last.body['public'], {'join': 'open', 'language': null, 'live': true});
+    expect((row('share-live').kind as ToggleRow).value, isTrue);
+    server.answers['PATCH share-plays/sp-1'] = (200, {...listed, 'public': {'join': 'open', 'language': 'tr', 'live': true}});
+    (row('share-language').kind as ChoiceRow).set(2);
+    await until(() => model.sharePlay.hosting?.listing?.language == 'tr');
+
+    // Someone asks with the code: said, listed, let in.
+    server.push('share_play.request', {
+      'sharePlayId': 'sp-1',
+      'from': {'userId': 'u-gu', 'handle': 'gu', 'displayName': 'Gu'},
+      'via': 'code',
+    });
+    await until(() => quickRows().contains('share-request-accept-u-gu'));
+    expect(model.toast, T.format('discoverAsksWatch', ['Gu']));
+    expect(row('share-request-accept-u-gu').detail, '@gu · ${T.text('partyRequestWithCode')}');
+    expect(quickRows(), contains('share-request-decline-u-gu'));
+    server.answers['POST share-plays/sp-1/requests/u-gu/accept'] = (200, listed);
+    choose('share-request-accept-u-gu');
+    await until(() => server.callsTo('share-plays/sp-1/requests/u-gu/accept').isNotEmpty);
+    await until(() => !quickRows().contains('share-request-accept-u-gu'));
+
+    // A code: made, copied, stopped.
+    server.answers['POST share-plays/sp-1/code'] = (
+      201,
+      {'code': 'K7QM3XPA', 'url': 'https://anytogether.net/join/K7QM3XPA', 'expiresAt': '2099-01-01T00:00:00Z'},
+    );
+    choose('share-code-make');
+    await until(() => quickRows().contains('share-code-copy'));
+    expect(row('share-code').title, 'K7QM-3XPA');
+    expect(model.toast, T.format('joinCodeMade', ['K7QM-3XPA']));
+    server.answers['DELETE share-plays/sp-1/code'] = (204, null);
+    choose('share-code-stop');
+    await until(() => quickRows().contains('share-code-make'));
+
+    server.answers['DELETE share-plays/sp-1'] = (204, null);
+    choose('share-stop');
+    await until(() => engine.stopped);
+    expect(engine.publisher!.closed, isTrue);
+    model.stopGame();
+    await playing;
+  }, skip: Platform.isWindows ? 'the stand-in game is a shell script' : false);
+
+  test('without a media server the host keeps four at most', () async {
+    final playing = (await play()).done;
+    server.answers['POST share-plays'] = (201, {'sharePlay': sharePlay([]), 'iceServers': <Object>[], 'expiresAt': null});
+    choose('share-start');
+    await until(() => model.sharePlay.active);
+    final max = model.panelCategories().expand((category) => category.rows).firstWhere((row) => row.id == 'share-max');
+    expect((max.kind as StepperRow).max, 4);
+    expect(max.detail, T.text('sharePlayMaxViewersDetail'));
+    server.answers['DELETE share-plays/sp-1'] = (204, null);
+    choose('share-stop');
+    await until(() => engine.stopped);
+    model.stopGame();
+    await playing;
+  }, skip: Platform.isWindows ? 'the stand-in game is a shell script' : false);
+
   group('watching', () {
     late FakeWatchEngine watcher;
     late FakeSpeaker speaker;

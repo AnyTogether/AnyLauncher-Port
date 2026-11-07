@@ -4,6 +4,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../core/together/share_audio.dart';
 import '../core/together/share_host.dart';
 import '../core/together/share_viewer.dart';
+import 'livekit_room.dart';
 
 /// Share play's picture and sound with flutter_webrtc on Windows and Linux: the game's window
 /// from its desktop capturer (picked by the window's title), and one RTCPeerConnection per
@@ -90,6 +91,16 @@ class WebRtcShare implements ShareEngine {
       );
       return true;
     });
+  }
+
+  /// The same captured window and sound, published once to the media server (LiveKit) when the
+  /// share play goes through it.
+  @override
+  SfuPublisher? mediaServer(void Function() changed) {
+    final stream = _stream;
+    final video = _video;
+    if (stream == null || video == null) return null;
+    return LiveKitShareHost(stream: stream, video: video, sound: _sound, soundStream: _soundStream, changed: changed);
   }
 
   @override
@@ -302,7 +313,12 @@ abstract final class ShareWebRtcStats {
   static WatchStats viewer(List<StatsReport> reports) {
     final path = _path(reports);
     final video = _video(reports, 'inbound-rtp');
-    return WatchStats(roundTripMs: path.roundTripMs, relayed: path.relayed, framesPerSecond: video.fps, height: video.height);
+    return WatchStats(
+      roundTripMs: path.roundTripMs,
+      relayed: path.relayed,
+      framesPerSecond: video.fps,
+      height: video.height,
+    );
   }
 }
 

@@ -1566,5 +1566,9 @@
   "notifChallengeStarted": "%@ ha empezado",
   "notifChallengeEnded": "%1$@ terminó: quedaste %2$d de %3$d",
   "notifChallengeWon": "Ganaste %@",
-  "notifChallengeOver": "%@ terminó"
+  "notifChallengeOver": "%@ terminó",
+  "discoverAsksWatch": "%@ quiere mirar",
+  "discoverListOpenWatch": "Cualquiera puede mirar",
+  "discoverLetWatch": "Dejar mirar a %@",
+  "sharePlayMediaServerFailed": "No se pudo conectar con el servidor de medios"
 }

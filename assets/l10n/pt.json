@@ -1569,5 +1569,9 @@
   "notifChallengeStarted": "%@ começou",
   "notifChallengeEnded": "%1$@ terminou: você ficou em %2$d de %3$d",
   "notifChallengeWon": "Você venceu %@",
-  "notifChallengeOver": "%@ terminou"
+  "notifChallengeOver": "%@ terminou",
+  "discoverAsksWatch": "%@ quer assistir",
+  "discoverListOpenWatch": "Qualquer pessoa pode assistir",
+  "discoverLetWatch": "Deixar %@ assistir",
+  "sharePlayMediaServerFailed": "Não foi possível acessar o servidor de mídia"
 }

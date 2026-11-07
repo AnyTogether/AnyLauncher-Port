@@ -2,7 +2,9 @@ import 'dart:typed_data';
 
 import '../remote/remote_protocol.dart';
 import 'account.dart';
+import 'discover.dart' show PublicJoin;
 import 'media.dart';
+import 'parties.dart' show JoinCode;
 import 'people.dart';
 
 /// Share play: the game the user runs, streamed to friends who watch it live (WebRTC, one peer
@@ -21,6 +23,9 @@ class SharePlay {
     this.title,
     this.invited = const [],
     this.media = MediaRoute.mesh,
+    this.listing,
+    this.requests = const [],
+    this.joinCode,
   });
 
   factory SharePlay.fromJson(Map<String, dynamic> json) => SharePlay(
@@ -40,6 +45,12 @@ class SharePlay {
       for (final person in json['invited'] as List? ?? const [])
         if (person is Map<String, dynamic>) Person.fromJson(person),
     ],
+    listing: ShareListing.fromJson(json['public']),
+    requests: [
+      for (final person in json['requests'] as List? ?? const [])
+        if (person is Map<String, dynamic>) Person.fromJson(person),
+    ],
+    joinCode: JoinCode.fromJson(json['joinCode']),
   );
 
   final String id;
@@ -59,6 +70,54 @@ class SharePlay {
 
   /// Invited and not here yet; only the host is told.
   final List<Person> invited;
+
+  /// In the public list, and how; null when it is not listed.
+  final ShareListing? listing;
+
+  /// People who asked to watch, from the public list or with the code; only the host is told.
+  final List<Person> requests;
+
+  /// The code anyone may ask to watch with, while one works; only the host is told.
+  final JoinCode? joinCode;
+
+  /// The same share play with another code (null: none) or other people asking.
+  SharePlay copyWith({JoinCode? Function()? joinCode, List<Person>? requests}) => SharePlay(
+    id: id,
+    host: host,
+    hostDevice: hostDevice,
+    titleId: titleId,
+    title: title,
+    open: open,
+    maxViewers: maxViewers,
+    viewers: viewers,
+    invited: invited,
+    media: media,
+    listing: listing,
+    requests: requests ?? this.requests,
+    joinCode: joinCode == null ? this.joinCode : joinCode(),
+  );
+}
+
+/// How a share play is listed in public (the server's "public"): who may come in (request: they
+/// ask and the host lets them in, open: anyone may watch), its language, and whether it is also
+/// under Live now, which only an open one can be. The Mac's TogetherShareListing.
+class ShareListing {
+  ShareListing({required this.join, this.language, bool live = false}) : live = live && join == PublicJoin.open;
+
+  static ShareListing? fromJson(Object? json) {
+    if (json is! Map) return null;
+    return ShareListing(
+      join: json['join'] == 'open' ? PublicJoin.open : PublicJoin.request,
+      language: json['language'] as String?,
+      live: json['live'] == true,
+    );
+  }
+
+  final PublicJoin join;
+  final String? language;
+  final bool live;
+
+  Map<String, dynamic> toJson() => {'join': join.name, 'language': language, 'live': live};
 }
 
 class ShareViewer {
@@ -103,7 +162,13 @@ class SharePlayStart {
 
 /// A signal between the host and a viewer, relayed by the gateway (`share_play.signal`).
 class ShareSignal {
-  const ShareSignal({required this.sharePlayId, required this.from, required this.device, required this.kind, this.data});
+  const ShareSignal({
+    required this.sharePlayId,
+    required this.from,
+    required this.device,
+    required this.kind,
+    this.data,
+  });
 
   static ShareSignal? fromJson(Map<String, dynamic> json) {
     final id = json['sharePlayId'];
@@ -123,8 +188,13 @@ class ShareSignal {
   final Object? data;
 
   /// The gateway frame that sends a signal to one device of a viewer.
-  static Map<String, dynamic> frame({required String to, required String device, required String share, required String kind, Object? data}) =>
-      {'op': 'signal', 'to': to, 'device': device, 'share': share, 'kind': kind, 'data': data};
+  static Map<String, dynamic> frame({
+    required String to,
+    required String device,
+    required String share,
+    required String kind,
+    Object? data,
+  }) => {'op': 'signal', 'to': to, 'device': device, 'share': share, 'kind': kind, 'data': data};
 }
 
 /// A friend's invite to watch their share play (`share_play.invite`, and `me/share-play`).
@@ -210,15 +280,19 @@ class SharePlayClient {
   final TogetherAccount account;
 
   /// Shares the game this launcher runs (ending any share play the user had).
-  Future<SharePlayStart> start({required String titleId, String? title, required bool open, required int maxViewers}) async =>
-      SharePlayStart.fromJson(
-        await account.call('POST', 'share-plays', {
-          'titleId': titleId,
-          'open': open,
-          'maxViewers': maxViewers,
-          if (title != null && title.isNotEmpty) 'title': title.length > 80 ? title.substring(0, 80) : title,
-        }),
-      );
+  Future<SharePlayStart> start({
+    required String titleId,
+    String? title,
+    required bool open,
+    required int maxViewers,
+  }) async => SharePlayStart.fromJson(
+    await account.call('POST', 'share-plays', {
+      'titleId': titleId,
+      'open': open,
+      'maxViewers': maxViewers,
+      if (title != null && title.isNotEmpty) 'title': title.length > 80 ? title.substring(0, 80) : title,
+    }),
+  );
 
   /// The share play the user hosts, if a launcher that quit left one behind.
   Future<SharePlay?> hosting() async {
@@ -252,16 +326,35 @@ class SharePlayClient {
     await account.call('POST', 'share-plays/${Uri.encodeComponent(id)}/requests', const {});
   }
 
-  Future<SharePlay> update(String id, {bool? open, int? maxViewers}) async => SharePlay.fromJson(
-    await account.call('PATCH', 'share-plays/$id', {'open': ?open, 'maxViewers': ?maxViewers}),
+  Future<SharePlay> update(String id, {bool? open, int? maxViewers}) async =>
+      SharePlay.fromJson(await account.call('PATCH', 'share-plays/$id', {'open': ?open, 'maxViewers': ?maxViewers}));
+
+  /// Lists the share play the user hosts in public, or takes it off (null).
+  Future<SharePlay> setListing(String id, ShareListing? listing) async =>
+      SharePlay.fromJson(await account.call('PATCH', 'share-plays/$id', {'public': listing?.toJson()}));
+
+  /// Lets someone who asked to watch in, or not.
+  Future<SharePlay> answerRequest(String id, String userId, {required bool accept}) async => SharePlay.fromJson(
+    await account.call('POST', 'share-plays/$id/requests/$userId/${accept ? 'accept' : 'decline'}', const {}),
   );
+
+  /// A new code to ask to watch with (the old one stops working).
+  Future<JoinCode> makeCode(String id) async =>
+      JoinCode.fromJson(await account.call('POST', 'share-plays/$id/code', const {})) ??
+      (throw const FormatException('No code in the answer'));
+
+  /// The code stops working.
+  Future<void> stopCode(String id) async {
+    await account.call('DELETE', 'share-plays/$id/code');
+  }
 
   Future<void> end(String id) async {
     await account.call('DELETE', 'share-plays/$id');
   }
 
   /// Watches a friend's share play: a seat, and its media server room while it is "sfu".
-  Future<SharePlayStart> join(String id) async => SharePlayStart.fromJson(await account.call('POST', 'share-plays/$id/join'));
+  Future<SharePlayStart> join(String id) async =>
+      SharePlayStart.fromJson(await account.call('POST', 'share-plays/$id/join'));
 
   /// Stops watching.
   Future<void> leave(String id) async {
@@ -299,7 +392,8 @@ abstract final class ShareRoster {
   /// Pads a viewer can be handed: player 1 is the host.
   static const pads = [2, 3, 4];
 
-  /// The host uploads a stream per viewer.
+  /// The host uploads a stream per viewer: at most four on the mesh. More watch through the
+  /// media server, up to what it takes ([ShareMedia.viewerChoices]).
   static const maxViewers = 4;
 
   /// Viewers to call (new, or on another device than before) and to hang up on (gone, or moved
@@ -308,8 +402,14 @@ abstract final class ShareRoster {
     final old = {for (final viewer in before) viewer.user.id: viewer.device};
     final now = {for (final viewer in after) viewer.user.id: viewer.device};
     return (
-      call: [for (final viewer in after) if (old[viewer.user.id] != viewer.device) viewer],
-      hangUp: [for (final MapEntry(:key, :value) in old.entries) if (now[key] != value) key],
+      call: [
+        for (final viewer in after)
+          if (old[viewer.user.id] != viewer.device) viewer,
+      ],
+      hangUp: [
+        for (final MapEntry(:key, :value) in old.entries)
+          if (now[key] != value) key,
+      ],
     );
   }
 
@@ -337,7 +437,10 @@ abstract final class ShareRoster {
   /// The viewer's answer with WebRTC's own bit rate hints on each H.264 format, as the Mac puts
   /// them in: start high enough that the first picture is sharp, never above [maxKbps].
   static String tuneVideo(String sdp, {required int startKbps, required int maxKbps}) {
-    final payloads = RegExp(r'a=rtpmap:(\d+) H264/90000', caseSensitive: false).allMatches(sdp).map((match) => match.group(1)!);
+    final payloads = RegExp(
+      r'a=rtpmap:(\d+) H264/90000',
+      caseSensitive: false,
+    ).allMatches(sdp).map((match) => match.group(1)!);
     final lines = sdp.split('\r\n');
     final hints = 'x-google-start-bitrate=$startKbps;x-google-max-bitrate=$maxKbps;x-google-min-bitrate=600';
     for (final payload in payloads) {
@@ -424,5 +527,46 @@ class SharePadRouter {
     out[41] = 0;
     out.fillRange(44, 56, 0);
     return out;
+  }
+}
+
+/// Who watches through the media server and who keeps the direct connection to the host, and
+/// how many the host may let watch. The Mac's SharePlayMedia.
+abstract final class ShareMedia {
+  /// The host's "how many may watch" choices: up to the server's limit with a media server, the
+  /// mesh's 1-4 without one (or when the server did not say); never below who watches now nor
+  /// below the share play's own limit.
+  static ({int min, int max}) viewerChoices(MediaLimits? limits, {int watching = 0, int current = 1}) {
+    final server = limits != null && limits.sfu ? limits.maxShareViewers : 0;
+    final top = [ShareRoster.maxViewers, server, current].reduce((a, b) => a > b ? a : b);
+    final bottom = watching < 1 ? 1 : watching;
+    return (min: bottom < top ? bottom : top, max: top);
+  }
+
+  /// The saved choice within what the server takes now.
+  static int clampViewers(int count, MediaLimits? limits) {
+    final top = viewerChoices(limits).max;
+    return count < 1 ? 1 : (count > top ? top : count);
+  }
+
+  /// The viewers the host keeps a direct (mesh) connection with: everyone on the mesh; through
+  /// the media server, those holding a pad, and older viewer apps without a pad that asked for
+  /// one ([asked]) and were served.
+  static List<ShareViewer> meshViewers(SharePlay share, Set<String> asked) {
+    if (share.media != MediaRoute.sfu) return share.viewers;
+    return [
+      for (final viewer in share.viewers)
+        if (viewer.slot != null || asked.contains(viewer.user.id)) viewer,
+    ];
+  }
+
+  /// Whether the host answers a viewer's ask for an offer with a mesh connection: always on the
+  /// mesh; through the media server, for a pad holder, or (best effort, for viewer apps from
+  /// before the media server) while the host has fewer than four direct connections.
+  static bool servesAsk(SharePlay share, String userId, {required int meshPeers}) {
+    if (share.media != MediaRoute.sfu) return true;
+    final viewer = share.viewers.where((viewer) => viewer.user.id == userId).firstOrNull;
+    if (viewer == null) return false;
+    return viewer.slot != null || meshPeers < ShareRoster.maxViewers;
   }
 }

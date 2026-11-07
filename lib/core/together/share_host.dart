@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'media.dart';
 import 'share_audio.dart';
 import 'share_play.dart';
 
@@ -66,7 +67,27 @@ abstract class ShareEngine {
   /// Whether the game's sound can go as an Opus track (to viewers who ask for it).
   bool get hasSound;
   Future<ShareLink> link(List<Map<String, dynamic>> iceServers);
+
+  /// The captured picture and sound published once to the media server, for a share play that
+  /// went through it; null when there is no picture to publish. [changed] hears it connect or
+  /// fail.
+  SfuPublisher? mediaServer(void Function() changed);
   Future<void> stop();
+}
+
+/// The host's side of a share play through the media server: the captured game published once to
+/// the room as the video track "game", and its sound as "game-audio" when there is one. Viewers
+/// holding a pad keep the direct mesh connection; everyone else watches from there. The Mac's
+/// SfuShareHost; LiveKit in the launcher (lib/ui/livekit_room.dart), fakes in tests.
+abstract class SfuPublisher {
+  /// Into the room with the host's token, then the tracks published.
+  Future<void> start(SfuAccess access);
+
+  /// The tracks are out.
+  bool get connected;
+
+  /// Out of the room; the capture itself goes on for the mesh.
+  Future<void> close();
 }
 
 class _Viewer {
@@ -109,6 +130,17 @@ class ShareHostSession {
   final _viewers = <String, _Viewer>{};
   List<ShareViewer> viewers = const [];
 
+  /// The share play as the server said last.
+  SharePlay? sharePlay;
+
+  /// The viewers with a direct (mesh) connection here: everyone on the mesh; through the media
+  /// server, pad holders and the older viewer apps in [asked].
+  List<ShareViewer> mesh = const [];
+
+  /// Viewers without a pad who asked for a mesh connection while the share play went through the
+  /// media server (viewer apps from before it), and were served.
+  Set<String> asked = {};
+
   /// Each viewer's connection state, by user ID.
   Map<String, String> get links => {for (final viewer in _viewers.values) viewer.userId: viewer.link.connectionState};
 
@@ -122,11 +154,19 @@ class ShareHostSession {
   };
 
   /// The share play as the server has it now: newcomers are called, leavers hung up on, and the
-  /// pads follow who holds them.
+  /// pads follow who holds them. Through the media server only the viewers holding a pad (and
+  /// older viewer apps that asked) are called here; the rest watch from the media server.
   Future<void> apply(SharePlay sharePlay) async {
     if (sharePlay.id != id) return;
-    final plan = ShareRoster.plan(viewers, sharePlay.viewers);
+    asked = {
+      for (final userId in asked)
+        if (sharePlay.viewers.any((viewer) => viewer.user.id == userId)) userId,
+    };
+    final next = ShareMedia.meshViewers(sharePlay, asked);
+    final plan = ShareRoster.plan(mesh, next);
     viewers = sharePlay.viewers;
+    mesh = next;
+    this.sharePlay = sharePlay;
     for (final userId in plan.hangUp) {
       await hangUp(userId, sayBye: false);
     }
@@ -137,10 +177,27 @@ class ShareHostSession {
     changed();
   }
 
+  /// Whether a viewer's ask for a connection here is answered: always on the mesh; through the
+  /// media server for a pad holder, or an older viewer app while there is room.
+  bool _admits(String userId) {
+    final share = sharePlay;
+    if (share == null) return true;
+    if (!ShareMedia.servesAsk(share, userId, meshPeers: _viewers.length)) return false;
+    final viewer = share.viewers.where((viewer) => viewer.user.id == userId).firstOrNull;
+    if (share.media == MediaRoute.sfu && viewer?.slot == null) {
+      asked = {...asked, userId};
+      mesh = ShareMedia.meshViewers(share, asked);
+    }
+    return true;
+  }
+
   /// Calls a viewer on [device] (again, if they were on another device or their link broke).
   Future<void> call(String userId, String device) async {
     final known = _viewers[userId];
-    if (known != null && known.device == device && known.link.connectionState != 'failed' && known.link.connectionState != 'closed') {
+    if (known != null &&
+        known.device == device &&
+        known.link.connectionState != 'failed' &&
+        known.link.connectionState != 'closed') {
       return;
     }
     if (known != null) await hangUp(userId, sayBye: false);
@@ -186,15 +243,21 @@ class ShareHostSession {
         // with a fresh connection after its link broke. An offer still waiting for its answer
         // is sent again; otherwise the old connection goes and a new one is offered.
         final pending = viewer?.link.localDescription;
-        if (viewer != null && viewer.device == signal.device && viewer.link.signalingState == 'have-local-offer' && pending != null) {
+        if (viewer != null &&
+            viewer.device == signal.device &&
+            viewer.link.signalingState == 'have-local-offer' &&
+            pending != null) {
           this.signal(viewer.userId, viewer.device, 'offer', pending);
-        } else {
+        } else if (viewer != null || _admits(signal.from)) {
           if (viewer != null) await hangUp(signal.from, sayBye: false);
           await call(signal.from, signal.device);
         }
       case 'answer':
         final data = signal.data;
-        if (viewer == null || viewer.device != signal.device || viewer.link.signalingState != 'have-local-offer' || data is! Map<String, dynamic>) {
+        if (viewer == null ||
+            viewer.device != signal.device ||
+            viewer.link.signalingState != 'have-local-offer' ||
+            data is! Map<String, dynamic>) {
           return;
         }
         final encoding = ShareRoster.encoding(_viewers.length);

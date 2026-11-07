@@ -5,7 +5,16 @@ release when it is made.
 
 ## Next release
 
-Nothing yet.
+- **Share play for more than four viewers**, as on the Mac. With AnyTogether's media server
+  (up to 16 viewers now), the Viewers row goes up to what the server takes. Past four, the
+  game's picture and sound go once to the media server and everyone watches from there, while
+  viewers you let play keep their direct link. A viewer's line says when they watch through the
+  media server.
+- **List your share play in public**, as on the Mac: off, anyone can ask, or anyone can watch,
+  under Live now if you like, and in a language. People who ask to watch show in the quick menu
+  with Let them watch and Not now, and the ones who asked with your code say so.
+- **A join code for your share play**, as on the Mac: make one, copy it or its link, make a
+  new one or stop it. Anyone with it can ask to watch, and you still say yes to each one.
 
 ## 0.1.20
 

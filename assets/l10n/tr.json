@@ -1994,5 +1994,15 @@
   "notifChallengeStarted": "%@ başladı",
   "notifChallengeEnded": "%1$@ bitti: %3$d kişi içinde %2$d. oldun",
   "notifChallengeWon": "%@ meydan okumasını kazandın",
-  "notifChallengeOver": "%@ bitti"
+  "notifChallengeOver": "%@ bitti",
+  "discoverAsksWatch": "%@ izlemek istiyor",
+  "discoverListOpenWatch": "Herkes izleyebilir",
+  "discoverLiveToggle": "Şimdi canlı",
+  "discoverLiveToggleDetail": "Herkes izleyebilsin diye Şimdi canlı'da da göster",
+  "discoverLetWatch": "%@ izlesin",
+  "sharePlayMediaServerFailed": "Medya sunucusuna ulaşılamadı",
+  "sharePlayMaxViewersServerDetail": "En fazla 4 kişi yayını doğrudan bilgisayarından alır. Daha fazlasında izleyenler medya sunucusundan izler, oyuncuların doğrudan bağlantısı kalır.",
+  "shareCodeMakeDetail": "Kodu olan herkes izlemek isteyebilir. Her birine yine sen karar verirsin.",
+  "joinCodeMade": "Yeni kod: %@",
+  "joinCodeStopped": "Kod artık çalışmıyor"
 }

@@ -139,7 +139,7 @@ class CrashModel {
       app.show('${game.name}: $reason');
       return;
     }
-    unawaited(app.desktop.raiseLauncher());
+    unawaited(app.raiseLauncher());
     unawaited(open(game, afterCrash: true));
   }
 

@@ -10,6 +10,11 @@ release when it is made.
   speed, smoothing, center after), the slow movement amount and the keyboard's stick and trigger
   ramps, written to the engine's input file as the Mac writes them. The shader cache switch and
   Export and Import settings moved there, with Reset advanced settings.
+- **Hide the launcher while a game runs**, as on the Mac (Settings › Behaviour). The launcher's
+  window is minimized once the game starts and comes back when it closes. PS still brings it
+  back with the quick menu, and Resume puts it aside again.
+- **Check for updates can be turned off**, as on the Mac (Settings › Behaviour). Off, the
+  launcher and the engine look for new versions only when you ask in Settings › About.
 
 ## 0.1.20
 

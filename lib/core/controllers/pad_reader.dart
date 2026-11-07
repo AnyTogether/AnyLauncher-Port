@@ -4,6 +4,7 @@ import '../gamepad/linux_pads.dart';
 import '../gamepad/pad_navigation.dart';
 import '../gamepad/windows_pads.dart';
 import '../steam/steam_launch.dart';
+import 'pad_batteries.dart';
 import 'sdl_pads.dart';
 
 /// Picks the launcher's controller reader: SDL2 when it loads (shipped beside the launcher on
@@ -29,6 +30,8 @@ abstract final class PadReader {
         steamTookOver: steam.skipPhysicalPad,
         remapperRunning: () => remapperRunning,
         platformDriver: Platform.isWindows ? 'SDL DirectInput' : 'SDL evdev',
+        // A percentage where the system measures one (SDL2 gives four levels), as on the Mac.
+        batteries: PadBatteryProbe.forSystem(),
       );
     }
     return Platform.isWindows ? WindowsPadSource(steam: steam.fromSteam) : LinuxPadSource();

@@ -5,11 +5,10 @@ release when it is made.
 
 ## Next release
 
-- **A game's Advanced page**, as on the Mac (Game settings › Advanced): each stick's dead zone,
-  the mouse as the camera (sensitivity, vertical speed, response curve, minimum tilt, maximum
-  speed, smoothing, center after), the slow movement amount and the keyboard's stick and trigger
-  ramps, written to the engine's input file as the Mac writes them. The shader cache switch and
-  Export and Import settings moved there, with Reset advanced settings.
+- **A controller's battery in percent** where the system measures it, as on the Mac. On Linux
+  it comes from the pad's power supply (DualSense, DualShock 4 and other pads whose driver gives
+  a percentage). On Windows a DualSense or DualShock 4 is read from its own report. Pads the
+  system has no percentage for keep the four levels.
 - **An iPhone on a USB cable reaches the launcher without Wi-Fi**, as on the Mac. The launcher
   opens the phone app's port over the cable through usbmuxd and joins it to its phone server.
   On Windows that is Apple Mobile Device Support (it comes with iTunes or the Apple Devices app),
@@ -19,6 +18,11 @@ release when it is made.
   back with the quick menu, and Resume puts it aside again.
 - **Check for updates can be turned off**, as on the Mac (Settings › Behaviour). Off, the
   launcher and the engine look for new versions only when you ask in Settings › About.
+- **A game's Advanced page**, as on the Mac (Game settings › Advanced): each stick's dead zone,
+  the mouse as the camera (sensitivity, vertical speed, response curve, minimum tilt, maximum
+  speed, smoothing, center after), the slow movement amount and the keyboard's stick and trigger
+  ramps, written to the engine's input file as the Mac writes them. The shader cache switch and
+  Export and Import settings moved there, with Reset advanced settings.
 - **Edit your AnyTogether profile here**, as on the Mac: **Settings › AnyTogether › Your profile**
   has your display name, bio and two-letter country, with **Save profile**, and your handle with
   **Change handle** and the day it may change again.

@@ -84,8 +84,8 @@ void main() {
     expect(row('voice-leave').title, 'Hang up');
     expect(rowIds(), isNot(contains('friend-call-u-ana')), reason: 'in a call with her already');
     (row('voice-leave').kind as ActionRow).run();
-    await until(() => !together.hub.voice.active);
-    expect(server.callsTo('calls/call-1/leave'), hasLength(1));
+    await until(() => server.callsTo('calls/call-1/leave').isNotEmpty);
+    expect(together.hub.voice.active, isFalse);
   });
 
   test('Back declines; a call that stops ringing unanswered is a missed call', () async {

@@ -1887,9 +1887,9 @@ void main() {
       expect(model.toast, 'Ana invites you to Orbit Runner');
       expect(model.together.hub.badge, 1);
       model.open(Layer.friends);
-      // After My Profile, Find players, Activity and Leaderboard.
-      expect(rowIds().skip(4).take(2), ['game-accept-gs-ana', 'game-decline-gs-ana']);
-      (model.panelCategories().single.rows[5].kind as ActionRow).run();
+      // After My Profile, Find players, Activity, Captures and Leaderboard.
+      expect(rowIds().skip(5).take(2), ['game-accept-gs-ana', 'game-decline-gs-ana']);
+      (model.panelCategories().single.rows[6].kind as ActionRow).run();
       await until(() => server.callsTo('game-sessions/gs-ana/decline').isNotEmpty);
       expect(model.together.hub.badge, 0);
     });

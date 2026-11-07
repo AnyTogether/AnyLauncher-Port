@@ -92,6 +92,7 @@ void main() {
 
   setUp(() async {
     server = await FakeTogether.start();
+    ids = 0;
     posts = [];
     gallery = [];
     comments = {};

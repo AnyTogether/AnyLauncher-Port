@@ -183,7 +183,7 @@ class HomeView extends StatelessWidget {
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 64 * scale, vertical: 28 * scale),
               child: const Align(
-                alignment: Alignment.centerRight,
+                alignment: AlignmentDirectional.centerEnd,
                 child: Legible(softness: 14, child: HintBar()),
               ),
             ),
@@ -245,7 +245,7 @@ class UpdateNoticeBar extends StatelessWidget {
 
     return Container(
       height: 44 * scale,
-      padding: EdgeInsets.only(left: 16 * scale, right: 5 * scale),
+      padding: EdgeInsetsDirectional.only(start: 16 * scale, end: 5 * scale),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.32),
         borderRadius: BorderRadius.circular(22 * scale),
@@ -390,8 +390,8 @@ class TopBar extends StatelessWidget {
                   ),
                 ),
               if (badge > 0)
-                Positioned(
-                  right: -4 * scale,
+                PositionedDirectional(
+                  end: -4 * scale,
                   top: -4 * scale,
                   child: Container(
                     constraints: BoxConstraints(minWidth: 20 * scale),
@@ -440,7 +440,7 @@ class TopBar extends StatelessWidget {
           child: switch (model.engine.git.job) {
             final EngineJob job => Padding(
               key: const ValueKey('engine-job'),
-              padding: EdgeInsets.only(left: 20 * scale),
+              padding: EdgeInsetsDirectional.only(start: 20 * scale),
               child: EngineJobPill(model: model, job: job),
             ),
             null => const SizedBox.shrink(),
@@ -453,7 +453,7 @@ class TopBar extends StatelessWidget {
           child: model.updates.showsNotice
               ? Padding(
                   key: const ValueKey('update-notice'),
-                  padding: EdgeInsets.only(right: 22 * scale),
+                  padding: EdgeInsetsDirectional.only(end: 22 * scale),
                   child: UpdateNoticeBar(model: model),
                 )
               : const SizedBox.shrink(),
@@ -506,8 +506,8 @@ class TopBar extends StatelessWidget {
             ),
             // Idle, do not disturb or invisible: the dot on the picture, as friends see it.
             if (ownDot != null)
-              Positioned(
-                right: -2 * scale,
+              PositionedDirectional(
+                end: -2 * scale,
                 bottom: -2 * scale,
                 child: StatusDot(status: ownDot, size: 14 * scale, ring: Colors.black, ringWidth: 2.2 * scale),
               ),
@@ -623,7 +623,7 @@ class PhoneIndicator extends StatelessWidget {
     ).copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
     final shown = milliseconds.round().clamp(0, 999);
     return Stack(
-      alignment: Alignment.centerRight,
+      alignment: AlignmentDirectional.centerEnd,
       children: [
         // The widest it gets, unseen: it sets the width.
         Visibility(
@@ -674,11 +674,11 @@ class TileRow extends StatelessWidget {
                     : leading + large + gap + label + (offset - 1) * (small + gap);
                 final size = selected ? large : small;
                 return [
-                  AnimatedPositioned(
+                  AnimatedPositionedDirectional(
                     key: ValueKey('tile-${game.id}'),
                     duration: Motion.layout,
                     curve: Motion.settle,
-                    left: x,
+                    start: x,
                     top: selected ? 0 : (large - small) * 0.18,
                     width: size,
                     height: size,
@@ -707,9 +707,9 @@ class TileRow extends StatelessWidget {
                     ),
                   ),
                   if (selected)
-                    Positioned(
+                    PositionedDirectional(
                       key: ValueKey('label-${game.id}'),
-                      left: leading + large + gap * 1.4,
+                      start: leading + large + gap * 1.4,
                       top: large * 0.32,
                       width: label - gap,
                       child: Legible(
@@ -764,9 +764,12 @@ class _TileDragState extends State<_TileDrag> {
   static const _glide = 0.25;
   static const _maxGlide = 8;
 
+  /// Mirrored (Arabic, Urdu), the next games are on the left: a drag to the right moves on.
+  double get _sign => Directionality.of(context) == TextDirection.rtl ? -1 : 1;
+
   void _update(DragUpdateDetails details) {
     final step = widget.step;
-    var pending = _pending + (details.primaryDelta ?? details.delta.dx);
+    var pending = _pending + (details.primaryDelta ?? details.delta.dx) * _sign;
     while (pending <= -step) {
       pending += step;
       widget.model.moveSelection(1);
@@ -779,7 +782,7 @@ class _TileDragState extends State<_TileDrag> {
   }
 
   void _end(DragEndDetails details) {
-    final velocity = details.primaryVelocity ?? 0;
+    final velocity = (details.primaryVelocity ?? 0) * _sign;
     final games = (-velocity * _glide / widget.step).round().clamp(-_maxGlide, _maxGlide);
     if (games != 0) widget.model.moveSelection(games);
     _settle();
@@ -803,7 +806,7 @@ class _TileDragState extends State<_TileDrag> {
         tween: Tween(end: _dragging ? _pending * 0.4 : 0),
         duration: _dragging ? Duration.zero : Motion.layout,
         curve: Motion.settle,
-        builder: (context, lean, child) => Transform.translate(offset: Offset(lean, 0), child: child),
+        builder: (context, lean, child) => Transform.translate(offset: Offset(lean * _sign, 0), child: child),
         child: widget.child,
       ),
     );
@@ -858,7 +861,7 @@ class GameTile extends StatelessWidget {
   }
 
   List<Widget> _overlay(GameState state, Color accent) {
-    Widget badge(IconData icon, {Alignment alignment = Alignment.bottomRight}) => Align(
+    Widget badge(IconData icon, {AlignmentGeometry alignment = AlignmentDirectional.bottomEnd}) => Align(
       alignment: alignment,
       child: Container(
         margin: EdgeInsets.all(size * 0.045),
@@ -870,7 +873,7 @@ class GameTile extends StatelessWidget {
     final dim = ColoredBox(color: Colors.black.withValues(alpha: 0.42));
     // Locked: a padlock that reads as one at a tile's size; the focused tile says it in words too.
     final lock = Align(
-      alignment: Alignment.bottomRight,
+      alignment: AlignmentDirectional.bottomEnd,
       child: Container(
         margin: EdgeInsets.all(size * 0.045),
         padding: EdgeInsets.symmetric(horizontal: size * (focused ? 0.05 : 0.04), vertical: size * 0.04),
@@ -882,7 +885,7 @@ class GameTile extends StatelessWidget {
         child: AnimatedSize(
           duration: Motion.focus,
           curve: Motion.settle,
-          alignment: Alignment.centerRight,
+          alignment: AlignmentDirectional.centerEnd,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -913,7 +916,7 @@ class GameTile extends StatelessWidget {
       Installing(:final overall, :final updating) => [
         ColoredBox(color: Colors.black.withValues(alpha: 0.3)),
         // An installed game being updated says so in its corner, as a locked one does.
-        if (updating) badge(Icons.sync_rounded, alignment: Alignment.topRight),
+        if (updating) badge(Icons.sync_rounded, alignment: AlignmentDirectional.topEnd),
         Align(
           alignment: Alignment.bottomCenter,
           child: Padding(
@@ -936,7 +939,7 @@ class GameTile extends StatelessWidget {
       // others wait with an hourglass in their corner.
       WaitingForEngine(forThisGame: true) => [
         ColoredBox(color: Colors.black.withValues(alpha: 0.3)),
-        badge(Icons.construction_rounded, alignment: Alignment.topRight),
+        badge(Icons.construction_rounded, alignment: AlignmentDirectional.topEnd),
         Align(
           alignment: Alignment.bottomCenter,
           child: Padding(
@@ -966,7 +969,7 @@ class GameTile extends StatelessWidget {
       ],
       Running() => [
         Align(
-          alignment: Alignment.topRight,
+          alignment: AlignmentDirectional.topEnd,
           child: Container(
             margin: EdgeInsets.all(size * 0.07),
             width: size * 0.09,

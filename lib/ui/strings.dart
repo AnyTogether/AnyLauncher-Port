@@ -21,6 +21,13 @@ class Language {
   /// The console language a game starts in when its own setting follows the launcher.
   final int consoleLanguage;
 
+  /// The languages written right to left, by their base code (the part before a dash).
+  static const _rightToLeft = {'ar', 'ur', 'fa', 'he', 'ps', 'sd', 'ug', 'yi', 'dv', 'ckb'};
+
+  /// Arabic and Urdu (and any other language written right to left a file is added for): the
+  /// screens are laid out mirrored, and ← and → follow what they show, as on the Mac.
+  bool get isRightToLeft => _rightToLeft.contains(code.split('-').first.toLowerCase());
+
   /// The language every other one falls back to, there even when en.json is not.
   static const english = Language('en', 'English', 1);
 

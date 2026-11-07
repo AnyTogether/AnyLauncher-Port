@@ -1588,5 +1588,9 @@
   "profilePictureFromTogetherDetail": "La imagen de tu perfil de AnyTogether, también en este PC.",
   "profilePictureUploaded": "Tu imagen de AnyTogether está actualizada",
   "profilePictureDownloadFailed": "No se pudo descargar tu imagen de AnyTogether",
-  "profilePictureTooSmall": "La imagen es demasiado pequeña: al menos 32 píxeles"
+  "profilePictureTooSmall": "La imagen es demasiado pequeña: al menos 32 píxeles",
+  "discoverAsksWatch": "%@ quiere mirar",
+  "discoverListOpenWatch": "Cualquiera puede mirar",
+  "discoverLetWatch": "Dejar mirar a %@",
+  "sharePlayMediaServerFailed": "No se pudo conectar con el servidor de medios"
 }

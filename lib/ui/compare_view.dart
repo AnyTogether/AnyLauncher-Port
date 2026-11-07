@@ -121,8 +121,8 @@ class _PeopleSide extends StatelessWidget {
             size: 96 * scale,
           ),
           if (level != null)
-            Positioned(
-              right: 0,
+            PositionedDirectional(
+              end: 0,
               bottom: 0,
               child: LevelBadgeView(level: level, size: 38 * scale),
             ),
@@ -496,7 +496,7 @@ class _GameSide extends StatelessWidget {
         if (view != null) ...[
           SizedBox(height: 24 * scale),
           Container(
-            padding: EdgeInsets.fromLTRB(16 * scale, 8 * scale, 18 * scale, 12 * scale),
+            padding: EdgeInsetsDirectional.fromSTEB(16 * scale, 8 * scale, 18 * scale, 12 * scale),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(16 * scale),
@@ -566,7 +566,7 @@ class _TrophyList extends StatelessWidget {
               SizedBox(
                 width: column(scale) + 16 * scale,
                 child: Padding(
-                  padding: EdgeInsets.only(bottom: 16 * scale, right: 16 * scale),
+                  padding: EdgeInsetsDirectional.only(bottom: 16 * scale, end: 16 * scale),
                   child: Text(
                     T.upper(them.split(' ').first),
                     maxLines: 1,

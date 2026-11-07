@@ -5,11 +5,41 @@ release when it is made.
 
 ## Next release
 
+- **Share play for more than four viewers**, as on the Mac. With AnyTogether's media server
+  (up to 16 viewers now), the Viewers row goes up to what the server takes. Past four, the
+  game's picture and sound go once to the media server and everyone watches from there, while
+  viewers you let play keep their direct link. A viewer's line says when they watch through the
+  media server.
+- **List your share play in public**, as on the Mac: off, anyone can ask, or anyone can watch,
+  under Live now if you like, and in a language. People who ask to watch show in the quick menu
+  with Let them watch and Not now, and the ones who asked with your code say so.
+- **A join code for your share play**, as on the Mac: make one, copy it or its link, make a
+  new one or stop it. Anyone with it can ask to watch, and you still say yes to each one.
+- **Watch a big share play through the media server**, as on the Mac. In a share play with
+  more than four viewers you watch from the media server until the host lets you play, then
+  straight from the host, and back when they take the pad. The corner chip says when the
+  picture comes through the media server.
+- **A controller's battery in percent** where the system measures it, as on the Mac. On Linux
+  it comes from the pad's power supply (DualSense, DualShock 4 and other pads whose driver gives
+  a percentage). On Windows a DualSense or DualShock 4 is read from its own report. Pads the
+  system has no percentage for keep the four levels.
+- **An iPhone on a USB cable reaches the launcher without Wi-Fi**, as on the Mac. The launcher
+  opens the phone app's port over the cable through usbmuxd and joins it to its phone server.
+  On Windows that is Apple Mobile Device Support (it comes with iTunes or the Apple Devices app),
+  on Linux the usbmuxd package (libimobiledevice).
+- **Arabic and Urdu are laid out right to left**, as on the Mac. Every screen is mirrored, the
+  games after the selected one sit on its left, and ← and → (and a mouse drag on the games and
+  the sliders) follow what the screen shows. A share play you watch keeps the controller as it is.
 - **Hide the launcher while a game runs**, as on the Mac (Settings › Behaviour). The launcher's
   window is minimized once the game starts and comes back when it closes. PS still brings it
   back with the quick menu, and Resume puts it aside again.
 - **Check for updates can be turned off**, as on the Mac (Settings › Behaviour). Off, the
   launcher and the engine look for new versions only when you ask in Settings › About.
+- **A game's Advanced page**, as on the Mac (Game settings › Advanced): each stick's dead zone,
+  the mouse as the camera (sensitivity, vertical speed, response curve, minimum tilt, maximum
+  speed, smoothing, center after), the slow movement amount and the keyboard's stick and trigger
+  ramps, written to the engine's input file as the Mac writes them. The shader cache switch and
+  Export and Import settings moved there, with Reset advanced settings.
 - **Edit your AnyTogether profile here**, as on the Mac: **Settings › AnyTogether › Your profile**
   has your display name, bio and two-letter country, with **Save profile**, and your handle with
   **Change handle** and the day it may change again.

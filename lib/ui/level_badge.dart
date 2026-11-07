@@ -196,7 +196,7 @@ class LevelCard extends StatelessWidget {
       if (level.points > 0) T.format('levelPoints', [LevelColors.number(level.points)]),
     ].join(' · ');
     return Container(
-      padding: EdgeInsets.fromLTRB(14 * scale, 12 * scale, 18 * scale, 12 * scale),
+      padding: EdgeInsetsDirectional.fromSTEB(14 * scale, 12 * scale, 18 * scale, 12 * scale),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16 * scale),
         border: Border.all(color: Colors.white.withValues(alpha: 0.09)),

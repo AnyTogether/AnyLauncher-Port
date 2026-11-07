@@ -23,7 +23,9 @@ The Windows/Linux launcher has these languages so far:
 | Czech, Danish, Hungarian, Norwegian, Romanian, Swedish, Filipino, Malay | `cs`, `da`, `hu`, `no`, `ro`, `sv`, `fil`, `ms` | VK |
 | Simplified Chinese, Traditional Chinese, Korean, Khmer, Lao, Amharic | `zh-Hans`, `zh-Hant`, `ko`, `km`, `lo`, `am` | VK |
 
-Arabic and Urdu read right to left, but the launcher's screens are not mirrored for them yet.
+Arabic and Urdu read right to left: the launcher's screens are mirrored for them, and ← and → follow
+what the screen shows. A new file for another language written right to left (Persian, Hebrew) is
+mirrored too.
 The launcher starts in the computer's language the first time when it has a file for it. Chinese
 follows the script or region (zh-Hant for Taiwan, Hong Kong and Macau). Norwegian Bokmål and
 Nynorsk read `no.json`, and Tagalog reads `fil.json`.

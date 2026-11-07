@@ -58,20 +58,20 @@ class ShareWatchView extends StatelessWidget {
                 ],
               ),
             ),
-          Positioned(
-            left: 28 * scale,
+          PositionedDirectional(
+            start: 28 * scale,
             top: 28 * scale,
             child: _Chip(model: model, accent: accent),
           ),
           if (slot != null)
-            Positioned(
-              right: 28 * scale,
+            PositionedDirectional(
+              end: 28 * scale,
               top: 28 * scale,
               child: _SeatBadge(slot: slot, accent: accent),
             ),
-          Positioned(
-            left: 0,
-            right: 0,
+          PositionedDirectional(
+            start: 0,
+            end: 0,
             bottom: 28 * scale,
             child: Center(
               child: Opacity(
@@ -114,13 +114,14 @@ class _Chip extends StatelessWidget {
     final stats = share.watchStats;
     final parts = [
       if (share.watchSlot case final slot?) T.format('sharePlayPlayer', [slot]) else T.text('sharePlayOnlyWatches'),
+      if (share.watchViaServer) T.text('mediaViaServer'),
       if (stats?.roundTripMs case final roundTrip?) T.format('sharePlayRoundTrip', [roundTrip.round()]),
       if ((stats?.framesPerSecond, stats?.height) case (final fps?, final height?)) '${height}p${fps.round()}',
     ];
     return IceSurface(
       radius: 22 * scale,
       opacity: 0.5,
-      padding: EdgeInsets.fromLTRB(10 * scale, 10 * scale, 18 * scale, 10 * scale),
+      padding: EdgeInsetsDirectional.fromSTEB(10 * scale, 10 * scale, 18 * scale, 10 * scale),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

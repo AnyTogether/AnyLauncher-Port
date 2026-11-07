@@ -347,9 +347,10 @@ class EngineModel {
     }
   }
 
-  /// At start: a quiet look for a newer engine, said once when there is one.
+  /// At start: a quiet look for a newer engine, said once when there is one; nothing while
+  /// Settings › Behaviour › Check for updates is off, as on the Mac.
   Future<void> startupCheck() async {
-    if (!online || !app.preferences.onboarded) return;
+    if (!online || !app.preferences.onboarded || !app.preferences.checkUpdates) return;
     if (isUpstreamNightly(app.toolkitVersion)) {
       if (app.updateChannel != UpdateChannel.nightly) return;
       await checkArm(quiet: true);

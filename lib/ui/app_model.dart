@@ -52,6 +52,7 @@ import '../core/remote/paired_devices.dart';
 import '../core/remote/phone_pad_events.dart';
 import '../core/remote/remote_protocol.dart';
 import '../core/remote/remote_server.dart';
+import '../core/remote/usb_tunnel.dart';
 import '../core/replay_buffer.dart';
 import '../core/save_backup.dart';
 import '../core/steam/steam_launch.dart';
@@ -1155,7 +1156,8 @@ class LauncherServices {
   /// How often an AnyTogether sign-in asks whether it was approved (tests go faster).
   final Duration? togetherPollEvery;
 
-  /// Whether Android phones on a USB cable are joined through adb (off in tests).
+  /// Whether phones on a USB cable are joined: Android through adb, iPhones through usbmuxd (off
+  /// in tests).
   final bool cable;
 
   /// Whether the phone server is announced on the network (off in tests).
@@ -2328,6 +2330,10 @@ class AppModel extends ChangeNotifier {
   RemoteServer? remote;
   ServiceAdvertiser? _advertiser;
   AdbTunnel? _adb;
+
+  /// iPhones on a cable, through usbmuxd (Apple Mobile Device Support on Windows,
+  /// libimobiledevice's usbmuxd on Linux), as on the Mac.
+  UsbTunnel? _usb;
   PairingRequest? pairing;
   String? phoneConnecting;
   double? phoneLatency;
@@ -6449,6 +6455,7 @@ class AppModel extends ChangeNotifier {
       if (services.cable) {
         final adb = await AdbTunnel.locate();
         if (adb != null) _adb = AdbTunnel(adb: adb, targetPort: server.port!)..start();
+        _usb = UsbTunnel(targetPort: server.port!)..start();
       }
       if (!services.advertise) {
         _changed();
@@ -6473,6 +6480,8 @@ class AppModel extends ChangeNotifier {
     await browserPlay.stop();
     await _adb?.stop();
     _adb = null;
+    await _usb?.stop();
+    _usb = null;
     await _advertiser?.stop();
     _advertiser = null;
     await remote?.stop();

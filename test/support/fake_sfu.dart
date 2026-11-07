@@ -41,6 +41,15 @@ class FakeSfuRoom implements SfuRoom {
     microphone = enabled;
   }
 
+  /// Whether the others are heard (false while deafened).
+  bool hearing = true;
+
+  @override
+  Future<void> setHearing(bool on) async {
+    calls.add('hear ${on ? 'on' : 'off'}');
+    hearing = on;
+  }
+
   @override
   Set<String> tracksOf(String identity) => tracks[identity] ?? const {};
 

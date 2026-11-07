@@ -15,11 +15,27 @@ release when it is made.
   with Let them watch and Not now, and the ones who asked with your code say so.
 - **A join code for your share play**, as on the Mac: make one, copy it or its link, make a
   new one or stop it. Anyone with it can ask to watch, and you still say yes to each one.
+- **An iPhone on a USB cable reaches the launcher without Wi-Fi**, as on the Mac. The launcher
+  opens the phone app's port over the cable through usbmuxd and joins it to its phone server.
+  On Windows that is Apple Mobile Device Support (it comes with iTunes or the Apple Devices app),
+  on Linux the usbmuxd package (libimobiledevice).
 - **Hide the launcher while a game runs**, as on the Mac (Settings › Behaviour). The launcher's
   window is minimized once the game starts and comes back when it closes. PS still brings it
   back with the quick menu, and Resume puts it aside again.
 - **Check for updates can be turned off**, as on the Mac (Settings › Behaviour). Off, the
   launcher and the engine look for new versions only when you ask in Settings › About.
+- **Edit your AnyTogether profile here**, as on the Mac: **Settings › AnyTogether › Your profile**
+  has your display name, bio and two-letter country, with **Save profile**, and your handle with
+  **Change handle** and the day it may change again.
+- **Who sees what**, as on the Mac: under it, a choice of Everyone, Friends or Only me for your
+  games and play time, trophies, friends list and being online and playing, and whether people
+  find you by name. Where the server keeps files, your gallery has its own choice too.
+- **Start a group chat**, as on the Mac: **Messages** lists **New group** under your
+  conversations. Pick the friends, give it a name if you like, and **Start the group** opens it
+  to write in.
+- **Deafen in party voice**, as on the Mac: hear nobody, with your microphone off, and the others
+  see you deafened. Turning it off puts your microphone back as it was, and turning the
+  microphone on hears everyone again.
 
 ## 0.1.20
 

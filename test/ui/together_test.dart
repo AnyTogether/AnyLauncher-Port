@@ -8,6 +8,7 @@ import 'package:anyps5_desktop/core/together/account.dart';
 import 'package:anyps5_desktop/core/together/messages.dart';
 import 'package:anyps5_desktop/core/together/people.dart';
 import 'package:anyps5_desktop/core/together/profiles.dart';
+import 'package:anyps5_desktop/core/together/self.dart';
 import 'package:anyps5_desktop/core/together/social.dart';
 import 'package:anyps5_desktop/core/together/token_store.dart';
 import 'package:anyps5_desktop/ui/app_model.dart' hide Command, GameState;
@@ -490,6 +491,8 @@ void main() {
       expect(model.toast, "That link can't be sent");
       expect(together.hub.messages.thread.last.failed, isTrue);
 
+      // Past New group, to Bora.
+      model.handle(launcher.Command.down);
       model.handle(launcher.Command.down);
       model.handle(launcher.Command.select);
       await until(() => server.callsTo('conversations', method: 'POST').isNotEmpty);
@@ -530,9 +533,24 @@ void main() {
       model.open(Layer.party);
       await together.joinVoice();
       expect(model.toast, "You're in voice");
-      expect(rowIds().take(4), ['voice-mic', 'voice-ptt', 'voice-key', 'voice-leave']);
+      expect(rowIds().take(5), ['voice-mic', 'voice-deafen', 'voice-ptt', 'voice-key', 'voice-leave']);
       final mic = model.panelCategories().single.rows.first;
       expect(mic.detail, 'V turns the microphone on and off, in a game too.');
+
+      // Deafen: nobody heard, the microphone off, and the others are told.
+      PanelRow voiceRow(String id) => model.panelCategories().single.rows.firstWhere((row) => row.id == id);
+      expect(voiceRow('voice-deafen').title, 'Deafen');
+      expect(voiceRow('voice-deafen').detail, 'Hear nobody, and your microphone is off.');
+      (voiceRow('voice-deafen').kind as ToggleRow).set(true);
+      expect(together.hub.voice.deafened, isTrue);
+      expect((voiceRow('voice-deafen').kind as ToggleRow).value, isTrue);
+      expect((voiceRow('voice-mic').kind as ToggleRow).value, isFalse);
+      final callId = together.hub.voice.callId;
+      await until(() => server.callsTo('calls/$callId/mute').isNotEmpty);
+      expect(server.callsTo('calls/$callId/mute').last.body, {'muted': true, 'deafened': true});
+      // The microphone on hears everyone again.
+      (voiceRow('voice-mic').kind as ToggleRow).set(true);
+      expect(together.hub.voice.deafened, isFalse);
 
       together.captureTalkKey();
       expect(together.capturingTalkKey, isTrue);
@@ -544,8 +562,8 @@ void main() {
 
       together.setPushToTalk(true);
       expect(model.preferences.pushToTalk, isTrue);
-      expect(rowIds().take(3), ['voice-ptt', 'voice-key', 'voice-leave']);
-      expect(model.panelCategories().single.rows.first.detail, 'Hold G to talk, in a game too.');
+      expect(rowIds().take(4), ['voice-deafen', 'voice-ptt', 'voice-key', 'voice-leave']);
+      expect(model.panelCategories().single.rows[1].detail, 'Hold G to talk, in a game too.');
       // Without a desktop key reader, the launcher's own keys hold it.
       expect(together.talkKeyInWindow(0x0A, down: true), isTrue);
       expect(together.hub.voice.sending, isTrue);
@@ -1266,6 +1284,77 @@ void main() {
       expect(model.toastTap, isNull, reason: 'other toasts go nowhere');
     });
 
+    test('a new group: friends picked, a name, then Start the group opens it to write in', () async {
+      final together = model.together;
+      await together.openMessages();
+      final targets = together.messageTargets;
+      final at = targets.indexWhere((target) => target is NewGroupTarget);
+      expect(at, greaterThan(0));
+      expect(targets.sublist(0, at), everyElement(isA<ConversationTarget>()), reason: 'after the conversations');
+      expect(
+        targets.sublist(at + 1),
+        everyElement(isA<FriendTarget>()),
+        reason: 'before the friends to start one with',
+      );
+      while (together.messagesIndex < at) {
+        model.handle(launcher.Command.down);
+      }
+      model.handle(launcher.Command.select);
+      expect(together.messagesInThread, isTrue);
+      expect(together.groupFocus, 0);
+
+      // Nobody picked: it says so.
+      await together.startGroup();
+      expect(model.toast, 'Pick at least one friend first');
+      expect(server.callsTo('conversations', method: 'POST'), isEmpty);
+
+      // The name first, then the friends in their order, then Start the group.
+      model.handle(launcher.Command.select);
+      expect(model.editingRow, TogetherMessages.groupNameRow);
+      (together.groupNameField.kind as TextRow).set('Friday night');
+      model.stopEditing();
+      final friends = together.groupFriends;
+      void focus(int row) {
+        while (together.groupFocus < row) {
+          model.handle(launcher.Command.down);
+        }
+        while (together.groupFocus > row) {
+          model.handle(launcher.Command.up);
+        }
+      }
+
+      final bora = friends.indexWhere((friend) => friend.person.id == 'u-bora') + 1;
+      final cem = friends.indexWhere((friend) => friend.person.id == 'u-cem') + 1;
+      focus(bora);
+      model.handle(launcher.Command.select);
+      focus(cem);
+      model.handle(launcher.Command.select);
+      expect(together.groupPicked, {'u-bora', 'u-cem'});
+      // Picked twice is out again.
+      model.handle(launcher.Command.select);
+      expect(together.groupPicked, {'u-bora'});
+      model.handle(launcher.Command.select);
+      focus(friends.length + 1);
+      // Past the last row the keys stay on Start the group.
+      model.handle(launcher.Command.down);
+      expect(together.groupFocus, friends.length + 1);
+      model.handle(launcher.Command.select);
+      await until(() => server.callsTo('conversations', method: 'POST').isNotEmpty);
+      final body = server.callsTo('conversations', method: 'POST').single.body;
+      expect(body['group'], isTrue);
+      expect(body['title'], 'Friday night');
+      expect((body['members'] as List).toSet(), {'u-bora', 'u-cem'});
+      await until(() => model.toast == 'Friday night is ready');
+      final opened = together.selectedTarget;
+      expect(opened, isA<ConversationTarget>());
+      expect((opened! as ConversationTarget).conversation.title, 'Friday night');
+      expect(together.hub.messages.openId, (opened as ConversationTarget).conversation.id);
+      expect(together.messagesInThread, isTrue);
+      expect(model.editingRow, 'message-draft', reason: 'ready to write in');
+      expect(together.groupPicked, isEmpty);
+      expect(together.groupName, isEmpty);
+    });
+
     test('read receipts: the setting from the server, changed here and on another device', () async {
       final together = model.together;
       server.me['readReceipts'] = false;
@@ -1285,6 +1374,114 @@ void main() {
       await until(() => !(row().kind as ToggleRow).value);
       // What the others' receipts show depends on it: the list again.
       await until(() => server.callsTo('me/conversations').length > lists);
+    });
+
+    test('your profile: the name, bio and country saved, the handle changed, as on the Mac', () async {
+      final together = model.together;
+      server.me.addAll({'bio': 'Night owl', 'country': 'TR'});
+      await together.hub.self.refresh();
+      openTogether();
+      PanelRow row(String id) => model.panelCategories()[model.panelCategory].rows.firstWhere((r) => r.id == id);
+      expect(
+        rowIds(),
+        containsAllInOrder([
+          'together-profile',
+          'together-edit',
+          'together-name',
+          'together-bio',
+          'together-country',
+          'together-save',
+          'together-handle',
+          'together-handle-save',
+          'private-title',
+        ]),
+      );
+      expect(row('together-edit').title, 'Your profile');
+      expect((row('together-name').kind as TextRow).value, 'Utku');
+      expect((row('together-bio').kind as TextRow).value, 'Night owl');
+      expect((row('together-country').kind as TextRow).value, 'TR');
+      expect(row('together-country').detail, 'Two letters: TR, DE, US…');
+      expect(row('together-handle').detail, 'Can change once every 30 days.');
+
+      // Only what changed goes; the country in capitals.
+      (row('together-name').kind as TextRow).set('Utku Halis');
+      (row('together-country').kind as TextRow).set('de');
+      (row('together-save').kind as ActionRow).run();
+      await until(() => model.toast == 'Profile saved');
+      expect(server.callsTo('me/profile').single.body, {'displayName': 'Utku Halis', 'country': 'DE'});
+      expect(together.user!.displayName, 'Utku Halis');
+      expect((row('together-country').kind as TextRow).value, 'DE');
+      // A blank bio clears it.
+      (row('together-bio').kind as TextRow).set('  ');
+      await together.saveProfile();
+      expect(server.callsTo('me/profile').last.body, {'bio': null});
+      expect(together.hub.self.bio, isNull);
+
+      // The handle: a bad one, one taken, then a new one and the next change's day.
+      server.person('u-ana', 'ana', 'Ana');
+      (row('together-handle').kind as TextRow).set('a!');
+      (row('together-handle-save').kind as ActionRow).run();
+      await until(() => model.toast == '3–20 characters: a–z, 0–9, _ and .');
+      (row('together-handle').kind as TextRow).set('ana');
+      await together.changeHandle();
+      expect(model.toast, 'That handle is taken');
+      (row('together-handle').kind as TextRow).set('@Utku.H');
+      await together.changeHandle();
+      expect(server.callsTo('me/handle').last.body, {'handle': 'utku.h'});
+      expect(model.toast, 'You are @utku.h now');
+      expect(together.user!.handle, 'utku.h');
+      expect(row('together-handle').detail, startsWith('Can change again on 20'));
+      // Again too soon: the day it may.
+      (row('together-handle').kind as TextRow).set('utku2');
+      await together.changeHandle();
+      expect(model.toast, startsWith('Can change again on 20'));
+    });
+
+    test('who sees what: a choice per part, shown at once and put back when the server says no', () async {
+      final together = model.together;
+      server.me['privacy'] = {
+        'library': 'everyone',
+        'trophies': 'friends',
+        'friends': 'nobody',
+        'presence': 'friends',
+        'search': 'nobody',
+        'gallery': 'friends',
+      };
+      await together.hub.self.refresh();
+      openTogether();
+      PanelRow row(String id) => model.panelCategories()[model.panelCategory].rows.firstWhere((r) => r.id == id);
+      expect(
+        rowIds(),
+        containsAllInOrder([
+          'private-title',
+          'together-privacy',
+          'privacy-library',
+          'privacy-trophies',
+          'privacy-friends',
+          'privacy-presence',
+          'privacy-search',
+        ]),
+      );
+      expect(rowIds(), isNot(contains('privacy-gallery')), reason: 'this server keeps no files');
+      expect(row('together-privacy').title, 'Who sees what');
+      final library = row('privacy-library');
+      expect(library.title, 'Games and play time');
+      expect((library.kind as ChoiceRow).options, ['Everyone', 'Friends', 'Only me']);
+      expect((library.kind as ChoiceRow).selected, 0);
+      expect((row('privacy-friends').kind as ChoiceRow).selected, 2);
+      // Being found by name: nobody, not "only me".
+      expect((row('privacy-search').kind as ChoiceRow).options.last, 'Nobody');
+
+      (row('privacy-trophies').kind as ChoiceRow).set(0);
+      expect((row('privacy-trophies').kind as ChoiceRow).selected, 0, reason: 'shown at once');
+      await until(() => server.callsTo('me/privacy').isNotEmpty);
+      expect(server.callsTo('me/privacy').single.body, {'trophies': 'everyone'});
+      expect(together.hub.self.privacy[PrivacySection.trophies], ProfileVisibility.everyone);
+
+      server.answers['PATCH me/privacy'] = FakeTogether.problem(403, 'forbidden', 'Not allowed');
+      await together.setPrivacy(PrivacySection.presence, ProfileVisibility.everyone);
+      expect((row('privacy-presence').kind as ChoiceRow).selected, 1, reason: 'put back');
+      expect(model.toast, 'Not allowed');
     });
   });
 

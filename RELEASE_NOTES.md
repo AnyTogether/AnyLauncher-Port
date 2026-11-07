@@ -5,7 +5,11 @@ release when it is made.
 
 ## Next release
 
-Nothing yet.
+- **A game's Advanced page**, as on the Mac (Game settings › Advanced): each stick's dead zone,
+  the mouse as the camera (sensitivity, vertical speed, response curve, minimum tilt, maximum
+  speed, smoothing, center after), the slow movement amount and the keyboard's stick and trigger
+  ramps, written to the engine's input file as the Mac writes them. The shader cache switch and
+  Export and Import settings moved there, with Reset advanced settings.
 
 ## 0.1.20
 

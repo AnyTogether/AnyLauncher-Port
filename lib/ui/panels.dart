@@ -213,6 +213,7 @@ class PanelView extends StatelessWidget {
       Layer.findPlayers || Layer.lfgPost => T.text('discoverFindPlayers'),
       Layer.gameHub => T.format('discoverHubOf', [model.together.findState.hubName]),
       Layer.controls => T.text('controls'),
+      Layer.advanced => T.text('advanced'),
       Layer.gameSettings => T.text('gameSettings'),
       Layer.cloudStorage => T.text('cloudStorageTitle'),
       // Appearance › Themes.
@@ -349,6 +350,7 @@ class PanelView extends StatelessWidget {
                       // Over a game the way out is back to it, not a close (Close Game is a row).
                       close: !const {
                         Layer.controls,
+                        Layer.advanced,
                         Layer.friendOptions,
                         Layer.quickMenu,
                         Layer.closeGame,

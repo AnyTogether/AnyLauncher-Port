@@ -456,17 +456,14 @@ void main() {
       expect(model.toast, 'The picture is too small: at least 32 pixels');
     });
 
-    testWidgets('signed in: the picture goes up as the AnyTogether one, and the account\'s comes down', (tester) async {
+    // A plain test: real sockets to the fake server (testWidgets answers every HTTP request itself).
+    test('signed in: the picture goes up as the AnyTogether one, and the account\'s comes down', () async {
       final server = await FakeTogether.start();
       final store = MemoryTokenStore(session('u-me', 'utku', 'Utku'));
       fixture = makeFixture(together: server.base, togetherStore: store);
       final model = fixture.model;
-      await tester.runAsync(() async {
-        await model.together.start();
-        for (var tries = 0; tries < 300 && !model.together.signedIn; tries++) {
-          await Future<void>.delayed(const Duration(milliseconds: 10));
-        }
-      });
+      await model.together.start();
+      await until(() => model.together.signedIn);
       List<String> ids() => model.panelCategories()[model.panelCategory].rows.map((row) => row.id).toList();
       model.openProfileSettings();
       expect(ids(), isNot(contains('profile-picture-upload')), reason: 'no picture yet');
@@ -478,14 +475,14 @@ void main() {
         TogetherUser(id: 'u-me', handle: 'utku', displayName: 'Utku', avatar: '${server.base}/avatars/u-me.png'),
       );
       expect(ids(), containsAllInOrder(['profile-picture', 'profile-picture-from-together']));
-      await tester.runAsync(model.useTogetherPicture);
+      await model.useTogetherPicture();
       expect(model.toast, 'Profile picture set');
       expect(model.profiles.pictureOf(model.currentProfile), isNotNull);
 
       // This one, up as the account's.
       server.answers['PUT me/avatar'] = (200, {'avatar': '${server.base}/avatars/u-me-2.jpg'});
       expect(ids(), containsAllInOrder(['profile-picture', 'profile-picture-upload', 'profile-picture-from-together']));
-      await tester.runAsync(model.uploadProfilePicture);
+      await model.uploadProfilePicture();
       final upload = server.calls.lastWhere((call) => call.path == 'me/avatar');
       expect(upload.method, 'PUT');
       expect(upload.headers.contentType?.mimeType, 'image/png');
@@ -495,17 +492,16 @@ void main() {
 
       // Refused: said so.
       server.answers['PUT me/avatar'] = FakeTogether.problem(413, 'payload_too_large', 'The file is too big');
-      await tester.runAsync(model.uploadProfilePicture);
+      await model.uploadProfilePicture();
       expect(model.toast, 'The picture could not be uploaded: The file is too big');
       // A picture that does not come: said so.
       model.together.account.updateUser(
         TogetherUser(id: 'u-me', handle: 'utku', displayName: 'Utku', avatar: '${server.base}/avatars/gone.png'),
       );
-      await tester.runAsync(model.useTogetherPicture);
+      await model.useTogetherPicture();
       expect(model.toast, 'Your AnyTogether picture could not be downloaded');
       model.dispose();
-      await tester.runAsync(server.close);
-      await tester.pump(const Duration(seconds: 5));
+      await server.close();
     });
 
     testWidgets('a file that is not a picture changes nothing', (tester) async {

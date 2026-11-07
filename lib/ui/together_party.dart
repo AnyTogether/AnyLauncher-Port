@@ -130,7 +130,10 @@ extension TogetherParty on TogetherModel {
             if (member.id == me.id) '@${member.handle}' else TogetherModel.shown(member).handleLine,
             if (party.leads(member.id)) T.text('partyLeader'),
             if (party.inCall.contains(member.id)) T.text('partyInVoice'),
-            if (party.muted.contains(member.id)) T.text('voiceMuted'),
+            if (party.deafened.contains(member.id))
+              T.text('joinDeafened')
+            else if (party.muted.contains(member.id))
+              T.text('voiceMuted'),
           ].join(' · '),
           person: TogetherModel.card(
             member,
@@ -359,6 +362,12 @@ extension TogetherParty on TogetherModel {
           detail: T.format('voicePushToTalkOff', [key]),
           kind: ToggleRow(!voice.muted, (value) => voice.setMuted(!value)),
         ),
+      PanelRow(
+        id: 'voice-deafen',
+        title: T.text('joinDeafen'),
+        detail: T.text('joinDeafenDetail'),
+        kind: ToggleRow(voice.deafened, voice.setDeafened),
+      ),
       PanelRow(
         id: 'voice-ptt',
         title: T.text('voicePushToTalk'),

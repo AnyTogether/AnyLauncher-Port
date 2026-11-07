@@ -565,6 +565,20 @@ class Messages with Notifier {
     await show(conversation.id);
   }
 
+  /// A group with friends (one or more), made and shown; without a name its members stand for it.
+  Future<Conversation> startGroup(List<String> userIds, {String? title}) async {
+    final name = title?.trim() ?? '';
+    final json = await account.call('POST', 'conversations', {
+      'members': userIds,
+      'group': true,
+      if (name.isNotEmpty) 'title': String.fromCharCodes(name.runes.take(80)),
+    });
+    final group = (await _openLast([Conversation.fromJson(json)])).single;
+    if (byId(group.id) == null) conversations = [group, ...conversations];
+    await show(group.id);
+    return group;
+  }
+
   /// Older messages above the ones shown.
   Future<void> older() async {
     final id = openId;

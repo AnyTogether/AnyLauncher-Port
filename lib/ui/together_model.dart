@@ -402,8 +402,12 @@ class TogetherModel {
   /// Signed in or out: what depends on it starts or stops.
   void signedInChanged() {
     app.remote?.togetherServer = account.base.toString();
-    // Another account (or none): what was typed for the last one's profile goes.
+    // Another account (or none): what was typed for the last one's profile goes, and so do a
+    // call ringing and the Captures read for it.
     nameDraft = bioDraft = countryDraft = handleDraft = null;
+    stopRinging();
+    calls.noAnswer?.cancel();
+    captures.follow(user?.id);
     if (!signedIn) {
       friendHandle = '';
       chosen = null;
@@ -1592,6 +1596,8 @@ class TogetherModel {
   }
 
   void dispose() {
+    stopRinging();
+    calls.noAnswer?.cancel();
     unawaited(online.stop());
     family.dispose();
     talkWatch?.stop();

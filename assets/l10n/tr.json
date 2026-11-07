@@ -2005,5 +2005,15 @@
   "messagesGroupMade": "%@ kuruldu",
   "joinDeafen": "Sağırlaştır",
   "joinDeafenDetail": "Kimseyi duymazsın, mikrofonun da kapanır.",
-  "joinDeafened": "duymuyor"
+  "joinDeafened": "duymuyor",
+  "discoverAsksWatch": "%@ izlemek istiyor",
+  "discoverListOpenWatch": "Herkes izleyebilir",
+  "discoverLiveToggle": "Şimdi canlı",
+  "discoverLiveToggleDetail": "Herkes izleyebilsin diye Şimdi canlı'da da göster.",
+  "discoverLetWatch": "%@ izlesin",
+  "sharePlayMediaServerFailed": "Medya sunucusuna ulaşılamadı",
+  "sharePlayMaxViewersServerDetail": "En fazla 4 kişi yayını doğrudan bilgisayarından alır. Daha fazlasında izleyenler medya sunucusundan izler, oyuncuların doğrudan bağlantısı kalır.",
+  "shareCodeMakeDetail": "Kodu olan herkes izlemek isteyebilir. Her birine yine sen karar verirsin.",
+  "joinCodeMade": "Yeni kod: %@",
+  "joinCodeStopped": "Kod artık çalışmıyor"
 }

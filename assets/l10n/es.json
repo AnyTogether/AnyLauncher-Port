@@ -1577,5 +1577,9 @@
   "messagesGroupMade": "%@ está listo",
   "joinDeafen": "Ensordecer",
   "joinDeafenDetail": "No oyes a nadie y tu micrófono está apagado.",
-  "joinDeafened": "ensordecido"
+  "joinDeafened": "ensordecido",
+  "discoverAsksWatch": "%@ quiere mirar",
+  "discoverListOpenWatch": "Cualquiera puede mirar",
+  "discoverLetWatch": "Dejar mirar a %@",
+  "sharePlayMediaServerFailed": "No se pudo conectar con el servidor de medios"
 }

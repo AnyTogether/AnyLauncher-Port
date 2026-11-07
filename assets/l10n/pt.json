@@ -1580,5 +1580,9 @@
   "messagesGroupMade": "%@ está pronto",
   "joinDeafen": "Desativar áudio",
   "joinDeafenDetail": "Você não ouve ninguém e seu microfone fica desligado.",
-  "joinDeafened": "sem áudio"
+  "joinDeafened": "sem áudio",
+  "discoverAsksWatch": "%@ quer assistir",
+  "discoverListOpenWatch": "Qualquer pessoa pode assistir",
+  "discoverLetWatch": "Deixar %@ assistir",
+  "sharePlayMediaServerFailed": "Não foi possível acessar o servidor de mídia"
 }

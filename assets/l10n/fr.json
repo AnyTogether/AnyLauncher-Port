@@ -1580,5 +1580,9 @@
   "messagesGroupMade": "%@ est prêt",
   "joinDeafen": "Couper le son",
   "joinDeafenDetail": "Vous n'entendez personne et votre micro est coupé.",
-  "joinDeafened": "son coupé"
+  "joinDeafened": "son coupé",
+  "discoverAsksWatch": "%@ demande à regarder",
+  "discoverListOpenWatch": "Tout le monde peut regarder",
+  "discoverLetWatch": "Laisser %@ regarder",
+  "sharePlayMediaServerFailed": "Impossible de joindre le serveur multimédia"
 }

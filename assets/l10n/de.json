@@ -1580,5 +1580,9 @@
   "messagesGroupMade": "%@ ist bereit",
   "joinDeafen": "Taub stellen",
   "joinDeafenDetail": "Du hörst niemanden, und dein Mikrofon ist aus.",
-  "joinDeafened": "taub gestellt"
+  "joinDeafened": "taub gestellt",
+  "discoverAsksWatch": "%@ möchte zuschauen",
+  "discoverListOpenWatch": "Alle können zuschauen",
+  "discoverLetWatch": "%@ zuschauen lassen",
+  "sharePlayMediaServerFailed": "Der Medienserver ist nicht erreichbar"
 }

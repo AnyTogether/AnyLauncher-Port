@@ -5,6 +5,10 @@ release when it is made.
 
 ## Next release
 
+- **An iPhone on a USB cable reaches the launcher without Wi-Fi**, as on the Mac. The launcher
+  opens the phone app's port over the cable through usbmuxd and joins it to its phone server.
+  On Windows that is Apple Mobile Device Support (it comes with iTunes or the Apple Devices app),
+  on Linux the usbmuxd package (libimobiledevice).
 - **Hide the launcher while a game runs**, as on the Mac (Settings › Behaviour). The launcher's
   window is minimized once the game starts and comes back when it closes. PS still brings it
   back with the quick menu, and Resume puts it aside again.

@@ -15,6 +15,11 @@ class FriendTarget extends MessageTarget {
   final Friend friend;
 }
 
+/// A group to start: friends picked and a name.
+class NewGroupTarget extends MessageTarget {
+  const NewGroupTarget();
+}
+
 /// The menu over the thread: a message's (react, reply, edit, unsend, then asked again) or a
 /// conversation's (pin, mute); the row the keys are on and, on the reactions, which one.
 class MessageMenu {
@@ -49,6 +54,7 @@ extension TogetherMessages on TogetherModel {
   static int get composer => quickReplies.length;
 
   static const draftRow = 'message-draft';
+  static const groupNameRow = 'group-name';
 
   int get unread => hub.messages.unread;
 
@@ -61,6 +67,7 @@ extension TogetherMessages on TogetherModel {
     };
     return [
       for (final conversation in conversations) ConversationTarget(conversation),
+      if (hub.friends.friends.isNotEmpty) const NewGroupTarget(),
       for (final friend in hub.friends.friends)
         if (!talking.contains(friend.person.id)) FriendTarget(friend),
     ];
@@ -75,6 +82,7 @@ extension TogetherMessages on TogetherModel {
   static String targetKey(MessageTarget target) => switch (target) {
     ConversationTarget(:final conversation) => conversation.id,
     FriendTarget(:final friend) => 'friend:${friend.person.id}',
+    NewGroupTarget() => 'new-group',
   };
 
   /// The keys onto the target at [index], remembered by what it is, not where it is.
@@ -170,7 +178,7 @@ extension TogetherMessages on TogetherModel {
     switch (target) {
       case ConversationTarget(:final conversation) when hub.messages.openId != conversation.id:
         await hub.messages.show(conversation.id);
-      case FriendTarget():
+      case FriendTarget() || NewGroupTarget():
         hub.messages.hide();
       default:
         break;
@@ -185,6 +193,11 @@ extension TogetherMessages on TogetherModel {
     messagesInThread = true;
     messageFocus = composer;
     app.sounds.play(Cue.select);
+    if (target is NewGroupTarget) {
+      groupFocus = 0;
+      app.refresh();
+      return;
+    }
     app.refresh();
     if (target is FriendTarget) {
       await messageFriend(target.friend.person);
@@ -243,6 +256,7 @@ extension TogetherMessages on TogetherModel {
       }
       return;
     }
+    if (selectedTarget is NewGroupTarget) return _groupCommand(command);
     final focused = focusedMessage;
     if (focused != null) return _onMessage(command, focused);
     switch (command) {
@@ -292,6 +306,77 @@ extension TogetherMessages on TogetherModel {
         app.refresh();
       default:
         break;
+    }
+  }
+
+  /// The friends a new group can have, in the order the composer lists them.
+  List<Friend> get groupFriends => hub.friends.friends;
+
+  /// The new group's rows: its name (0), each friend to pick, then Start the group.
+  void _groupCommand(Command command) {
+    final last = groupFriends.length + 1;
+    switch (command) {
+      case Command.up || Command.down:
+        final next = (groupFocus + (command == Command.down ? 1 : -1)).clamp(0, last);
+        if (next == groupFocus) return;
+        groupFocus = next;
+        app.sounds.play(Cue.move);
+        app.refresh();
+      case Command.select:
+        if (groupFocus == 0) {
+          app.startEditing(groupNameRow);
+        } else if (groupFocus == last) {
+          unawaited(startGroup());
+        } else {
+          toggleGroupFriend(groupFriends[groupFocus - 1].person.id);
+        }
+      case Command.back || Command.left:
+        _leaveThread();
+        app.refresh();
+      case Command.options:
+        app.closeOverlay();
+      default:
+        break;
+    }
+  }
+
+  /// A friend in the new group, or out of it again.
+  void toggleGroupFriend(String userId) {
+    if (!groupPicked.remove(userId)) groupPicked.add(userId);
+    app.sounds.play(Cue.move);
+    app.refresh();
+  }
+
+  /// The field for the new group's name.
+  PanelRow get groupNameField => PanelRow(
+    id: groupNameRow,
+    title: '',
+    kind: TextRow(groupName, (text) => groupName = text, hint: T.text('messagesGroupName')),
+  );
+
+  /// The group with the friends picked, opened to write in.
+  Future<void> startGroup() async {
+    if (!family.messagesAllowed) return;
+    final members = [
+      for (final friend in groupFriends)
+        if (groupPicked.contains(friend.person.id)) friend.person.id,
+    ];
+    if (members.isEmpty) return app.show(T.text('messagesGroupPick'));
+    try {
+      final group = await hub.messages.startGroup(members, title: groupName);
+      groupPicked.clear();
+      groupName = '';
+      final at = messageTargets.indexWhere(
+        (target) => target is ConversationTarget && target.conversation.id == group.id,
+      );
+      if (at >= 0) _selectTarget(at);
+      messagesInThread = true;
+      messageFocus = composer;
+      app.sounds.play(Cue.select);
+      app.startEditing(draftRow);
+      app.show(T.format('messagesGroupMade', [group.name(user?.id)]));
+    } on Object catch (error) {
+      app.show(message(error));
     }
   }
 

@@ -49,7 +49,7 @@ file there, no code: see [TRANSLATING.md](TRANSLATING.md).
     trace switches), the crash report of a game's last start with personal details taken out,
     and the pre-filled GitHub issue for it
   - `remote/` the phone server (WebSocket 47700, pairing, UDP pad relay, cable frames), an
-    mDNS responder for `_anyps5-remote._tcp`, the adb cable tunnel
+    mDNS responder for `_anyps5-remote._tcp`, the adb and usbmuxd (iPhone) cable tunnels
     and the browser pad server (HTTP and WebSocket 47710 on the LAN address: one-time token,
     session cookie, each browser a phone on the phone server's own control channel)
   - `trophies.dart`, `save_backup.dart`, `screenshots.dart` (a game's F12 and trophy pictures,

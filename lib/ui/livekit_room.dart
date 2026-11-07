@@ -16,6 +16,7 @@ class LiveKitRoom implements SfuRoom {
   lk.Room? _room;
   lk.EventsListener<lk.RoomEvent>? _events;
   void Function()? _onChange;
+  bool _hearing = true;
 
   @override
   bool get connected => _room?.connectionState == lk.ConnectionState.connected;
@@ -28,7 +29,14 @@ class LiveKitRoom implements SfuRoom {
       roomOptions: const lk.RoomOptions(adaptiveStream: true),
     );
     _room = room;
-    _events = room.createListener()..listen((_) => _onChange?.call());
+    _events = room.createListener()
+      ..listen((event) {
+        // A voice subscribed while deafened stays unheard.
+        if (event is lk.TrackSubscribedEvent && !_hearing && event.track is lk.RemoteAudioTrack) {
+          unawaited(event.track.disable());
+        }
+        _onChange?.call();
+      });
     await room.connect(access.url, access.token);
     _onChange?.call();
   }
@@ -42,6 +50,18 @@ class LiveKitRoom implements SfuRoom {
   @override
   Future<void> setMicrophone(bool enabled) async {
     await _room?.localParticipant?.setMicrophoneEnabled(enabled);
+  }
+
+  @override
+  Future<void> setHearing(bool on) async {
+    _hearing = on;
+    for (final participant in _room?.remoteParticipants.values ?? const <lk.RemoteParticipant>[]) {
+      for (final publication in participant.audioTrackPublications) {
+        final track = publication.track;
+        if (track == null) continue;
+        await (on ? track.enable() : track.disable());
+      }
+    }
   }
 
   @override

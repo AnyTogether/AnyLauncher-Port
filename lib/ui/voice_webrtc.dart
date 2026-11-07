@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../core/together/voice_mesh.dart';
@@ -7,6 +9,10 @@ import '../core/together/voice_mesh.dart';
 /// RTCPeerConnection per member.
 class WebRtcVoice implements VoiceEngine {
   MediaStream? _stream;
+
+  /// The connections made, for deafening: the others' sound is turned off on each.
+  final List<RTCPeerConnection> _connections = [];
+  bool _hearing = true;
 
   @override
   Future<void> start() async {
@@ -27,6 +33,11 @@ class WebRtcVoice implements VoiceEngine {
   @override
   Future<VoiceLink> link(List<Map<String, dynamic>> iceServers) async {
     final pc = await createPeerConnection({'iceServers': iceServers, 'sdpSemantics': 'unified-plan'});
+    _connections.add(pc);
+    // A voice that comes while deafened stays unheard.
+    pc.onTrack = (event) {
+      if (event.track.kind == 'audio') event.track.enabled = _hearing;
+    };
     final stream = _stream;
     if (stream != null) {
       for (final track in stream.getAudioTracks()) {
@@ -43,8 +54,29 @@ class WebRtcVoice implements VoiceEngine {
     }
   }
 
+  /// A remote audio track turned off is not played (WebRTC sets its output to nothing).
+  @override
+  void setHearing(bool on) {
+    _hearing = on;
+    _connections.removeWhere((pc) => pc.connectionState == RTCPeerConnectionState.RTCPeerConnectionStateClosed);
+    for (final pc in _connections) {
+      unawaited(
+        pc
+            .getReceivers()
+            .then((receivers) {
+              for (final receiver in receivers) {
+                final track = receiver.track;
+                if (track != null && track.kind == 'audio') track.enabled = on;
+              }
+            })
+            .catchError((Object _) {}),
+      );
+    }
+  }
+
   @override
   Future<void> stop() async {
+    _connections.clear();
     final stream = _stream;
     _stream = null;
     if (stream != null) {

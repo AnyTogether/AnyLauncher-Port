@@ -2005,5 +2005,16 @@
   "messagesGroupMade": "%@ kuruldu",
   "joinDeafen": "Sağırlaştır",
   "joinDeafenDetail": "Kimseyi duymazsın, mikrofonun da kapanır.",
-  "joinDeafened": "duymuyor"
+  "joinDeafened": "duymuyor",
+  "cropTitle": "Fotoğrafını kırp",
+  "cropZoom": "Yakınlaştır",
+  "cropSave": "Kaydet",
+  "cropHint": "Yerleştirmek için sürükle",
+  "profilePictureUpload": "AnyTogether fotoğrafım yap",
+  "profilePictureUploadDetail": "Arkadaşların profilinde bunu görür.",
+  "profilePictureFromTogether": "AnyTogether fotoğrafımı kullan",
+  "profilePictureFromTogetherDetail": "AnyTogether profilindeki fotoğraf bu bilgisayarda da görünür.",
+  "profilePictureUploaded": "AnyTogether fotoğrafın güncellendi",
+  "profilePictureDownloadFailed": "AnyTogether fotoğrafın indirilemedi",
+  "profilePictureTooSmall": "Resim çok küçük: en az 32 piksel olmalı"
 }

@@ -320,7 +320,10 @@ void main() {
       final model = fixture.model;
       await pumpLauncher(tester, model);
       Color shown() {
-        final tile = find.descendant(of: find.byKey(const ValueKey('home-avatar')), matching: find.byType(AnimatedContainer));
+        final tile = find.descendant(
+          of: find.byKey(const ValueKey('home-avatar')),
+          matching: find.byType(AnimatedContainer),
+        );
         final decoration = tester.widget<AnimatedContainer>(tile.first).decoration! as BoxDecoration;
         return (decoration.gradient! as LinearGradient).colors.first;
       }
@@ -334,7 +337,9 @@ void main() {
       expect(shown(), LauncherProfiles.palette[3]);
     });
 
-    testWidgets('a picture is chosen with the file dialog, cut to a square, shown and removed', (tester) async {
+    testWidgets('a picture is chosen with the file dialog, cut to a square in the crop, shown and removed', (
+      tester,
+    ) async {
       String? picked;
       fixture = makeFixture(pickImage: () async => picked);
       final model = fixture.model;
@@ -346,6 +351,12 @@ void main() {
       expect(ids(), contains('profile-picture'));
       expect(ids(), isNot(contains('profile-picture-remove')));
       await tester.runAsync(model.chooseProfilePicture);
+      // The crop first, as on the Mac: saved as it opens, the middle square.
+      expect(model.overlay, Layer.cropPicture);
+      expect(model.pictureCrop?.rect, const Rect.fromLTWH(150, 0, 300, 300));
+      await tester.runAsync(model.saveCrop);
+      expect(model.overlay, Layer.settings);
+      expect(model.pictureCrop, isNull);
       final kept = model.profiles.pictureOf(model.currentProfile);
       expect(kept, isNotNull, reason: model.toast);
       expect(p.isWithin(p.join(model.paths.config, 'Profiles'), kept!), isTrue);
@@ -364,13 +375,136 @@ void main() {
       model.closeOverlay();
       await pumpLauncher(tester, model);
       expect(tester.widget<ProfileTile>(find.byKey(const ValueKey('home-avatar'))).picture, kept);
-      expect(find.descendant(of: find.byKey(const ValueKey('home-avatar')), matching: find.byType(Image)), findsOneWidget);
+      expect(
+        find.descendant(of: find.byKey(const ValueKey('home-avatar')), matching: find.byType(Image)),
+        findsOneWidget,
+      );
       model.removeProfilePicture();
       expect(model.profiles.pictureOf(model.currentProfile), isNull);
       expect(File(kept).existsSync(), isFalse);
       model.openProfileSettings();
       expect(ids(), isNot(contains('profile-picture-remove')));
       // The toast's timer runs out.
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets('the crop zooms with the arrows and keeps the square dragged to; Back keeps nothing', (tester) async {
+      String? picked;
+      fixture = makeFixture(pickImage: () async => picked);
+      final model = fixture.model;
+      // 600×300: red on the left quarter, blue elsewhere.
+      picked = p.join(fixture.temp.path, 'me.png');
+      File(picked).writeAsBytesSync(png(600, 300, (x, y) => x < 150 ? 0xFF0000FF : 0x0000FFFF));
+      model.openProfileSettings();
+      final category = model.panelCategory;
+      model.panelRow = model.panelCategories()[category].rows.indexWhere((row) => row.id == 'profile-picture');
+      final row = model.panelRow;
+
+      // Back: nothing kept, and Settings where they were.
+      await tester.runAsync(model.chooseProfilePicture);
+      model.handle(Command.back);
+      expect(model.overlay, Layer.settings);
+      expect((model.panelCategory, model.panelRow), (category, row));
+      expect(model.profiles.pictureOf(model.currentProfile), isNull);
+
+      await tester.runAsync(model.chooseProfilePicture);
+      final crop = model.pictureCrop!;
+      for (var press = 0; press < 4; press++) {
+        model.handle(Command.right);
+      }
+      expect(crop.zoom, 2);
+      // No further than 4, no less than 1.
+      for (var press = 0; press < 20; press++) {
+        model.handle(Command.right);
+      }
+      expect(crop.zoom, 4);
+      for (var press = 0; press < 20; press++) {
+        model.handle(Command.left);
+      }
+      expect(crop.zoom, 1);
+      for (var press = 0; press < 4; press++) {
+        model.handle(Command.right);
+      }
+      // The picture dragged right: the square goes to its left edge, onto the red.
+      crop.drag(const Offset(1000, 0));
+      expect(crop.rect, const Rect.fromLTWH(0, 75, 150, 150));
+      await pumpLauncher(tester, model);
+      expect(find.text('Crop your picture'), findsOneWidget);
+      model.handle(Command.select);
+      await tester.runAsync(() async {
+        for (var tries = 0; tries < 100 && model.pictureCrop != null; tries++) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+      });
+      final kept = model.profiles.pictureOf(model.currentProfile)!;
+      final image = await tester.runAsync(() async {
+        final codec = await instantiateImageCodec(File(kept).readAsBytesSync());
+        return (await codec.getNextFrame()).image;
+      });
+      expect([image!.width, image.height], [150, 150], reason: 'never larger than the square was');
+      final pixels = (await tester.runAsync(() => image.toByteData()))!;
+      expect(pixels.getUint32((75 * 150 + 75) * 4), 0xFF0000FF);
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets('a picture under 32 pixels is too small for the crop', (tester) async {
+      fixture = makeFixture(pickImage: () async => p.join(fixture.temp.path, 'tiny.png'));
+      final model = fixture.model;
+      File(p.join(fixture.temp.path, 'tiny.png')).writeAsBytesSync(png(20, 40, (x, y) => 0x00FF00FF));
+      await tester.runAsync(model.chooseProfilePicture);
+      expect(model.overlay, isNot(Layer.cropPicture));
+      expect(model.toast, 'The picture is too small: at least 32 pixels');
+    });
+
+    testWidgets('signed in: the picture goes up as the AnyTogether one, and the account\'s comes down', (tester) async {
+      final server = await FakeTogether.start();
+      final store = MemoryTokenStore(session('u-me', 'utku', 'Utku'));
+      fixture = makeFixture(together: server.base, togetherStore: store);
+      final model = fixture.model;
+      await tester.runAsync(() async {
+        await model.together.start();
+        for (var tries = 0; tries < 300 && !model.together.signedIn; tries++) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+      });
+      List<String> ids() => model.panelCategories()[model.panelCategory].rows.map((row) => row.id).toList();
+      model.openProfileSettings();
+      expect(ids(), isNot(contains('profile-picture-upload')), reason: 'no picture yet');
+      expect(ids(), isNot(contains('profile-picture-from-together')), reason: 'the account has none yet');
+
+      // The account's picture, here: a square the server made.
+      server.files['/avatars/u-me.png'] = png(64, 64, (x, y) => 0xFF8800FF);
+      model.together.account.updateUser(
+        TogetherUser(id: 'u-me', handle: 'utku', displayName: 'Utku', avatar: '${server.base}/avatars/u-me.png'),
+      );
+      expect(ids(), containsAllInOrder(['profile-picture', 'profile-picture-from-together']));
+      await tester.runAsync(model.useTogetherPicture);
+      expect(model.toast, 'Profile picture set');
+      expect(model.profiles.pictureOf(model.currentProfile), isNotNull);
+
+      // This one, up as the account's.
+      server.answers['PUT me/avatar'] = (200, {'avatar': '${server.base}/avatars/u-me-2.jpg'});
+      expect(ids(), containsAllInOrder(['profile-picture', 'profile-picture-upload', 'profile-picture-from-together']));
+      await tester.runAsync(model.uploadProfilePicture);
+      final upload = server.calls.lastWhere((call) => call.path == 'me/avatar');
+      expect(upload.method, 'PUT');
+      expect(upload.headers.contentType?.mimeType, 'image/png');
+      expect(upload.bytes.take(4), [0x89, 0x50, 0x4E, 0x47]);
+      expect(model.toast, 'Your AnyTogether picture is updated');
+      expect(model.together.user?.avatar, '${server.base}/avatars/u-me-2.jpg');
+
+      // Refused: said so.
+      server.answers['PUT me/avatar'] = FakeTogether.problem(413, 'payload_too_large', 'The file is too big');
+      await tester.runAsync(model.uploadProfilePicture);
+      expect(model.toast, 'The picture could not be uploaded: The file is too big');
+      // A picture that does not come: said so.
+      model.together.account.updateUser(
+        TogetherUser(id: 'u-me', handle: 'utku', displayName: 'Utku', avatar: '${server.base}/avatars/gone.png'),
+      );
+      await tester.runAsync(model.useTogetherPicture);
+      expect(model.toast, 'Your AnyTogether picture could not be downloaded');
+      model.dispose();
+      await tester.runAsync(server.close);
       await tester.pump(const Duration(seconds: 5));
     });
 
@@ -431,6 +565,28 @@ void main() {
       model.openProfileSettings();
       await pumpLauncher(tester, model);
       await expectLater(shell, matchesGoldenFile('goldens/profiles_settings.png'));
+    });
+
+    testWidgets('the crop, zoomed in and moved, in Turkish', (tester) async {
+      String? picked;
+      fixture = makeFixture(language: Language.byCode('tr'), pickImage: () async => picked);
+      final model = fixture.model;
+      // Rings of colour, so where the square is shows.
+      picked = p.join(fixture.temp.path, 'me.png');
+      File(picked).writeAsBytesSync(
+        png(480, 320, (x, y) {
+          final ring = ((x - 240) * (x - 240) + (y - 160) * (y - 160)) ~/ 1600 % 3;
+          return const [0xE8505BFF, 0xF9D56EFF, 0x14B1ABFF][ring];
+        }),
+      );
+      model.openProfileSettings();
+      await tester.runAsync(model.chooseProfilePicture);
+      model.pictureCrop!
+        ..zoomTo(1.5)
+        ..drag(const Offset(40, -20));
+      await pumpLauncher(tester, model);
+      expect(find.text('Fotoğrafını kırp'), findsOneWidget);
+      await expectLater(shell, matchesGoldenFile('goldens/profile_picture_crop_tr.png'));
     });
 
     testWidgets('Add profile', (tester) async {

@@ -243,6 +243,18 @@ class SelfProfile with Notifier {
     notifyListeners();
   }
 
+  /// The public picture (PUT /me/avatar): a PNG or JPEG, at most 5 MB, that the server makes a
+  /// square JPEG; the kept user takes its address.
+  Future<void> uploadAvatar(List<int> picture) async {
+    final png = picture.length > 8 && picture[0] == 0x89 && picture[1] == 0x50;
+    final answer = await account.upload('PUT', 'me/avatar', picture, png ? 'image/png' : 'image/jpeg');
+    final user = account.user;
+    if (answer['avatar'] case final String avatar when user != null) {
+      account.updateUser(TogetherUser(id: user.id, handle: user.handle, displayName: user.displayName, avatar: avatar));
+    }
+    notifyListeners();
+  }
+
   /// The friends-only picture (PUT /me/avatar/private): a PNG or JPEG, at most 5 MB; the public
   /// picture stays.
   Future<void> uploadPrivateAvatar(List<int> picture) async {

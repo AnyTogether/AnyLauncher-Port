@@ -561,6 +561,21 @@ extension LauncherProfiles on AppModel {
         detail: T.text('profilePictureDetail'),
         kind: ActionRow(() => unawaited(chooseProfilePicture())),
       ),
+      // As on the Mac: the picture up to AnyTogether as the account's, or the account's here.
+      if (online && user != null && picture != null)
+        PanelRow(
+          id: 'profile-picture-upload',
+          title: T.text('profilePictureUpload'),
+          detail: T.text(pictureBusy ? 'profileLoading' : 'profilePictureUploadDetail'),
+          kind: ActionRow(() => unawaited(uploadProfilePicture())),
+        ),
+      if (user?.avatar case final String avatar when online && avatar.isNotEmpty)
+        PanelRow(
+          id: 'profile-picture-from-together',
+          title: T.text('profilePictureFromTogether'),
+          detail: T.text('profilePictureFromTogetherDetail'),
+          kind: ActionRow(() => unawaited(useTogetherPicture())),
+        ),
       if (picture != null)
         PanelRow(
           id: 'profile-picture-remove',
@@ -633,26 +648,127 @@ extension LauncherProfiles on AppModel {
     );
   }
 
-  /// A picture chosen on this computer as the profile's own: its middle square, 256 pixels a
-  /// side, kept in the launcher's data folder.
+  /// A picture chosen on this computer for the profile, opened in the crop to place and zoom
+  /// (as on the Mac); the square is kept when saved there.
   Future<void> chooseProfilePicture() async {
     final profile = currentProfile;
     final pick = services.pickImage;
     if (profile == null || pick == null) return;
     final path = await pick();
     if (path == null) return;
+    final ui.Image image;
     try {
       final file = File(path);
       if (file.lengthSync() > ProfilePicture.maxBytes) throw const FormatException('too large');
-      final square = await ProfilePicture.square(file.readAsBytesSync());
-      profiles.setPicture(profile.id, square);
-      sounds.play(Cue.select);
+      image = await ProfilePicture.read(file.readAsBytesSync());
+    } on Object {
+      sounds.play(Cue.bump);
+      show(T.text('profilePictureFailed'));
+      _changed();
+      return;
+    }
+    if (math.min(image.width, image.height) < ProfilePicture.uploadMinSide) {
+      image.dispose();
+      sounds.play(Cue.bump);
+      show(T.text('profilePictureTooSmall'));
+      _changed();
+      return;
+    }
+    pictureCrop?.image.dispose();
+    pictureCrop = PictureCrop(image, profileId: profile.id, returnCategory: panelCategory, returnRow: panelRow);
+    overlay = Layer.cropPicture;
+    sounds.play(Cue.select);
+    _changed();
+  }
+
+  /// The crop's keys: ← → zoom, Select saves, Back cancels.
+  void cropCommand(Command command) {
+    final crop = pictureCrop;
+    if (crop == null) return;
+    switch (command) {
+      case Command.left || Command.right:
+        final before = crop.zoom;
+        crop.zoomTo(crop.zoom + (command == Command.right ? 0.25 : -0.25));
+        if (crop.zoom == before) return;
+        sounds.play(Cue.move);
+        _changed();
+      case Command.select:
+        unawaited(saveCrop());
+      case Command.back || Command.options:
+        endCrop(saved: false);
+      default:
+        break;
+    }
+  }
+
+  /// The square placed in the crop, kept as the profile's picture.
+  Future<void> saveCrop() async {
+    final crop = pictureCrop;
+    if (crop == null) return;
+    try {
+      final square = await ProfilePicture.cut(crop.image, crop.rect);
+      if (!identical(pictureCrop, crop)) return;
+      profiles.setPicture(crop.profileId, square);
+      endCrop(saved: true);
       show(T.text('profilePictureSaved'));
     } on Object {
       sounds.play(Cue.bump);
       show(T.text('profilePictureFailed'));
     }
+  }
+
+  /// Back to the settings row the picture was chosen from.
+  void endCrop({required bool saved}) {
+    final crop = pictureCrop;
+    pictureCrop = null;
+    crop?.image.dispose();
+    overlay = Layer.settings;
+    panelCategory = crop?.returnCategory ?? panelCategories().indexWhere((category) => category.id == 'profiles');
+    panelRow = crop?.returnRow ?? 0;
+    sounds.play(saved ? Cue.select : Cue.back);
+    _skipToFocusable();
     _changed();
+  }
+
+  /// The profile's picture as the account's on AnyTogether (PUT /me/avatar), as on the Mac.
+  Future<void> uploadProfilePicture() async {
+    final profile = currentProfile;
+    final path = profile == null ? null : profiles.pictureOf(profile);
+    if (path == null || together.user == null || pictureBusy) return;
+    pictureBusy = true;
+    _changed();
+    try {
+      final bytes = File(path).readAsBytesSync();
+      if (bytes.length > ProfilePicture.uploadMaxBytes) throw const FormatException('too large');
+      await together.hub.self.uploadAvatar(bytes);
+      show(T.text('profilePictureUploaded'));
+    } on TogetherProblem catch (problem) {
+      show('${T.text('privatePictureFailed')}: ${together.message(problem)}');
+    } on Object {
+      show(T.text('privatePictureFailed'));
+    } finally {
+      pictureBusy = false;
+      _changed();
+    }
+  }
+
+  /// The account's picture on AnyTogether as this profile's here, as on the Mac.
+  Future<void> useTogetherPicture() async {
+    final profile = currentProfile;
+    final avatar = together.user?.avatar;
+    if (profile == null || avatar == null || avatar.isEmpty || pictureBusy) return;
+    pictureBusy = true;
+    _changed();
+    try {
+      final bytes = await together.account.fetchBytes(avatar, limit: ProfilePicture.uploadMaxBytes);
+      profiles.setPicture(profile.id, await ProfilePicture.square(bytes));
+      show(T.text('profilePictureSaved'));
+    } on Object {
+      show(T.text('profilePictureDownloadFailed'));
+    } finally {
+      pictureBusy = false;
+      _changed();
+    }
   }
 
   void removeProfilePicture() {

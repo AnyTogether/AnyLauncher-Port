@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:math' as math;
+import 'dart:ui' as ui show Image;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart' show Color;
@@ -62,7 +63,7 @@ import '../core/toolkit.dart';
 import '../core/toolkit_download.dart';
 import '../core/profiles/profile_saves.dart';
 import '../core/profiles/profiles.dart';
-import '../core/together/account.dart' show ClientTooOld, TogetherAccount;
+import '../core/together/account.dart' show ClientTooOld, TogetherAccount, TogetherProblem;
 import '../core/together/e2ee_keys.dart';
 import '../core/together/levels.dart';
 import '../core/together/media.dart' show SfuRoom;
@@ -749,6 +750,10 @@ enum Layer {
 
   /// "Who's playing?": the profiles' tiles and Add Profile (profiles_model.dart).
   profilePicker,
+
+  /// A picture chosen for the profile, placed and zoomed in a circle before it is kept
+  /// (picture_crop_view.dart).
+  cropPicture,
 
   /// A new profile: its name, then offline or online.
   addProfile,
@@ -1996,6 +2001,11 @@ class AppModel extends ChangeNotifier {
   /// Who plays on this computer, and the profile screens' state.
   late final ProfileStore profiles;
   final ProfileFlow profileFlow = ProfileFlow();
+
+  /// The picture being cut square for the profile, while [Layer.cropPicture] is up; and a
+  /// picture going up to AnyTogether or coming down from it.
+  PictureCrop? pictureCrop;
+  bool pictureBusy = false;
 
   /// The other profiles' sessions in tests and previews, which give the first one's in memory.
   final Map<String, MemoryTokenStore> _memoryStores = {};
@@ -3830,6 +3840,9 @@ class AppModel extends ChangeNotifier {
 
   void closeOverlay() {
     overlay = null;
+    // A crop closed some other way (PS) keeps nothing.
+    pictureCrop?.image.dispose();
+    pictureCrop = null;
     panelSections = false;
     settingsQuery = '';
     settingsSearchFocused = false;
@@ -3964,6 +3977,9 @@ class AppModel extends ChangeNotifier {
         return;
       case Layer.browserPlay:
         browserPlay.command(command);
+        return;
+      case Layer.cropPicture:
+        cropCommand(command);
         return;
       case Layer.controllerTest:
         // Only the keyboard and the mouse get here (the pads' buttons are being tried).

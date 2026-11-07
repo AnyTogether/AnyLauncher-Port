@@ -2005,5 +2005,16 @@
   "messagesGroupMade": "%@ is ready",
   "joinDeafen": "Deafen",
   "joinDeafenDetail": "Hear nobody, and your microphone is off.",
-  "joinDeafened": "deafened"
+  "joinDeafened": "deafened",
+  "cropTitle": "Crop your picture",
+  "cropZoom": "Zoom",
+  "cropSave": "Save",
+  "cropHint": "Drag to place it",
+  "profilePictureUpload": "Use as my AnyTogether picture",
+  "profilePictureUploadDetail": "Friends see it on your profile.",
+  "profilePictureFromTogether": "Use my AnyTogether picture",
+  "profilePictureFromTogetherDetail": "The picture on your AnyTogether profile, on this PC too.",
+  "profilePictureUploaded": "Your AnyTogether picture is updated",
+  "profilePictureDownloadFailed": "Your AnyTogether picture could not be downloaded",
+  "profilePictureTooSmall": "The picture is too small: at least 32 pixels"
 }

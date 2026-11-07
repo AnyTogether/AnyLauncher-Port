@@ -1580,5 +1580,16 @@
   "messagesGroupMade": "%@ ist bereit",
   "joinDeafen": "Taub stellen",
   "joinDeafenDetail": "Du hörst niemanden, und dein Mikrofon ist aus.",
-  "joinDeafened": "taub gestellt"
+  "joinDeafened": "taub gestellt",
+  "cropTitle": "Bild zuschneiden",
+  "cropZoom": "Zoom",
+  "cropSave": "Speichern",
+  "cropHint": "Zum Platzieren ziehen",
+  "profilePictureUpload": "Als mein AnyTogether-Bild verwenden",
+  "profilePictureUploadDetail": "Freunde sehen es auf deinem Profil.",
+  "profilePictureFromTogether": "Mein AnyTogether-Bild verwenden",
+  "profilePictureFromTogetherDetail": "Das Bild deines AnyTogether-Profils, auch auf diesem PC.",
+  "profilePictureUploaded": "Dein AnyTogether-Bild ist aktualisiert",
+  "profilePictureDownloadFailed": "Dein AnyTogether-Bild konnte nicht geladen werden",
+  "profilePictureTooSmall": "Das Bild ist zu klein: mindestens 32 Pixel"
 }

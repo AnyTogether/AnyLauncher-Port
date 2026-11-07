@@ -1580,5 +1580,16 @@
   "messagesGroupMade": "%@ est prêt",
   "joinDeafen": "Couper le son",
   "joinDeafenDetail": "Vous n'entendez personne et votre micro est coupé.",
-  "joinDeafened": "son coupé"
+  "joinDeafened": "son coupé",
+  "cropTitle": "Recadrer votre image",
+  "cropZoom": "Zoom",
+  "cropSave": "Enregistrer",
+  "cropHint": "Faites glisser pour la placer",
+  "profilePictureUpload": "Utiliser comme image AnyTogether",
+  "profilePictureUploadDetail": "Vos amis la voient sur votre profil.",
+  "profilePictureFromTogether": "Utiliser mon image AnyTogether",
+  "profilePictureFromTogetherDetail": "L'image de votre profil AnyTogether, sur ce PC aussi.",
+  "profilePictureUploaded": "Votre image AnyTogether est à jour",
+  "profilePictureDownloadFailed": "Impossible de télécharger votre image AnyTogether",
+  "profilePictureTooSmall": "L'image est trop petite : au moins 32 pixels"
 }

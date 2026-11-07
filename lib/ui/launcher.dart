@@ -27,6 +27,7 @@ import 'leaderboard_view.dart';
 import 'share_watch_view.dart';
 import 'level_badge.dart';
 import 'messages_view.dart';
+import 'picture_crop_view.dart';
 import 'profile_view.dart';
 import 'onboarding.dart';
 import 'panels.dart';
@@ -459,6 +460,7 @@ class _LauncherShellState extends State<LauncherShell> {
                                               Layer.crashReport => CrashReportView(model: model),
                                               Layer.controllerTest => ControllerTestView(model: model),
                                               Layer.browserPlay => BrowserPlayView(model: model),
+                                              Layer.cropPicture => PictureCropView(model: model),
                                               Layer.trophies => TrophyView(model: model),
                                               Layer.gallery => GalleryView(model: model),
                                               Layer.profilePicker => ProfilePickerView(model: model),

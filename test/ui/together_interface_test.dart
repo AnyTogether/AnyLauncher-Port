@@ -202,6 +202,36 @@ void main() {
       await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_messages.png'));
     });
 
+    testWidgets('golden: a new group, in Turkish, two friends picked and a name typed', (tester) async {
+      fixture = makeFixture(language: Language.byCode('tr'));
+      model = fixture.model;
+      signedInPreview(model);
+      model.together.hub.messages
+        ..conversations = []
+        ..loaded = true;
+      model.open(Layer.messages);
+      final together = model.together;
+      final at = together.messageTargets.indexWhere((target) => target is NewGroupTarget);
+      expect(at, 0, reason: 'no conversations yet: the new group comes first');
+      together
+        ..messagesIndex = at
+        ..messagesInThread = true
+        ..groupName = 'Cuma akşamı'
+        ..groupFocus = 2;
+      together.groupPicked.addAll({'u-bora', 'u-ana'});
+      await pumpLauncher(tester, model);
+      expect(find.text('Yeni grup'), findsWidgets);
+      expect(find.text('2 kişi seçildi'), findsOneWidget);
+      expect(find.text('Grubu kur'), findsOneWidget);
+      await expectLater(find.byType(LauncherShell), matchesGoldenFile('goldens/together_messages_new_group_tr.png'));
+
+      // A click on a friend picks them.
+      await tester.tap(find.text('Cem Yılmaz').last);
+      await tester.pump();
+      expect(together.groupPicked, {'u-bora', 'u-ana', 'u-cem'});
+      await settle(tester);
+    });
+
     testWidgets('a conversation clicked in the list opens, with the cursor in its field', (tester) async {
       fixture = makeFixture();
       model = fixture.model;

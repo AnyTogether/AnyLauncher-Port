@@ -33,6 +33,9 @@ abstract class VoiceEngine {
 
   /// Sends the microphone or not (muted).
   void setTalking(bool on);
+
+  /// The others heard or not (deafened), on every connection made and made from now on.
+  void setHearing(bool on);
   Future<void> stop();
 }
 
